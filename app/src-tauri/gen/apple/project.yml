@@ -59,7 +59,7 @@ targets:
           - UIInterfaceOrientationLandscapeLeft
           - UIInterfaceOrientationLandscapeRight
         CFBundleShortVersionString: 0.1.1
-        CFBundleVersion: "0.1.1"
+        CFBundleVersion: "2"
     entitlements:
       path: rustyfem-app_iOS/rustyfem-app_iOS.entitlements
     scheme:
