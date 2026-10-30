@@ -1,26 +1,26 @@
-//! Viskoelasticitet i frekvensplanet (*VISCOELASTIC, FREQUENCY=PRONY och
-//! FREQUENCY=TABULAR) med isotrop *ELASTIC, för *STEADY STATE DYNAMICS, DIRECT,
-//! valfritt med *TRS (reducerad frekvens ωr = A(θ) ω).
+//! Viscoelasticity in the frequency domain (*VISCOELASTIC, FREQUENCY=PRONY and
+//! FREQUENCY=TABULAR) with isotropic *ELASTIC, for *STEADY STATE DYNAMICS, DIRECT,
+//! optionally with *TRS (reduced frequency ωr = A(θ) ω).
 //!
-//! Viskoelasticitet i frekvensplanet: med de
-//! långtida modulerna G∞, K∞ (från *ELASTIC) är lagrings- och förlustmodulerna
+//! Viscoelasticity in the frequency domain: with the
+//! long-term moduli G∞, K∞ (from *ELASTIC) the storage and loss moduli are
 //!
-//!   Gs(ω) = G∞ (1 − ω ℑ(g*)),  Gℓ(ω) = G∞ ω ℜ(g*)   (och likadant för K),
+//!   Gs(ω) = G∞ (1 − ω ℑ(g*)),  Gℓ(ω) = G∞ ω ℜ(g*)   (and likewise for K),
 //!
-//! - FREQUENCY=TABULAR: dataraderna är ω ℜ(g*), ω ℑ(g*), ω ℜ(k*), ω ℑ(k*) och
-//!   frekvensen f (cykler per tidsenhet), linjär interpolation i f och
-//!   konstanta värden utanför tabellen,
-//! - FREQUENCY=PRONY: (gᵢ, kᵢ, τᵢ) med Gs = G0 (1 − Σgᵢ) + G0 Σ gᵢ τᵢ²ω²/(1 + τᵢ²ω²),
+//! - FREQUENCY=TABULAR: the data lines are ω ℜ(g*), ω ℑ(g*), ω ℜ(k*), ω ℑ(k*) and
+//!   the frequency f (cycles per unit time), linear interpolation in f and
+//!   constant values outside the table,
+//! - FREQUENCY=PRONY: (gᵢ, kᵢ, τᵢ) with Gs = G0 (1 − Σgᵢ) + G0 Σ gᵢ τᵢ²ω²/(1 + τᵢ²ω²),
 //!   Gℓ = G0 Σ gᵢ τᵢ ω/(1 + τᵢ²ω²), G0 = G∞/(1 − Σgᵢ) (MODULI=LONG TERM,
-//!   standard) eller G0 från *ELASTIC (MODULI=INSTANTANEOUS).
+//!   default) or G0 from *ELASTIC (MODULI=INSTANTANEOUS).
 //!
-//! I tidsplanets steg (och för grundtillståndet i *STATIC) är materialet
-//! linjärt elastiskt med de långtida modulerna. I
-//! *STEADY STATE DYNAMICS, DIRECT lägger `frequency_matrices` till
-//! elementmatriserna för lagringsmodulernas tillskott (Gs − G∞, Ks − K∞) i den
-//! reella delen och för förlustmodulerna (Gℓ, Kℓ) i den imaginära delen av den
-//! dynamiska styvheten; elementmatriserna är linjära i (G, K) och räknas med
-//! ett hjälpmaterial (`IsoGk`).
+//! In time-domain steps (and for the base state in *STATIC) the material is
+//! linear elastic with the long-term moduli. In
+//! *STEADY STATE DYNAMICS, DIRECT, `frequency_matrices` adds
+//! the element matrices for the storage moduli's contributions (Gs − G∞, Ks − K∞) to the
+//! real part and for the loss moduli (Gℓ, Kℓ) to the imaginary part of the
+//! dynamic stiffness; the element matrices are linear in (G, K) and are computed with
+//! an auxiliary material (`IsoGk`).
 
 use super::anisotropic::reduce_6x6;
 use super::time_dependence::TimeDependence;
@@ -35,22 +35,22 @@ use crate::steps::frequency::AllDofs;
 use std::sync::Arc;
 
 pub static FACTORIES: &[MaterialFactory] = &[MaterialFactory {
-    name: "viskoelasticitet i frekvensplanet (*VISCOELASTIC, FREQUENCY=PRONY/TABULAR)",
+    name: "viscoelasticity in the frequency domain (*VISCOELASTIC, FREQUENCY=PRONY/TABULAR)",
     consumes: &["ELASTIC", "VISCOELASTIC", "TRS"],
     priority: 25,
     build: Some(build),
 }];
 
-/// Om materialet har viskoelasticitet i frekvensplanet (byggs här, inte i `viscoelastic.rs`).
+/// Whether the material has viscoelasticity in the frequency domain (built here, not in `viscoelastic.rs`).
 pub fn claims(def: &MaterialDef) -> bool {
     def.behavior("VISCOELASTIC").is_some_and(|k| k.has("FREQUENCY"))
 }
 
 #[derive(Debug, Clone)]
 enum Freq {
-    /// G0, K0 och (gᵢ, kᵢ, τᵢ).
+    /// G0, K0 and (gᵢ, kᵢ, τᵢ).
     Prony { g0: f64, k0: f64, terms: Vec<(f64, f64, f64)> },
-    /// [ω ℜ(g*), ω ℑ(g*), ω ℜ(k*), ω ℑ(k*), f] i stigande f.
+    /// [ω ℜ(g*), ω ℑ(g*), ω ℜ(k*), ω ℑ(k*), f] in ascending f.
     Tabular(Vec<[f64; 5]>),
 }
 
@@ -71,25 +71,25 @@ fn build(def: &MaterialDef) -> Result<Option<Arc<dyn MaterialModel>>> {
     }
     let vk = def.behavior("VISCOELASTIC").unwrap();
     let Some(ek) = def.behavior("ELASTIC") else {
-        return vk.err("*VISCOELASTIC, FREQUENCY= stöds bara med *ELASTIC (inte *HYPERELASTIC) ännu");
+        return vk.err("*VISCOELASTIC, FREQUENCY= is only supported with *ELASTIC (not *HYPERELASTIC) yet");
     };
     if ek.param_upper("TYPE").is_some_and(|t| t != "ISOTROPIC") || ek.data.len() > 1 || ek.has("DEPENDENCIES") {
-        return ek.err("*VISCOELASTIC, FREQUENCY= stöds bara med isotrop, temperaturoberoende *ELASTIC");
+        return ek.err("*VISCOELASTIC, FREQUENCY= is only supported with isotropic, temperature-independent *ELASTIC");
     }
     for p in ["TYPE", "PRELOAD"] {
         if vk.has(p) && !(p == "TYPE" && vk.param_upper("TYPE").as_deref() == Some("ISOTROPIC")) {
-            return vk.err(format!("parametern {p} stöds inte ännu"));
+            return vk.err(format!("parameter {p} is not supported yet"));
         }
     }
     let inst = match ek.param_upper("MODULI").as_deref() {
         None | Some("LONG TERM") => false,
         Some("INSTANTANEOUS") => true,
-        Some(o) => return ek.err(format!("MODULI={o} ska vara LONG TERM eller INSTANTANEOUS")),
+        Some(o) => return ek.err(format!("MODULI={o} must be LONG TERM or INSTANTANEOUS")),
     };
     let ev = ek.first_floats()?;
     let (e, nu) = (ev.first().copied().unwrap_or(0.0), ev.get(1).copied().unwrap_or(0.0));
     if !(e > 0.0 && nu > -1.0 && nu < 0.5) {
-        return ek.err("E ska vara positivt och ν mellan −1 och 0,5");
+        return ek.err("E must be positive and ν between −1 and 0.5");
     }
     let (ge, ke) = (e / (2.0 * (1.0 + nu)), e / (3.0 * (1.0 - 2.0 * nu)));
     let (data, g_inf, k_inf) = match vk.param_upper("FREQUENCY").as_deref() {
@@ -99,23 +99,23 @@ fn build(def: &MaterialDef) -> Result<Option<Arc<dyn MaterialModel>>> {
                 let v = vk.floats(&d)?;
                 let (g, k, tau) = (v.first().copied().unwrap_or(0.0), v.get(1).copied().unwrap_or(0.0), v.get(2).copied().unwrap_or(0.0));
                 if !(g >= 0.0 && k >= 0.0 && tau > 0.0) {
-                    return vk.err_at(d.line, "Prony-termen kräver gᵢ ≥ 0, kᵢ ≥ 0 och τᵢ > 0");
+                    return vk.err_at(d.line, "the Prony term requires gᵢ ≥ 0, kᵢ ≥ 0 and τᵢ > 0");
                 }
                 terms.push((g, k, tau));
             }
             if terms.is_empty() {
-                return vk.err("Prony-serien saknas");
+                return vk.err("the Prony series is missing");
             }
             let (sg, sk): (f64, f64) = (terms.iter().map(|t| t.0).sum(), terms.iter().map(|t| t.1).sum());
             if !(sg < 1.0 && sk < 1.0) {
-                return vk.err("summan av gᵢ och summan av kᵢ ska vara mindre än 1");
+                return vk.err("the sum of gᵢ and the sum of kᵢ must be less than 1");
             }
             let (g0, k0, gi, ki) = if inst { (ge, ke, ge * (1.0 - sg), ke * (1.0 - sk)) } else { (ge / (1.0 - sg), ke / (1.0 - sk), ge, ke) };
             (Freq::Prony { g0, k0, terms }, gi, ki)
         }
         Some("TABULAR") => {
             if inst {
-                return ek.err("MODULI=INSTANTANEOUS kan inte användas med FREQUENCY=TABULAR (modulerna är långtida)");
+                return ek.err("MODULI=INSTANTANEOUS cannot be used with FREQUENCY=TABULAR (the moduli are long-term)");
             }
             let mut t: Vec<[f64; 5]> = Vec::new();
             for d in vk.records() {
@@ -123,20 +123,20 @@ fn build(def: &MaterialDef) -> Result<Option<Arc<dyn MaterialModel>>> {
                 let row: [f64; 5] = std::array::from_fn(|i| v.get(i).copied().unwrap_or(0.0));
                 if let Some(l) = t.last() {
                     if !(row[4] > l[4]) {
-                        return vk.err_at(d.line, "frekvenserna ska öka");
+                        return vk.err_at(d.line, "the frequencies must increase");
                     }
                 }
                 t.push(row);
             }
             if t.is_empty() {
-                return vk.err("tabellen saknas");
+                return vk.err("the table is missing");
             }
             (Freq::Tabular(t), ge, ke)
         }
-        Some(o) => return vk.err(format!("FREQUENCY={o} stöds inte ännu (PRONY, TABULAR)")),
+        Some(o) => return vk.err(format!("FREQUENCY={o} is not supported yet (PRONY, TABULAR)")),
         None => unreachable!(),
     };
-    // långtida (E, ν) för det elastiska svaret
+    // long-term (E, ν) for the elastic response
     let e_inf = 9.0 * k_inf * g_inf / (3.0 * k_inf + g_inf);
     let nu_inf = (3.0 * k_inf - 2.0 * g_inf) / (2.0 * (3.0 * k_inf + g_inf));
     let trs = def.behavior("TRS").map(Trs::parse).transpose()?;
@@ -210,8 +210,8 @@ impl MaterialModel for ViscoFreq {
     }
 }
 
-/// Isotropt linjärt hjälpmaterial med skjuvmodulen G och kompressionsmodulen
-/// K (får vara negativa: tillskott till lagringsmodulerna).
+/// Isotropic linear auxiliary material with shear modulus G and bulk modulus
+/// K (may be negative: contributions to the storage moduli).
 struct IsoGk {
     g: f64,
     k: f64,
@@ -233,7 +233,7 @@ impl IsoGk {
 
 impl MaterialModel for IsoGk {
     fn name(&self) -> &str {
-        "VISCOELASTIC (frekvensplanet)"
+        "VISCOELASTIC (frequency domain)"
     }
 
     fn is_linear(&self) -> bool {
@@ -250,7 +250,7 @@ impl MaterialModel for IsoGk {
     }
 }
 
-/// Spänningen S för förskjutningen `u` med hjälpmaterialet `mat` i element `e`.
+/// The stress S for the displacement `u` with the auxiliary material `mat` in element `e`.
 fn stress_with(p: &Prepared, e: usize, mat: &IsoGk, u: &[crate::fem::dof::NodeVec], time: f64) -> Result<Option<IpFieldVals>> {
     let el = &p.model.elements[e];
     let mut c = p.ctx(e, false, time, 0.0);
@@ -266,10 +266,10 @@ fn stress_with(p: &Prepared, e: usize, mat: &IsoGk, u: &[crate::fem::dof::NodeVe
 
 type IpFieldVals = Vec<(usize, usize, Vec<f64>)>;
 
-/// Lägger till de frekvensberoende delarna av spänningen i en komplex frame
-/// från *STEADY STATE DYNAMICS, DIRECT (fälten S och S_IM): med de reella och
-/// imaginära förskjutningarna u_r, u_i blir tillskotten
-/// S_r += S(ΔGs, ΔKs; u_r) − S(Gℓ, Kℓ; u_i) och S_i += S(ΔGs, ΔKs; u_i) + S(Gℓ, Kℓ; u_r).
+/// Adds the frequency-dependent parts of the stress to a complex frame
+/// from *STEADY STATE DYNAMICS, DIRECT (the fields S and S_IM): with the real and
+/// imaginary displacements u_r, u_i the contributions become
+/// S_r += S(ΔGs, ΔKs; u_r) − S(Gℓ, Kℓ; u_i) and S_i += S(ΔGs, ΔKs; u_i) + S(Gℓ, Kℓ; u_r).
 pub fn correct_stress(p: &Prepared, fr: &mut crate::fem::output::FrameData, re: &[crate::fem::dof::NodeVec], im: &[crate::fem::dof::NodeVec], omega: f64, time: f64) -> Result<()> {
     let m = p.model;
     for (e, el) in m.elements.iter().enumerate() {
@@ -307,10 +307,10 @@ pub fn correct_stress(p: &Prepared, fr: &mut crate::fem::output::FrameData, re: 
     Ok(())
 }
 
-/// Tillskotten till den dynamiska styvhetens reella och imaginära del vid
-/// vinkelfrekvensen `omega` från material med viskoelasticitet i
-/// frekvensplanet, i `all`-numreringen (fria och inre frihetsgrader, undre
-/// triangeln). `None` om modellen saknar sådana material.
+/// The contributions to the real and imaginary parts of the dynamic stiffness at
+/// the angular frequency `omega` from materials with viscoelasticity in the
+/// frequency domain, in the `all` numbering (free and internal degrees of freedom, lower
+/// triangle). `None` if the model has no such materials.
 pub fn frequency_matrices(p: &Prepared, all: &AllDofs, omega: f64, time: f64) -> Result<Option<(SymCsr, SymCsr)>> {
     let m = p.model;
     let ns = all.n_solve();
@@ -323,7 +323,7 @@ pub fn frequency_matrices(p: &Prepared, all: &AllDofs, omega: f64, time: f64) ->
         let temp = if ctx.temp.is_empty() { 0.0 } else { ctx.temp.iter().take(el.nodes.len()).sum::<f64>() / el.nodes.len() as f64 };
         let Some([dgs, dks, gl, kl]) = mat.frequency_moduli(omega, temp) else { continue };
         if !matches!(el.etype.family(), Family::Continuum2D | Family::Continuum3D | Family::Axisymmetric) {
-            return fail(format!("{}: viskoelasticitet i frekvensplanet stöds bara i kontinuumelement", m.elem_name(e)));
+            return fail(format!("{}: viscoelasticity in the frequency domain is only supported in continuum elements", m.elem_name(e)));
         }
         any = true;
         let wrap = |err: FemError| FemError(format!("{}: {err}", m.elem_name(e)));
@@ -338,7 +338,7 @@ pub fn frequency_matrices(p: &Prepared, all: &AllDofs, omega: f64, time: f64) ->
         let map: Vec<usize> = p.edofs[e].iter().map(|&(n, s)| all.idx[n][s]).collect();
         let nd = map.len();
         if ka.len() != nd * nd {
-            return fail(format!("{}: elementmatrisen har fel storlek för viskoelasticitet i frekvensplanet", m.elem_name(e)));
+            return fail(format!("{}: the element matrix has the wrong size for viscoelasticity in the frequency domain", m.elem_name(e)));
         }
         for a in 0..nd {
             for c in 0..nd {

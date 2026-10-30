@@ -1,38 +1,38 @@
-//! Kopplade porvattentryck–förskjutningselement (geoteknik, *SOILS):
+//! Coupled pore pressure–displacement elements (geotechnics, *SOILS):
 //! CPE4P, CPE8P, CPE8RP, CAX4P, CAX8P, CAX8RP, C3D8P, C3D20P, C3D20RP.
 //!
-//! Hörnnoderna har förskjutningarna (1–2 eller 1–3) och porvattentrycket u_w
-//! (frihetsgrad 8, slot 7 – samma slot som NT11, en modell har inte båda);
-//! mittnoderna hos andra ordningens element har bara förskjutningar. Trycket
-//! interpoleras linjärt (bilinjärt/trilinjärt) med hörnnoderna, förskjutningen
-//! med elementets alla noder.
+//! The corner nodes have the displacements (1–2 or 1–3) and the pore pressure u_w
+//! (degree of freedom 8, slot 7 – the same slot as NT11, a model does not have both);
+//! the midside nodes of second-order elements have displacements only. The pressure
+//! is interpolated linearly (bilinearly/trilinearly) with the corner nodes, the displacement
+//! with all nodes of the element.
 //!
-//! Formulering (helt mättad jord, små töjningar):
-//! - effektiv spänning: σ = σ̄ − u_w I (dragning positiv, u_w positivt vid
-//!   tryck). Materialet (`materials/`) ger σ̄, som också redovisas som S. Med
-//!   kompressibla korn (*POROUS BULK MODULI, K_g) får materialet töjningen
-//!   ε + u_w/(3K_g) I (kornens kompression av porvattentrycket);
-//! - jämvikt: ∫ Bᵀ(σ̄ − u_w m) dV = F_ext;
-//! - kontinuitet (bakåt-Euler, volymflöde per tidsenhet):
-//!   ∫ N_p Δm/Δt dV − ∫ ∇N_p·f dV = inflöde, Darcy f = −(k/γw)(∇u_w − ρw g),
-//!   med vätskeinnehållet (linjäriserat) m = n₀ + ε_v + (1 − n₀)u_w/K_g −
-//!   tr σ̄/(3K_g) + n₀ u_w/K_w (`fluid_content`; utan *POROUS BULK MODULI bara
-//!   ε_v). Stationärt (*SOILS utan CONSOLIDATION, *GEOSTATIC med GRAV)
-//!   utelämnas tidsderivatan; ρw g kommer från GRAV (totalt porvattentryck);
-//! - portalet: VOIDR = (1 + e₀)/(1 − ε_v) − 1 (med kornens densitetsändring vid
-//!   kompressibla korn), permeabiliteten k(e) med e = e₀ + (1 + e₀)ε_v.
+//! Formulation (fully saturated soil, small strains):
+//! - effective stress: σ = σ̄ − u_w I (tension positive, u_w positive in
+//!   compression). The material (`materials/`) gives σ̄, which is also reported as S. With
+//!   compressible grains (*POROUS BULK MODULI, K_g) the material gets the strain
+//!   ε + u_w/(3K_g) I (the compression of the grains by the pore pressure);
+//! - equilibrium: ∫ Bᵀ(σ̄ − u_w m) dV = F_ext;
+//! - continuity (backward Euler, volume flow per unit time):
+//!   ∫ N_p Δm/Δt dV − ∫ ∇N_p·f dV = inflow, Darcy f = −(k/γw)(∇u_w − ρw g),
+//!   with the fluid content (linearized) m = n₀ + ε_v + (1 − n₀)u_w/K_g −
+//!   tr σ̄/(3K_g) + n₀ u_w/K_w (`fluid_content`; without *POROUS BULK MODULI only
+//!   ε_v). In steady state (*SOILS without CONSOLIDATION, *GEOSTATIC with GRAV)
+//!   the time derivative is omitted; ρw g comes from GRAV (total pore pressure);
+//! - the void ratio: VOIDR = (1 + e₀)/(1 − ε_v) − 1 (with the density change of the grains for
+//!   compressible grains), the permeability k(e) with e = e₀ + (1 + e₀)ε_v.
 //!
-//! Den inre "kraften" i tryckfrihetsgraderna är alltså volymflödet ut ur noden
-//! per tidsenhet; i låsta tryckfrihetsgrader blir den reaktionen RVF.
+//! The internal "force" in the pressure degrees of freedom is thus the volume flow out of the node
+//! per unit time; in fixed pressure degrees of freedom it becomes the reaction RVF.
 //!
-//! Integrering: 2×2 (2×2×2) med selektivt reducerad integrering av
-//! volymtöjningen för CPE4P/CAX4P/C3D8P, 3×3 (3×3×3) för CPE8P/CAX8P/C3D20P och
-//! 2×2 (2×2×2) för de reducerade CPE8RP/CAX8RP/C3D20RP.
+//! Integration: 2×2 (2×2×2) with selectively reduced integration of
+//! the volumetric strain for CPE4P/CAX4P/C3D8P, 3×3 (3×3×3) for CPE8P/CAX8P/C3D20P and
+//! 2×2 (2×2×2) for the reduced CPE8RP/CAX8RP/C3D20RP.
 //!
-//! Begynnelsespänning (*INITIAL CONDITIONS, TYPE=STRESS) läggs in som en
-//! elastisk förtöjning ε₀ = C⁻¹σ₀ som adderas till töjningen innan materialet
-//! anropas: σ̄ = σ₀ + C(ε − εp) för material med linjär elasticitet, utan att
-//! materialmodellerna behöver känna till begynnelsespänningen.
+//! Initial stress (*INITIAL CONDITIONS, TYPE=STRESS) is applied as an
+//! elastic prestrain ε₀ = C⁻¹σ₀ that is added to the strain before the material
+//! is called: σ̄ = σ₀ + C(ε − εp) for materials with linear elasticity, without
+//! the material models needing to know about the initial stress.
 
 use super::api::{not_implemented, ElemCtx, ElemResponse, ElementType, Family, IpField};
 use super::common::{self, Ip, DISTORTED};
@@ -44,17 +44,17 @@ use crate::materials::porous::PoroProps;
 use crate::materials::{MatInput, MaterialModel, StressMode};
 use crate::model::{fail, Result};
 
-/// Ett porvattentryckselement.
+/// A pore pressure element.
 pub struct SoilElem {
     pub name: &'static str,
-    /// Motsvarande mekaniska element i registret (för ytlaster och volymkrafter).
+    /// The corresponding mechanical element in the registry (for surface loads and body forces).
     pub mech: &'static str,
     pub shape: Shape,
-    /// Tryckets interpolation (hörnnoderna).
+    /// The pressure interpolation (the corner nodes).
     pub pshape: Shape,
     pub mode: StressMode,
     pub rule: RuleKind,
-    /// Selektivt reducerad integrering av volymtöjningen (B-bar).
+    /// Selectively reduced integration of the volumetric strain (B-bar).
     pub bbar: bool,
 }
 
@@ -76,41 +76,41 @@ pub static TYPES: &[&dyn ElementType] = &[&C3D20P, &C3D20RP, &C3D8P, &CAX4P, &CA
 
 static ALL: &[&SoilElem] = &[&C3D20P, &C3D20RP, &C3D8P, &CAX4P, &CAX8P, &CAX8RP, &CPE4P, &CPE8P, &CPE8RP];
 
-/// Porvattentryckselementet med namnet `name`.
+/// The pore pressure element named `name`.
 pub fn lookup(name: &str) -> Option<&'static SoilElem> {
     ALL.iter().copied().find(|e| e.name == name)
 }
 
-/// Kopplingstermen (volymtöjningen i kontinuitetsekvationen) använder samma
-/// B-bar-medelvärdesbildade volymtöjning som spänningen (CPE4P, CAX4P och C3D8P).
+/// The coupling term (the volumetric strain in the continuity equation) uses the same
+/// B-bar-averaged volumetric strain as the stress (CPE4P, CAX4P and C3D8P).
 const COUPLING_BBAR: bool = true;
 
-/// Hur kontinuitetsekvationen behandlas i ett inkrement.
+/// How the continuity equation is treated in an increment.
 #[derive(Debug, Clone, Copy)]
 pub struct FluidMode {
-    /// Tidsinkrement (transient).
+    /// Time increment (transient).
     pub dt: f64,
-    /// Transient (konsolidering) – annars stationär strömning.
+    /// Transient (consolidation) – otherwise steady-state flow.
     pub transient: bool,
-    /// Porvätskans tyngd per volym ρw·g (GRAV, totalt porvattentryck), annars 0.
+    /// The pore fluid weight per volume ρw·g (GRAV, total pore pressure), otherwise 0.
     pub gravity: [f64; 3],
 }
 
-/// Geometri i en integrationspunkt.
+/// Geometry at an integration point.
 pub struct PIp {
     pub ip: Ip,
-    /// Tryckets formfunktioner och deras derivator.
+    /// The pressure shape functions and their derivatives.
     pub np: Vec<f64>,
     pub dnp: Vec<[f64; 3]>,
-    /// B-matris (ncomp × förskjutningsfrihetsgrader, med B-bar om elementet har det).
+    /// B matrix (ncomp × displacement degrees of freedom, with B-bar if the element has it).
     pub b: Vec<f64>,
-    /// Volymtöjningens rad (förskjutningsfrihetsgrader).
+    /// The volumetric strain row (displacement degrees of freedom).
     pub bv: Vec<f64>,
-    /// Läge.
+    /// Position.
     pub x: [f64; 3],
 }
 
-/// Tillståndslayout per integrationspunkt.
+/// State layout per integration point.
 pub struct Layout {
     pub ns: usize,
     pub nst: usize,
@@ -120,19 +120,19 @@ impl Layout {
     pub fn stride(&self) -> usize {
         2 * self.ns + self.nst + 1
     }
-    /// Spänning σ̄.
+    /// Stress σ̄.
     pub fn stress(&self) -> usize {
         0
     }
-    /// Materialets tillstånd.
+    /// The material state.
     pub fn mat(&self) -> usize {
         self.ns
     }
-    /// Elastisk förtöjning från begynnelsespänningen.
+    /// Elastic prestrain from the initial stress.
     pub fn eps0(&self) -> usize {
         self.ns + self.nst
     }
-    /// Begynnelseportal.
+    /// Initial void ratio.
     pub fn e0(&self) -> usize {
         2 * self.ns + self.nst
     }
@@ -155,12 +155,12 @@ impl SoilElem {
         self.shape.pdim()
     }
 
-    /// Antal förskjutningsfrihetsgrader.
+    /// Number of displacement degrees of freedom.
     pub fn nu(&self) -> usize {
         self.ndim() * self.shape.n_nodes()
     }
 
-    /// Index i elementvektorn för förskjutningskomponent `c` i nod `k`.
+    /// Index in the element vector of displacement component `c` at node `k`.
     pub fn u_index(&self, k: usize, c: usize) -> usize {
         let nm = self.ndim();
         let nc = self.n_corner();
@@ -171,7 +171,7 @@ impl SoilElem {
         }
     }
 
-    /// Index i elementvektorn för trycket i hörnnod `k`.
+    /// Index in the element vector of the pressure at corner node `k`.
     pub fn p_index(&self, k: usize) -> usize {
         let nm = self.ndim();
         k * (nm + 1) + nm
@@ -181,7 +181,7 @@ impl SoilElem {
         self.nu() + self.n_corner()
     }
 
-    /// Delar en elementvektor i förskjutningar (nodvis) och tryck.
+    /// Splits an element vector into displacements (node-wise) and pressures.
     pub fn split(&self, v: &[f64]) -> (Vec<f64>, Vec<f64>) {
         let nm = self.ndim();
         let mut u = Vec::with_capacity(self.nu());
@@ -194,7 +194,7 @@ impl SoilElem {
         (u, p)
     }
 
-    /// Index i elementvektorn för förskjutningsfrihetsgrad `a` (nodvis numrering).
+    /// Index in the element vector of displacement degree of freedom `a` (node-wise numbering).
     pub fn ua(&self, a: usize) -> usize {
         let nm = self.ndim();
         self.u_index(a / nm, a % nm)
@@ -211,7 +211,7 @@ impl SoilElem {
         }
     }
 
-    /// Integrationspunkter med tryckets formfunktioner och B-matriser.
+    /// Integration points with the pressure shape functions and B matrices.
     pub fn geometry(&self, x: &[[f64; 3]], t: f64) -> Result<Vec<PIp>> {
         let rule = self.rule.points(self.pdim());
         let ips = sh::ips_for(self.shape, self.mode, x, &rule, t)?;
@@ -233,8 +233,8 @@ impl SoilElem {
         Ok(out)
     }
 
-    /// Tryckets formfunktioner och globala derivator i den naturliga punkten
-    /// `p` (Jacobianen från elementets hela geometri).
+    /// The pressure shape functions and global derivatives at the natural point
+    /// `p` (the Jacobian from the element's full geometry).
     fn pressure_shape(&self, x: &[[f64; 3]], p: [f64; 3]) -> Result<(Vec<f64>, Vec<[f64; 3]>)> {
         let (_, dn) = shapes::shape(self.shape, p);
         let (np, dnn) = shapes::shape(self.pshape, p);
@@ -274,13 +274,13 @@ impl SoilElem {
         Ok((np, d))
     }
 
-    /// Elementets mittpunkt (naturliga koordinater 0).
+    /// The element center (natural coordinates 0).
     pub fn center(&self, x: &[[f64; 3]]) -> [f64; 3] {
         let (n, _) = shapes::shape(self.shape, [0.0; 3]);
         [0, 1, 2].map(|c| n.iter().zip(x).map(|(ni, xi)| ni * xi[c]).sum())
     }
 
-    /// Integrationspunkternas lägen (för begynnelsevillkor som beror på höjden).
+    /// The positions of the integration points (for initial conditions that depend on the height).
     pub fn ip_positions(&self, x: &[[f64; 3]]) -> Vec<[f64; 3]> {
         self.rule
             .points(self.pdim())
@@ -292,9 +292,9 @@ impl SoilElem {
             .collect()
     }
 
-    /// Kopplad inre "kraft" (förskjutningar: kraft, tryck: volymflöde ut per
-    /// tidsenhet) och tangent för elementvektorn `v` (total) med `v_old` vid
-    /// inkrementets början.
+    /// Coupled internal "force" (displacements: force, pressure: volume flow out per
+    /// unit time) and tangent for the element vector `v` (total) with `v_old` at
+    /// the start of the increment.
     #[allow(clippy::too_many_arguments)]
     pub fn coupled(
         &self,
@@ -335,7 +335,7 @@ impl SoilElem {
         let ndim = self.ndim();
         let ua: Vec<usize> = (0..nu).map(|a| self.ua(a)).collect();
         let pa: Vec<usize> = (0..nc).map(|i| self.p_index(i)).collect();
-        // kornens kompression av porvattentrycket: ε_g = −u_w/(3K_g) I
+        // the compression of the grains by the pore pressure: ε_g = −u_w/(3K_g) I
         let g3 = if props.k_grain > 0.0 { 1.0 / (3.0 * props.k_grain) } else { 0.0 };
         for (q, g) in gs.iter().enumerate() {
             let w = g.ip.w;
@@ -345,7 +345,7 @@ impl SoilElem {
             let e0 = st[lay.e0()];
             let p: f64 = g.np.iter().zip(&pp).map(|(a, b)| a * b).sum();
             let p_old: f64 = g.np.iter().zip(&pp0).map(|(a, b)| a * b).sum();
-            // töjning för den effektiva spänningen: ε + ε₀ + u_w/(3K_g) I
+            // strain for the effective stress: ε + ε₀ + u_w/(3K_g) I
             let mut eps = common::strain(&g.b, &uu);
             let mut deps = common::strain(&g.b, &duu);
             for (a, b) in eps.iter_mut().zip(eps0) {
@@ -380,10 +380,10 @@ impl SoilElem {
                     grad[c] += d[c] * pp[i];
                 }
             }
-            // permeabiliteten vid portalet e = e₀ + (1 + e₀) ε_v
+            // the permeability at the void ratio e = e₀ + (1 + e₀) ε_v
             let (kt, dkt) = props.perm.at(perm_void_ratio(e0, ev));
             let dedev = 1.0 + e0;
-            // volymflöde per ytenhet f = −(k/γw)(∇u_w − ρw g)
+            // volume flow per unit area f = −(k/γw)(∇u_w − ρw g)
             let mut f = [0.0; 3];
             let mut dfde = [0.0; 3];
             for r in 0..ndim {
@@ -392,12 +392,12 @@ impl SoilElem {
                     dfde[r] -= dkt[r * 3 + c] * (grad[c] - fm.gravity[c]) / gw;
                 }
             }
-            // vätskeinnehåll per referensvolym (linjäriserat)
+            // fluid content per reference volume (linearized)
             let n0 = e0 / (1.0 + e0);
             let tr = |s: &[f64]| s[0] + s[1] + s[2];
             let content = |evv: f64, pw: f64, trs: f64| fluid_content(props, n0, evv, pw, trs);
             let dm = content(ev, p, tr(&out.stress)) - content(ev_old, p_old, tr(&st[..ns]));
-            // jämvikt
+            // equilibrium
             for a in 0..nu {
                 let mut s = 0.0;
                 for r in 0..ns {
@@ -405,7 +405,7 @@ impl SoilElem {
                 }
                 fint[ua[a]] += (s - g.bv[a] * p) * w;
             }
-            // kontinuitet
+            // continuity
             for i in 0..nc {
                 let mut flow = 0.0;
                 for c in 0..ndim {
@@ -446,7 +446,7 @@ impl SoilElem {
                         k[ua[a] * nd + pa[j]] += (s - g.bv[a]) * g.np[j] * w;
                     }
                 }
-                // ∂(vätskeinnehåll)/∂ε_v, ∂/∂u_w och ∂/∂tr σ̄
+                // ∂(fluid content)/∂ε_v, ∂/∂u_w and ∂/∂tr σ̄
                 let (c_ev, c_p, c_tr) = content_derivatives(props, n0);
                 let dtr_dp: f64 = (0..3).map(|r| dm_p[r]).sum();
                 for i in 0..nc {
@@ -481,7 +481,7 @@ impl SoilElem {
         Ok(ElemResponse { fint, k: tangent.then_some(k) })
     }
 
-    /// Nytt tillstånd: noll spänning, materialets starttillstånd, ε₀ = 0, e₀ = 0.
+    /// New state: zero stress, the material's initial state, ε₀ = 0, e₀ = 0.
     pub fn fresh_state(&self, mat: &dyn MaterialModel, n_ips: usize) -> Vec<f64> {
         let lay = self.layout(mat);
         let stride = lay.stride();
@@ -492,7 +492,7 @@ impl SoilElem {
         s
     }
 
-    /// Utdata S, E, materialets fält, FLVEL (volymflöde per ytenhet) och VOIDR.
+    /// Output S, E, the material's fields, FLVEL (volume flow per unit area) and VOIDR.
     pub fn soil_output(&self, ctx: &ElemCtx, props: Option<&PoroProps>, v: &[f64], state: &[f64], gravity: [f64; 3]) -> Result<Vec<IpField>> {
         let mat = ctx.material(self.name)?;
         let lay = self.layout(mat);
@@ -550,8 +550,8 @@ impl SoilElem {
         Ok(out)
     }
 
-    /// Tyngd (ρ_torr·g + n·ρw·g per referensvolym) som elementvektor:
-    /// `dry` = ρ_torr·g och `fluid` = ρw·g med aktuell porositet n = e/(1 + e).
+    /// Weight (ρ_dry·g + n·ρw·g per reference volume) as an element vector:
+    /// `dry` = ρ_dry·g and `fluid` = ρw·g with the current porosity n = e/(1 + e).
     pub fn gravity(&self, ctx: &ElemCtx, v: &[f64], state: &[f64], dry: [f64; 3], fluid: [f64; 3]) -> Result<Vec<f64>> {
         let mat = ctx.material(self.name)?;
         let lay = self.layout(mat);
@@ -563,7 +563,7 @@ impl SoilElem {
         for (q, g) in gs.iter().enumerate() {
             let e0 = state.get(q * stride + lay.e0()).copied().unwrap_or(0.0);
             let ev: f64 = g.bv.iter().zip(&uu).map(|(a, b)| a * b).sum();
-            // aktuell porositet n = e/(1 + e) per referensvolym
+            // current porosity n = e/(1 + e) per reference volume
             let e = void_ratio(e0, ev);
             let n = e / (1.0 + e);
             for (k, &nk) in g.ip.n.iter().enumerate() {
@@ -575,8 +575,8 @@ impl SoilElem {
         Ok(out)
     }
 
-    /// Trycket i mittnoderna (lokalt nodnummer, värde) interpolerat från
-    /// hörnen (POR redovisas där).
+    /// The pressure at the midside nodes (local node number, value) interpolated from
+    /// the corners (POR is reported there).
     pub fn midside_pressure(&self, pp: &[f64]) -> Vec<(usize, f64)> {
         let nat = shapes::node_coords(self.shape);
         (self.n_corner()..self.shape.n_nodes())
@@ -590,11 +590,11 @@ impl SoilElem {
     fn mech_elem(&self) -> Result<&'static dyn ElementType> {
         match super::lookup(self.mech) {
             Some(m) => Ok(m),
-            None => fail(format!("{}: det mekaniska elementet {} finns inte i registret", self.name, self.mech)),
+            None => fail(format!("{}: the mechanical element {} is not in the registry", self.name, self.mech)),
         }
     }
 
-    /// Mekanisk vektor (nodvisa förskjutningar) → elementvektor (nollor i trycken).
+    /// Mechanical vector (node-wise displacements) → element vector (zeros in the pressures).
     pub fn from_mech(&self, m: &[f64]) -> Vec<f64> {
         let mut out = vec![0.0; self.n_dof()];
         for (a, &x) in m.iter().enumerate().take(self.nu()) {
@@ -604,15 +604,15 @@ impl SoilElem {
     }
 }
 
-/// Portalet ur begynnelseportalet och volymtöjningen:
-/// VOIDR = (1 + e₀)/(1 − ε_v) − 1 vid små töjningar (skiljer sig från
-/// e₀ + (1 + e₀)ε_v i andra ordningen).
+/// The void ratio from the initial void ratio and the volumetric strain:
+/// VOIDR = (1 + e₀)/(1 − ε_v) − 1 at small strains (differs from
+/// e₀ + (1 + e₀)ε_v at second order).
 pub fn void_ratio(e0: f64, ev: f64) -> f64 {
     (1.0 + e0) / (1.0 - ev) - 1.0
 }
 
-/// Portalet med kompressibla korn (VOIDR): 1 + e = (1 + e₀)·J·ρ_g/ρ_g0 med
-/// J = 1/(1 − ε_v) och ρ_g/ρ_g0 = 1 + u_w/K_g − tr σ̄/(3(1 − n₀)K_g).
+/// The void ratio with compressible grains (VOIDR): 1 + e = (1 + e₀)·J·ρ_g/ρ_g0 with
+/// J = 1/(1 − ε_v) and ρ_g/ρ_g0 = 1 + u_w/K_g − tr σ̄/(3(1 − n₀)K_g).
 pub fn void_ratio_grains(props: &PoroProps, e0: f64, ev: f64, p: f64, tr_sigma: f64) -> f64 {
     if props.k_grain <= 0.0 {
         return void_ratio(e0, ev);
@@ -622,22 +622,22 @@ pub fn void_ratio_grains(props: &PoroProps, e0: f64, ev: f64, p: f64, tr_sigma: 
     (1.0 + e0) / (1.0 - ev) * rho - 1.0
 }
 
-/// Portalet för permeabiliteten k(e): e₀ + (1 + e₀) ε_v.
+/// The void ratio for the permeability k(e): e₀ + (1 + e₀) ε_v.
 pub fn perm_void_ratio(e0: f64, ev: f64) -> f64 {
     e0 + (1.0 + e0) * ev
 }
 
-/// Vätskeinnehåll per referensvolym (linjäriserat, med
-/// kompressibla korn och vätska):
+/// Fluid content per reference volume (linearized, with
+/// compressible grains and fluid):
 /// m = n₀ + ε_v + (1 − n₀) u_w/K_g − tr σ̄/(3K_g) + n₀ u_w/K_w.
-/// Kornens densitet ändras med porvattentrycket och den effektiva spänningen,
-/// vätskans med porvattentrycket.
+/// The grain density changes with the pore pressure and the effective stress,
+/// the fluid density with the pore pressure.
 pub fn fluid_content(props: &PoroProps, n0: f64, ev: f64, p: f64, tr_sigma: f64) -> f64 {
     let (a, b, c) = content_derivatives(props, n0);
     n0 + a * ev + b * p + c * tr_sigma
 }
 
-/// (∂m/∂ε_v, ∂m/∂u_w, ∂m/∂tr σ̄) för `fluid_content`.
+/// (∂m/∂ε_v, ∂m/∂u_w, ∂m/∂tr σ̄) for `fluid_content`.
 pub fn content_derivatives(props: &PoroProps, n0: f64) -> (f64, f64, f64) {
     let mut cp = 0.0;
     let mut ct = 0.0;
@@ -690,10 +690,10 @@ impl ElementType for SoilElem {
         Ok(self.fresh_state(ctx.material(self.name)?, self.n_ips()))
     }
     fn stiffness(&self, _ctx: &ElemCtx) -> Result<Vec<f64>> {
-        not_implemented("linjär styvhet utanför *SOILS/*GEOSTATIC", self.name)
+        not_implemented("linear stiffness outside *SOILS/*GEOSTATIC", self.name)
     }
     fn internal_force(&self, _ctx: &ElemCtx, _u: &[f64], _du: &[f64], _so: &[f64], _sn: &mut Vec<f64>, _tangent: bool) -> Result<ElemResponse> {
-        not_implemented("analys utanför *SOILS/*GEOSTATIC (porvattentryckselement)", self.name)
+        not_implemented("analysis outside *SOILS/*GEOSTATIC (pore pressure elements)", self.name)
     }
     fn distributed_load(&self, ctx: &ElemCtx, load: &DistLoad, u: &[f64]) -> Result<Vec<f64>> {
         let (uu, _) = self.split(u);

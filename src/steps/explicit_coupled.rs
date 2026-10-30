@@ -1,36 +1,36 @@
-//! *DYNAMIC TEMPERATURE-DISPLACEMENT, EXPLICIT: kopplad termomekanik med
-//! explicit tidsintegration för de kopplade elementen
-//! CPE3T, CPS3T och C3D4T (`elements/heat_coupled.rs`).
+//! *DYNAMIC TEMPERATURE-DISPLACEMENT, EXPLICIT: coupled thermomechanics with
+//! explicit time integration for the coupled elements
+//! CPE3T, CPS3T and C3D4T (`elements/heat_coupled.rs`).
 //!
-//! Område coupled2: proceduren körs numera av den allmänna explicita lösaren
-//! (`explicit.rs` med `explicit_coupled_full.rs`, prioritet 1), som också
-//! har RT-elementen, volymviskositet, NLGEOM, kontakt och plastisk värme.
-//! Den här steg-typen (prioritet 0) används inte längre när båda finns och
-//! begränsningarna nedan gäller bara den.
+//! Area coupled2: the procedure is now run by the general explicit solver
+//! (`explicit.rs` with `explicit_coupled_full.rs`, priority 1), which also
+//! has the RT elements, bulk viscosity, NLGEOM, contact and plastic heating.
+//! This step type (priority 0) is no longer used when both exist, and
+//! the limitations below apply only to it.
 //!
-//! I varje inkrement i:
+//! In each increment i:
 //!
 //! ```text
-//! ü(i)    = M⁻¹ (P(i) − I(u(i), θ(i)))           diagonal massa
+//! ü(i)    = M⁻¹ (P(i) − I(u(i), θ(i)))           diagonal mass
 //! u̇(i+½) = u̇(i−½) + ½(Δt(i+1) + Δt(i)) ü(i),   u(i+1) = u(i) + Δt(i+1) u̇(i+½)
-//! θ̇(i)    = C⁻¹ (Q(i) − F(θ(i)))                  diagonal (lumpad) värmekapacitet
-//! θ(i+1)  = θ(i) + Δt(i+1) θ̇(i)                   framåt Euler
+//! θ̇(i)    = C⁻¹ (Q(i) − F(θ(i)))                  diagonal (lumped) heat capacity
+//! θ(i+1)  = θ(i) + Δt(i+1) θ̇(i)                   forward Euler
 //! ```
 //!
-//! Den inre kraften I räknas med den termiska töjningen ur nodtemperaturerna
-//! (`ElemCtx::temp`), värmeflödet F med ledning, *CFLUX, *DFLUX, *FILM och
-//! *RADIATE från `steps/heat.rs` (`HeatSystem`). Föreskrivna temperaturer och
-//! förskjutningar sätts i varje inkrement.
+//! The internal force I is computed with the thermal strain from the nodal temperatures
+//! (`ElemCtx::temp`), the heat flux F with conduction, *CFLUX, *DFLUX, *FILM and
+//! *RADIATE from `steps/heat.rs` (`HeatSystem`). Prescribed temperatures and
+//! displacements are set in each increment.
 //!
-//! Tidsinkrement: `DIRECT USER CONTROL` eller `FIXED TIME INCREMENTATION`
-//! med Δt på dataraden (steget delas i ⌈T/Δt⌉ lika inkrement, som
-//! *DYNAMIC, EXPLICIT), annars min över elementen av den mekaniska gränsen
-//! Lₑ/c_d och den termiska Lₑ²/(2α) (α = k/(ρc), Lₑ = kubik-/kvadratroten ur
-//! elementets volym/area) gånger `SCALE FACTOR`; testfallen anger fast Δt.
-//! Volymviskositet ingår inte (motsvarar `*BULK VISCOSITY` 0, 0). NLGEOM, kontakt och värmealstring från plastisk dissipation
-//! stöds inte.
+//! Time increment: `DIRECT USER CONTROL` or `FIXED TIME INCREMENTATION`
+//! with Δt on the data line (the step is divided into ⌈T/Δt⌉ equal increments, as
+//! *DYNAMIC, EXPLICIT), otherwise the minimum over the elements of the mechanical limit
+//! Lₑ/c_d and the thermal Lₑ²/(2α) (α = k/(ρc), Lₑ = cube/square root of
+//! the element volume/area) times `SCALE FACTOR`; the test cases give a fixed Δt.
+//! Bulk viscosity is not included (corresponds to `*BULK VISCOSITY` 0, 0). NLGEOM, contact and heat generation from plastic dissipation
+//! are not supported.
 //!
-//! Utdata: U, V, A, NT11, RF, S, E, HFL med frames enligt *OUTPUT, FIELD
+//! Output: U, V, A, NT11, RF, S, E, HFL with frames according to *OUTPUT, FIELD
 //! (NUMBER INTERVAL/TIME INTERVAL/FREQUENCY).
 
 use super::api::{StepCtx, StepType};
@@ -53,7 +53,7 @@ pub static STEP_TYPES: &[&dyn StepType] = &[&ExplicitCoupled];
 
 const PROC: &str = "DYNAMIC TEMPERATURE-DISPLACEMENT";
 
-/// Värmeledningens laster (temperaturer och värmeflöden) och mekanikens.
+/// The heat conduction loads (temperatures and heat fluxes) and the mechanical ones.
 fn split_loads(l: &StepLoads) -> (StepLoads, StepLoads) {
     let thermal_kind = |k: &str| k.starts_with("DFLUX:") || k.starts_with("FILM") || k.starts_with("RAD:");
     let mut th = l.clone();
@@ -86,19 +86,19 @@ impl StepType for ExplicitCoupled {
     fn run(&self, ctx: &mut StepCtx) -> Result<()> {
         let kw = ctx.step.procedure.as_ref().unwrap();
         if !kw.has("EXPLICIT") {
-            return kw.err("bara *DYNAMIC TEMPERATURE-DISPLACEMENT, EXPLICIT stöds");
+            return kw.err("only *DYNAMIC TEMPERATURE-DISPLACEMENT, EXPLICIT is supported");
         }
         let prep = ctx.prep;
         let model = prep.model;
         if ctx.nlgeom {
-            return fail("*DYNAMIC TEMPERATURE-DISPLACEMENT, EXPLICIT med NLGEOM=YES stöds inte ännu (ange NLGEOM=NO på *STEP)");
+            return fail("*DYNAMIC TEMPERATURE-DISPLACEMENT, EXPLICIT with NLGEOM=YES is not supported yet (set NLGEOM=NO on *STEP)");
         }
         if !prep.interactions.is_empty() {
-            return fail("*DYNAMIC TEMPERATURE-DISPLACEMENT, EXPLICIT med kontakt, villkor eller punktelement stöds inte ännu");
+            return fail("*DYNAMIC TEMPERATURE-DISPLACEMENT, EXPLICIT with contact, constraints or point elements is not supported yet");
         }
         for (e, el) in model.elements.iter().enumerate() {
             if !["CPE3T", "CPS3T", "C3D4T"].contains(&el.etype.name()) {
-                return fail(format!("{}: *DYNAMIC TEMPERATURE-DISPLACEMENT, EXPLICIT stöder elementen CPE3T, CPS3T och C3D4T, inte {}", model.elem_name(e), el.etype.name()));
+                return fail(format!("{}: *DYNAMIC TEMPERATURE-DISPLACEMENT, EXPLICIT supports the elements CPE3T, CPS3T and C3D4T, not {}", model.elem_name(e), el.etype.name()));
             }
         }
         let v = kw.first_floats().unwrap_or_default();
@@ -106,7 +106,7 @@ impl StepType for ExplicitCoupled {
         let fixed = kw.has("DIRECT USER CONTROL") || kw.has("FIXED TIME INCREMENTATION");
         let user_dt = v.first().copied().filter(|&x| x > 0.0);
         let scale = match kw.param("SCALE FACTOR") {
-            Some(s) => parse_f64(s).ok_or_else(|| FemError(format!("{}: SCALE FACTOR={s} är inget tal", kw.location())))?,
+            Some(s) => parse_f64(s).ok_or_else(|| FemError(format!("{}: SCALE FACTOR={s} is not a number", kw.location())))?,
             None => 1.0,
         };
         ensure_initial(model, ctx.state)?;
@@ -115,11 +115,11 @@ impl StepType for ExplicitCoupled {
         let mut heat = HeatSystem::new(prep, th_loads, ctx.state, false, ctx.solver, period)?;
         let nn = model.nodes.len();
         let ne = model.elements.len();
-        // mekanikens frihetsgrader (temperaturerna räknas som fria här)
+        // the mechanical DOFs (the temperatures count as free here)
         let (dm, _) = assembly::dofmap(prep, &me_loads.constrained(), ctx.solver)?;
         let lev = LoadEval::new(model, &me_loads, false, period, ctx.state.time)?;
         let time0 = ctx.state.time;
-        // diagonal massa och värmekapacitet
+        // diagonal mass and heat capacity
         let mut mass = vec![[0.0; SLOTS]; nn];
         let mut cap = vec![0.0; nn];
         let mut dt_lim = f64::INFINITY;
@@ -132,9 +132,9 @@ impl StepType for ExplicitCoupled {
                 let row: f64 = (0..nd).map(|b| me[a * nd + b]).sum();
                 mass[n][s] += row;
             }
-            let he = crate::elements::heat::lookup(el.etype.name()).ok_or_else(|| FemError(format!("{}: värmedel saknas", model.elem_name(e))))?;
-            let sec = &model.sections[el.section.ok_or_else(|| FemError(format!("{}: saknar *SOLID SECTION", model.elem_name(e))))?];
-            let mi = sec.material_index.ok_or_else(|| FemError(format!("{}: tvärsnittet saknar material", model.elem_name(e))))?;
+            let he = crate::elements::heat::lookup(el.etype.name()).ok_or_else(|| FemError(format!("{}: thermal part is missing", model.elem_name(e))))?;
+            let sec = &model.sections[el.section.ok_or_else(|| FemError(format!("{}: has no *SOLID SECTION", model.elem_name(e))))?];
+            let mi = sec.material_index.ok_or_else(|| FemError(format!("{}: the section has no material", model.elem_name(e))))?;
             let props = HeatProps::from_def(&model.materials[mi])?;
             let x: Vec<[f64; 3]> = el.nodes.iter().map(|&n| model.nodes[n]).collect();
             let thick = sec.solid_thickness();
@@ -146,7 +146,7 @@ impl StepType for ExplicitCoupled {
             for a in 0..k {
                 cap[el.nodes[a]] += (0..k).map(|b| kc.get(a * k + b).copied().unwrap_or(0.0)).sum::<f64>();
             }
-            // stabilitetsgränser
+            // stability limits
             let vol: f64 = el.etype.volume_weights(&ectx).map_err(wrap)?.iter().sum();
             let le_len = if el.etype.dim() == 3 { vol.cbrt() } else { (vol / thick.max(1e-300)).sqrt() };
             if let (Some(mat), true) = (ectx.material, ectx.density > 0.0) {
@@ -167,10 +167,10 @@ impl StepType for ExplicitCoupled {
                 let n = (period / d - 1e-9).ceil().max(1.0) as usize;
                 (n, period / n as f64)
             }
-            (true, None) => return kw.err("DIRECT USER CONTROL kräver tidsinkrement på dataraden"),
+            (true, None) => return kw.err("DIRECT USER CONTROL requires a time increment on the data line"),
             _ => {
                 if !dt_lim.is_finite() {
-                    return fail("kan inte skatta stabilt tidsinkrement (saknas *DENSITY, *ELASTIC eller *SPECIFIC HEAT?)");
+                    return fail("cannot estimate a stable time increment (missing *DENSITY, *ELASTIC or *SPECIFIC HEAT?)");
                 }
                 let d = dt_lim * scale;
                 let n = (period / d - 1e-9).ceil().max(1.0) as usize;
@@ -178,9 +178,9 @@ impl StepType for ExplicitCoupled {
             }
         };
         if ctx.opts.verbose {
-            eprintln!("  {ninc} inkrement med Δt = {dt:.4e} (stabilitetsgräns {dt_lim:.4e})");
+            eprintln!("  {ninc} increments with Δt = {dt:.4e} (stability limit {dt_lim:.4e})");
         }
-        // tillstånd
+        // state
         let mut u = ctx.state.u.clone();
         let mut vel = ctx.state.vectors.get("V").cloned().unwrap_or_else(|| vec![[0.0; SLOTS]; nn]);
         let apply_bc = |u: &mut [NodeVec], t: f64| {
@@ -197,13 +197,13 @@ impl StepType for ExplicitCoupled {
                 }
             }
         };
-        // den termiska töjningen räknas från temperaturen före stegets
-        // randvillkor (begynnelsetemperaturen θ_I)
+        // the thermal strain is computed from the temperature before the step's
+        // boundary conditions (the initial temperature θ_I)
         let mut temp_prev: Vec<f64> = u.iter().map(|x| x[TS]).collect();
         apply_bc(&mut u, 0.0);
         apply_tbc(&heat, &mut u, 0.0);
         let mut state = ctx.state.elem_state.clone();
-        // inre kraft med nodtemperaturerna (den termiska töjningen) och värmeflödets residual
+        // internal force with the nodal temperatures (the thermal strain) and the heat flux residual
         let mech_force = |u: &[NodeVec], du: &[NodeVec], told: &[f64], st: &[Vec<f64>], t: f64, h: f64| -> Result<(Vec<NodeVec>, Vec<Vec<f64>>)> {
             let mut fint = vec![[0.0; SLOTS]; nn];
             let mut sn_all = Vec::with_capacity(ne);
@@ -227,7 +227,7 @@ impl StepType for ExplicitCoupled {
         };
         let thermal_rate = |heat: &mut HeatSystem, u: &[NodeVec], t: f64| -> Result<Vec<f64>> {
             heat.u_committed = u.to_vec();
-            // flöden med stegamplitud verkar fullt redan vid t = 0
+            // fluxes with step amplitude act fully already at t = 0
             let tt = (t / period).max(1e-12);
             heat.begin_increment(tt, tt)?;
             heat.u = u.to_vec();
@@ -248,8 +248,8 @@ impl StepType for ExplicitCoupled {
             Ok(a)
         };
         let zero = vec![[0.0; SLOTS]; nn];
-        // i stegets början gäller begynnelsetemperaturen för mekaniken (frame 0
-        // är spänningsfri); temperaturändringen räknas i första inkrementet
+        // at the start of the step the initial temperature applies to the mechanics (frame 0
+        // is stress-free); the temperature change is applied in the first increment
         let mut u_start = u.clone();
         for n in 0..nn {
             u_start[n][TS] = temp_prev[n];
@@ -263,7 +263,7 @@ impl StepType for ExplicitCoupled {
         let mk = |heat: &mut HeatSystem, u: &[NodeVec], v: &[NodeVec], a: &[NodeVec], fint: &[NodeVec], st: &[Vec<f64>], t: f64, inc: usize| -> Result<FrameData> {
             let z = vec![[0.0; SLOTS]; nn];
             let fext = assembly::external(prep, &lev.cloads_at(t), &lev.dloads_at(t), &z, false, time0 + t)?;
-            // reaktion = inre kraft − yttre + massa·acceleration i låsta frihetsgrader
+            // reaction = internal force − external + mass·acceleration in fixed DOFs
             let mut fi = fint.to_vec();
             for n in 0..nn {
                 for s in 0..SLOTS {
@@ -285,8 +285,8 @@ impl StepType for ExplicitCoupled {
                 fr.active[n] = (fr.active[n] & !bit) | (h.active[n] & bit);
                 fr.constrained[n] = (fr.constrained[n] & !bit) | (h.constrained[n] & bit);
             }
-            // HFL: linjära simplexelement har konstant gradient och en
-            // integrationspunkt (CPE3T, CPS3T, C3D4T)
+            // HFL: linear simplex elements have a constant gradient and one
+            // integration point (CPE3T, CPS3T, C3D4T)
             for (x, y) in fr.elem.iter_mut().zip(h.elem) {
                 x.extend(y.into_iter().filter(|f| f.name == "HFL").map(|mut f| {
                     f.points.truncate(1);
@@ -339,7 +339,7 @@ impl StepType for ExplicitCoupled {
                     vel[n][s] = if s != TS && dm.eq[n][s] != NONE { vh[n][s] + 0.5 * h * acc[n][s] } else { 0.0 };
                 }
             }
-            // föreskrivna förskjutningar: halvstegshastigheten ur ändringen
+            // prescribed displacements: the half-step velocity from the change
             for n in 0..nn {
                 for s in 0..SLOTS {
                     if s != TS && dm.constrained[n] & (1 << s) != 0 {

@@ -1,9 +1,9 @@
-//! Tredimensionella kontinuumelement av första ordningen: C3D8.
+//! Three-dimensional first-order continuum elements: C3D8.
 //!
-//! C3D8: trilinjär hexaeder, full 2×2×2-integrering med B-bar där
-//! volymtöjningen medelvärdesbildas över elementet (selektivt
-//! reducerad integrering). Högre ordningens och reducerat integrerade
-//! element (C3D20, C3D10, C3D8R, C3D8I, ...) hör hemma i `solid_higher.rs`.
+//! C3D8: trilinear hexahedron, full 2×2×2 integration with B-bar where
+//! the volumetric strain is averaged over the element (selectively
+//! reduced integration). Higher-order and reduced-integration
+//! elements (C3D20, C3D10, C3D8R, C3D8I, ...) belong in `solid_higher.rs`.
 
 use super::api::{ElemCtx, ElemResponse, ElementType, Family, IpField, MassKind};
 use super::common::{self, inv3, Bbar, Ip, DISTORTED, G2};
@@ -20,10 +20,10 @@ pub static C3D8: Hex8 = Hex8 { name: "C3D8" };
 
 pub static TYPES: &[&dyn ElementType] = &[&C3D8];
 
-/// Ytor i .inp-formatets numrering (S1–S6).
+/// Faces in the .inp format numbering (S1–S6).
 pub const HEX8_FACES: &[&[usize]] = &[&[0, 1, 2, 3], &[4, 7, 6, 5], &[0, 4, 5, 1], &[1, 5, 6, 2], &[2, 6, 7, 3], &[3, 7, 4, 0]];
 
-/// Naturliga koordinater för hexaederns hörn.
+/// Natural coordinates of the hexahedron corners.
 pub const HEX8_NAT: [[f64; 3]; 8] = [
     [-1.0, -1.0, -1.0],
     [1.0, -1.0, -1.0],
@@ -35,7 +35,7 @@ pub const HEX8_NAT: [[f64; 3]; 8] = [
     [-1.0, 1.0, 1.0],
 ];
 
-/// Integrationspunkt för trilinjär hexaeder i naturliga koordinater `p` med vikten `wg`.
+/// Integration point for a trilinear hexahedron at natural coordinates `p` with weight `wg`.
 pub fn hex8_ip(x: &[[f64; 3]], p: [f64; 3], wg: f64) -> Result<Ip> {
     let mut n = vec![0.0; 8];
     let mut dn = [[0.0; 8]; 3];
@@ -69,7 +69,7 @@ pub fn hex8_ip(x: &[[f64; 3]], p: [f64; 3], wg: f64) -> Result<Ip> {
     Ok(Ip { n, dndx, w: det * wg })
 }
 
-/// 2×2×2 gausspunkter (ξ snabbast, sedan η, sedan ζ).
+/// 2×2×2 Gauss points (ξ fastest, then η, then ζ).
 pub fn hex8_ips(x: &[[f64; 3]]) -> Result<Vec<Ip>> {
     let mut ips = Vec::with_capacity(8);
     for &zeta in &[-G2, G2] {
@@ -122,7 +122,7 @@ impl ElementType for Hex8 {
 
     fn internal_force(&self, ctx: &ElemCtx, u: &[f64], du: &[f64], so: &[f64], sn: &mut Vec<f64>, tangent: bool) -> Result<ElemResponse> {
         if ctx.nlgeom {
-            // område nlgeom: ersätt raden nedan med ett anrop till den olinjära kinematiken
+            // area nlgeom: replace the line below with a call to the nonlinear kinematics
             return crate::kinematics::continuum::response(ctx, MODE, &hex8_ips(&ctx.x)?, Bbar::Volumetric, ctx.material(self.name)?, u, du, so, sn, tangent);
         }
         let ips = hex8_ips(&ctx.x)?;
@@ -141,7 +141,7 @@ impl ElementType for Hex8 {
         if let Some(b) = common::body_load_vector(&load.kind, load.magnitude, &load.extra, ctx.density, self.name)? {
             return Ok(common::body_force(&hex8_ips(&ctx.x)?, b, 3));
         }
-        super::api::not_implemented(&format!("lasttypen {}", load.kind), self.name)
+        super::api::not_implemented(&format!("load type {}", load.kind), self.name)
     }
 
     fn geometric_stiffness(&self, ctx: &ElemCtx, _u: &[f64], state: &[f64]) -> Result<Vec<f64>> {

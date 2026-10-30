@@ -1,26 +1,26 @@
-//! Energibalans och history-utdata (*OUTPUT, HISTORY + *ENERGY OUTPUT) för
-//! explicit dynamik, med standardnamnen och regionen "Assembly ASSEMBLY":
+//! Energy balance and history output (*OUTPUT, HISTORY + *ENERGY OUTPUT) for
+//! explicit dynamics, with the standard names and the region "Assembly ASSEMBLY":
 //!
-//! - ALLKE = ½ u̇ᵀ M u̇ med hastigheten vid hela inkrementet.
-//! - ALLIE = Σ ½ (Iᵢ + Iᵢ₊₁)·Δu: elementens (och fjädrarnas) inre arbete,
+//! - ALLKE = ½ u̇ᵀ M u̇ with the velocity at the full increment.
+//! - ALLIE = Σ ½ (Iᵢ + Iᵢ₊₁)·Δu: internal work of the elements (and springs),
 //!   ALLSE + ALLPD + ALLAE.
-//! - ALLAE: hourglass-energin för reducerat integrerade solider (0 för
-//!   övriga element; skalens hourglass-energi ingår i ALLSE).
-//! - ALLVD = Σ ½ (Cᵢ + Cᵢ₊₁)·Δu: viskös dissipation (volymviskositet,
-//!   Rayleigh-dämpning, dämpare).
-//! - ALLFD: friktionsdissipation i kontakt; ALLPW: arbetet av kontaktens
-//!   straffkrafter (negativt när energi lagras i kontakten).
-//! - ALLWK = Σ ½ (Pᵢ + Pᵢ₊₁)·Δu + reaktionernas arbete i föreskrivna
-//!   frihetsgrader.
+//! - ALLAE: the hourglass energy for reduced-integration solids (0 for
+//!   other elements; the shells' hourglass energy is included in ALLSE).
+//! - ALLVD = Σ ½ (Cᵢ + Cᵢ₊₁)·Δu: viscous dissipation (bulk viscosity,
+//!   Rayleigh damping, dashpots).
+//! - ALLFD: frictional dissipation in contact; ALLPW: the work of the contact
+//!   penalty forces (negative when energy is stored in the contact).
+//! - ALLWK = Σ ½ (Pᵢ + Pᵢ₊₁)·Δu + the work of the reactions in prescribed
+//!   degrees of freedom.
 //! - ETOTAL = ALLKE + ALLIE + ALLVD + ALLFD − ALLWK − ALLPW.
 //!
-//! ALLSE är ALLIE − ALLAE när alla material är linjära. Med olinjära material
-//! (plasticitet) i kontinuumelement är ALLSE den elastiska töjningsenergin
-//! Σ ½ σ : C⁻¹ : σ · V/n över integrationspunkterna (aktuell volym vid NLGEOM,
-//! lika vikter) och ALLPD = ALLIE − ALLSE − ALLAE (`elastic_energy`); för andra
-//! element med olinjära material skrivs varken ALLSE eller ALLPD. History skrivs vid t = 0 och sedan i första inkrementet
-//! vid eller efter varje utdatatid (TIME INTERVAL, NUMBER INTERVAL, standard
-//! 200 intervall) eller var n:te inkrement (FREQUENCY).
+//! ALLSE is ALLIE − ALLAE when all materials are linear. With nonlinear materials
+//! (plasticity) in continuum elements ALLSE is the elastic strain energy
+//! Σ ½ σ : C⁻¹ : σ · V/n over the integration points (current volume with NLGEOM,
+//! equal weights) and ALLPD = ALLIE − ALLSE − ALLAE (`elastic_energy`); for other
+//! elements with nonlinear materials neither ALLSE nor ALLPD is written. History is written at t = 0 and then in the first increment
+//! at or after each output time (TIME INTERVAL, NUMBER INTERVAL, default
+//! 200 intervals) or every n-th increment (FREQUENCY).
 
 use crate::fem::dof::NodeVec;
 use crate::fem::model::{parse_f64, StepDef};
@@ -28,7 +28,7 @@ use crate::model::Result;
 
 pub const REGION: &str = "Assembly ASSEMBLY";
 
-/// Ackumulerade energier.
+/// Accumulated energies.
 #[derive(Debug, Clone, Copy, Default)]
 pub struct Energies {
     pub ke: f64,
@@ -38,7 +38,7 @@ pub struct Energies {
     pub fd: f64,
     pub pw: f64,
     pub wk: f64,
-    /// Elastisk töjningsenergi (olinjära material), annars `None`.
+    /// Elastic strain energy (nonlinear materials), otherwise `None`.
     pub se: Option<f64>,
 }
 
@@ -48,7 +48,7 @@ impl Energies {
     }
 }
 
-/// ½ (a + b)·d summerat över noder och slots 0–6.
+/// ½ (a + b)·d summed over nodes and slots 0–6.
 pub fn work(a: &[NodeVec], b: &[NodeVec], d: &[NodeVec]) -> f64 {
     let mut s = 0.0;
     for n in 0..d.len() {
@@ -65,7 +65,7 @@ enum When {
     Every(usize),
 }
 
-/// Begärd history-utdata för hela modellen.
+/// Requested history output for the whole model.
 pub struct History {
     when: When,
     vars: Vec<String>,
@@ -73,11 +73,11 @@ pub struct History {
     pub data: Vec<(String, Vec<(f64, f64)>)>,
 }
 
-/// Energinamn som RustyFEM kan skriva.
+/// Energy names that RustyFEM can write.
 const ALL: &[&str] = &["ALLAE", "ALLFD", "ALLIE", "ALLKE", "ALLPD", "ALLPW", "ALLSE", "ALLVD", "ALLWK", "ETOTAL"];
 
 impl History {
-    /// Läser *OUTPUT, HISTORY med *ENERGY OUTPUT (utan ELSET) ur steget.
+    /// Reads *OUTPUT, HISTORY with *ENERGY OUTPUT (without ELSET) from the step.
     pub fn from_step(step: &StepDef, period: f64, linear: bool, se_ok: bool) -> Result<Option<History>> {
         let mut when: Option<When> = None;
         let mut vars: Vec<String> = Vec::new();
@@ -115,7 +115,7 @@ impl History {
         }
         vars.sort();
         vars.dedup();
-        // ALLSE/ALLPD bara när de kan beräknas
+        // ALLSE/ALLPD only when they can be computed
         vars.retain(|v| ALL.contains(&v.as_str()) && (linear || se_ok || v != "ALLSE") && (!linear && se_ok || v != "ALLPD"));
         let when = when.unwrap_or(When::Interval(period / 200.0));
         let next = match when {
@@ -145,12 +145,12 @@ impl History {
         }
     }
 
-    /// Behövs den elastiska töjningsenergin (ALLSE/ALLPD med olinjära material)?
+    /// Is the elastic strain energy needed (ALLSE/ALLPD with nonlinear materials)?
     pub fn wants_se(&self) -> bool {
         self.vars.iter().any(|v| v == "ALLSE" || v == "ALLPD")
     }
 
-    /// Anropas vid t = 0 och efter varje inkrement; `last` = stegets sista inkrement.
+    /// Called at t = 0 and after each increment; `last` = the step's last increment.
     pub fn after_increment(&mut self, t: f64, inc: usize, last: bool, eps: f64, e: &Energies) {
         if inc == 0 {
             self.record(t, e);
@@ -175,9 +175,9 @@ impl History {
 
 }
 
-/// Elastisk töjningsenergi i kontinuumelement med isotrop elasticitet (se
-/// modulens dokumentation). `None` om något element med olinjärt material inte
-/// är ett kontinuumelement med isotrop elasticitet.
+/// Elastic strain energy in continuum elements with isotropic elasticity (see
+/// the module documentation). `None` if any element with a nonlinear material is not
+/// a continuum element with isotropic elasticity.
 pub fn elastic_energy(p: &crate::fem::assembly::Prepared, x: &dyn Fn(usize) -> Vec<[f64; 3]>, state: &[Vec<f64>]) -> Option<f64> {
     use crate::elements::Family;
     use crate::materials::StressMode;

@@ -1,13 +1,13 @@
-//! Punkt- och kopplingselement: fjädrar (SPRING1, SPRING2, SPRINGA),
-//! dämpare (DASHPOT1, DASHPOT2, DASHPOTA), punktmassor (MASS, ROTARYI) och
-//! kopplingselement (CONN2D2, CONN3D2).
+//! Point and connector elements: springs (SPRING1, SPRING2, SPRINGA),
+//! dashpots (DASHPOT1, DASHPOT2, DASHPOTA), point masses (MASS, ROTARYI) and
+//! connector elements (CONN2D2, CONN3D2).
 //!
-//! Elementen bär bara noder och nummer. Deras frihetsgrader beror på
-//! tvärsnittsdata (t.ex. vilken frihetsgrad en SPRING1 verkar i), så själva
-//! bidragen (styvhet, massa, dämpning, villkor) byggs av interaktionerna i
-//! `src/interactions/springs.rs` och `src/interactions/connector.rs` från
-//! *SPRING, *DASHPOT, *MASS, *ROTARY INERTIA och *CONNECTOR SECTION.
-//! Elementen själva aktiverar inga frihetsgrader.
+//! The elements carry only nodes and numbers. Their degrees of freedom depend on
+//! section data (e.g. which degree of freedom a SPRING1 acts in), so the actual
+//! contributions (stiffness, mass, damping, constraints) are built by the interactions in
+//! `src/interactions/springs.rs` and `src/interactions/connector.rs` from
+//! *SPRING, *DASHPOT, *MASS, *ROTARY INERTIA and *CONNECTOR SECTION.
+//! The elements themselves activate no degrees of freedom.
 
 use super::api::{ElemCtx, ElemResponse, ElementType, Family, MassKind};
 use crate::fem::dof::Dof;
@@ -38,7 +38,7 @@ impl ElementType for Point {
     fn family(&self) -> Family {
         Family::Connector
     }
-    /// 2 så att elementen inte gör en plan modell tredimensionell.
+    /// 2 so that the elements do not make a plane model three-dimensional.
     fn dim(&self) -> usize {
         if self.name == "CONN3D2" { 3 } else { 2 }
     }

@@ -1,21 +1,21 @@
-//! Gemensamma byggstenar för element: små matrisoperationer och en
-//! kontinuumkärna (B-matriser med B-bar, inre kraft, styvhet, massa, laster
-//! och utdata) som delas av alla kontinuumfamiljer.
+//! Shared building blocks for elements: small matrix operations and a
+//! continuum core (B matrices with B-bar, internal force, stiffness, mass, loads
+//! and output) shared by all continuum families.
 //!
-//! Nya kontinuumelement (C3D20, C3D10, CAX4, ...) behöver bara räkna fram sina
-//! integrationspunkter (`Ip`) och kan sedan använda funktionerna här.
+//! New continuum elements (C3D20, C3D10, CAX4, ...) only need to compute their
+//! integration points (`Ip`) and can then use the functions here.
 
 use super::api::{ElemCtx, ElemResponse, IpField};
 use crate::materials::{MatInput, MaterialModel, StressMode};
 use crate::model::{fail, Result};
 
-/// 1/√3, gausspunkt för 2-punktsregeln.
+/// 1/√3, Gauss point for the 2-point rule.
 pub const G2: f64 = 0.577_350_269_189_625_8;
 
-pub const DISTORTED: &str = "ett element är förvrängt eller inverterat (negativ Jacobian) – kontrollera nodordningen";
+pub const DISTORTED: &str = "an element is distorted or inverted (negative Jacobian) – check the node ordering";
 
-/// Integrationspunkt: formfunktioner, derivator i globala koordinater och
-/// vikt (det(J) · gaussvikt · tjocklek).
+/// Integration point: shape functions, derivatives in global coordinates and
+/// weight (det(J) · Gauss weight · thickness).
 #[derive(Debug, Clone)]
 pub struct Ip {
     pub n: Vec<f64>,
@@ -44,7 +44,7 @@ pub fn centroid(x: &[[f64; 3]]) -> [f64; 3] {
     [0, 1, 2].map(|a| x.iter().map(|p| p[a]).sum::<f64>() / n)
 }
 
-/// Invers och determinant av en 3×3-matris.
+/// Inverse and determinant of a 3×3 matrix.
 pub fn inv3(m: [[f64; 3]; 3]) -> ([[f64; 3]; 3], f64) {
     let det = m[0][0] * (m[1][1] * m[2][2] - m[1][2] * m[2][1]) - m[0][1] * (m[1][0] * m[2][2] - m[1][2] * m[2][0])
         + m[0][2] * (m[1][0] * m[2][1] - m[1][1] * m[2][0]);
@@ -69,13 +69,13 @@ pub fn inv3(m: [[f64; 3]; 3]) -> ([[f64; 3]; 3], f64) {
     (inv, det)
 }
 
-/// y = A x för radvis n×n-matris.
+/// y = A x for a row-wise n×n matrix.
 pub fn matvec(a: &[f64], x: &[f64]) -> Vec<f64> {
     let n = x.len();
     (0..n).map(|i| a[i * n..(i + 1) * n].iter().zip(x).map(|(p, q)| p * q).sum()).collect()
 }
 
-/// Tᵀ k T för radvisa n×n-matriser.
+/// Tᵀ k T for row-wise n×n matrices.
 pub fn congruence(k: &[f64], t: &[f64], n: usize) -> Vec<f64> {
     let mut kt = vec![0.0; n * n];
     for i in 0..n {
@@ -102,7 +102,7 @@ pub fn congruence(k: &[f64], t: &[f64], n: usize) -> Vec<f64> {
     out
 }
 
-/// Blockdiagonal transformationsmatris med `blocks` kopior av 3×3-matrisen `r`.
+/// Block diagonal transformation matrix with `blocks` copies of the 3×3 matrix `r`.
 pub fn block_diag(r: &[[f64; 3]; 3], blocks: usize) -> Vec<f64> {
     let n = 3 * blocks;
     let mut t = vec![0.0; n * n];
@@ -117,20 +117,20 @@ pub fn block_diag(r: &[[f64; 3]; 3], blocks: usize) -> Vec<f64> {
 }
 
 // ---------------------------------------------------------------------------
-// Kontinuumkärna
+// Continuum core
 // ---------------------------------------------------------------------------
 
-/// Hur volymtöjningen behandlas (selektivt reducerad integrering för CPE4/C3D8).
+/// How the volumetric strain is treated (selectively reduced integration for CPE4/C3D8).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Bbar {
     None,
-    /// Plan töjning: ε11+ε22 medelvärdesbildas, ε33 = 0 behålls.
+    /// Plane strain: ε11+ε22 is averaged, ε33 = 0 is kept.
     Planar,
-    /// 3D: ε11+ε22+ε33 medelvärdesbildas över elementet.
+    /// 3D: ε11+ε22+ε33 is averaged over the element.
     Volumetric,
 }
 
-/// Antal förskjutningskomponenter per nod för ett spänningstillstånd.
+/// Number of displacement components per node for a stress state.
 pub fn ndim(mode: StressMode) -> usize {
     match mode {
         StressMode::ThreeD => 3,
@@ -138,7 +138,7 @@ pub fn ndim(mode: StressMode) -> usize {
     }
 }
 
-/// B-matris (radvis ncomp × ndof) för små töjningar.
+/// B matrix (row-wise ncomp × ndof) for small strains.
 pub fn bmat(mode: StressMode, dndx: &[[f64; 3]]) -> Vec<f64> {
     let nn = dndx.len();
     let ns = mode.ncomp();
@@ -168,12 +168,12 @@ pub fn bmat(mode: StressMode, dndx: &[[f64; 3]]) -> Vec<f64> {
                 b[5 * nd + c + 2] = d[1];
             }
         }
-        _ => panic!("intern: bmat för {mode:?} saknas (axisymmetri läggs till i elements/axisym.rs)"),
+        _ => panic!("internal: bmat for {mode:?} is missing (axisymmetry is added in elements/axisym.rs)"),
     }
     b
 }
 
-/// B-matriser per integrationspunkt, med B-bar om `bbar` anger det.
+/// B matrices per integration point, with B-bar if `bbar` specifies it.
 pub fn bmats(mode: StressMode, ips: &[Ip], bbar: Bbar) -> Vec<Vec<f64>> {
     let mut bs: Vec<Vec<f64>> = ips.iter().map(|ip| bmat(mode, &ip.dndx)).collect();
     if bbar == Bbar::None || bs.is_empty() {
@@ -207,7 +207,7 @@ pub fn strain(b: &[f64], u: &[f64]) -> Vec<f64> {
     (0..ns).map(|r| b[r * nd..(r + 1) * nd].iter().zip(u).map(|(p, q)| p * q).sum()).collect()
 }
 
-/// Tillståndslayout per integrationspunkt: [spänning (ncomp), materialtillstånd].
+/// State layout per integration point: [stress (ncomp), material state].
 pub fn ip_stride(mode: StressMode, mat: &dyn MaterialModel) -> usize {
     mode.ncomp() + mat.n_state()
 }
@@ -221,8 +221,8 @@ pub fn init_state(n_ips: usize, mode: StressMode, mat: &dyn MaterialModel) -> Ve
     s
 }
 
-/// Linjär styvhet som `stiffness`, men med elementets materialorientering
-/// (*ORIENTATION) om tvärsnittet har en. Element bör anropa den här.
+/// Linear stiffness like `stiffness`, but with the element's material orientation
+/// (*ORIENTATION) if the section has one. Elements should call this one.
 pub fn stiffness_ctx(ctx: &ElemCtx, mode: StressMode, ips: &[Ip], bs: &[Vec<f64>], mat: &dyn MaterialModel) -> Result<Vec<f64>> {
     let Some(ori) = ctx.orientation else { return stiffness(mode, ips, bs, mat) };
     let d = mat.tangent_linear(mode)?;
@@ -237,7 +237,7 @@ pub fn stiffness_ctx(ctx: &ElemCtx, mode: StressMode, ips: &[Ip], bs: &[Vec<f64>
     Ok(ke)
 }
 
-/// Integrationspunktens läge i referenskonfigurationen.
+/// The position of the integration point in the reference configuration.
 pub fn ip_point(ctx: &ElemCtx, ip: &Ip) -> [f64; 3] {
     let mut p = [0.0; 3];
     for (ni, x) in ip.n.iter().zip(&ctx.x) {
@@ -248,7 +248,7 @@ pub fn ip_point(ctx: &ElemCtx, ip: &Ip) -> [f64; 3] {
     p
 }
 
-/// Linjär styvhet ∫Bᵀ D B dV med materialets elastiska tangent.
+/// Linear stiffness ∫Bᵀ D B dV with the material's elastic tangent.
 pub fn stiffness(mode: StressMode, ips: &[Ip], bs: &[Vec<f64>], mat: &dyn MaterialModel) -> Result<Vec<f64>> {
     let d = mat.tangent_linear(mode)?;
     let ns = mode.ncomp();
@@ -285,8 +285,8 @@ fn add_btdb(ke: &mut [f64], b: &[f64], d: &[f64], ns: usize, nd: usize, w: f64) 
     }
 }
 
-/// Inre kraft ∫Bᵀσ dV och tangent ∫Bᵀ C B dV med spänningsuppdatering i varje
-/// integrationspunkt (små töjningar).
+/// Internal force ∫Bᵀσ dV and tangent ∫Bᵀ C B dV with stress update at each
+/// integration point (small strains).
 #[allow(clippy::too_many_arguments)]
 pub fn response(
     ctx: &ElemCtx,
@@ -336,7 +336,7 @@ pub fn response_with_temperatures(
     for (q, (ip, b)) in ips.iter().zip(bs).enumerate() {
         let mut eps = strain(b, u);
         let mut deps = strain(b, du);
-        // lokal materialorientering: töjning till lokala axlar, spänning och tangent tillbaka
+        // local material orientation: strain to local axes, stress and tangent back
         let tr = ctx.orientation.map(|o| o.strain_transform_mode(ip_point(ctx, ip), mode));
         if let Some(t) = &tr {
             eps = matvec(t, &eps);
@@ -359,7 +359,7 @@ pub fn response_with_temperatures(
             defgrad: None,
         };
         let mut out = mat.update_with_length(&inp, length, mold, &mut mnew)?;
-        // tillståndet sparar spänningen i lokala axlar (som den redovisas)
+        // the state stores the stress in local axes (as it is reported)
         state_new[base..base + ns].copy_from_slice(&out.stress);
         if let Some(t) = &tr {
             out.stress = (0..ns).map(|j| (0..ns).map(|i| t[i * ns + j] * out.stress[i]).sum()).collect();
@@ -382,10 +382,10 @@ pub fn response_with_temperatures(
     Ok(ElemResponse { fint, k: tangent.then_some(k) })
 }
 
-/// Elementets karakteristiska längd (för mjuknande material, Hillerborg):
-/// kubikroten ur volymen för solider, kvadratroten ur arean i
-/// planet (r–z-planet för axisymmetri) för plana element, halva den längden
-/// för andra ordningens element.
+/// The element's characteristic length (for softening materials, Hillerborg):
+/// the cube root of the volume for solids, the square root of the area in
+/// the plane (the r–z plane for axisymmetry) for plane elements, half that length
+/// for second-order elements.
 pub fn char_length(x: &[[f64; 3]], mode: StressMode, ips: &[Ip]) -> f64 {
     let n = x.len();
     match mode {
@@ -403,7 +403,7 @@ pub fn char_length(x: &[[f64; 3]], mode: StressMode, ips: &[Ip]) -> f64 {
             norm(d)
         }
         _ => {
-            // hörnnoderna kommer först i nodordningen
+            // the corner nodes come first in the node order
             let nc = if matches!(n, 3 | 6) { 3 } else { 4.min(n) };
             let mut a = 0.0;
             for i in 0..nc {
@@ -420,7 +420,7 @@ pub fn char_length(x: &[[f64; 3]], mode: StressMode, ips: &[Ip]) -> f64 {
     }
 }
 
-/// Konsistent eller radsummerad massmatris ∫ρ NᵀN dV.
+/// Consistent or row-summed mass matrix ∫ρ NᵀN dV.
 pub fn mass(ips: &[Ip], rho: f64, ndim: usize, lumped: bool) -> Vec<f64> {
     let nn = ips[0].n.len();
     let nd = nn * ndim;
@@ -445,7 +445,7 @@ pub fn mass(ips: &[Ip], rho: f64, ndim: usize, lumped: bool) -> Vec<f64> {
     m
 }
 
-/// ∫Nᵢ dV per nod.
+/// ∫Nᵢ dV per node.
 pub fn volume_weights(ips: &[Ip]) -> Vec<f64> {
     let nn = ips[0].n.len();
     let mut w = vec![0.0; nn];
@@ -457,7 +457,7 @@ pub fn volume_weights(ips: &[Ip]) -> Vec<f64> {
     w
 }
 
-/// Ekvivalenta nodkrafter för volymkraften `b` (kraft per volym): ∫Nᵢ b dV.
+/// Equivalent nodal forces for the body force `b` (force per volume): ∫Nᵢ b dV.
 pub fn body_force(ips: &[Ip], b: [f64; 3], ndim: usize) -> Vec<f64> {
     let w = volume_weights(ips);
     let mut f = vec![0.0; w.len() * ndim];
@@ -469,7 +469,7 @@ pub fn body_force(ips: &[Ip], b: [f64; 3], ndim: usize) -> Vec<f64> {
     f
 }
 
-/// Volymkraft för *DLOAD-typerna BX, BY, BZ och GRAV (kraft per volym).
+/// Body force for the *DLOAD types BX, BY, BZ and GRAV (force per volume).
 pub fn body_load_vector(kind: &str, magnitude: f64, extra: &[f64], density: f64, elem: &str) -> Result<Option<[f64; 3]>> {
     Ok(Some(match kind {
         "BX" => [magnitude, 0.0, 0.0],
@@ -479,10 +479,10 @@ pub fn body_load_vector(kind: &str, magnitude: f64, extra: &[f64], density: f64,
             let d = [extra.first().copied().unwrap_or(0.0), extra.get(1).copied().unwrap_or(0.0), extra.get(2).copied().unwrap_or(0.0)];
             let l = norm(d);
             if l == 0.0 {
-                return fail(format!("GRAV-lasten på {elem} saknar riktning"));
+                return fail(format!("the GRAV load on {elem} has no direction"));
             }
             if density == 0.0 {
-                return fail(format!("GRAV-lasten på {elem} kräver *DENSITY i materialet"));
+                return fail(format!("the GRAV load on {elem} requires *DENSITY in the material"));
             }
             scale(d, magnitude * density / l)
         }
@@ -490,9 +490,9 @@ pub fn body_load_vector(kind: &str, magnitude: f64, extra: &[f64], density: f64,
     }))
 }
 
-/// Ekvivalenta nodkrafter för ett normaltryck `p` (positivt in i materialet)
-/// på en kant (2 noder, tjocklek `t`), en triangel (3) eller en bilinjär
-/// fyrhörning (4). Normalens tecken bestäms så att den pekar bort från `inside`.
+/// Equivalent nodal forces for a normal pressure `p` (positive into the material)
+/// on an edge (2 nodes, thickness `t`), a triangle (3) or a bilinear
+/// quadrilateral (4). The sign of the normal is chosen so that it points away from `inside`.
 pub fn face_pressure(xf: &[[f64; 3]], inside: [f64; 3], p: f64, t: f64) -> Result<Vec<[f64; 3]>> {
     let fc = centroid(xf);
     let out = |n: [f64; 3]| if dot(sub(fc, inside), n) < 0.0 { -1.0 } else { 1.0 };
@@ -544,11 +544,11 @@ pub fn face_pressure(xf: &[[f64; 3]], inside: [f64; 3], p: f64, t: f64) -> Resul
             }
             Ok(f)
         }
-        n => fail(format!("tryck på ytor med {n} noder stöds inte ännu")),
+        n => fail(format!("pressure on faces with {n} nodes is not supported yet")),
     }
 }
 
-/// Tryck på yta `face` (*DLOAD P1, P2, ...) som elementvektor.
+/// Pressure on face `face` (*DLOAD P1, P2, ...) as an element vector.
 pub fn pressure_load(
     x: &[[f64; 3]],
     faces: &[&[usize]],
@@ -562,7 +562,7 @@ pub fn pressure_load(
         return Ok(None);
     };
     if num == 0 || num > faces.len() {
-        return fail(format!("{elem} har bara ytorna P1–P{}, inte {kind}", faces.len()));
+        return fail(format!("{elem} has only the faces P1–P{}, not {kind}", faces.len()));
     }
     let face = faces[num - 1];
     let xf: Vec<[f64; 3]> = face.iter().map(|&i| x[i]).collect();
@@ -576,7 +576,7 @@ pub fn pressure_load(
     Ok(Some(f))
 }
 
-/// Fältnamn för spänning och töjning i komponentordning.
+/// Field names for stress and strain in component order.
 pub fn stress_labels(mode: StressMode) -> (&'static [&'static str], &'static [&'static str]) {
     match mode {
         StressMode::ThreeD => (&["S11", "S22", "S33", "S12", "S13", "S23"], &["E11", "E22", "E33", "E12", "E13", "E23"]),
@@ -587,16 +587,16 @@ pub fn stress_labels(mode: StressMode) -> (&'static [&'static str], &'static [&'
     }
 }
 
-/// Utdata S, E och materialets egna fält (t.ex. PEEQ) per integrationspunkt.
+/// Output S, E and the material's own fields (e.g. PEEQ) per integration point.
 ///
-/// Plan spänning skrivs med S33 = 0 och E33 = 0 (tjocklekstöjningen
-/// redovisas inte i E för CPS-element).
+/// Plane stress is written with S33 = 0 and E33 = 0 (the thickness strain
+/// is not reported in E for CPS elements).
 pub fn output(mode: StressMode, bs: &[Vec<f64>], mat: &dyn MaterialModel, u: &[f64], state: &[f64]) -> Vec<IpField> {
     output_impl(None, mode, bs, mat, u, state)
 }
 
-/// Som `output`, men töjningen E redovisas i elementets lokala
-/// materialorientering (*ORIENTATION). Element bör anropa den här.
+/// Like `output`, but the strain E is reported in the element's local
+/// material orientation (*ORIENTATION). Elements should call this one.
 pub fn output_ctx(ctx: &ElemCtx, mode: StressMode, ips: &[Ip], bs: &[Vec<f64>], mat: &dyn MaterialModel, u: &[f64], state: &[f64]) -> Vec<IpField> {
     let tr: Option<Vec<Vec<f64>>> = ctx.orientation.map(|o| ips.iter().map(|ip| o.strain_transform_mode(ip_point(ctx, ip), mode)).collect());
     output_impl(tr.as_deref(), mode, bs, mat, u, state)

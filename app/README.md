@@ -1,51 +1,53 @@
-# RustyFEM-appen
+# The RustyFEM app
 
-Grafiskt gränssnitt ovanpå motorn.
+Graphical interface on top of the engine.
 
-| Del | Var | Innehåll |
+| Part | Where | Contents |
 |---|---|---|
-| App-API | `app/session` (crate `rustyfem-session`) | Session, ångra/gör om, körning med framsteg och avbrott, minnesuppskattning och lösarval, ytextraktion, resultatfält, projektfil `.rustyproj` |
-| Skal | `app/src-tauri` (crate `rustyfem-app`) | Tauri 2-kommandon, binära svar för nät och fält, fildialoger, minnesbudget per plattform |
-| Gränssnitt | `web/` | React + TypeScript 7, modellfönster i ren Three.js, `Engine`/`TauriEngine` |
+| App API | `app/session` (crate `rustyfem-session`) | Session, undo/redo, runs with progress and cancellation, memory estimate and solver choice, surface extraction, result fields, project file `.rustyproj` |
+| Shell | `app/src-tauri` (crate `rustyfem-app`) | Tauri 2 commands, binary responses for mesh and fields, file dialogs, memory budget per platform |
+| Interface | `web/` | React + TypeScript 7, model viewport in plain Three.js, `Engine`/`TauriEngine` |
 
-Motorn rapporterar framsteg via `rustyfem::progress` (steg, inkrement,
-iterationer). Utan krok gör rapporterna ingenting, så resultaten ändras inte.
+The engine reports progress through `rustyfem::progress` (steps, increments,
+iterations). Without a hook the reports do nothing, so the results do not
+change.
 
-Motorn är förberedd för appen:
+The engine is prepared for the app:
 
-- Feature `cli` (kommandoradsprogrammet och underprocesser, `rustyfem check`) och `dynlib`
-  (UMAT/UEL från delade bibliotek) är på som standard och av i appen.
-- `inp::read_str_with` tar en filresolver för `*INCLUDE`; projektfilen läser
-  sina inkluderade filer ur filen själv (fungerar i iOS-sandlådan).
-- Miljövariablerna `RUSTYFEM_*` är samlade i `rustyfem::settings::Settings`
-  (`RunOptions::settings`); miljön läses bara med feature `cli`.
+- Features `cli` (the command-line program and subprocesses, `rustyfem check`) and `dynlib`
+  (UMAT/UEL from shared libraries) are on by default and off in the app.
+- `inp::read_str_with` takes a file resolver for `*INCLUDE`; the project file
+  reads its included files from the file itself (works in the iOS sandbox).
+- The `RUSTYFEM_*` environment variables are collected in
+  `rustyfem::settings::Settings` (`RunOptions::settings`); the environment is
+  only read with feature `cli`.
 
-## Köra
+## Running
 
 ```bash
 cd web && npm install && npm run tauri dev
 ```
 
-Release-bygge (installationspaket för den aktuella plattformen):
+Release build (installer for the current platform):
 
 ```bash
 cd web && npm run tauri build
 ```
 
-TS-typerna för JSON-kommandona genereras från Rust (tauri-specta) till
-`web/src/engine/bindings.ts` när appen startar i debugläge, eller med
+The TS types for the JSON commands are generated from Rust (tauri-specta) into
+`web/src/engine/bindings.ts` when the app starts in debug mode, or with
 `target/debug/rustyfem-app --export-bindings web/src/engine/bindings.ts`.
 
-## Tester
+## Tests
 
-Alla byggkontroller (tester, motorn utan cli/dynlib, typkontroll för iOS,
-macOS och Linux, gränssnittet):
+All build checks (tests, the engine without cli/dynlib, type checks for iOS,
+macOS and Linux, the interface):
 
 ```bash
 sh scripts/check.sh
 ```
 
-Bara app-API:t:
+Only the app API:
 
 ```bash
 cargo test --release -p rustyfem-session
@@ -55,62 +57,63 @@ cargo test --release -p rustyfem-session
 cd web && npx tsc
 ```
 
-Sessionstesterna öppnar regressionsfall, kör dem via sessionen med framsteg
-och avbrott, jämför med `steps::run`, testar ångra/gör om och att
-projektfilen ger samma modell och resultat efter omläsning.
+The session tests open regression cases, run them through the session with
+progress and cancellation, compare with `steps::run`, and test undo/redo and
+that the project file gives the same model and results after reloading.
 
-Självtest i det riktiga appfönstret: öppnar två modeller, löser dem med
-motorn, växlar fält och mäter bildtiden; skriver `selftest.png` och
-`selftest.json` till katalogen och avslutas.
+Self-test in the real app window: opens two models, solves them with the
+engine, switches fields and measures the frame time; writes `selftest.png` and
+`selftest.json` to the directory and exits.
 
 ```bash
 target/release/rustyfem-app --selftest selftest
 ```
 
-CI (`.github/workflows/app.yml`) bygger appen på Windows, macOS och Linux och
-motorn med app-API:t för iOS.
+CI (`.github/workflows/app.yml`) builds the app on Windows, macOS and Linux and
+the engine with the app API for iOS.
 
-## AI-assistenter (MCP)
+## AI assistants (MCP)
 
-Appen har en inbyggd MCP-server; inget extra behöver laddas ner. Knappen med
-kontakten i toppraden öppnar panelen med start/stopp och instruktioner för
-Claude Desktop (en knapp lägger till RustyFEM i konfigurationen), Claude Code,
-Codex och andra klienter.
+The app has a built-in MCP server; nothing extra needs to be downloaded. The
+plug button in the top bar opens the panel with start/stop and instructions
+for Claude Desktop (a button adds RustyFEM to the configuration), Claude Code,
+Codex and other clients.
 
-- stdio: `rustyfem-app --mcp` är en brygga som klienten startar. Den startar
-  appen med servern påslagen om den inte redan kör.
-- HTTP: `http://127.0.0.1:7456/mcp` (Streamable HTTP, JSON-svar) med
-  `Authorization: Bearer TOKEN`. Bara lokala anslutningar; förfrågningar med
-  främmande `Origin` avvisas. Port och token sparas i `mcp.json` i appens
-  konfigurationskatalog (`%APPDATA%\se.rustyfem.app` på Windows).
-- Verktygen arbetar i modellen som är öppen i appen: ändringar, lösningar och
-  framsteg syns direkt och kan ångras. Verktyg: `model_info`, `new_model`,
-  `open_file`, `get_script`, `set_script`, `edit`, `undo`, `redo`, `solve`,
-  `results`, `field_stats`, `node_info`, `element_info`, `save_project`,
-  `rusty_help`.
+- stdio: `rustyfem-app --mcp` is a bridge that the client launches. It starts
+  the app with the server enabled if it is not already running.
+- HTTP: `http://127.0.0.1:7456/mcp` (Streamable HTTP, JSON responses) with
+  `Authorization: Bearer TOKEN`. Local connections only; requests with a
+  foreign `Origin` are rejected. Port and token are stored in `mcp.json` in
+  the app's configuration directory (`%APPDATA%\se.rustyfem.app` on Windows).
+- The tools work on the model that is open in the app: edits, solutions and
+  progress are shown immediately and can be undone. Tools: `model_info`,
+  `new_model`, `open_file`, `get_script`, `set_script`, `edit`, `undo`,
+  `redo`, `solve`, `results`, `field_stats`, `node_info`, `element_info`,
+  `save_project`, `rusty_help`.
 
-## Gränssnittet
+## The interface
 
-- **Modellträd** (vänster): elementtyper, set, ytor, material, tvärsnitt,
-  randvillkor och steg, med filter.
-- **Egenskaper** (höger): redigering av materialdata, densitet, tjocklek,
-  stegets procedurdata, NLGEOM, INC, randvillkor och laster (`.inp`); skript
-  och verktyg (platta, kloss, balk, stång, stöd, last, tryck, tyngd) för
-  `.rusty`. Allt går att ångra.
-- **Resultat**: steg, frame/mod, fält och komponent (Mises beräknas),
-  automatisk eller fast deformationsskala, animering av frames och moder,
-  färgskalor med band, history-kurvor.
-- **Modellfönster**: panorera, zooma, rotera, 2D-läge, standardvyer
-  (tangenterna 0–6, F anpassar), ytor/kanter/odeformerad form/symboler,
-  GPU-plockning av element eller nod (större träffyta vid pekinmatning),
-  PNG-export.
-- **Körpanel**: lösarval (automatiskt enligt minnesbudgeten), framsteg,
-  residualkurva, avbrott och meddelanden.
-- `Ctrl+K` kommandopalett, `F5` lös, `Esc` avbryt, `Ctrl+Z/Y`, `Ctrl+S`.
+- **Model tree** (left): element types, sets, surfaces, materials,
+  cross-sections, boundary conditions and steps, with a filter.
+- **Properties** (right): editing of material data, density, thickness, step
+  procedure data, NLGEOM, INC, boundary conditions and loads (`.inp`); script
+  and tools (plate, block, beam, truss, support, load, pressure, gravity) for
+  `.rusty`. Everything can be undone.
+- **Results**: step, frame/mode, field and component (Mises is computed),
+  automatic or fixed deformation scale, animation of frames and modes, banded
+  color scales, history curves.
+- **Model viewport**: pan, zoom, rotate, 2D mode, standard views (keys 0–6, F
+  fits), surfaces/edges/undeformed shape/symbols, GPU picking of elements or
+  nodes (larger hit area for touch input), PNG export.
+- **Run panel**: solver choice (automatic based on the memory budget),
+  progress, residual curve, cancellation and messages.
+- `Ctrl+K` command palette, `F5` solve, `Esc` cancel, `Ctrl+Z/Y`, `Ctrl+S`.
 
-## Inte gjort än
+## Not done yet
 
-- iOS-bygget (Tauri iOS-projektet, signering, TestFlight) kräver Mac och Xcode.
-  Motorn och app-API:t typkontrolleras för iOS här och byggs för iOS i CI.
-- Export av redigerade `.inp`-modeller (`.inp` är import; projekt sparas som `.rustyproj`).
-- Markering av set i modellfönstret.
+- The iOS build (the Tauri iOS project, signing, TestFlight) requires a Mac
+  and Xcode. The engine and the app API are type-checked for iOS here and
+  built for iOS in CI.
+- Export of edited `.inp` models (`.inp` is import only; projects are saved
+  as `.rustyproj`).
+- Highlighting of sets in the model viewport.

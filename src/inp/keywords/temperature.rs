@@ -1,18 +1,18 @@
-//! Temperaturfält i spänningsanalys: *TEMPERATURE (i steg) och
-//! *INITIAL CONDITIONS, TYPE=TEMPERATURE (modelldata).
+//! Temperature fields in stress analysis: *TEMPERATURE (in steps) and
+//! *INITIAL CONDITIONS, TYPE=TEMPERATURE (model data).
 //!
-//! Nodreferenserna (nummer, "INSTANS.nummer" eller nodset) löses upp när filen
-//! läses; nyckelordet sparas med datarader [nodindex, temperatur] och
-//! parametern `materials::thermal::RESOLVED`. Temperaturhistorien byggs av
+//! The node references (label, "INSTANCE.label" or node set) are resolved when the file
+//! is read; the keyword is stored with data lines [node index, temperature] and
+//! the parameter `materials::thermal::RESOLVED`. The temperature history is built by
 //! `materials::thermal::TemperatureField`.
 //!
-//! *TEMPERATURE, FILE=jobb: värmeanalysen `jobb.inp` (i samma katalog) körs
-//! med RustyFEM och dess NT11 används (`steps/heat_stress.rs`); parametrarna
-//! BSTEP, ESTEP och EINC väljer steg och inkrement.
+//! *TEMPERATURE, FILE=job: the heat transfer analysis `job.inp` (in the same directory) is run
+//! with RustyFEM and its NT11 is used (`steps/heat_stress.rs`); the parameters
+//! BSTEP, ESTEP and EINC select the step and increment.
 //!
-//! TYPE=VELOCITY skickas vidare till `dynamics::initial_conditions`. Andra
-//! typer av *INITIAL CONDITIONS (STRESS, ...) ger fel tills de implementeras
-//! – lägg till dem i `initial_conditions` nedan.
+//! TYPE=VELOCITY is forwarded to `dynamics::initial_conditions`. Other
+//! types of *INITIAL CONDITIONS (STRESS, ...) give an error until they are implemented
+//! – add them to `initial_conditions` below.
 
 use crate::fem::model::{DataLine, RawKeyword};
 use crate::inp::{InpCtx, Keyword, Kind};
@@ -24,7 +24,7 @@ pub static KEYWORDS: &[Keyword] = &[
     Keyword { name: "TEMPERATURE", kind: Kind::Step, handler: temperature },
 ];
 
-/// Datarader "nod eller nodset, värde" med upplösta nodindex.
+/// Data lines "node or node set, value" with resolved node indices.
 fn resolve(ctx: &InpCtx, kw: &RawKeyword) -> Result<RawKeyword> {
     let mut out = kw.clone();
     out.params.push((RESOLVED.to_string(), String::new()));
@@ -36,13 +36,13 @@ fn resolve(ctx: &InpCtx, kw: &RawKeyword) -> Result<RawKeyword> {
         }
         let rest: Vec<f64> = d.fields[1..]
             .iter()
-            .map(|f| crate::fem::model::parse_f64(f).ok_or_else(|| crate::model::FemError(format!("{} rad {}: '{f}' är inget tal", kw.file, d.line))))
+            .map(|f| crate::fem::model::parse_f64(f).ok_or_else(|| crate::model::FemError(format!("{} line {}: '{f}' is not a number", kw.file, d.line))))
             .collect::<Result<_>>()?;
         if rest.len() > 2 && rest[2..].iter().any(|&x| x != 0.0) {
-            return kw.err_at(d.line, "temperaturgradient i en andra riktning (balkar) stöds inte ännu");
+            return kw.err_at(d.line, "a temperature gradient in a second direction (beams) is not supported yet");
         }
         let value = rest.first().copied().unwrap_or(0.0);
-        // område struct_nonlin: gradienten genom tjockleken (skal) som tredje fält
+        // Area struct_nonlin: the gradient through the thickness (shells) as the third field
         let grad = rest.get(1).copied();
         for n in ctx.node_ref(kw, d.line, tok, None)? {
             let mut fields = vec![n.to_string(), format!("{value:e}")];
@@ -60,9 +60,9 @@ fn initial_conditions(ctx: &mut InpCtx, kw: &RawKeyword) -> Result<()> {
     if ty == "VELOCITY" {
         return super::dynamics::initial_conditions(ctx, kw);
     }
-    // STRESS och RATIO läses av både porvattentrycksområdet (elementen i
-    // elements/soils.rs) och geomaterialen (initial_state.rs); vart och ett
-    // använder bara sina egna element
+    // STRESS and RATIO are read both by the pore pressure area (the elements in
+    // elements/soils.rs) and the geomaterials (initial_state.rs); each one
+    // uses only its own elements
     if ty == "STRESS" && kw.has("USER") {
         return super::user2::initial_stress_user(ctx, kw);
     }
@@ -85,28 +85,28 @@ fn initial_conditions(ctx: &mut InpCtx, kw: &RawKeyword) -> Result<()> {
     if ty == "SPECIFIC ENERGY" {
         return super::eos::initial_specific_energy(ctx, kw);
     }
-    // område materials5: porösa metaller (*POROUS METAL PLASTICITY)
+    // Area materials5: porous metals (*POROUS METAL PLASTICITY)
     if ty == "RELATIVE DENSITY" {
         return super::materials5::initial_relative_density(ctx, kw);
     }
-    // område explicit_adv: Euler-elementens volymandelar
+    // Area explicit_adv: volume fractions of the Eulerian elements
     if ty == "VOLUME FRACTION" {
         return super::explicit_adv::initial_volume_fraction(ctx, kw);
     }
-    // område acoustics2
+    // Area acoustics2
     if ty == "ACOUSTIC STATIC PRESSURE" {
         return super::acoustics2::initial_static_pressure(ctx, kw);
     }
-    // område cavity
+    // Area cavity
     if ty == "FLUID PRESSURE" {
         return super::cavity::initial_fluid_pressure(ctx, kw);
     }
     if ty != "TEMPERATURE" {
-        return kw.err(format!("TYPE={ty} stöds inte ännu (bara TYPE=TEMPERATURE och VELOCITY)"));
+        return kw.err(format!("TYPE={ty} is not supported yet (only TYPE=TEMPERATURE and VELOCITY)"));
     }
     for p in ["FILE", "USER", "INPUT"] {
         if kw.has(p) {
-            return kw.err(format!("parametern {p} stöds inte ännu"));
+            return kw.err(format!("parameter {p} is not supported yet"));
         }
     }
     let r = resolve(ctx, kw)?;
@@ -117,11 +117,11 @@ fn initial_conditions(ctx: &mut InpCtx, kw: &RawKeyword) -> Result<()> {
 fn temperature(ctx: &mut InpCtx, kw: &RawKeyword) -> Result<()> {
     for p in ["USER", "INPUT", "AMPLITUDE", "INTERPOLATE", "MIDSIDE", "DRIVING ELSETS"] {
         if kw.has(p) {
-            return kw.err(format!("parametern {p} stöds inte ännu"));
+            return kw.err(format!("parameter {p} is not supported yet"));
         }
     }
     let r = match kw.param("FILE") {
-        // FILE=jobb: värmeanalysen jobb.inp körs med RustyFEM (`steps/heat_stress.rs`)
+        // FILE=job: the heat transfer analysis job.inp is run with RustyFEM (`steps/heat_stress.rs`)
         Some(file) => {
             let values = crate::steps::heat_stress::temperatures_from_job(ctx, kw, file.trim())?;
             let mut out = kw.clone();

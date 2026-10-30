@@ -1,34 +1,35 @@
-//! Ytbaserade vätske- och gasfyllda håligheter (*FLUID CAVITY) med
-//! hydrostatisk vätskeberäkning.
+//! Surface-based fluid- and gas-filled cavities (*FLUID CAVITY) with
+//! hydrostatic fluid computation.
 //!
-//! Kavitetens volym är summan av pyramider (3D), trianglar (plant, gånger
-//! tjockleken) eller rotationskroppar av trianglar (axisymmetri) som ytans
-//! linjära delytor bildar med referensnoden x_R (element F3D3/F3D4,
-//! F2D2 och FAX2; andra ordningens ytor delas i linjära delytor):
+//! The cavity volume is the sum of pyramids (3D), triangles (planar, times
+//! the thickness) or bodies of revolution of triangles (axisymmetric) formed
+//! by the surface's linear facets and the reference node x_R (elements
+//! F3D3/F3D4, F2D2 and FAX2; second-order faces are split into linear facets):
 //!
-//!   V_e = −1/3 ∫ (x − x_R)·n dA,  n riktad in i kaviteten.
+//!   V_e = −1/3 ∫ (x − x_R)·n dA,  n pointing into the cavity.
 //!
-//! Implicit analys: trycket p är frihetsgrad 8 (slot 7, som POR) i
-//! referensnoden och den förstärkta virtuella arbetsekvationen är
-//! δΠ* = δΠ − p δV − δp (V − V̄(p, θ, m)). Kraften på ytan är bara
-//! "basens" variation (trycklasten) p ∂V_b/∂x = −p ∫ Nᵢ n dA, och tangenten
-//! [K − p H, −g; −gᵀ, dV̄/dp] är symmetrisk (H symmetriseras). Systemet är
-//! indefinit, så steget löses med den indefinita lösaren (`auto_solver`).
+//! Implicit analysis: the pressure p is degree of freedom 8 (slot 7, like
+//! POR) at the reference node and the augmented virtual work equation is
+//! δΠ* = δΠ − p δV − δp (V − V̄(p, θ, m)). The force on the surface is only
+//! the variation of the "base" (the pressure load) p ∂V_b/∂x = −p ∫ Nᵢ n dA,
+//! and the tangent [K − p H, −g; −gᵀ, dV̄/dp] is symmetric (H is symmetrized).
+//! The system is indefinite, so the step is solved with the indefinite
+//! solver (`auto_solver`).
 //!
-//! Vätskorna:
-//! - hydraulisk: V̄ = m/ρ_R [1 + 3α(θ)(θ − θ₀) − 3α(θ_I)(θ_I − θ₀) − p/K]
-//!   (inkompressibel utan *FLUID BULK MODULUS), m = ρ(p_I, θ_I) V_I;
+//! Fluids:
+//! - hydraulic: V̄ = m/ρ_R [1 + 3α(θ)(θ − θ₀) − 3α(θ_I)(θ_I − θ₀) − p/K]
+//!   (incompressible without *FLUID BULK MODULUS), m = ρ(p_I, θ_I) V_I;
 //! - ideal gas: ρ = (p + p_A)/(R (θ − θ_Z)), R = R̃/M, V̄ = m/ρ.
 //!
-//! Föreskrivet tryck (*BOUNDARY, ref, 8): vätskemassan anpassas så att
-//! kaviteten är fylld (m = ρ(p, θ) V), och massan "försluts" när
-//! randvillkoret tas bort. *FLUID FLUX ändrar massan med q Δt.
+//! Prescribed pressure (*BOUNDARY, ref, 8): the fluid mass is adjusted so
+//! that the cavity is filled (m = ρ(p, θ) V), and the mass is "sealed" when
+//! the boundary condition is removed. *FLUID FLUX changes the mass by q Δt.
 //!
-//! Explicit analys: trycket räknas direkt ur volymen (bara kompressibla
-//! vätskor) och ger trycklasten på ytan.
+//! Explicit analysis: the pressure is computed directly from the volume (only
+//! compressible fluids) and gives the pressure load on the surface.
 //!
-//! Utdata: PCAV (övertryck) och CVOL (volym inklusive ADDED VOLUME) som
-//! nodvärden i referensnoden och som history-utdata (`step_history`).
+//! Output: PCAV (gauge pressure) and CVOL (volume including ADDED VOLUME) as
+//! nodal values at the reference node and as history output (`step_history`).
 
 use std::collections::BTreeMap;
 use std::sync::Mutex;
@@ -44,17 +45,17 @@ use crate::steps::dynamic::amplitude::Amplitude;
 
 pub static FACTORIES: &[InteractionFactory] = &[InteractionFactory { keywords: &["FLUID CAVITY"], build }];
 
-/// Slot för tryckfrihetsgraden (frihetsgrad 8).
+/// Slot of the pressure degree of freedom (DOF 8).
 const PSLOT: usize = 7;
 
-/// En tabell v(θ) (ett värde = konstant).
+/// A table v(θ) (one value = constant).
 #[derive(Debug, Clone)]
 struct Table(Vec<(f64, f64)>);
 
 impl Table {
     fn parse(kw: &RawKeyword) -> Result<Table> {
         if kw.has("DEPENDENCIES") {
-            return kw.err("DEPENDENCIES (fältberoende) stöds inte ännu");
+            return kw.err("DEPENDENCIES (field dependencies) is not supported yet");
         }
         let mut v = Vec::new();
         for d in kw.records() {
@@ -65,7 +66,7 @@ impl Table {
             v.push((f[0], f.get(1).copied().unwrap_or(0.0)));
         }
         if v.is_empty() {
-            return kw.err("datarad saknas");
+            return kw.err("data line missing");
         }
         v.sort_by(|a, b| a.1.total_cmp(&b.1));
         Ok(Table(v))
@@ -88,14 +89,14 @@ impl Table {
 
 #[derive(Debug, Clone)]
 enum Fluid {
-    /// ρ_R, K(θ) (None = inkompressibel), α(θ) med θ₀.
+    /// ρ_R, K(θ) (None = incompressible), α(θ) with θ₀.
     Hydraulic { rho: f64, k: Option<Table>, alpha: Option<(Table, f64)> },
-    /// Gaskonstant R = R̃/M, absoluta nollpunkten θ_Z.
+    /// Gas constant R = R̃/M, absolute zero θ_Z.
     Gas { r: f64, zero: f64 },
 }
 
 impl Fluid {
-    /// Termisk volymtöjning 3α(θ)(θ − θ₀) − 3α(θ_I)(θ_I − θ₀).
+    /// Thermal volumetric strain 3α(θ)(θ − θ₀) − 3α(θ_I)(θ_I − θ₀).
     fn thermal(&self, th: f64, th_i: f64) -> f64 {
         match self {
             Fluid::Hydraulic { alpha: Some((a, z)), .. } => 3.0 * a.at(th) * (th - z) - 3.0 * a.at(th_i) * (th_i - z),
@@ -103,7 +104,7 @@ impl Fluid {
         }
     }
 
-    /// Vätskans volym V̄(p, θ, m) och dV̄/dp.
+    /// Fluid volume V̄(p, θ, m) and dV̄/dp.
     fn volume(&self, p: f64, th: f64, th_i: f64, m: f64, pa: f64) -> (f64, f64) {
         match self {
             Fluid::Hydraulic { rho, k, .. } => {
@@ -117,13 +118,13 @@ impl Fluid {
         }
     }
 
-    /// Massan som fyller volymen V vid trycket p och temperaturen θ.
+    /// Mass that fills the volume V at pressure p and temperature θ.
     fn mass(&self, v: f64, p: f64, th: f64, th_i: f64, pa: f64) -> f64 {
         let (v1, _) = self.volume(p, th, th_i, 1.0, pa);
         v / v1
     }
 
-    /// Trycket ur volymen (explicit): löser V̄(p) = V.
+    /// Pressure from the volume (explicit): solves V̄(p) = V.
     fn pressure(&self, v: f64, th: f64, th_i: f64, m: f64, pa: f64) -> f64 {
         match self {
             Fluid::Hydraulic { rho, k, .. } => {
@@ -135,10 +136,10 @@ impl Fluid {
     }
 }
 
-/// Hur volymen räknas.
+/// How the volume is computed.
 #[derive(Debug, Clone, Copy, PartialEq)]
 enum Geo {
-    /// Plant med tjocklek.
+    /// Planar with thickness.
     Planar(f64),
     Axisymmetric,
     ThreeD,
@@ -147,7 +148,7 @@ enum Geo {
 pub struct Cavity {
     name: String,
     refn: usize,
-    /// Linjära delytor med noderna ordnade så att normalen pekar in i kaviteten.
+    /// Linear facets with nodes ordered so that the normal points into the cavity.
     facets: Vec<Vec<usize>>,
     geo: Geo,
     added: f64,
@@ -156,7 +157,7 @@ pub struct Cavity {
     explicit: bool,
     temp: Option<TemperatureField>,
     th_i: f64,
-    /// Per (tidsbärande) steg: föreskrivet tryck och massflöden (q, amplitud).
+    /// Per (time-carrying) step: prescribed pressure and mass fluxes (q, amplitude).
     prescribed: Vec<bool>,
     fluxes: Vec<Vec<(f64, Option<String>)>>,
     amps: BTreeMap<String, Amplitude>,
@@ -165,7 +166,7 @@ pub struct Cavity {
 
 #[derive(Debug, Clone, Default)]
 struct State {
-    /// Godkänd massa och massan i senaste utvärderingen.
+    /// Committed mass and the mass from the latest evaluation.
     m: f64,
     m_tr: f64,
     p: f64,
@@ -177,14 +178,14 @@ struct State {
 fn trimmed_name(kw: &RawKeyword, key: &str) -> Result<String> {
     match kw.param(key) {
         Some(v) if !v.trim().is_empty() => Ok(v.trim().to_uppercase()),
-        _ => kw.err(format!("parametern {key}= saknas")),
+        _ => kw.err(format!("parameter {key}= missing")),
     }
 }
 
-/// *FLUID BEHAVIOR med namnet `name` och dess underalternativ.
+/// *FLUID BEHAVIOR named `name` and its suboptions.
 fn fluid(m: &FeModel, kw: &RawKeyword, name: &str) -> Result<Fluid> {
     let Some(start) = m.extra.iter().position(|k| k.name == "FLUID BEHAVIOR" && k.param("NAME").is_some_and(|n| n.trim().eq_ignore_ascii_case(name))) else {
-        return kw.err(format!("*FLUID BEHAVIOR, NAME={name} finns inte"));
+        return kw.err(format!("*FLUID BEHAVIOR, NAME={name} does not exist"));
     };
     let (mut rho, mut k, mut alpha, mut mw) = (None, None, None, None);
     for o in m.extra[start + 1..].iter().take_while(|k| BEHAVIOR_OPTIONS.contains(&k.name.as_str())) {
@@ -193,37 +194,37 @@ fn fluid(m: &FeModel, kw: &RawKeyword, name: &str) -> Result<Fluid> {
             "FLUID BULK MODULUS" => k = Some(Table::parse(o)?),
             "FLUID EXPANSION" => {
                 let z = match o.param("ZERO") {
-                    Some(z) => crate::fem::model::parse_f64(z).ok_or_else(|| crate::model::FemError(format!("{}: ZERO={z} är inget tal", o.location())))?,
+                    Some(z) => crate::fem::model::parse_f64(z).ok_or_else(|| crate::model::FemError(format!("{}: ZERO={z} is not a number", o.location())))?,
                     None => 0.0,
                 };
                 alpha = Some((Table::parse(o)?, z));
             }
             "MOLECULAR WEIGHT" => mw = o.first_floats()?.first().copied(),
-            // värmekapaciteten behövs bara för adiabatiska gaser (Explicit)
+            // the heat capacity is only needed for adiabatic gases (Explicit)
             _ => {}
         }
     }
     match (rho, mw) {
         (Some(rho), None) => {
             if rho <= 0.0 {
-                return kw.err("*FLUID DENSITY måste vara positiv");
+                return kw.err("*FLUID DENSITY must be positive");
             }
             Ok(Fluid::Hydraulic { rho, k, alpha })
         }
         (None, Some(mw)) => {
             let pc = m.extra.iter().rev().find(|k| k.name == "PHYSICAL CONSTANTS");
             let get = |key: &str| -> Result<f64> {
-                let v = pc.and_then(|k| k.param(key)).ok_or_else(|| crate::model::FemError(format!("{}: ideal gas i kaviteten kräver *PHYSICAL CONSTANTS, {key}=", kw.location())))?;
-                crate::fem::model::parse_f64(v).ok_or_else(|| crate::model::FemError(format!("{}: {key}={v} är inget tal", kw.location())))
+                let v = pc.and_then(|k| k.param(key)).ok_or_else(|| crate::model::FemError(format!("{}: ideal gas in the cavity requires *PHYSICAL CONSTANTS, {key}=", kw.location())))?;
+                crate::fem::model::parse_f64(v).ok_or_else(|| crate::model::FemError(format!("{}: {key}={v} is not a number", kw.location())))
             };
             let (rt, zero) = (get("UNIVERSAL GAS CONSTANT")?, get("ABSOLUTE ZERO")?);
             if mw <= 0.0 {
-                return kw.err("*MOLECULAR WEIGHT måste vara positiv");
+                return kw.err("*MOLECULAR WEIGHT must be positive");
             }
             Ok(Fluid::Gas { r: rt / mw, zero })
         }
-        (Some(_), Some(_)) => kw.err(format!("*FLUID BEHAVIOR {name}: både *FLUID DENSITY och *MOLECULAR WEIGHT")),
-        (None, None) => kw.err(format!("*FLUID BEHAVIOR {name} saknar *FLUID DENSITY (hydraulisk) eller *MOLECULAR WEIGHT (gas)")),
+        (Some(_), Some(_)) => kw.err(format!("*FLUID BEHAVIOR {name}: both *FLUID DENSITY and *MOLECULAR WEIGHT")),
+        (None, None) => kw.err(format!("*FLUID BEHAVIOR {name} has neither *FLUID DENSITY (hydraulic) nor *MOLECULAR WEIGHT (gas)")),
     }
 }
 
@@ -244,13 +245,13 @@ fn dot(a: [f64; 3], b: [f64; 3]) -> f64 {
     a[0] * b[0] + a[1] * b[1] + a[2] * b[2]
 }
 
-/// Delar en elementyta i linjära delytor (noderna i .inp-formatets ordning).
+/// Splits an element face into linear facets (nodes in .inp format order).
 fn split(m: &FeModel, nodes: &[usize], dim: usize) -> Result<Vec<Vec<usize>>> {
     let n = nodes;
     Ok(match (dim, n.len()) {
         (2, 2) | (3, 3) | (3, 4) => vec![n.to_vec()],
         (2, 3) => {
-            // mittnoden är den som ligger närmast mitten av de två andra
+            // the midside node is the one closest to the midpoint of the other two
             let x = |i: usize| m.nodes[n[i]];
             let mid = (0..3)
                 .min_by(|&a, &b| {
@@ -276,12 +277,12 @@ fn split(m: &FeModel, nodes: &[usize], dim: usize) -> Result<Vec<Vec<usize>>> {
             vec![n[5], n[6], n[7]],
         ],
         (3, 9) => vec![vec![n[0], n[4], n[8], n[7]], vec![n[4], n[1], n[5], n[8]], vec![n[8], n[5], n[2], n[6]], vec![n[7], n[8], n[6], n[3]]],
-        _ => return fail(format!("*FLUID CAVITY: ytor med {} noder i {dim}D stöds inte", n.len())),
+        _ => return fail(format!("*FLUID CAVITY: faces with {} nodes in {dim}D are not supported", n.len())),
     })
 }
 
-/// Normal (ej normerad) för en linjär delyta i referensläget med nodordningen
-/// som den står: 2D (t_y, −t_x), 3D högerhandsregeln.
+/// Normal (not normalized) of a linear facet in the reference configuration
+/// with the node order as given: 2D (t_y, −t_x), 3D right-hand rule.
 fn ref_normal(x: &[[f64; 3]]) -> [f64; 3] {
     if x.len() == 2 {
         let t = sub(x[1], x[0]);
@@ -291,7 +292,7 @@ fn ref_normal(x: &[[f64; 3]]) -> [f64; 3] {
     }
 }
 
-/// Formfunktioner och derivator för en bilinjär fyrhörning.
+/// Shape functions and derivatives of a bilinear quadrilateral.
 fn quad_shape(g: f64, h: f64) -> ([f64; 4], [f64; 4], [f64; 4]) {
     let gs = [-1.0, 1.0, 1.0, -1.0];
     let hs = [-1.0, -1.0, 1.0, 1.0];
@@ -306,7 +307,7 @@ fn quad_shape(g: f64, h: f64) -> ([f64; 4], [f64; 4], [f64; 4]) {
     (n, ng, nh)
 }
 
-/// Delytans volymbidrag V_e och basens variation G_i = ∂V_b/∂x_i.
+/// Volume contribution V_e of the facet and the base variation G_i = ∂V_b/∂x_i.
 fn facet_vg(geo: Geo, x: &[[f64; 3]], xr: [f64; 3]) -> (f64, Vec<[f64; 3]>) {
     let xb: Vec<[f64; 3]> = x.iter().map(|&p| sub(p, xr)).collect();
     match (geo, x.len()) {
@@ -321,7 +322,7 @@ fn facet_vg(geo: Geo, x: &[[f64; 3]], xr: [f64; 3]) -> (f64, Vec<[f64; 3]>) {
             let (ra, rb) = (xb[0][0], xb[1][0]);
             let v = -std::f64::consts::PI / 3.0 * cross(xb[0], xb[1])[2] * (ra + rb);
             let c = -std::f64::consts::PI / 3.0;
-            // konsistent trycklast −2π ∫ Nᵢ r n dl (prövat mot nodvis och medelvärdes-r)
+            // consistent pressure load −2π ∫ Nᵢ r n dl (tested against nodal and mean r)
             let (wa, wb) = (2.0 * ra + rb, ra + 2.0 * rb);
             let ga = [c * n[0] * wa, c * n[1] * wa, 0.0];
             let gb = [c * n[0] * wb, c * n[1] * wb, 0.0];
@@ -334,7 +335,7 @@ fn facet_vg(geo: Geo, x: &[[f64; 3]], xr: [f64; 3]) -> (f64, Vec<[f64; 3]>) {
             (v, vec![g, g, g])
         }
         _ => {
-            // bilinjär fyrhörning: 2 × 2 Gausspunkter integrerar exakt
+            // bilinear quadrilateral: 2 × 2 Gauss points integrate exactly
             let a = 1.0 / 3f64.sqrt();
             let mut v = 0.0;
             let mut gr = vec![[0.0; 3]; 4];
@@ -367,18 +368,18 @@ fn build(m: &FeModel, kw: &RawKeyword) -> Result<Vec<Box<dyn Interaction>>> {
     let name = trimmed_name(kw, "NAME")?;
     for p in ["MIXTURE", "ADIABATIC", "SWITCHTIME", "MINIMUM VOLUME", "AMBIENT TEMPERATURE"] {
         if kw.has(p) {
-            return kw.err(format!("parametern {p} stöds inte ännu"));
+            return kw.err(format!("parameter {p} is not supported yet"));
         }
     }
     let behavior = trimmed_name(kw, "BEHAVIOR")?;
     let fluid = fluid(m, kw, &behavior)?;
-    let refs = geom::node_ref(m, kw, kw.param("REF NODE").ok_or_else(|| crate::model::FemError(format!("{}: REF NODE= saknas", kw.location())))?)?;
+    let refs = geom::node_ref(m, kw, kw.param("REF NODE").ok_or_else(|| crate::model::FemError(format!("{}: REF NODE= missing", kw.location())))?)?;
     let [refn] = refs[..] else {
-        return kw.err("REF NODE måste vara exakt en nod");
+        return kw.err("REF NODE must be exactly one node");
     };
     let num = |key: &str| -> Result<f64> {
         match kw.param(key) {
-            Some(v) => crate::fem::model::parse_f64(v).ok_or_else(|| crate::model::FemError(format!("{}: {key}={v} är inget tal", kw.location()))),
+            Some(v) => crate::fem::model::parse_f64(v).ok_or_else(|| crate::model::FemError(format!("{}: {key}={v} is not a number", kw.location()))),
             None => Ok(0.0),
         }
     };
@@ -386,13 +387,13 @@ fn build(m: &FeModel, kw: &RawKeyword) -> Result<Vec<Box<dyn Interaction>>> {
     let pa = num("AMBIENT PRESSURE")?;
     let thick = kw.first_floats().ok().and_then(|v| v.first().copied()).filter(|&t| t != 0.0).unwrap_or(1.0);
     let explicit = m.steps.iter().any(|s| s.procedure.as_ref().is_some_and(|p| p.has("EXPLICIT")));
-    // ytan och dess linjära delytor
+    // the surface and its linear facets
     let mut facets = Vec::new();
     let mut geo = None;
     if let Some(sname) = kw.param("SURFACE") {
         let s = geom::surface(m, kw, sname)?;
         if s.kind == "NODE" {
-            return kw.err("SURFACE= måste vara en elementbaserad yta");
+            return kw.err("SURFACE= must be an element-based surface");
         }
         for f in geom::facets(m, s, "*FLUID CAVITY")? {
             let g = match f.dim {
@@ -401,13 +402,13 @@ fn build(m: &FeModel, kw: &RawKeyword) -> Result<Vec<Box<dyn Interaction>>> {
                 _ => Geo::ThreeD,
             };
             if geo.is_some_and(|x| x != g) {
-                return kw.err("ytan blandar plana, axisymmetriska och tredimensionella element");
+                return kw.err("the surface mixes planar, axisymmetric and three-dimensional elements");
             }
             geo = Some(g);
             for mut sf in split(m, &f.nodes, f.dim)? {
                 let x: Vec<[f64; 3]> = sf.iter().map(|&n| m.nodes[n]).collect();
                 let c = crate::elements::common::centroid(&x);
-                // normalen ska peka bort från elementet (in i kaviteten)
+                // the normal must point away from the element (into the cavity)
                 if dot(ref_normal(&x), sub(c, f.inside)) < 0.0 {
                     sf.reverse();
                 }
@@ -415,16 +416,16 @@ fn build(m: &FeModel, kw: &RawKeyword) -> Result<Vec<Box<dyn Interaction>>> {
             }
         }
     } else if !explicit {
-        return kw.err("SURFACE= krävs i implicit analys");
+        return kw.err("SURFACE= is required in implicit analysis");
     }
     let geo = geo.unwrap_or(Geo::ThreeD);
     if geo == Geo::Axisymmetric && m.nodes[refn][0].abs() > 1e-9 * (1.0 + m.nodes[refn][1].abs()) {
-        return kw.err("referensnoden för en axisymmetrisk kavitet måste ligga på symmetriaxeln (r = 0)");
+        return kw.err("the reference node of an axisymmetric cavity must lie on the symmetry axis (r = 0)");
     }
     if explicit && matches!(fluid, Fluid::Hydraulic { k: None, .. }) {
-        return kw.err("explicit analys kräver en kompressibel vätska (*FLUID BULK MODULUS)");
+        return kw.err("explicit analysis requires a compressible fluid (*FLUID BULK MODULUS)");
     }
-    // begynnelsetryck och -temperatur
+    // initial pressure and temperature
     let mut p_init = 0.0;
     for ic in m.extra.iter().filter(|k| k.name == "INITIAL CONDITIONS" && k.param_upper("TYPE").as_deref() == Some("FLUID PRESSURE")) {
         for d in ic.records() {
@@ -438,17 +439,17 @@ fn build(m: &FeModel, kw: &RawKeyword) -> Result<Vec<Box<dyn Interaction>>> {
     let th_i = temp.as_ref().map_or(0.0, |t| t.at(&[refn], 0.0)[0]);
     if let Fluid::Gas { zero, .. } = fluid {
         if th_i - zero <= 0.0 {
-            return kw.err("gasens temperatur ligger under den absoluta nollpunkten");
+            return kw.err("the gas temperature is below absolute zero");
         }
     }
-    // stegvisa randvillkor på tryckfrihetsgraden och massflöden
+    // step-wise boundary conditions on the pressure DOF and mass fluxes
     let mut prescribed = Vec::new();
     let mut fluxes = Vec::new();
     let mut bc = m.initial_bcs.iter().any(|b| b.items.iter().any(|&(n, d, _)| n == refn && d == POR));
     let mut fl: BTreeMap<usize, (f64, Option<String>)> = BTreeMap::new();
     for s in &m.steps {
         if s.perturbation {
-            // perturbationssteg: tillståndet från föregående steg
+            // perturbation step: the state from the previous step
             prescribed.push(bc);
             fluxes.push(Vec::new());
             continue;
@@ -477,22 +478,22 @@ fn build(m: &FeModel, kw: &RawKeyword) -> Result<Vec<Box<dyn Interaction>>> {
         fluxes.push(fl.values().cloned().collect());
     }
     if explicit && fluxes.iter().any(|f| !f.is_empty()) {
-        return kw.err("*FLUID FLUX stöds inte i explicit analys");
+        return kw.err("*FLUID FLUX is not supported in explicit analysis");
     }
     let amps = crate::steps::dynamic::amplitude::amplitudes(m)?;
     let mut cav = Cavity { name, refn, facets, geo, added, pa, fluid, explicit, temp, th_i, prescribed, fluxes, amps, st: Mutex::new(State::default()) };
     let v0 = cav.volume_grad(m, &[])?.0;
     if v0 <= 0.0 {
-        return kw.err(format!("kavitetens begynnelsevolym {v0:e} är inte positiv (kontrollera ytans normaler och referensnoden)"));
+        return kw.err(format!("initial cavity volume {v0:e} is not positive (check the surface normals and the reference node)"));
     }
-    // massan är summan av delytornas massor: ADDED VOLUME bär ingen vätska
+    // the mass is the sum of the facet masses: ADDED VOLUME carries no fluid
     let m0 = cav.fluid.mass(v0 - added, p_init, th_i, th_i, pa);
     cav.st = Mutex::new(State { m: m0, m_tr: m0, p: p_init, v: v0, p_tr: p_init, v_tr: v0 });
     Ok(vec![Box::new(cav)])
 }
 
 impl Cavity {
-    /// Nodens läge (referensläge + förskjutning).
+    /// Node position (reference position + displacement).
     fn pos(m: &FeModel, u: &[NodeVec], n: usize) -> [f64; 3] {
         let x = m.nodes[n];
         match u.get(n) {
@@ -501,7 +502,7 @@ impl Cavity {
         }
     }
 
-    /// Volymen (inklusive ADDED VOLUME) och basens variation per delyta.
+    /// The volume (including ADDED VOLUME) and the base variation per facet.
     fn volume_grad(&self, m: &FeModel, u: &[NodeVec]) -> Result<(f64, Vec<Vec<[f64; 3]>>)> {
         let xr = m.nodes[self.refn];
         let mut v = self.added;
@@ -515,7 +516,7 @@ impl Cavity {
         Ok((v, gs))
     }
 
-    /// Delytans H_ij = ∂G_i/∂x_j (centrala differenser), radvis (3·nn)².
+    /// Facet H_ij = ∂G_i/∂x_j (central differences), row-major (3·nn)².
     fn facet_hessian(&self, x: &[[f64; 3]], xr: [f64; 3]) -> Vec<f64> {
         let nn = x.len();
         let nd = 3 * nn;
@@ -541,7 +542,7 @@ impl Cavity {
         hm
     }
 
-    /// Stegindex (bland de tidsbärande stegen), stegtid och total tid i slutet av inkrementet.
+    /// Step index (among the time-carrying steps), step time and total time at the end of the increment.
     fn step_info(&self, time: f64) -> (usize, f64) {
         let (kstep, _) = crate::user::context::step_inc();
         let k = (kstep.max(1) as usize - 1).min(self.prescribed.len().saturating_sub(1));
@@ -552,7 +553,7 @@ impl Cavity {
         self.temp.as_ref().map_or(self.th_i, |t| t.at(&[self.refn], time)[0])
     }
 
-    /// Massan i slutet av inkrementet utan föreskrivet tryck.
+    /// Mass at the end of the increment without prescribed pressure.
     fn mass_at(&self, st: &State, k: usize, step_time: f64, time: f64, dt: f64) -> f64 {
         let mut m = st.m;
         if let Some(fl) = self.fluxes.get(k) {
@@ -607,7 +608,7 @@ impl Interaction for Cavity {
         } else {
             p = u.get(self.refn).map_or(0.0, |d| d[PSLOT]);
             let mm = if self.prescribed.get(kstep).copied().unwrap_or(false) {
-                // föreskrivet tryck: vätska strömmar in/ut så att kaviteten är fylld
+                // prescribed pressure: fluid flows in/out so that the cavity is filled
                 self.fluid.mass(v, p, th, self.th_i, self.pa)
             } else {
                 self.mass_at(&st, kstep, step_time, ctx.time, ctx.dt)
@@ -619,7 +620,7 @@ impl Interaction for Cavity {
         }
         st.p_tr = p;
         st.v_tr = v;
-        // trycklasten på ytan: f_int −= p G
+        // pressure load on the surface: f_int −= p G
         let dims = if self.geo == Geo::ThreeD { 3 } else { 2 };
         for (f, g) in self.facets.iter().zip(&gs) {
             for (a, &n) in f.iter().enumerate() {
@@ -682,7 +683,7 @@ impl Interaction for Cavity {
     }
 }
 
-/// History-utdata PCAV och CVOL (region "Node INSTANS.nod") ur stegets frames.
+/// History output PCAV and CVOL (region "Node INSTANCE.node") from the step frames.
 pub fn step_history(model: &FeModel, so: &mut crate::fem::output::StepOutput) {
     if !model.extra.iter().any(|k| k.name == "FLUID CAVITY") {
         return;
@@ -705,8 +706,8 @@ pub fn step_history(model: &FeModel, so: &mut crate::fem::output::StepOutput) {
     }
 }
 
-/// Indefinit lösare utan varning om negativa egenvärden (sadelpunktssystemet
-/// har ett negativt egenvärde per kavitet).
+/// Indefinite solver without a warning about negative eigenvalues (the
+/// saddle-point system has one negative eigenvalue per cavity).
 struct QuietIndefinite;
 
 static QUIET: QuietIndefinite = QuietIndefinite;
@@ -720,8 +721,9 @@ impl crate::solver::LinearSolver for QuietIndefinite {
     }
 }
 
-/// Lösaren för ett steg: den indefinita i stället för standardlösaren när
-/// modellen har en kavitet i implicit analys och användaren inte valt lösare.
+/// The solver for a step: the indefinite one instead of the default solver
+/// when the model has a cavity in implicit analysis and the user has not
+/// chosen a solver.
 pub fn auto_solver(model: &FeModel, solver: &'static dyn crate::solver::LinearSolver, forced: bool) -> &'static dyn crate::solver::LinearSolver {
     let explicit = model.steps.iter().any(|s| s.procedure.as_ref().is_some_and(|p| p.has("EXPLICIT")));
     if !forced && !explicit && solver.name() == "direct" && model.extra.iter().any(|k| k.name == "FLUID CAVITY") {

@@ -1,19 +1,19 @@
-//! *CONTOUR INTEGRAL, XFEM för stationära XFEM-sprickor (`elements/xfem.rs`).
+//! *CONTOUR INTEGRAL, XFEM for stationary XFEM cracks (`elements/xfem.rs`).
 //!
-//! Steg-typen tar *STATIC-steg med en XFEM-konturintegral, kör den vanliga
-//! statiska steg-typen och räknar sedan integralerna med domänintegralmetoden
-//! som `fracture.rs`, men på XFEM-elementens internt genererade
-//! integrationspunkter (med berikningen i ∇u):
+//! The step type takes *STATIC steps with an XFEM contour integral, runs the ordinary
+//! static step type and then computes the integrals with the domain integral method
+//! like `fracture.rs`, but at the internally generated integration points of the XFEM
+//! elements (with the enrichment in ∇u):
 //!
-//! - Frontpunkterna är frontlinjens (φ = ψ = 0) skärningar med spetselementens
-//!   ytor, ordnade längs t = ∇φ × ∇ψ (`<SPRICKA>_XFEM_<k>`), med
-//!   history `X/Y/Z at <SPRICKA>_XFEM_<k>`.
-//! - Kontur 1: q = 1 i spetselementens noder (de element som innehåller
-//!   frontpunkten), kontur c + 1: även i noderna till elementen som delar en
-//!   nod med kontur c. Längs fronten fördelas q med en hattfunktion mellan
-//!   grannfrontpunkterna och integralen normeras med ∫ q ds.
-//! - J, K1, K2, K3 (interaktionsintegral, hjälpfält i plan töjning), JKs och
-//!   Cpd (MTS) med namnen `<storhet> at <SPRICKA>_XFEM_<k>_Contour_<c>`.
+//! - The front points are the intersections of the front line (φ = ψ = 0) with the faces
+//!   of the tip elements, ordered along t = ∇φ × ∇ψ (`<CRACK>_XFEM_<k>`), with
+//!   history `X/Y/Z at <CRACK>_XFEM_<k>`.
+//! - Contour 1: q = 1 at the nodes of the tip elements (the elements that contain
+//!   the front point), contour c + 1: also at the nodes of the elements that share a
+//!   node with contour c. Along the front q is distributed with a hat function between
+//!   the neighbouring front points and the integral is normalized by ∫ q ds.
+//! - J, K1, K2, K3 (interaction integral, auxiliary fields in plane strain), JKs and
+//!   Cpd (MTS) with the names `<quantity> at <CRACK>_XFEM_<k>_Contour_<c>`.
 
 use super::api::{StepCtx, StepType};
 use super::fracture::aux::{aux, AuxMode, Elastic};
@@ -35,7 +35,7 @@ fn is_xfem(k: &RawKeyword) -> bool {
 
 impl StepType for XfemContour {
     fn name(&self) -> &'static str {
-        "STATIC med *CONTOUR INTEGRAL, XFEM"
+        "STATIC with *CONTOUR INTEGRAL, XFEM"
     }
 
     fn claim(&self, step: &StepDef, nlgeom: bool) -> Option<i32> {
@@ -80,10 +80,10 @@ fn sub(a: [f64; 3], b: [f64; 3]) -> [f64; 3] {
     [a[0] - b[0], a[1] - b[1], a[2] - b[2]]
 }
 
-/// Punkt på en yta med φ = ψ = 0 (Newton i ytans parametrar), om den finns.
+/// Point on a face with φ = ψ = 0 (Newton in the face parameters), if it exists.
 fn face_point(x: &[[f64; 3]], phi: &[f64], psi: &[f64]) -> Option<[f64; 3]> {
     let n = x.len();
-    // bilinjär fyrhörning eller linjär triangel i (s, t)
+    // bilinear quadrilateral or linear triangle in (s, t)
     let shape = |s: f64, t: f64| -> (Vec<f64>, Vec<[f64; 2]>) {
         if n == 4 {
             let a = [[-1.0, -1.0], [1.0, -1.0], [1.0, 1.0], [-1.0, 1.0]];
@@ -128,7 +128,7 @@ struct FrontPoint {
     p: [f64; 3],
     elems: Vec<usize>,
     frame: [[f64; 3]; 3],
-    /// Läget längs fronten (ordningsriktningen).
+    /// Position along the front (the ordering direction).
     s: f64,
 }
 
@@ -136,7 +136,7 @@ fn front_points(prep: &Prepared, crack: &'static Crack) -> Result<Vec<FrontPoint
     let m = prep.model;
     let tips = xfem::tip_elements(m, crack);
     if tips.is_empty() {
-        return fail(format!("*CONTOUR INTEGRAL, XFEM: sprickan {} har ingen front inne i domänen", crack.name));
+        return fail(format!("*CONTOUR INTEGRAL, XFEM: the crack {} has no front inside the domain", crack.name));
     }
     let mut pts: Vec<FrontPoint> = Vec::new();
     let mut gphi_sum = [0.0; 3];
@@ -177,8 +177,8 @@ fn front_points(prep: &Prepared, crack: &'static Crack) -> Result<Vec<FrontPoint
     }
     let t = unit(cross(gphi_sum, gpsi_sum));
     pts.sort_by(|a, b| dot(a.p, t).partial_cmp(&dot(b.p, t)).unwrap());
-    // tetraedrar: frontpunkterna fördelas jämnt mellan ändpunkterna
-    // (lika många som skärningarna); spetselementen är de som spänner över punkten
+    // tetrahedra: the front points are distributed evenly between the end points
+    // (as many as the intersections); the tip elements are those that span the point
     if tips.iter().any(|(e, _, _)| crack.conn[e].0 == geom::Ref::Tet4) && pts.len() > 2 {
         let (a, b) = (pts[0].p, pts[pts.len() - 1].p);
         let n = pts.len();
@@ -240,18 +240,18 @@ fn rotv(r: &[[f64; 3]; 3], v: [f64; 3]) -> [f64; 3] {
 
 fn evaluate(prep: &Prepared, u: &[NodeVec], time: f64, kw: &RawKeyword) -> Result<Vec<(String, f64)>> {
     let m = prep.model;
-    let name = kw.param_upper("CRACK NAME").ok_or_else(|| crate::model::FemError(format!("{}: CRACK NAME= (berikningens namn) saknas", kw.location())))?;
+    let name = kw.param_upper("CRACK NAME").ok_or_else(|| crate::model::FemError(format!("{}: CRACK NAME= (the name of the enrichment) is missing", kw.location())))?;
     let Some(crack) = xfem::crack_of(m, &name) else {
-        return kw.err(format!("berikningen {name} finns inte (CRACK NAME= ska vara *ENRICHMENT-namnet)"));
+        return kw.err(format!("the enrichment {name} does not exist (CRACK NAME= must be the *ENRICHMENT name)"));
     };
     if !crack.stationary {
-        return kw.err("konturintegraler med XFEM kräver TYPE=STATIONARY CRACK");
+        return kw.err("contour integrals with XFEM require TYPE=STATIONARY CRACK");
     }
     let kind = kw.param_upper("TYPE").map(|s| s.replace(' ', "")).unwrap_or_else(|| "J".into());
     let kfac = match kind.as_str() {
         "J" => false,
         "KFACTORS" => true,
-        t => return kw.err(format!("TYPE={t} stöds inte för XFEM (J, K FACTORS)")),
+        t => return kw.err(format!("TYPE={t} is not supported for XFEM (J, K FACTORS)")),
     };
     let contours: usize = kw.param("CONTOURS").and_then(|c| c.trim().parse().ok()).unwrap_or(1).max(1);
     let pts = front_points(prep, crack)?;

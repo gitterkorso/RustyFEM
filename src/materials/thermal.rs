@@ -1,29 +1,29 @@
-//! Termisk expansion (*EXPANSION) och det fördefinierade temperaturfältet.
+//! Thermal expansion (*EXPANSION) and the predefined temperature field.
 //!
-//! Temperaturfält i spänningsanalys:
-//! - *INITIAL CONDITIONS, TYPE=TEMPERATURE: nodtemperaturer vid start
-//!   (noder som inte anges har temperaturen 0),
-//! - *TEMPERATURE i ett steg: nya nodtemperaturer vid stegets slut
-//!   (OP=MOD standard, OP=NEW återställer först till starttemperaturerna).
-//!   Inom steget rampas temperaturen linjärt från föregående värde (eller
-//!   sätts direkt med AMPLITUDE=STEP på *STEP). Värdena ärvs till följande steg.
+//! Temperature fields in stress analysis:
+//! - *INITIAL CONDITIONS, TYPE=TEMPERATURE: nodal temperatures at the start
+//!   (nodes not specified have temperature 0),
+//! - *TEMPERATURE in a step: new nodal temperatures at the end of the step
+//!   (OP=MOD default, OP=NEW first resets to the initial temperatures).
+//!   Within the step the temperature is ramped linearly from the previous value (or
+//!   applied immediately with AMPLITUDE=STEP on *STEP). The values are inherited by subsequent steps.
 //!
-//! I första ordningens element används medelvärdet av elementets
-//! nodtemperaturer i alla integrationspunkter
+//! In first-order elements the mean of the element's
+//! nodal temperatures is used at all integration points
 //! (`ElemCtx::temperature_at`).
 //!
-//! Termisk töjning med sekantkoefficienten α(T) och referenstemperaturen
-//! θ0 (ZERO=, standard 0):
+//! Thermal strain with the secant coefficient α(T) and the reference temperature
+//! θ0 (ZERO=, default 0):
 //!
 //!   ε_th = α(T)(T − θ0) − α(T_I)(T_I − θ0)
 //!
-//! där T_I är starttemperaturen. Den uppdateras inkrementellt i
-//! integrationspunktens tillstånd: Δε_th = α(T)(T − θ0) − α(T−ΔT)(T−ΔT − θ0).
-//! TYPE=ISO (standard), ORTHO (α11, α22, α33 i materialets lokala axlar)
-//! och ANISO (α11, α22, α33, α12, α13, α23; skjuvdelen som tensorkomponent,
-//! dvs. ingenjörsskjuvtöjningen blir 2α12 ΔT).
-//! Den mekaniska töjningen ε − ε_th skickas till det underliggande materialet
-//! (elasticitet, plasticitet, ...).
+//! where T_I is the initial temperature. It is updated incrementally in
+//! the integration point state: Δε_th = α(T)(T − θ0) − α(T−ΔT)(T−ΔT − θ0).
+//! TYPE=ISO (default), ORTHO (α11, α22, α33 in the material's local axes)
+//! and ANISO (α11, α22, α33, α12, α13, α23; the shear part as a tensor component,
+//! i.e. the engineering shear strain becomes 2α12 ΔT).
+//! The mechanical strain ε − ε_th is passed to the underlying material
+//! (elasticity, plasticity, ...).
 
 use super::anisotropic::mode_components;
 use super::{MatInput, MatOutput, MaterialFactory, MaterialModel, StressMode};
@@ -32,8 +32,8 @@ use crate::model::Result;
 use std::sync::Arc;
 
 pub static FACTORIES: &[MaterialFactory] = &[MaterialFactory {
-    name: "termisk expansion",
-    // alla beteenden som underliggande modeller i RustyFEM förbrukar
+    name: "thermal expansion",
+    // all behaviors consumed by underlying models in RustyFEM
     consumes: &[
         "CREEP",
         "CYCLIC HARDENING",
@@ -53,7 +53,7 @@ pub static FACTORIES: &[MaterialFactory] = &[MaterialFactory {
     build: Some(build),
 }];
 
-/// Expansionskoefficient: (α-komponenter (6, tensor), temperatur) i stigande temperatur.
+/// Expansion coefficient: (α components (6, tensor), temperature) in increasing temperature.
 #[derive(Debug, Clone)]
 pub struct Expansion {
     pub table: Vec<([f64; 6], f64)>,
@@ -67,22 +67,22 @@ impl Expansion {
             "ISO" => 1,
             "ORTHO" => 3,
             "ANISO" => 6,
-            o => return kw.err(format!("TYPE={o} stöds inte (ISO, ORTHO, ANISO)")),
+            o => return kw.err(format!("TYPE={o} is not supported (ISO, ORTHO, ANISO)")),
         };
         for p in ["DEPENDENCIES", "USER", "PORE FLUID"] {
             if kw.has(p) {
-                return kw.err(format!("parametern {p} stöds inte ännu"));
+                return kw.err(format!("the {p} parameter is not supported yet"));
             }
         }
         let zero = match kw.param("ZERO") {
-            Some(z) => crate::fem::model::parse_f64(z).ok_or_else(|| crate::model::FemError(format!("{}: ZERO={z} är inget tal", kw.location())))?,
+            Some(z) => crate::fem::model::parse_f64(z).ok_or_else(|| crate::model::FemError(format!("{}: ZERO={z} is not a number", kw.location())))?,
             None => 0.0,
         };
         let mut table = Vec::new();
         for d in kw.records() {
             let v = kw.floats(&d)?;
             if v.len() < n {
-                return kw.err_at(d.line, format!("TYPE={ty} kräver {n} koefficienter"));
+                return kw.err_at(d.line, format!("TYPE={ty} requires {n} coefficients"));
             }
             let mut a = [0.0; 6];
             match n {
@@ -95,24 +95,24 @@ impl Expansion {
             }
             let t = v.get(n).copied().unwrap_or(0.0);
             if v.len() > n + 1 && v[n + 1..].iter().any(|&x| x != 0.0) {
-                return kw.err_at(d.line, "fältberoende expansion stöds inte ännu");
+                return kw.err_at(d.line, "field-dependent expansion is not supported yet");
             }
             table.push((a, t));
         }
         if table.is_empty() {
-            return kw.err("expansionskoefficient saknas");
+            return kw.err("expansion coefficient missing");
         }
         if table.len() > 1 {
             for w in table.windows(2) {
                 if !(w[1].1 > w[0].1) {
-                    return kw.err("temperaturerna i tabellen ska öka");
+                    return kw.err("the temperatures in the table must increase");
                 }
             }
         }
         Ok(Expansion { table, zero })
     }
 
-    /// α(T) (linjär interpolation, konstant utanför tabellen).
+    /// α(T) (linear interpolation, constant outside the table).
     pub fn alpha(&self, t: f64) -> [f64; 6] {
         let tb = &self.table;
         if tb.len() == 1 || t <= tb[0].1 {
@@ -127,14 +127,14 @@ impl Expansion {
         tb[tb.len() - 1].0
     }
 
-    /// α(T)(T − θ0) som töjning (ingenjörsskjuvning).
+    /// α(T)(T − θ0) as strain (engineering shear).
     pub fn secant_strain(&self, t: f64) -> [f64; 6] {
         let a = self.alpha(t);
         std::array::from_fn(|i| a[i] * (t - self.zero) * if i < 3 { 1.0 } else { 2.0 })
     }
 }
 
-/// Termisk töjning ovanpå ett annat material.
+/// Thermal strain on top of another material.
 pub struct Thermal {
     pub exp: Expansion,
     pub inner: Arc<dyn MaterialModel>,
@@ -244,11 +244,11 @@ fn the_labels(mode: StressMode) -> Vec<&'static str> {
 }
 
 // ---------------------------------------------------------------------------
-// Temperaturfältet
+// The temperature field
 // ---------------------------------------------------------------------------
 
-/// Ett steg i temperaturhistorien: [start, start + längd], temperaturer vid
-/// början och slut, linjär ramp eller steg.
+/// A step in the temperature history: [start, start + length], temperatures at
+/// the start and end, linear ramp or step.
 #[derive(Debug, Clone)]
 struct Segment {
     start: f64,
@@ -258,9 +258,9 @@ struct Segment {
     ramp: bool,
 }
 
-/// Nodtemperaturer som funktion av total tid. Vektorerna har 2·nn platser:
-/// nodtemperaturerna följda av temperaturgradienterna genom tjockleken
-/// (skal, tredje fältet på *TEMPERATURE-raden; område struct_nonlin).
+/// Nodal temperatures as a function of total time. The vectors have 2·nn slots:
+/// the nodal temperatures followed by the temperature gradients through the thickness
+/// (shells, third field on the *TEMPERATURE line; feature area struct_nonlin).
 #[derive(Debug, Clone)]
 pub struct TemperatureField {
     initial: Vec<f64>,
@@ -269,7 +269,7 @@ pub struct TemperatureField {
     gradients: bool,
 }
 
-/// Datarader med upplösta noder: fält [nodindex, värde] (se `inp/keywords/temperature.rs`).
+/// Data lines with resolved nodes: fields [node index, value] (see `inp/keywords/temperature.rs`).
 pub const RESOLVED: &str = "_NODINDEX";
 
 fn apply(kw: &RawKeyword, t: &mut [f64]) -> Result<()> {
@@ -285,13 +285,13 @@ fn apply(kw: &RawKeyword, t: &mut [f64]) -> Result<()> {
     Ok(())
 }
 
-/// Procedurer utan tidslängd (linjära perturbationer).
+/// Procedures without time duration (linear perturbations).
 fn timeless(proc_name: &str) -> bool {
     matches!(proc_name, "FREQUENCY" | "BUCKLE" | "COMPLEX FREQUENCY" | "MODAL DYNAMIC" | "STEADY STATE DYNAMICS" | "RESPONSE SPECTRUM")
 }
 
 impl TemperatureField {
-    /// Bygger temperaturhistorien, eller `None` om modellen saknar temperaturer.
+    /// Builds the temperature history, or `None` if the model has no temperatures.
     pub fn build(model: &FeModel) -> Result<Option<TemperatureField>> {
         let nn = model.nodes.len();
         let ic: Vec<&RawKeyword> = model
@@ -336,18 +336,18 @@ impl TemperatureField {
         Ok(Some(TemperatureField { initial, segments, nn, gradients }))
     }
 
-    /// Modellen har temperaturgradienter genom tjockleken.
+    /// The model has temperature gradients through the thickness.
     pub fn has_gradients(&self) -> bool {
         self.gradients
     }
 
-    /// Temperaturgradienterna genom tjockleken i noderna `nodes` vid total tid `time`.
+    /// The temperature gradients through the thickness at the nodes `nodes` at total time `time`.
     pub fn gradient_at(&self, nodes: &[usize], time: f64) -> Vec<f64> {
         let idx: Vec<usize> = nodes.iter().map(|&n| self.nn + n).collect();
         self.at(&idx, time)
     }
 
-    /// Temperaturer i noderna `nodes` vid total tid `time`.
+    /// Temperatures at the nodes `nodes` at total time `time`.
     pub fn at(&self, nodes: &[usize], time: f64) -> Vec<f64> {
         let seg = self.segments.iter().find(|s| time <= s.start + s.period * (1.0 + 1e-12));
         match seg {

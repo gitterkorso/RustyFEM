@@ -1,9 +1,9 @@
-//! Step-ramverket: en sekvens av steps (*STEP) med ärvt tillstånd.
+//! The step framework: a sequence of steps (*STEP) with inherited state.
 //!
-//! Varje steg-typ är en egen modul som exporterar
-//! `pub static STEP_TYPES: &[&dyn StepType]`. Registrera en ny modul med EN
-//! rad i listan nedan (alfabetisk ordning). `newton.rs` är den gemensamma
-//! Newton–Raphson-drivern.
+//! Each step type is its own module that exports
+//! `pub static STEP_TYPES: &[&dyn StepType]`. Register a new module with ONE
+//! line in the list below (alphabetical order). `newton.rs` is the shared
+//! Newton–Raphson driver.
 
 mod api;
 pub mod newton;
@@ -20,7 +20,7 @@ use crate::model::{fail, FemError, Result};
 macro_rules! step_modules {
     ($($m:ident),* $(,)?) => {
         $(pub mod $m;)*
-        /// Alla registrerade steg-typer.
+        /// All registered step types.
         pub fn all() -> Vec<&'static dyn StepType> {
             let mut v: Vec<&'static dyn StepType> = Vec::new();
             $(v.extend($m::STEP_TYPES.iter().copied());)*
@@ -29,7 +29,7 @@ macro_rules! step_modules {
     };
 }
 
-// En rad per steg-typ, i alfabetisk ordning.
+// One line per step type, in alphabetical order.
 step_modules! {
     acoustic,
     adiabatic,
@@ -68,19 +68,19 @@ step_modules! {
     xfem_contour,
 }
 
-/// Kör alla steps i modellen i följd. Returnerar utdata och sluttillståndet.
+/// Runs all steps in the model in sequence. Returns the output and the final state.
 pub fn run(model: &FeModel, opts: &RunOptions) -> Result<(AnalysisOutput, SolutionState)> {
     if model.steps.is_empty() {
-        return fail("modellen har inga steg (*STEP ... *END STEP)");
+        return fail("the model has no steps (*STEP ... *END STEP)");
     }
     if let Some(s) = &opts.settings {
         crate::settings::set(s.clone());
     }
-    // submodellering: *BOUNDARY, SUBMODEL får värden från globalmodellen (steps/submodel.rs)
+    // submodeling: *BOUNDARY, SUBMODEL gets values from the global model (steps/submodel.rs)
     let submodel = crate::steps::submodel::prepare(model)?;
     let model = submodel.as_ref().unwrap_or(model);
     newton::reset_time_average();
-    // användarrutinernas körkontext och fältvariablerna (user/context.rs)
+    // the user routines' execution context and the field variables (user/context.rs)
     let _user_ctx = crate::user::context::begin_analysis(model)?;
     let prep = Prepared::new(model)?;
     mpc::check(&prep)?;
@@ -89,7 +89,7 @@ pub fn run(model: &FeModel, opts: &RunOptions) -> Result<(AnalysisOutput, Soluti
     let mut state = SolutionState::new(model);
     state.elem_state = prep.init_states()?;
     crate::materials::initial_state::apply(&prep, &mut state)?;
-    crate::materials::porous_metal::apply_relative_density(&prep, &mut state)?; // område materials5
+    crate::materials::porous_metal::apply_relative_density(&prep, &mut state)?; // area materials5
     for b in &model.initial_bcs {
         if b.op_new {
             state.bcs.clear();
@@ -102,7 +102,7 @@ pub fn run(model: &FeModel, opts: &RunOptions) -> Result<(AnalysisOutput, Soluti
             }
         }
     }
-    // *RESTART, READ: tillståndet från omstartfilen (steps/restart.rs)
+    // *RESTART, READ: the state from the restart file (steps/restart.rs)
     let mut restart = crate::steps::restart::before_run(model, &prep, &mut state)?;
     let types = all();
     let mut out = AnalysisOutput::default();
@@ -111,28 +111,28 @@ pub fn run(model: &FeModel, opts: &RunOptions) -> Result<(AnalysisOutput, Soluti
             continue;
         }
         let nlgeom = if step.perturbation { state.nlgeom } else { step.nlgeom.unwrap_or(state.nlgeom) };
-        let wrap = |e: FemError| FemError(format!("steg {} ({}): {}", i + 1, step.name, e.0));
+        let wrap = |e: FemError| FemError(format!("step {} ({}): {}", i + 1, step.name, e.0));
         let chosen = types.iter().filter_map(|t| t.claim_model(step, nlgeom, model).map(|p| (p, *t))).max_by_key(|(p, _)| *p);
         let Some((_, ty)) = chosen else {
-            let what = if step.procedure_name().is_empty() { "utan procedur".to_string() } else { format!("*{}", step.procedure_name()) };
-            let nl = if nlgeom { " med NLGEOM=YES" } else { "" };
-            return Err(wrap(FemError(format!("steg-typen {what}{nl} stöds inte ännu (se src/steps/)"))));
+            let what = if step.procedure_name().is_empty() { "without procedure".to_string() } else { format!("*{}", step.procedure_name()) };
+            let nl = if nlgeom { " with NLGEOM=YES" } else { "" };
+            return Err(wrap(FemError(format!("the step type {what}{nl} is not supported yet (see src/steps/)"))));
         };
         let (loads, prop) = StepLoads::build_with(model, step, &state, &prep.active, ty.uses_amplitudes()).map_err(wrap)?;
         if opts.verbose {
             for w in &prop.warnings {
-                eprintln!("varning: {w}");
+                eprintln!("warning: {w}");
             }
         }
         if opts.verbose {
-            eprintln!("steg {} ({}): {}", i + 1, step.name, ty.name());
+            eprintln!("step {} ({}): {}", i + 1, step.name, ty.name());
         }
-        // *STATIC, SOLVER=ITERATIVE och *STEP, UNSYMM=YES väljer lösare per steg
+        // *STATIC, SOLVER=ITERATIVE and *STEP, UNSYMM=YES select the solver per step
         let solver = crate::solver::iterative::for_step(step, solver, opts.solver.is_some() || crate::settings::with(|s| s.solver.is_some())).map_err(wrap)?;
         let solver = crate::materials::principal::auto_unsymmetric(step, &prep, solver, opts.solver.is_some() || crate::settings::with(|s| s.solver.is_some()));
-        // C3D4H (nodvisa tryckfrihetsgrader): sadelpunktssystem, indefinit lösare (elements/hybrid_tet.rs)
+        // C3D4H (nodal pressure degrees of freedom): saddle point system, indefinite solver (elements/hybrid_tet.rs)
         let solver = crate::elements::hybrid_tet::auto_solver(model, solver, opts.solver.is_some() || crate::settings::with(|s| s.solver.is_some()) || step.header.has("SOLVER") || step.header.has("UNSYMM"));
-        // område cavity: vätskefyllda kaviteter ger ett sadelpunktssystem (interactions/cavity.rs)
+        // area cavity: fluid-filled cavities give a saddle point system (interactions/cavity.rs)
         let solver = crate::interactions::cavity::auto_solver(model, solver, opts.solver.is_some() || crate::settings::with(|s| s.solver.is_some()) || step.header.has("SOLVER") || step.header.has("UNSYMM"));
         let base = step.perturbation.then(|| state.clone());
         // *MODEL CHANGE (steps/model_change.rs)
@@ -140,7 +140,7 @@ pub fn run(model: &FeModel, opts: &RunOptions) -> Result<(AnalysisOutput, Soluti
         if !step.perturbation {
             state.nlgeom = nlgeom;
         }
-        // tidsberoende material (krypning, viskoelasticitet) aktiveras per procedur
+        // time-dependent materials (creep, viscoelasticity) are activated per procedure
         crate::materials::time_dependence::begin_step(model, &prep.materials, step, nlgeom);
         crate::progress::emit(crate::progress::Event::Step { index: i, name: &step.name, procedure: step.procedure_name() }).map_err(wrap)?;
         crate::user::context::begin_step(i + 1, state.time, crate::user::context::step_period(step), crate::user::context::procedure_code(step, nlgeom), nlgeom, step.perturbation);
@@ -158,7 +158,7 @@ pub fn run(model: &FeModel, opts: &RunOptions) -> Result<(AnalysisOutput, Soluti
             Some(b) => state = b,
             None => {
                 state.bcs = prop.bcs;
-                // *BOUNDARY, USER: värdet som DISP gav vid stegets slut ärvs (user/loads.rs)
+                // *BOUNDARY, USER: the value DISP gave at the end of the step is inherited (user/loads.rs)
                 for b in &loads.user_bc {
                     state.bcs.insert((b.node, b.slot), state.u[b.node][b.slot]);
                 }

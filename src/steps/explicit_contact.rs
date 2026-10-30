@@ -1,58 +1,58 @@
-//! Kontakt i explicit dynamik: *CONTACT (general contact) och *CONTACT PAIR
-//! med straffmetod, nod mot yta, och Coulombfriktion.
+//! Contact in explicit dynamics: *CONTACT (general contact) and *CONTACT PAIR
+//! with the penalty method, node-to-surface, and Coulomb friction.
 //!
-//! Normalkraften för en slavnod med genomträngningen p (mot masterytans
-//! utåtriktade normal) är, i general contact,
+//! The normal force for a slave node with penetration p (against the master surface's
+//! outward normal) is, in general contact,
 //!
 //! ```text
-//! F(i) = m/Δt(i)² · (κ p(i) + γ (p(i) − p(i−1))),   κ = 0,5436, γ = 0,0422
+//! F(i) = m/Δt(i)² · (κ p(i) + γ (p(i) − p(i−1))),   κ = 0.5436, γ = 0.0422
 //! ```
 //!
-//! där m är den minsta av slavnodens och masterytans nodmassor och Δt aktuellt
-//! inkrement: en massbaserad straffstyvhet (oberoende av materialets styvhet)
-//! med en liten viskös del. Formen är kontrollerad för en kub som
-//! faller på ett block: kraften i varje inkrement (reaktion i det fasta
-//! blocket och rörelsemängden i ett fritt block) är linjär i p(i) och
-//! p(i) − p(i−1), skalar med densiteten och 1/Δt² (Δt = 5·10⁻⁸ och 10⁻⁷) och
-//! är densamma när masterkroppen är fast, fri eller tre gånger tyngre.
-//! Kraften verkar på slavnoden längs normalen och på masterytans noder med
-//! formfunktionerna i projektionspunkten.
+//! where m is the smaller of the slave node's and the master surface's nodal masses and Δt the current
+//! increment: a mass-based penalty stiffness (independent of the material stiffness)
+//! with a small viscous part. The form has been checked for a cube
+//! falling onto a block: the force in each increment (reaction in the fixed
+//! block and momentum in a free block) is linear in p(i) and
+//! p(i) − p(i−1), scales with the density and 1/Δt² (Δt = 5·10⁻⁸ and 10⁻⁷) and
+//! is the same when the master body is fixed, free or three times heavier.
+//! The force acts on the slave node along the normal and on the master surface's nodes with
+//! the shape functions at the projection point.
 //!
-//! Den viskösa delen motsvarar standarddämpningen för straffkontakt
-//! (*CONTACT DAMPING, DEFINITION=CRITICAL DAMPING FRACTION, B = 0,03:
-//! f = B √(4 m k) ṗ med k = κ m/Δt² ger γ = 2B√κ = 0,044 ≈ 0,0422). Med
+//! The viscous part corresponds to the default damping for penalty contact
+//! (*CONTACT DAMPING, DEFINITION=CRITICAL DAMPING FRACTION, B = 0.03:
+//! f = B √(4 m k) ṗ with k = κ m/Δt² gives γ = 2B√κ = 0.044 ≈ 0.0422). With
 //! *CONTACT DAMPING (CRITICAL DAMPING FRACTION) under *SURFACE INTERACTION
-//! skalas γ med B/0,03.
+//! γ is scaled by B/0.03.
 //!
-//! - *CONTACT, *CONTACT INCLUSIONS (ALL EXTERIOR eller ytpar),
-//!   *CONTACT PROPERTY ASSIGNMENT: balanserad master–slav (varje yta är slav
-//!   mot den andra med vikten ½). ALL EXTERIOR
-//!   ger de yttre elementytorna för varje sammanhängande kropp: solider,
-//!   plana element, skal och membran. Varje kropp har också självkontakt
-//!   (noder mot kroppens egna ytor som inte delar noden; ytor djupare än
-//!   halva masterelementet och ytor som inte vetter mot slavnodens yta räknas
-//!   inte). En yta i *CONTACT INCLUSIONS utan motyta ger självkontakt för ytan.
-//! - Skal och membran i general contact är dubbelsidiga med kontakttjockleken
-//!   (halva skaltjockleken på var sida om mittytan, som standard
-//!   `*SURFACE PROPERTY ASSIGNMENT, PROPERTY=THICKNESS` ORIGINAL); ett
-//!   tal på dataraden ger en nominell tjocklek och tredje fältet en
-//!   skalfaktor. Tjockleken begränsas till 45 % av den kortaste kanten (`THICKNESS_FRACTION`,
-//!   avläst: S4R 1 cm med t = 6 mm får kontakt först efter 2,2–2,3 mm i
-//!   stället för 3 mm, t = 2 mm hela tjockleken). Sidan väljs efter var noden befann sig vid kontaktens
-//!   början. Kontakttjockleken gäller både när skalet är master och när
-//!   skalets noder är slavar.
-//! - *CONTACT PAIR: ren master–slav (första ytan slav) med samma straffkraft.
-//!   OBS: kinematisk kontakt (standard för kontaktpar) och den elementbaserade
-//!   straffstyvheten med MECHANICAL CONSTRAINT=PENALTY ersätts båda med den
-//!   massbaserade straffkraften.
-//! - Friktion (*FRICTION μ): tangentiell straffjäder med samma styvhet
-//!   m κ/Δt² som normalkraften och glidning när |F_t| > μ F (radiell återföring).
+//! - *CONTACT, *CONTACT INCLUSIONS (ALL EXTERIOR or surface pairs),
+//!   *CONTACT PROPERTY ASSIGNMENT: balanced master–slave (each surface is slave
+//!   to the other with weight ½). ALL EXTERIOR
+//!   gives the exterior element faces of each connected body: solids,
+//!   planar elements, shells and membranes. Each body also has self-contact
+//!   (nodes against the body's own faces that do not share the node; faces deeper than
+//!   half the master element and faces not facing the slave node's surface are not
+//!   counted). A surface in *CONTACT INCLUSIONS without a counter surface gives self-contact for the surface.
+//! - Shells and membranes in general contact are double-sided with the contact thickness
+//!   (half the shell thickness on each side of the midsurface, by default
+//!   `*SURFACE PROPERTY ASSIGNMENT, PROPERTY=THICKNESS` ORIGINAL); a
+//!   number on the data line gives a nominal thickness and the third field a
+//!   scale factor. The thickness is limited to 45 % of the shortest edge (`THICKNESS_FRACTION`,
+//!   observed: S4R 1 cm with t = 6 mm gets contact only after 2.2–2.3 mm
+//!   instead of 3 mm, t = 2 mm the full thickness). The side is chosen from where the node was at the start
+//!   of contact. The contact thickness applies both when the shell is master and when
+//!   the shell's nodes are slaves.
+//! - *CONTACT PAIR: pure master–slave (first surface is slave) with the same penalty force.
+//!   NOTE: kinematic contact (default for contact pairs) and the element-based
+//!   penalty stiffness with MECHANICAL CONSTRAINT=PENALTY are both replaced by the
+//!   mass-based penalty force.
+//! - Friction (*FRICTION μ): tangential penalty spring with the same stiffness
+//!   m κ/Δt² as the normal force and slip when |F_t| > μ F (radial return).
 //!
-//! Kanter mot kanter (kant-mot-kant-kontakt i general contact, t.ex.
-//! korsande skalkanter) stöds inte: bara noder mot ytor.
+//! Edge-to-edge (edge-to-edge contact in general contact, e.g.
+//! crossing shell edges) is not supported: only nodes against surfaces.
 //!
-//! Kontaktkrafterna ingår i reaktionerna; friktionsarbetet ger ALLFD och
-//! normalkrafternas arbete ALLPW.
+//! The contact forces are included in the reactions; the friction work gives ALLFD and
+//! the work of the normal forces ALLPW.
 
 use super::mass::LumpedMass;
 use crate::elements::common::{cross, dot, norm, sub};
@@ -65,24 +65,24 @@ use crate::interactions::geom::{self, Facet};
 use crate::model::{fail, Result};
 use std::collections::BTreeMap;
 
-/// Straffstyvhetens och dämpningens koefficienter (se modulens dokumentation).
+/// Coefficients of the penalty stiffness and damping (see the module documentation).
 pub const KAPPA: f64 = 0.5436;
 pub const GAMMA: f64 = 0.0422;
-/// Största kontakttjocklek för skal relativt facettens kortaste kant.
+/// Largest contact thickness for shells relative to the facet's shortest edge.
 pub const THICKNESS_FRACTION: f64 = 0.45;
-/// Standarddämpning B för straffkontakt (motsvarar `GAMMA`).
+/// Default damping B for penalty contact (corresponds to `GAMMA`).
 pub const DEFAULT_DAMPING: f64 = 0.03;
 
-/// Egenskaper ur *SURFACE INTERACTION.
+/// Properties from *SURFACE INTERACTION.
 #[derive(Clone, Copy)]
 struct Props {
     mu: f64,
-    /// Den viskösa koefficienten γ.
+    /// The viscous coefficient γ.
     gamma: f64,
-    /// Område acoustics2: *CONTACT DAMPING, DEFINITION=DAMPING COEFFICIENT μ₀
-    /// (tryck per hastighet; kraft per hastighet för nodytor) i stället för γ.
+    /// Area acoustics2: *CONTACT DAMPING, DEFINITION=DAMPING COEFFICIENT μ₀
+    /// (pressure per velocity; force per velocity for node surfaces) instead of γ.
     coeff: Option<f64>,
-    /// Område acoustics2: TANGENT FRACTION (dämpning av den elastiska glidhastigheten).
+    /// Area acoustics2: TANGENT FRACTION (damping of the elastic slip velocity).
     tangent: Option<f64>,
 }
 
@@ -94,35 +94,35 @@ impl Default for Props {
 
 struct Pair {
     slaves: Vec<usize>,
-    /// Slavytans facetter (för slavnodernas normaler; tom för nodytor).
+    /// Facets of the slave surface (for the slave nodes' normals; empty for node surfaces).
     slave_faces: Vec<Facet>,
     master: Vec<Facet>,
-    /// Kontakttjocklekens halva per masterfacett (0 för solider) och om
-    /// facetten är dubbelsidig (skal, membran).
+    /// Half the contact thickness per master facet (0 for solids) and whether
+    /// the facet is double-sided (shell, membrane).
     master_off: Vec<f64>,
     master_shell: Vec<bool>,
-    /// Halva kontakttjockleken i slavnoden och om noden hör till ett skal.
+    /// Half the contact thickness at the slave node and whether the node belongs to a shell.
     slave_off: Vec<f64>,
     slave_shell: Vec<bool>,
     weight: f64,
     props: Props,
-    /// Föregående genomträngning, tangentialkraft och sida (skal) per slavnod.
+    /// Previous penetration, tangential force and side (shell) per slave node.
     prev: Vec<f64>,
     ft: Vec<[f64; 3]>,
     side: Vec<f64>,
-    /// Område acoustics2: slavnodernas area (1 för nodytor) för DAMPING COEFFICIENT.
+    /// Area acoustics2: area of the slave nodes (1 for node surfaces) for DAMPING COEFFICIENT.
     slave_area: Vec<f64>,
 }
 
 pub struct ExplicitContact {
     pairs: Vec<Pair>,
-    /// Kontaktkraft per nod efter senaste utvärdering (för utdata).
+    /// Contact force per node after the latest evaluation (for output).
     last: Vec<NodeVec>,
 }
 
-/// Alla steg är *DYNAMIC, EXPLICIT: den implicita kontakten
-/// (`interactions/contact.rs`) byggs då inte (självkontakt, *CONTACT DAMPING
-/// och skal i general contact finns bara här).
+/// All steps are *DYNAMIC, EXPLICIT: the implicit contact
+/// (`interactions/contact.rs`) is then not built (self-contact, *CONTACT DAMPING
+/// and shells in general contact only exist here).
 pub fn only_explicit(m: &FeModel) -> bool {
     !m.steps.is_empty() && m.steps.iter().all(|s| s.procedure.as_ref().is_some_and(|p| p.name == "DYNAMIC" && p.has("EXPLICIT")))
 }
@@ -131,7 +131,7 @@ fn is_shell(f: Family) -> bool {
     matches!(f, Family::Shell | Family::Membrane)
 }
 
-/// Yttre elementytor per sammanhängande kropp (solider, plana element, skal och membran).
+/// Exterior element faces per connected body (solids, planar elements, shells and membranes).
 fn exterior(m: &FeModel) -> Vec<Vec<(usize, usize)>> {
     let mut count: BTreeMap<Vec<usize>, Vec<(usize, usize)>> = BTreeMap::new();
     for (e, el) in m.elements.iter().enumerate() {
@@ -178,7 +178,7 @@ fn exterior(m: &FeModel) -> Vec<Vec<(usize, usize)>> {
     bodies.into_values().collect()
 }
 
-/// Facetter för elementytor (element, ytindex).
+/// Facets for element faces (element, face index).
 fn facets_of(m: &FeModel, faces: &[(usize, usize)]) -> Vec<Facet> {
     faces
         .iter()
@@ -192,7 +192,7 @@ fn facets_of(m: &FeModel, faces: &[(usize, usize)]) -> Vec<Facet> {
             };
             let mut inside = crate::elements::common::centroid(&xs);
             if is_shell(el.etype.family()) && nodes.len() >= 3 {
-                // skal: punkten "inuti" på mittytans negativa sida (normalen = SPOS)
+                // shell: the "inside" point on the negative side of the midsurface (normal = SPOS)
                 let xf: Vec<[f64; 3]> = nodes.iter().map(|&n| m.nodes[n]).collect();
                 let nn = cross(sub(xf[1], xf[0]), sub(xf[xf.len() - 1], xf[0]));
                 let l = norm(nn).max(1e-300);
@@ -211,29 +211,29 @@ fn nodes_of_facets(fs: &[Facet]) -> Vec<usize> {
     v
 }
 
-/// Egenskaperna för *SURFACE INTERACTION `name`: friktion och kontaktdämpning.
+/// The properties of *SURFACE INTERACTION `name`: friction and contact damping.
 fn properties(m: &FeModel, kw: &RawKeyword, name: &str) -> Result<Props> {
     let up = name.trim().to_uppercase();
     let Some(pos) = m.extra.iter().position(|k| k.name == "SURFACE INTERACTION" && k.param_upper("NAME").as_deref() == Some(up.as_str())) else {
-        return kw.err(format!("*SURFACE INTERACTION, NAME={name} finns inte"));
+        return kw.err(format!("*SURFACE INTERACTION, NAME={name} does not exist"));
     };
     let mut pr = Props::default();
     for sub in m.extra.iter().skip(pos + 1).take_while(|k| matches!(k.name.as_str(), "SURFACE BEHAVIOR" | "FRICTION" | "CONTACT DAMPING")) {
         match sub.name.as_str() {
             "FRICTION" => {
                 if sub.has("ROUGH") || sub.data.len() > 1 || sub.has("ANISOTROPIC") || sub.has("DEPENDENCIES") {
-                    return sub.err("bara isotrop Coulombfriktion med en konstant μ stöds i explicit dynamik");
+                    return sub.err("only isotropic Coulomb friction with a constant μ is supported in explicit dynamics");
                 }
                 pr.mu = sub.first_floats()?.first().copied().unwrap_or(0.0);
             }
             "SURFACE BEHAVIOR" => {
                 let po = sub.param_upper("PRESSURE-OVERCLOSURE").unwrap_or_else(|| "HARD".into());
                 if po != "HARD" || sub.has("NO SEPARATION") {
-                    return sub.err("bara hård kontakt (PRESSURE-OVERCLOSURE=HARD) stöds i explicit dynamik");
+                    return sub.err("only hard contact (PRESSURE-OVERCLOSURE=HARD) is supported in explicit dynamics");
                 }
             }
             _ => {
-                // område acoustics2: DAMPING COEFFICIENT och TANGENT FRACTION
+                // area acoustics2: DAMPING COEFFICIENT and TANGENT FRACTION
                 let d = crate::interactions::contact::damping::parse(sub, true)?;
                 if d.critical {
                     pr.gamma = GAMMA * d.mu0 / DEFAULT_DAMPING;
@@ -248,13 +248,13 @@ fn properties(m: &FeModel, kw: &RawKeyword, name: &str) -> Result<Props> {
     Ok(pr)
 }
 
-/// Underordnade nyckelord direkt efter `kw` i modellens lista.
+/// Sub-keywords directly after `kw` in the model's list.
 fn sub_options<'a>(m: &'a FeModel, kw: &RawKeyword, names: &[&str]) -> Vec<&'a RawKeyword> {
     let Some(i) = m.extra.iter().position(|k| std::ptr::eq(k, kw)) else { return Vec::new() };
     m.extra.iter().skip(i + 1).take_while(|k| names.contains(&k.name.as_str())).collect()
 }
 
-/// Skalets (membranets) tjocklek ur tvärsnittet.
+/// Thickness of the shell (membrane) from the section.
 fn shell_thickness(m: &FeModel, e: usize) -> f64 {
     let Some(si) = m.elements[e].section else { return 0.0 };
     let s = &m.sections[si];
@@ -264,26 +264,26 @@ fn shell_thickness(m: &FeModel, e: usize) -> f64 {
     }
 }
 
-/// Kontakttjocklek per element ur *SURFACE PROPERTY ASSIGNMENT, PROPERTY=THICKNESS
-/// (`None` = skalets tjocklek): (nominell tjocklek eller `None` = ORIGINAL, skalfaktor).
+/// Contact thickness per element from *SURFACE PROPERTY ASSIGNMENT, PROPERTY=THICKNESS
+/// (`None` = the shell thickness): (nominal thickness or `None` = ORIGINAL, scale factor).
 type Thickness = Vec<(Option<f64>, f64)>;
 
 fn thickness_rules(m: &FeModel, subs: &[&RawKeyword]) -> Result<Thickness> {
     let mut t: Thickness = vec![(None, 1.0); m.elements.len()];
     for s in subs.iter().filter(|s| s.name == "SURFACE PROPERTY ASSIGNMENT") {
         if s.param_upper("PROPERTY").as_deref() != Some("THICKNESS") {
-            return s.err("*SURFACE PROPERTY ASSIGNMENT: bara PROPERTY=THICKNESS stöds i explicit dynamik");
+            return s.err("*SURFACE PROPERTY ASSIGNMENT: only PROPERTY=THICKNESS is supported in explicit dynamics");
         }
         for d in &s.data {
             let f: Vec<&str> = d.fields.iter().map(|x| x.trim()).collect();
             let what = f.get(1).copied().unwrap_or("ORIGINAL").to_uppercase();
             let nominal = match what.as_str() {
                 "" | "ORIGINAL" => None,
-                "CURRENT" | "THINNING" => return s.err_at(d.line, format!("{what} stöds inte (ORIGINAL eller ett tal)")),
-                v => Some(crate::fem::model::parse_f64(v).ok_or_else(|| crate::model::FemError(format!("{}: ogiltig tjocklek '{v}'", s.location())))?),
+                "CURRENT" | "THINNING" => return s.err_at(d.line, format!("{what} is not supported (ORIGINAL or a number)")),
+                v => Some(crate::fem::model::parse_f64(v).ok_or_else(|| crate::model::FemError(format!("{}: invalid thickness '{v}'", s.location())))?),
             };
             let scale = match f.get(2).filter(|x| !x.is_empty()) {
-                Some(v) => crate::fem::model::parse_f64(v).ok_or_else(|| crate::model::FemError(format!("{}: ogiltig skalfaktor '{v}'", s.location())))?,
+                Some(v) => crate::fem::model::parse_f64(v).ok_or_else(|| crate::model::FemError(format!("{}: invalid scale factor '{v}'", s.location())))?,
                 None => 1.0,
             };
             let elems: Vec<usize> = match f.first().filter(|x| !x.is_empty()) {
@@ -309,7 +309,7 @@ impl Pair {
                 return 0.0;
             }
             let (nom, sc) = thick[e];
-            // kontakttjockleken begränsas till 45 % av den kortaste kanten
+            // the contact thickness is limited to 45 % of the shortest edge
             let el = &m.elements[e];
             let xs: Vec<[f64; 3]> = el.nodes.iter().map(|&n| m.nodes[n]).collect();
             let edge = (0..xs.len()).map(|i| norm(sub(xs[(i + 1) % xs.len()], xs[i]))).fold(f64::INFINITY, f64::min);
@@ -342,7 +342,7 @@ impl Pair {
         Pair { slaves, slave_faces, master, master_off, master_shell, slave_off, slave_shell, weight, props, prev: vec![0.0; n], ft: vec![[0.0; 3]; n], side: vec![0.0; n], slave_area }
     }
 
-    /// Nodyta som slav (ingen tjocklek, inga normaler).
+    /// Node surface as slave (no thickness, no normals).
     fn nodes(m: &FeModel, slaves: Vec<usize>, master: Vec<Facet>, props: Props, thick: &Thickness) -> Pair {
         let mut p = Pair::new(m, Vec::new(), master, 1.0, props, thick);
         let n = slaves.len();
@@ -358,7 +358,7 @@ impl Pair {
 }
 
 impl ExplicitContact {
-    /// Bygger kontakten från modellens *CONTACT och *CONTACT PAIR. `None` om kontakt saknas.
+    /// Builds the contact from the model's *CONTACT and *CONTACT PAIR. `None` if there is no contact.
     pub fn build(p: &Prepared, _step: &StepDef) -> Result<Option<Self>> {
         let m = p.model;
         let mut pairs = Vec::new();
@@ -371,7 +371,7 @@ impl ExplicitContact {
                     let mut selfs: Vec<String> = Vec::new();
                     let mut all = false;
                     let mut props = Props::default();
-                    // område explicit_adv: fel i egenskaperna gäller bara par utan partiklar
+                    // area explicit_adv: errors in the properties only apply to pairs without particles
                     let mut prop_err: Option<crate::model::FemError> = None;
                     let mut adv_pairs = 0usize;
                     for s in &subs {
@@ -391,14 +391,14 @@ impl ExplicitContact {
                                 for d in &s.data {
                                     let f: Vec<&str> = d.fields.iter().map(|x| x.trim()).collect();
                                     if f.len() >= 3 && !f[2].is_empty() {
-                                        // område explicit_adv: partikelpar läses av explicit_adv_dem.rs
+                                        // area explicit_adv: particle pairs are read by explicit_adv_dem.rs
                                         if !f[0].is_empty() && super::adv::dem::is_particle_pair(m, f[0], f[1]) {
                                             continue;
                                         }
                                         if !f[0].is_empty() || !f[1].is_empty() {
-                                            return s.err_at(d.line, "egenskaper per ytpar stöds inte (skriv ' , , INTERAKTION')");
+                                            return s.err_at(d.line, "properties per surface pair are not supported (write ' , , INTERACTION')");
                                         }
-                                        // område explicit_adv: egenskaper som bara partikelkontakten stöder
+                                        // area explicit_adv: properties that only the particle contact supports
                                         props = match properties(m, s, f[2]) {
                                             Ok(pr) => pr,
                                             Err(e) => {
@@ -410,7 +410,7 @@ impl ExplicitContact {
                                 }
                             }
                             "CONTACT CONTROLS ASSIGNMENT" | "CONTACT FORMULATION" | "SURFACE PROPERTY ASSIGNMENT" => {}
-                            _ => return s.err("stöds inte i explicit dynamik"),
+                            _ => return s.err("is not supported in explicit dynamics"),
                         }
                     }
                     let thick = thickness_rules(m, &subs)?;
@@ -422,11 +422,11 @@ impl ExplicitContact {
                                 pairs.push(Pair::new(m, bodies[a].clone(), bodies[b].clone(), 0.5, props, &thick));
                                 pairs.push(Pair::new(m, bodies[b].clone(), bodies[a].clone(), 0.5, props, &thick));
                             }
-                            // självkontakt (en kropps kontakt med sig själv)
+                            // self-contact (a body's contact with itself)
                             pairs.push(Pair::new(m, bodies[a].clone(), bodies[a].clone(), 0.5, props, &thick));
                         }
                     }
-                    // område explicit_adv: par med partikelytor (PD3D, PC3D) sköts av explicit_adv_dem.rs
+                    // area explicit_adv: pairs with particle surfaces (PD3D, PC3D) are handled by explicit_adv_dem.rs
                     let n_all = surf_pairs.len() + selfs.len();
                     surf_pairs.retain(|(a, b)| !super::adv::dem::is_particle_pair(m, a, b));
                     selfs.retain(|a| !super::adv::dem::is_particle_pair(m, a, a));
@@ -451,7 +451,7 @@ impl ExplicitContact {
                         pairs.push(Pair::new(m, fa.clone(), fa, 0.5, props, &thick));
                     }
                     if pairs.len() == n0 && adv_pairs == 0 {
-                        return fail(format!("{}: *CONTACT utan kontaktytor (*CONTACT INCLUSIONS)", kw.location()));
+                        return fail(format!("{}: *CONTACT without contact surfaces (*CONTACT INCLUSIONS)", kw.location()));
                     }
                 }
                 "CONTACT PAIR" => {
@@ -459,7 +459,7 @@ impl ExplicitContact {
                     let props = properties(m, kw, ip)?;
                     if let Some(mc) = kw.param_upper("MECHANICAL CONSTRAINT") {
                         if mc != "PENALTY" && mc != "KINEMATIC" {
-                            return kw.err(format!("MECHANICAL CONSTRAINT={mc} stöds inte (PENALTY, KINEMATIC)"));
+                            return kw.err(format!("MECHANICAL CONSTRAINT={mc} is not supported (PENALTY, KINEMATIC)"));
                         }
                     }
                     for d in kw.records() {
@@ -468,11 +468,11 @@ impl ExplicitContact {
                             continue;
                         }
                         if f.len() < 2 {
-                            return kw.err_at(d.line, "skriv slavyta, masteryta");
+                            return kw.err_at(d.line, "write slave surface, master surface");
                         }
                         let sl = geom::surface(m, kw, f[0])?;
                         let master = geom::facets(m, geom::surface(m, kw, f[1])?, f[1])?;
-                        // kontaktpar: ingen kontakttjocklek (som utan *SURFACE PROPERTY)
+                        // contact pair: no contact thickness (as without *SURFACE PROPERTY)
                         if sl.kind == "NODE" {
                             let slaves = geom::surface_nodes(m, sl)?;
                             pairs.push(Pair::nodes(m, slaves, master, props, &none));
@@ -495,9 +495,9 @@ impl ExplicitContact {
         Ok(Some(ExplicitContact { pairs, last: vec![[0.0; crate::fem::dof::SLOTS]; m.nodes.len()] }))
     }
 
-    /// Kontaktkrafter på noderna (läggs i `f`) för förskjutningen `u` efter ett
-    /// inkrement `dt` med förskjutningsändringen `du`. Returnerar
-    /// friktionsdissipationen i inkrementet.
+    /// Contact forces on the nodes (added to `f`) for the displacement `u` after an
+    /// increment `dt` with the displacement change `du`. Returns
+    /// the friction dissipation in the increment.
     #[allow(clippy::too_many_arguments)]
     pub fn forces(&mut self, m: &FeModel, u: &[NodeVec], du: &[NodeVec], dt: f64, mass: &LumpedMass, f: &mut [NodeVec], commit: bool) -> Result<f64> {
         let _ = commit;
@@ -507,7 +507,7 @@ impl ExplicitContact {
         let x = |n: usize| -> [f64; 3] { std::array::from_fn(|c| m.nodes[n][c] + u[n][c]) };
         let mut fd = 0.0;
         for pr in &mut self.pairs {
-            // facetternas aktuella koordinater och omslutande lådor
+            // current coordinates and bounding boxes of the facets
             let fx: Vec<Vec<[f64; 3]>> = pr.master.iter().map(|fc| fc.nodes.iter().map(|&n| x(n)).collect()).collect();
             let boxes: Vec<([f64; 3], [f64; 3], f64)> = fx
                 .iter()
@@ -525,8 +525,8 @@ impl ExplicitContact {
                     (lo, hi, size)
                 })
                 .collect();
-            // halva masterelementets djup längs normalen (avstånd yta–elementets
-            // tyngdpunkt); för skal hela kontakttjockleken
+            // half the depth of the master element along the normal (distance surface–element
+            // centroid); for shells the full contact thickness
             let depth: Vec<f64> = pr
                 .master
                 .iter()
@@ -543,7 +543,7 @@ impl ExplicitContact {
                     norm(sub(cf, ce))
                 })
                 .collect();
-            // slavnodernas utåtriktade normaler (medel av slavytans facetter)
+            // outward normals of the slave nodes (mean of the slave surface's facets)
             let mut sn: BTreeMap<usize, [f64; 3]> = BTreeMap::new();
             for fc in &pr.slave_faces {
                 if is_shell(m.elements[fc.elem].etype.family()) {
@@ -562,7 +562,7 @@ impl ExplicitContact {
             }
             for (k, &s) in pr.slaves.iter().enumerate() {
                 let xs = x(s);
-                // skalnoder (dubbelsidiga) har ingen bestämd normal
+                // shell nodes (double-sided) have no definite normal
                 let ns = if pr.slave_shell[k] {
                     None
                 } else {
@@ -585,8 +585,8 @@ impl ExplicitContact {
                     let (xi, _, inside) = geom::project(fc, &fx[fi], xs);
                     let fp = geom::eval(fc, &fx[fi], xi);
                     if !inside {
-                        // noder precis på facettens kant eller hörn (t.ex. symmetriska
-                        // kroppar som möts nod mot nod) räknas som innanför
+                        // nodes exactly on the facet's edge or corner (e.g. symmetric
+                        // bodies meeting node to node) count as inside
                         let r = sub(xs, fp.x);
                         let dn = dot(r, fp.normal);
                         let t = norm([r[0] - dn * fp.normal[0], r[1] - dn * fp.normal[1], r[2] - dn * fp.normal[2]]);
@@ -595,7 +595,7 @@ impl ExplicitContact {
                         }
                     }
                     let off = pr.master_off[fi] + soff;
-                    // avstånd till mittytan längs normalen; skal: sidan från kontaktens början
+                    // distance to the midsurface along the normal; shell: the side from the start of contact
                     let d = dot(sub(xs, fp.x), fp.normal);
                     let (nrm, side, pen) = if pr.master_shell[fi] {
                         let sd = if pr.side[k] != 0.0 { pr.side[k] } else if d >= 0.0 { 1.0 } else { -1.0 };
@@ -603,12 +603,12 @@ impl ExplicitContact {
                     } else {
                         (fp.normal, 0.0, off - d)
                     };
-                    // bara ytor som vetter mot slavnodens egen yta (motriktade normaler)
+                    // only faces facing the slave node's own surface (opposite normals)
                     if ns.is_some_and(|v| dot(v, nrm) > -0.3) {
                         continue;
                     }
-                    // noder i ytans plan (t.ex. hörn på en sidoyta) räknas inte, och
-                    // inte heller noder djupare än halva masterelementet (bakifrån)
+                    // nodes in the plane of the face (e.g. corners on a side face) are not counted, and
+                    // neither are nodes deeper than half the master element (from behind)
                     if pen <= 1e-9 * size || pen > depth[fi] + soff {
                         continue;
                     }
@@ -628,12 +628,12 @@ impl ExplicitContact {
                 let mm = fc.nodes.iter().map(|&n| mass.diag[n][0]).fold(f64::INFINITY, f64::min);
                 let meff = mass.diag[s][0].min(mm);
                 let kpen = meff / (dt * dt);
-                // område acoustics2: DAMPING COEFFICIENT ger den viskösa kraften μ₀ A ṗ
+                // area acoustics2: DAMPING COEFFICIENT gives the viscous force μ₀ A ṗ
                 let visc = match pr.props.coeff {
                     Some(c) => c * pr.slave_area[k] * (pen - pr.prev[k]) / dt,
                     None => kpen * pr.props.gamma * (pen - pr.prev[k]),
                 };
-                // viskös koefficient (kraft per hastighet) för TANGENT FRACTION
+                // viscous coefficient (force per velocity) for TANGENT FRACTION
                 let cvisc = match pr.props.coeff {
                     Some(c) => c * pr.slave_area[k],
                     None => kpen * pr.props.gamma * dt,
@@ -641,10 +641,10 @@ impl ExplicitContact {
                 let fnor = (kpen * KAPPA * pen + visc).max(0.0) * pr.weight;
                 pr.prev[k] = pen;
                 if crate::settings::with(|s| s.contact_debug) {
-                    eprintln!("kontakt: slav {s} yta {fi} pen {pen:.4e} F {fnor:.4e} meff {meff:.4e} dt {dt:.3e}");
+                    eprintln!("contact: slave {s} face {fi} pen {pen:.4e} F {fnor:.4e} meff {meff:.4e} dt {dt:.3e}");
                 }
                 let mut fv = [nrm[0] * fnor, nrm[1] * fnor, nrm[2] * fnor];
-                // friktion: tangentiell straffjäder på den relativa glidningen
+                // friction: tangential penalty spring on the relative slip
                 if pr.props.mu > 0.0 {
                     let mut ds = [0.0; 3];
                     for c in 0..3 {
@@ -666,15 +666,15 @@ impl ExplicitContact {
                             *v *= sc;
                         }
                     }
-                    // område acoustics2: TANGENT FRACTION – dämpning av den elastiska
-                    // glidhastigheten (ändringen av den elastiska glidningen −Δf_t/k_t)
+                    // area acoustics2: TANGENT FRACTION – damping of the elastic
+                    // slip velocity (the change of the elastic slip −Δf_t/k_t)
                     let mut fdamp = [0.0; 3];
                     if let Some(tf) = pr.props.tangent {
                         for c in 0..3 {
                             fdamp[c] = tf * cvisc * pr.weight * (ft[c] - (old[c] - on * nrm[c])) / (kt * dt);
                         }
                     }
-                    // dissipation = arbete på glidningen minus ändrad elastisk energi
+                    // dissipation = work on the slip minus the change in elastic energy
                     let w = -dot(ft, ds) - dot(fdamp, ds);
                     let de = (dot(ft, ft) - dot(old, old)) / (2.0 * kt);
                     fd += w - de;
@@ -695,25 +695,25 @@ impl ExplicitContact {
         Ok(fd)
     }
 
-    /// Kontaktkraften som nodfält CFORCE (summerat över alla
-    /// kontaktpar; används för egen kontroll).
+    /// The contact force as nodal field CFORCE (summed over all
+    /// contact pairs; used for internal checks).
     pub fn output(&self, _m: &FeModel, _fr: &mut FrameData) {}
 
-    /// (ALLFD, ALLPW) i inkrementet: friktionsdissipationen och normalkrafternas
-    /// arbete (kontaktkrafternas arbete plus friktionsdissipationen).
+    /// (ALLFD, ALLPW) in the increment: the friction dissipation and the work of the
+    /// normal forces (work of the contact forces plus the friction dissipation).
     pub fn energy_increment(&self, f0: &[NodeVec], f1: &[NodeVec], du: &[NodeVec], fric: f64) -> (f64, f64) {
         let w = super::energy::work(f0, f1, du);
         (fric, w + fric)
     }
 }
 
-/// Område acoustics2: facettens area (plana element: längd gånger tjocklek).
+/// Area acoustics2: area of the facet (planar elements: length times thickness).
 fn facet_area(m: &FeModel, f: &Facet) -> f64 {
     let x: Vec<[f64; 3]> = f.nodes.iter().map(|&n| m.nodes[n]).collect();
     if f.dim == 2 || x.len() == 2 || (x.len() == 3 && f.dim == 2) {
         return norm(sub(x[1], x[0])) * f.thick;
     }
-    // hörnen: 3 för trianglar (3 eller 6 noder), annars 4
+    // corners: 3 for triangles (3 or 6 nodes), otherwise 4
     let nc = if x.len() == 3 || x.len() == 6 { 3 } else { 4 };
     let mut a = [0.0; 3];
     for i in 1..nc - 1 {

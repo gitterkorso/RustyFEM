@@ -1,45 +1,45 @@
-//! Körkontext för användarrutiner och fältvariabler.
+//! Execution context for user subroutines and field variables.
 //!
-//! Användarrutinerna får stegnummer (KSTEP), inkrementnummer (KINC),
-//! stegtid och total tid (TIME(1), TIME(2)), elementnummer (NOEL),
-//! integrationspunkt (NPT), punktens läge (COORDS), elementets
-//! karakteristiska längd (CELENT) och fältvariablerna i punkten (PREDEF/FIELD).
-//! RustyFEMs element- och materialgränssnitt skickar inte allt detta, så det
-//! läggs här:
+//! User subroutines receive the step number (KSTEP), increment number (KINC),
+//! step time and total time (TIME(1), TIME(2)), element number (NOEL),
+//! integration point (NPT), the point's position (COORDS), the element's
+//! characteristic length (CELENT) and the field variables at the point (PREDEF/FIELD).
+//! RustyFEM's element and material interfaces do not pass all of this, so it
+//! lives here:
 //!
-//! - `Run` (en per analys, delas mellan trådar): steg, inkrement, stegets
-//!   starttid och längd, procedurkod, fälthistorien och begärt PNEWDT.
-//!   Skapas av `steps::run` (`begin_analysis`) och förs vidare till
-//!   arbetstrådarna i `par::map` (`current`/`install`).
-//! - `Point` (per tråd): elementet och integrationspunkten som utvärderas just
-//!   nu. Sätts av `fem::assembly::Prepared::ctx` (element, nodernas fält) och av
-//!   kontinuumkärnan (`elements::common::response`, `kinematics::continuum`)
-//!   för varje integrationspunkt (NPT, COORDS, CELENT).
+//! - `Run` (one per analysis, shared between threads): step, increment, the step's
+//!   start time and length, procedure code, the field history and requested PNEWDT.
+//!   Created by `steps::run` (`begin_analysis`) and passed on to the
+//!   worker threads in `par::map` (`current`/`install`).
+//! - `Point` (per thread): the element and integration point currently being
+//!   evaluated. Set by `fem::assembly::Prepared::ctx` (element, nodal fields) and by
+//!   the continuum kernel (`elements::common::response`, `kinematics::continuum`)
+//!   for each integration point (NPT, COORDS, CELENT).
 //!
-//! Utan körkontext (t.ex. när ett element anropas direkt i ett test) är
-//! KSTEP = KINC = 0, TIME(1) = TIME(2) och inga fält finns.
+//! Without an execution context (e.g. when an element is called directly in a test)
+//! KSTEP = KINC = 0, TIME(1) = TIME(2) and there are no fields.
 
 use std::cell::RefCell;
 use std::sync::atomic::{AtomicI32, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 
-/// Fälthistorien (nodvärden som funktion av tiden), se `materials::field_vars`.
+/// The field history (nodal values as a function of time), see `materials::field_vars`.
 pub type Fields = crate::materials::field_vars::FieldHistory;
 
-/// Analysens kontext (delas mellan trådarna).
+/// The analysis context (shared between threads).
 pub struct Run {
     kstep: AtomicI32,
     kinc: AtomicI32,
-    /// Procedurtyp som i JSTEP(2)/LFLAGS(1) (1 = statisk, 11 = implicit dynamik, 31 = värme ...).
+    /// Procedure type as in JSTEP(2)/LFLAGS(1) (1 = static, 11 = implicit dynamics, 31 = heat ...).
     procedure: AtomicI32,
     nlgeom: AtomicI32,
     perturbation: AtomicI32,
     step_start: AtomicU64,
     period: AtomicU64,
-    /// Minsta begärda PNEWDT i inkrementet (f64-bitar).
+    /// Smallest requested PNEWDT in the increment (f64 bits).
     pnewdt: AtomicU64,
     pub fields: Option<Arc<Fields>>,
-    /// Utskrifter (*NODE PRINT/*EL PRINT/*ENERGY PRINT) per steg, se `user::dat`.
+    /// Print output (*NODE PRINT/*EL PRINT/*ENERGY PRINT) per step, see `user::dat`.
     pub dat: Mutex<Vec<String>>,
 }
 
@@ -65,48 +65,48 @@ impl Run {
 }
 
 thread_local! {
-    /// Integrationspunkternas lägen som `set_ip` har sett (när inspelning pågår, `record_ips`).
+    /// Integration point positions seen by `set_ip` (while recording, `record_ips`).
     static RECORD: RefCell<Option<Vec<(usize, [f64; 3], f64)>>> = const { RefCell::new(None) };
     static RUN: RefCell<Option<Arc<Run>>> = const { RefCell::new(None) };
     static POINT: RefCell<Point> = RefCell::new(Point::default());
 }
 
-/// Materialpunkten som utvärderas just nu (per tråd).
+/// The material point currently being evaluated (per thread).
 #[derive(Debug, Clone, Default)]
 pub struct Point {
-    /// Elementindex i modellen (`usize::MAX` = okänt) och elementnummer i indatafilen.
+    /// Element index in the model (`usize::MAX` = unknown) and element number in the input file.
     pub elem: usize,
     pub noel: i64,
-    /// Integrationspunkt (1..), 0 = inte satt av elementet.
+    /// Integration point (1..), 0 = not set by the element.
     pub npt: usize,
-    /// Antal materialanrop sedan elementet sattes (reserv för NPT).
+    /// Number of material calls since the element was set (fallback for NPT).
     pub calls: usize,
     pub coords: [f64; 3],
     pub celent: f64,
-    /// Fältvariablerna i elementets noder vid inkrementets slut och början
-    /// (nodvis, `nfield` värden per nod).
+    /// The field variables at the element's nodes at the end and start of the increment
+    /// (node by node, `nfield` values per node).
     pub node_fields: Vec<f64>,
     pub node_fields_old: Vec<f64>,
     pub nfield: usize,
-    /// Fältvariablerna i punkten vid inkrementets slut och början (medelvärdet
-    /// av nodvärdena, eller interpolerat i integrationspunkten).
+    /// The field variables at the point at the end and start of the increment (the average
+    /// of the nodal values, or interpolated at the integration point).
     pub fields: Vec<f64>,
     pub fields_old: Vec<f64>,
-    /// Fält som USDFLD har satt (ersätter `fields` i materialet).
+    /// Fields set by USDFLD (replace `fields` in the material).
     pub user_fields: Option<(Vec<f64>, Vec<f64>)>,
 }
 
-/// Analysens kontext i den här tråden.
+/// The analysis context in this thread.
 pub fn current() -> Option<Arc<Run>> {
     RUN.with(|r| r.borrow().clone())
 }
 
-/// Sätter analysens kontext i den här tråden (arbetstrådar i `par::map`).
+/// Sets the analysis context in this thread (worker threads in `par::map`).
 pub fn install(run: Option<Arc<Run>>) {
     RUN.with(|r| *r.borrow_mut() = run);
 }
 
-/// Återställer föregående kontext när analysen är klar.
+/// Restores the previous context when the analysis is done.
 pub struct Guard(Option<Arc<Run>>);
 
 impl Drop for Guard {
@@ -115,7 +115,7 @@ impl Drop for Guard {
     }
 }
 
-/// Startar en analys: ny kontext med modellens fälthistoria.
+/// Starts an analysis: new context with the model's field history.
 pub fn begin_analysis(model: &crate::fem::model::FeModel) -> crate::model::Result<Guard> {
     let fields = Fields::build(model)?.map(Arc::new);
     let prev = current();
@@ -123,7 +123,7 @@ pub fn begin_analysis(model: &crate::fem::model::FeModel) -> crate::model::Resul
     Ok(Guard(prev))
 }
 
-/// Procedurkod för ett steg (JSTEP(2), LFLAGS(1)).
+/// Procedure code for a step (JSTEP(2), LFLAGS(1)).
 pub fn procedure_code(step: &crate::fem::model::StepDef, nlgeom: bool) -> i32 {
     let p = step.procedure.as_ref();
     match step.procedure_name() {
@@ -143,12 +143,12 @@ pub fn procedure_code(step: &crate::fem::model::StepDef, nlgeom: bool) -> i32 {
     }
 }
 
-/// Stegets längd (andra talet på procedurens datarad, standard 1).
+/// Step length (second number on the procedure's data line, default 1).
 pub fn step_period(step: &crate::fem::model::StepDef) -> f64 {
     step.procedure.as_ref().and_then(|p| p.first_floats().ok()).and_then(|v| v.get(1).copied()).filter(|&x| x > 0.0).unwrap_or(1.0)
 }
 
-/// Startar steg nummer `kstep` (1..) med starttiden `start` (total tid) och längden `period`.
+/// Starts step number `kstep` (1..) with start time `start` (total time) and length `period`.
 pub fn begin_step(kstep: usize, start: f64, period: f64, procedure: i32, nlgeom: bool, perturbation: bool) {
     if let Some(r) = current() {
         r.kstep.store(kstep as i32, Ordering::Relaxed);
@@ -161,7 +161,7 @@ pub fn begin_step(kstep: usize, start: f64, period: f64, procedure: i32, nlgeom:
     }
 }
 
-/// Startar inkrement nummer `kinc` (1..) och glömmer begärt PNEWDT.
+/// Starts increment number `kinc` (1..) and forgets the requested PNEWDT.
 pub fn begin_increment(kinc: usize) {
     if let Some(r) = current() {
         r.kinc.store(kinc as i32, Ordering::Relaxed);
@@ -169,14 +169,14 @@ pub fn begin_increment(kinc: usize) {
     }
 }
 
-/// Glömmer begärt PNEWDT (före varje försök med ett inkrement).
+/// Forgets the requested PNEWDT (before each attempt at an increment).
 pub fn reset_pnewdt() {
     if let Some(r) = current() {
         r.pnewdt.store(f64::INFINITY.to_bits(), Ordering::Relaxed);
     }
 }
 
-/// En användarrutin begär inkrementlängden `pnewdt` · Δt (PNEWDT, < 1 = gör om inkrementet).
+/// A user subroutine requests the increment size `pnewdt` · Δt (PNEWDT, < 1 = redo the increment).
 pub fn request_pnewdt(pnewdt: f64) {
     if !(pnewdt.is_finite()) {
         return;
@@ -192,7 +192,7 @@ pub fn request_pnewdt(pnewdt: f64) {
     }
 }
 
-/// Minsta begärda PNEWDT i inkrementet (`None` om ingen rutin har begärt något).
+/// Smallest requested PNEWDT in the increment (`None` if no routine has requested anything).
 pub fn pnewdt() -> Option<f64> {
     current().map(|r| f(&r.pnewdt)).filter(|p| p.is_finite())
 }
@@ -202,7 +202,7 @@ pub fn step_inc() -> (i32, i32) {
     current().map_or((0, 0), |r| (r.kstep.load(Ordering::Relaxed), r.kinc.load(Ordering::Relaxed)))
 }
 
-/// JSTEP(1..4): steg, procedur, NLGEOM, linjär perturbation.
+/// JSTEP(1..4): step, procedure, NLGEOM, linear perturbation.
 pub fn jstep(nlgeom: bool) -> [i32; 4] {
     match current() {
         Some(r) => [r.kstep.load(Ordering::Relaxed), r.procedure.load(Ordering::Relaxed), nlgeom as i32, r.perturbation.load(Ordering::Relaxed)],
@@ -210,7 +210,7 @@ pub fn jstep(nlgeom: bool) -> [i32; 4] {
     }
 }
 
-/// Stegtid för den totala tiden `total`.
+/// Step time for the total time `total`.
 pub fn step_time(total: f64) -> f64 {
     match current() {
         Some(r) => total - f(&r.step_start),
@@ -218,22 +218,22 @@ pub fn step_time(total: f64) -> f64 {
     }
 }
 
-/// Stegets längd (PERIOD).
+/// Step length (PERIOD).
 pub fn period() -> f64 {
     current().map_or(1.0, |r| f(&r.period))
 }
 
-/// Total tid vid stegets början.
+/// Total time at the start of the step.
 pub fn step_start() -> f64 {
     current().map_or(0.0, |r| f(&r.step_start))
 }
 
-/// Fälthistorien (om modellen har *FIELD eller *INITIAL CONDITIONS, TYPE=FIELD).
+/// The field history (if the model has *FIELD or *INITIAL CONDITIONS, TYPE=FIELD).
 pub fn fields() -> Option<Arc<Fields>> {
     current().and_then(|r| r.fields.clone())
 }
 
-/// Sätter elementet som utvärderas (anropas av `Prepared::ctx`).
+/// Sets the element being evaluated (called by `Prepared::ctx`).
 pub fn set_element(elem: usize, noel: i64, nodes: &[usize], x: &[[f64; 3]], time: f64, dt: f64) {
     let fl = fields();
     POINT.with(|p| {
@@ -271,10 +271,10 @@ fn average(v: &[f64], nn: usize, nf: usize) -> Vec<f64> {
     (0..nf).map(|k| (0..nn).map(|i| v[i * nf + k]).sum::<f64>() / nn as f64).collect()
 }
 
-/// Sätter integrationspunkten (1..) med läge och karakteristisk längd.
-/// Med formfunktionerna `n` interpoleras fälten i punkten; utan (`None`)
-/// används elementets medelvärde (som för temperaturen i första ordningens element).
-/// `w` är integrationspunktens vikt (volym) i referensläget.
+/// Sets the integration point (1..) with position and characteristic length.
+/// With the shape functions `n` the fields are interpolated at the point; without (`None`)
+/// the element average is used (as for temperature in first-order elements).
+/// `w` is the integration point weight (volume) in the reference configuration.
 pub fn set_ip(npt: usize, coords: [f64; 3], celent: f64, n: Option<&[f64]>, w: f64) {
     RECORD.with(|r| {
         if let Some(v) = r.borrow_mut().as_mut() {
@@ -299,7 +299,7 @@ pub fn set_ip(npt: usize, coords: [f64; 3], celent: f64, n: Option<&[f64]>, w: f
     });
 }
 
-/// Räknar ett materialanrop och ger punkten (NPT = antalet anrop om elementet inte satt NPT).
+/// Counts a material call and returns the point (NPT = number of calls if the element did not set NPT).
 pub fn point_for_call() -> Point {
     POINT.with(|p| {
         let mut p = p.borrow_mut();
@@ -312,12 +312,12 @@ pub fn point_for_call() -> Point {
     })
 }
 
-/// Punkten utan att räkna anropet.
+/// The point without counting the call.
 pub fn point() -> Point {
     POINT.with(|p| p.borrow().clone())
 }
 
-/// Fältvariablerna i punkten vid inkrementets slut och början (USDFLD:s värden om de är satta).
+/// The field variables at the point at the end and start of the increment (USDFLD's values if set).
 pub fn point_fields() -> (Vec<f64>, Vec<f64>) {
     POINT.with(|p| {
         let p = p.borrow();
@@ -328,13 +328,13 @@ pub fn point_fields() -> (Vec<f64>, Vec<f64>) {
     })
 }
 
-/// USDFLD: ersätter fältvariablerna i punkten (`None` = återställ).
+/// USDFLD: replaces the field variables at the point (`None` = reset).
 pub fn set_user_fields(f: Option<(Vec<f64>, Vec<f64>)>) {
     POINT.with(|p| p.borrow_mut().user_fields = f);
 }
 
-/// Kör `f` och returnerar integrationspunkterna (NPT, COORDS, vikt) som
-/// elementet rapporterade under tiden (tom om elementet inte rapporterar).
+/// Runs `f` and returns the integration points (NPT, COORDS, weight) that
+/// the element reported meanwhile (empty if the element does not report).
 pub fn record_ips(f: impl FnOnce()) -> Vec<(usize, [f64; 3], f64)> {
     RECORD.with(|r| *r.borrow_mut() = Some(Vec::new()));
     f();

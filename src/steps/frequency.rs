@@ -1,32 +1,32 @@
-//! *FREQUENCY: egenfrekvenser och modformer (linjärt perturbationssteg).
+//! *FREQUENCY: natural frequencies and mode shapes (linear perturbation step).
 //!
-//! Löser (K₀ − ω²M) φ = 0 för de lägsta egenvärdena med blockad
-//! subspace-iteration med skift-invert (`solver::eigen`), där K₀ är
-//! tangentstyvheten i bastillståndet (för ett geometriskt olinjärt
-//! bastillstånd innehåller tangenten spänningsstyvheten) och M massmatrisen.
-//! Skiftet σ väljs så att K₀ − σM är positivt definit: σ = 0 om det går,
-//! annars ett negativt skift (stelkroppsmoder, fria strukturer). Ett angivet
-//! skift (datarad, (cycles/time)²) används om matrisen då är positivt definit.
+//! Solves (K₀ − ω²M) φ = 0 for the lowest eigenvalues with block
+//! subspace iteration with shift-invert (`solver::eigen`), where K₀ is
+//! the tangent stiffness in the base state (for a geometrically nonlinear
+//! base state the tangent contains the stress stiffness) and M the mass matrix.
+//! The shift σ is chosen so that K₀ − σM is positive definite: σ = 0 if possible,
+//! otherwise a negative shift (rigid-body modes, free structures). A specified
+//! shift (data line, (cycles/time)²) is used if the matrix is then positive definite.
 //!
-//! Utdata:
-//! - frame 0 = bastillståndet, frame i = mod i (`value` = modnummer),
-//!   beskrivning med egenvärde och frekvens,
-//! - modformer normerade mot massan. NORMALIZATION=DISPLACEMENT (största
-//!   förskjutningskomponent = 1) gäller bara med SIM=NO: annars används
-//!   SIM-baserad extraktion som massnormerar ändå (med en varning),
-//! - history (region "Assembly ASSEMBLY", tid = modnummer): EIGVAL, EIGFREQ,
-//!   GM (generaliserad massa), PF1–PF6 (deltagandefaktorer, rotationer kring
-//!   origo) och EM1–EM6 (effektiv massa = PF² · GM),
-//! - RF = K φ − λ M φ i låsta frihetsgrader.
+//! Output:
+//! - frame 0 = the base state, frame i = mode i (`value` = mode number),
+//!   description with eigenvalue and frequency,
+//! - mode shapes normalized with respect to mass. NORMALIZATION=DISPLACEMENT (largest
+//!   displacement component = 1) applies only with SIM=NO: otherwise
+//!   SIM-based extraction is used, which mass-normalizes anyway (with a warning),
+//! - history (region "Assembly ASSEMBLY", time = mode number): EIGVAL, EIGFREQ,
+//!   GM (generalized mass), PF1–PF6 (participation factors, rotations about
+//!   the origin) and EM1–EM6 (effective mass = PF² · GM),
+//! - RF = K φ − λ M φ in constrained degrees of freedom.
 //!
-//! Massmatriser: diagonal för element av första ordningen, konsistent för
-//! högre ordning, skal och B23/B33 (se `mass_kind`).
-//! B23/B33 har två inre frihetsgrader per element (kubisk axialinterpolation,
-//! se `elements::beam_mass`) som ingår i egenvärdesproblemet men inte i
-//! utdata. Därför assembleras egenvärdesproblemet här i en egen numrering
-//! (`AllDofs`): fria nodfrihetsgrader, inre frihetsgrader, låsta.
+//! Mass matrices: diagonal for first-order elements, consistent for
+//! higher order, shells and B23/B33 (see `mass_kind`).
+//! B23/B33 have two internal degrees of freedom per element (cubic axial interpolation,
+//! see `elements::beam_mass`) that are part of the eigenvalue problem but not of the
+//! output. Therefore the eigenvalue problem is assembled here in a separate numbering
+//! (`AllDofs`): free nodal degrees of freedom, internal degrees of freedom, constrained.
 //!
-//! Här finns också hjälpfunktionerna som `buckle.rs` återanvänder.
+//! The helper functions reused by `buckle.rs` are also here.
 
 use super::api::{StepCtx, StepType};
 use crate::elements::{beam_mass, ElementType, Family, MassKind};
@@ -46,20 +46,20 @@ pub static STEP_TYPES: &[&dyn StepType] = &[&Frequency];
 pub const HISTORY_REGION: &str = "Assembly ASSEMBLY";
 
 // ---------------------------------------------------------------------------
-// Gemensamma hjälpfunktioner (används även av buckle.rs)
+// Shared helper functions (also used by buckle.rs)
 // ---------------------------------------------------------------------------
 
-/// Numrering av alla frihetsgrader i egenvärdesproblemet: de fria
-/// nodfrihetsgraderna först (samma nummer som i `DofMap`), sedan elementens
-/// inre frihetsgrader (B23/B33), sist de låsta nodfrihetsgraderna.
+/// Numbering of all degrees of freedom in the eigenvalue problem: the free
+/// nodal degrees of freedom first (same numbers as in `DofMap`), then the elements'
+/// internal degrees of freedom (B23/B33), last the constrained nodal degrees of freedom.
 pub struct AllDofs {
     pub idx: Vec<[usize; SLOTS]>,
-    /// (nod, slot) per frihetsgrad; inre frihetsgrader har nod = `NONE`.
+    /// (node, slot) per degree of freedom; internal degrees of freedom have node = `NONE`.
     pub owner: Vec<(usize, usize)>,
     pub n_free: usize,
-    /// Antal inre frihetsgrader (numrerade n_free .. n_free + n_int).
+    /// Number of internal degrees of freedom (numbered n_free .. n_free + n_int).
     pub n_int: usize,
-    /// Första inre frihetsgrad per element (`NONE` om elementet saknar).
+    /// First internal degree of freedom per element (`NONE` if the element has none).
     pub elem_int: Vec<usize>,
 }
 
@@ -88,17 +88,17 @@ impl AllDofs {
         AllDofs { idx, owner, n_free: dm.n_eq, n_int, elem_int }
     }
 
-    /// Alla frihetsgrader.
+    /// All degrees of freedom.
     pub fn n(&self) -> usize {
         self.owner.len()
     }
 
-    /// Frihetsgraderna i egenvärdesproblemet (fria + inre).
+    /// The degrees of freedom in the eigenvalue problem (free + internal).
     pub fn n_solve(&self) -> usize {
         self.n_free + self.n_int
     }
 
-    /// Nodvektor ur en vektor i den här numreringen (inre frihetsgrader hoppas över).
+    /// Nodal vector from a vector in this numbering (internal degrees of freedom are skipped).
     pub fn to_nodes(&self, x: &[f64], nn: usize) -> Vec<NodeVec> {
         let mut u = vec![[0.0; SLOTS]; nn];
         for (q, &(n, s)) in self.owner.iter().enumerate().take(x.len()) {
@@ -109,13 +109,13 @@ impl AllDofs {
         u
     }
 
-    /// Vektor ur nodvärden (inre frihetsgrader = 0).
+    /// Vector from nodal values (internal degrees of freedom = 0).
     pub fn from_nodes(&self, u: &[NodeVec]) -> Vec<f64> {
         self.owner.iter().map(|&(n, s)| if n == NONE { 0.0 } else { u[n][s] }).collect()
     }
 
-    /// Frihetsgradsnummer för element `e`: nodfrihetsgraderna och, om
-    /// `with_internal`, de inre.
+    /// Degree-of-freedom numbers for element `e`: the nodal degrees of freedom and, if
+    /// `with_internal`, the internal ones.
     fn map(&self, p: &Prepared, e: usize, with_internal: bool) -> Vec<usize> {
         let mut v: Vec<usize> = p.edofs[e].iter().map(|&(n, s)| self.idx[n][s]).collect();
         if with_internal && self.elem_int[e] != NONE {
@@ -124,8 +124,8 @@ impl AllDofs {
         v
     }
 
-    /// Block för lösaren: en nod med fria frihetsgrader eller ett elements
-    /// inre frihetsgrader.
+    /// Solver blocks: a node with free degrees of freedom or an element's
+    /// internal degrees of freedom.
     pub fn blocks(&self, p: &Prepared) -> Vec<([f64; 3], Vec<usize>)> {
         let m = p.model;
         let mut per_node: Vec<Vec<usize>> = vec![Vec::new(); m.nodes.len()];
@@ -150,23 +150,23 @@ impl AllDofs {
     }
 }
 
-/// Element med inre frihetsgrader i egenvärdessteg (B23/B33).
+/// Elements with internal degrees of freedom in eigenvalue steps (B23/B33).
 fn has_internal(et: &dyn ElementType) -> bool {
     matches!(et.name(), "B23" | "B33")
 }
 
-/// Massmatristyp i egenvärdessteg: diagonal
-/// (radsummerad) massa för element av första ordningen (CPS4, CPE4, CPS3,
-/// C3D8, T2D2, T3D2, ...), konsistent massa för
-/// element av högre ordning, för de kubiska balkarna B23/B33 och för alla
-/// skal (S4, S4R, S3, S3R: tests/cases/modal/s4_platta_modal,
-/// tests/cases/nlgeom_struct/freq_s4r_platta m.fl.).
+/// Mass matrix type in eigenvalue steps: diagonal
+/// (row-summed) mass for first-order elements (CPS4, CPE4, CPS3,
+/// C3D8, T2D2, T3D2, ...), consistent mass for
+/// higher-order elements, for the cubic beams B23/B33 and for all
+/// shells (S4, S4R, S3, S3R: tests/cases/modal/s4_platta_modal,
+/// tests/cases/nlgeom_struct/freq_s4r_platta and others).
 pub fn mass_kind(et: &dyn ElementType) -> MassKind {
     let n = et.n_nodes();
     let first_order = match et.family() {
         Family::Truss => n == 2,
         Family::Continuum2D | Family::Axisymmetric | Family::Membrane => n <= 4,
-        // område nlgeom_struct: konsistent massa för skal
+        // area nlgeom_struct: consistent mass for shells
         Family::Shell => false,
         Family::Continuum3D => n <= 8,
         Family::Beam => n == 2 && !matches!(et.name().get(..3), Some("B23") | Some("B33")),
@@ -191,7 +191,7 @@ fn scatter(t: &mut Triplets, p: &Prepared, all: &AllDofs, e: usize, ke: &[f64]) 
     scatter_map(t, &all.map(p, e, false), ke);
 }
 
-/// Inre frihetsgrader för element `e` (B23/B33), med geometrisk styvhet om `u` ges.
+/// Internal degrees of freedom for element `e` (B23/B33), with geometric stiffness if `u` is given.
 fn internal(p: &Prepared, all: &AllDofs, e: usize, u: Option<&[NodeVec]>) -> Result<Option<beam_mass::BeamInternal>> {
     if all.elem_int[e] == NONE {
         return Ok(None);
@@ -205,7 +205,7 @@ fn internal(p: &Prepared, all: &AllDofs, e: usize, u: Option<&[NodeVec]>) -> Res
     }
 }
 
-/// Massmatrisen i numreringen `all` (med inre frihetsgrader).
+/// The mass matrix in the numbering `all` (with internal degrees of freedom).
 pub fn assemble_mass(p: &Prepared, all: &AllDofs) -> Result<SymCsr> {
     let m = p.model;
     let mut t = Triplets::new(all.n());
@@ -232,7 +232,7 @@ pub fn assemble_mass(p: &Prepared, all: &AllDofs) -> Result<SymCsr> {
     Ok(t.build())
 }
 
-/// Geometrisk styvhet K_σ för förskjutningen `u` och elementtillståndet `states`.
+/// Geometric stiffness K_σ for the displacement `u` and the element state `states`.
 pub fn assemble_geometric(p: &Prepared, all: &AllDofs, u: &[NodeVec], states: &[Vec<f64>]) -> Result<SymCsr> {
     let m = p.model;
     let mut t = Triplets::new(all.n());
@@ -253,7 +253,7 @@ pub fn assemble_geometric(p: &Prepared, all: &AllDofs, u: &[NodeVec], states: &[
     Ok(t.build())
 }
 
-/// Tilläggsstyvheten från de inre frihetsgraderna (alla frihetsgrader).
+/// The additional stiffness from the internal degrees of freedom (all degrees of freedom).
 fn assemble_internal_stiffness(p: &Prepared, all: &AllDofs) -> Result<SymCsr> {
     let mut t = Triplets::new(all.n());
     for e in 0..p.model.elements.len() {
@@ -264,9 +264,9 @@ fn assemble_internal_stiffness(p: &Prepared, all: &AllDofs) -> Result<SymCsr> {
     Ok(t.build())
 }
 
-/// Tangentstyvheten K₀ i bastillståndet för egenvärdesproblemet (fria + inre
-/// frihetsgrader): kärnans assemblering (element och interaktioner) plus de
-/// inre frihetsgradernas bidrag.
+/// The tangent stiffness K₀ in the base state for the eigenvalue problem (free + internal
+/// degrees of freedom): the core assembly (elements and interactions) plus the
+/// contribution of the internal degrees of freedom.
 pub fn assemble_stiffness(p: &Prepared, dm: &DofMap, all: &AllDofs, state: &SolutionState, nlgeom: bool) -> Result<SymCsr> {
     let zero = vec![[0.0; SLOTS]; p.model.nodes.len()];
     let mut rec = Recorder::new(dm.n_eq);
@@ -277,9 +277,9 @@ pub fn assemble_stiffness(p: &Prepared, dm: &DofMap, all: &AllDofs, state: &Solu
     Ok(combine(&[(&kff, 1.0), (&kint, 1.0)], ns))
 }
 
-/// Faktoriserar A (fria + inre frihetsgrader). `None` om A inte är positivt
-/// definit eller så nära singulär att lösningen blir onoggrann (prövas med
-/// ett slumpat högerled).
+/// Factorizes A (free + internal degrees of freedom). `None` if A is not positive
+/// definite or so close to singular that the solution becomes inaccurate (tested with
+/// a random right-hand side).
 pub fn factor_checked(a: &SymCsr, all: &AllDofs, p: &Prepared, solver: &dyn LinearSolver) -> Result<Option<Factored>> {
     let f = match factor_sym(a, &all.blocks(p), solver)? {
         Ok(f) => f,
@@ -303,7 +303,7 @@ pub fn factor_checked(a: &SymCsr, all: &AllDofs, p: &Prepared, solver: &dyn Line
     Ok((err <= 1e-6 * bmax).then_some(f))
 }
 
-/// Median av k_ii / m_ii över frihetsgrader med massa (skala för egenvärden).
+/// Median of k_ii / m_ii over degrees of freedom with mass (scale for eigenvalues).
 fn diag_ratio(k: &SymCsr, m: &SymCsr) -> f64 {
     let (kd, md) = (k.diag(), m.diag());
     let mut r: Vec<f64> = kd.iter().zip(&md).filter(|(a, b)| **a > 0.0 && **b > 0.0).map(|(a, b)| a / b).collect();
@@ -314,7 +314,7 @@ fn diag_ratio(k: &SymCsr, m: &SymCsr) -> f64 {
     r[r.len() / 2]
 }
 
-/// Normerar så att största förskjutningskomponenten (translation) blir +1.
+/// Normalizes so that the largest displacement component (translation) becomes +1.
 pub fn normalize_displacement(phi: &mut [NodeVec], active: &[u16]) {
     let mut best = 0.0f64;
     for (n, v) in phi.iter().enumerate() {
@@ -331,8 +331,8 @@ pub fn normalize_displacement(phi: &mut [NodeVec], active: &[u16]) {
     }
 }
 
-/// Frame för en modform: U = φ, RF = (Kφ − fext) i låsta frihetsgrader,
-/// elementutdata (S, E) för spänningen som modformen ger.
+/// Frame for a mode shape: U = φ, RF = (Kφ − fext) in constrained degrees of freedom,
+/// element output (S, E) for the stress produced by the mode shape.
 #[allow(clippy::too_many_arguments)]
 pub fn mode_frame(p: &Prepared, dm: &DofMap, phi: &[NodeVec], fext: &[NodeVec], time: f64, mode: usize, description: String) -> Result<FrameData> {
     let init = p.init_states()?;
@@ -342,7 +342,7 @@ pub fn mode_frame(p: &Prepared, dm: &DofMap, phi: &[NodeVec], fext: &[NodeVec], 
     Ok(fr)
 }
 
-/// Frame 0: bastillståndet.
+/// Frame 0: the base state.
 pub fn base_frame(p: &Prepared, dm: &DofMap, state: &SolutionState) -> Result<FrameData> {
     let zero = vec![[0.0; SLOTS]; p.model.nodes.len()];
     let mut fr = assembly::frame(p, dm, &state.u, &state.reaction, &zero, &state.elem_state, state.nlgeom, state.time, 0.0, "Increment      0: Base State".into())?;
@@ -350,8 +350,8 @@ pub fn base_frame(p: &Prepared, dm: &DofMap, state: &SolutionState) -> Result<Fr
     Ok(fr)
 }
 
-/// Tal i framebeskrivningar: 5 värdesiffror med decimalpunkt
-/// ("16475.", "630.20") för 0,1 ≤ |v| < 10⁵, annars 6 värdesiffror med
+/// Numbers in frame descriptions: 5 significant digits with a decimal point
+/// ("16475.", "630.20") for 0.1 ≤ |v| < 10⁵, otherwise 6 significant digits with
 /// exponent ("1.07441E+06").
 pub fn g5(v: f64) -> String {
     if v == 0.0 {
@@ -361,7 +361,7 @@ pub fn g5(v: f64) -> String {
     if (-1..5).contains(&e) {
         let d = (4 - e).max(0) as usize;
         let s = format!("{:.*}", d, v);
-        // avrundning kan ge en siffra till (99999.5 → 100000): exponentform då
+        // rounding can add a digit (99999.5 → 100000): exponent form then
         if s.trim_start_matches('-').replace('.', "").trim_start_matches('0').len() > 5 && d == 0 {
             return exp6(v);
         }
@@ -382,12 +382,12 @@ fn exp6(v: f64) -> String {
     }
 }
 
-/// Fält `i` (0-baserat) på första dataraden som tal, `None` om tomt.
+/// Field `i` (0-based) on the first data line as a number, `None` if empty.
 pub fn data_field(kw: &RawKeyword, i: usize) -> Result<Option<f64>> {
     let Some(d) = kw.data.first() else { return Ok(None) };
     match d.fields.get(i).map(|s| s.trim()) {
         None | Some("") => Ok(None),
-        Some(s) => parse_f64(s).map(Some).ok_or_else(|| FemError(format!("{} rad {} (*{}): '{s}' är inget tal", kw.file, d.line, kw.name))),
+        Some(s) => parse_f64(s).map(Some).ok_or_else(|| FemError(format!("{} line {} (*{}): '{s}' is not a number", kw.file, d.line, kw.name))),
     }
 }
 
@@ -400,7 +400,7 @@ struct FreqOptions {
     nev: Option<usize>,
     min_freq: Option<f64>,
     max_freq: Option<f64>,
-    /// Skift i (rad/tid)².
+    /// Shift in (rad/time)².
     shift: Option<f64>,
     vectors: usize,
     mass_norm: bool,
@@ -422,23 +422,23 @@ fn parse_options(kw: &RawKeyword) -> Result<FreqOptions> {
             o.shift = data_field(kw, 2)?.map(|s| s * two_pi_sq);
             o.vectors = data_field(kw, 3)?.map_or(0, |v| v.round().max(0.0) as usize);
         }
-        other => return kw.err(format!("EIGENSOLVER={other} stöds inte (LANCZOS, SUBSPACE eller AMS)")),
+        other => return kw.err(format!("EIGENSOLVER={other} is not supported (LANCZOS, SUBSPACE or AMS)")),
     }
     match kw.param_upper("NORMALIZATION").as_deref() {
         None | Some("MASS") => {}
-        // SIM-baserad egenvärdesextraktion (standard för alla
-        // lösare) kan bara massnormera; DISPLACEMENT gäller bara med SIM=NO
+        // SIM-based eigenvalue extraction (default for all
+        // solvers) can only mass-normalize; DISPLACEMENT applies only with SIM=NO
         Some("DISPLACEMENT") => o.mass_norm = kw.param_upper("SIM").as_deref() != Some("NO"),
-        Some(x) => return kw.err(format!("NORMALIZATION={x} ska vara MASS eller DISPLACEMENT")),
+        Some(x) => return kw.err(format!("NORMALIZATION={x} must be MASS or DISPLACEMENT")),
     }
     if o.nev.is_none() && o.max_freq.is_none() {
-        return kw.err("ange antal egenvärden eller högsta frekvens på dataraden");
+        return kw.err("specify the number of eigenvalues or the highest frequency on the data line");
     }
     Ok(o)
 }
 
-/// Stelkroppsvektor för riktning j (0–2 translation, 3–5 rotation kring origo).
-/// Inre frihetsgrader (axialtöjning) är noll i en stelkroppsrörelse.
+/// Rigid-body vector for direction j (0–2 translation, 3–5 rotation about the origin).
+/// Internal degrees of freedom (axial strain) are zero in a rigid-body motion.
 pub fn rigid(all: &AllDofs, x: &[[f64; 3]], j: usize) -> Vec<f64> {
     all.owner
         .iter()
@@ -466,9 +466,9 @@ pub fn rigid(all: &AllDofs, x: &[[f64; 3]], j: usize) -> Vec<f64> {
         .collect()
 }
 
-/// Resultatet av egenvärdesextraktionen i ett *FREQUENCY-steg: numreringen,
-/// massmatrisen (alla frihetsgrader) och egenparen (λ, vektor i `all`-numreringen
-/// utan de låsta frihetsgraderna, ännu inte normerad).
+/// The result of the eigenvalue extraction in a *FREQUENCY step: the numbering,
+/// the mass matrix (all degrees of freedom) and the eigenpairs (λ, vector in the `all` numbering
+/// without the constrained degrees of freedom, not yet normalized).
 pub struct Extracted {
     pub dm: DofMap,
     pub all: AllDofs,
@@ -478,10 +478,10 @@ pub struct Extracted {
     pub mass_norm: bool,
 }
 
-/// Egenvärdesextraktionen för *FREQUENCY-dataraden `kw` med randvillkoren i
-/// `loads` och bastillståndet `base`. Används av `Frequency::run` och av de
-/// modala stegen (`modal.rs`), som därmed får exakt samma moder som
-/// *FREQUENCY-steget.
+/// The eigenvalue extraction for the *FREQUENCY data line `kw` with the boundary conditions in
+/// `loads` and the base state `base`. Used by `Frequency::run` and by the
+/// modal steps (`modal.rs`), which thereby get exactly the same modes as the
+/// *FREQUENCY step.
 pub fn extract(p: &Prepared, kw: &RawKeyword, loads: &StepLoads, base: &SolutionState, nlgeom: bool, solver: &'static dyn LinearSolver, verbose: bool) -> Result<Extracted> {
     let o = parse_options(kw)?;
     let (dm, _) = assembly::dofmap(p, &loads.constrained(), solver)?;
@@ -490,14 +490,14 @@ pub fn extract(p: &Prepared, kw: &RawKeyword, loads: &StepLoads, base: &Solution
     let mfull = assemble_mass(p, &all)?;
     let ms = mfull.leading(ns);
     if ms.val.iter().all(|v| *v == 0.0) {
-        return fail("*FREQUENCY kräver massa (*DENSITY i materialen)");
+        return fail("*FREQUENCY requires mass (*DENSITY in the materials)");
     }
-    // K₀: tangenten i bastillståndet (med NLGEOM innehåller den spänningsstyvheten)
+    // K₀: the tangent in the base state (with NLGEOM it contains the stress stiffness)
     let k0 = assemble_stiffness(p, &dm, &all, base, nlgeom)?;
-    let k0 = crate::elements::infinite::frequency_stiffness(p, &all.idx, k0)?; // område elements2: infinita element utan styvhet
-    // skift: angivet, annars 0; om K − σM inte är positivt definit eller
-    // nästan singulär (stelkroppsmoder) prövas negativa skift −s med s
-    // i förhållande till styvhet/massa på diagonalen
+    let k0 = crate::elements::infinite::frequency_stiffness(p, &all.idx, k0)?; // area elements2: infinite elements without stiffness
+    // shift: specified, otherwise 0; if K − σM is not positive definite or
+    // nearly singular (rigid-body modes) negative shifts −s are tried with s
+    // relative to stiffness/mass on the diagonal
     let try_shift = |c: f64| -> Result<Option<Factored>> { factor_checked(&combine(&[(&k0, 1.0), (&ms, -c)], ns), &all, p, solver) };
     let scale = diag_ratio(&k0, &ms);
     let mut candidates: Vec<f64> = Vec::new();
@@ -516,12 +516,12 @@ pub fn extract(p: &Prepared, kw: &RawKeyword, loads: &StepLoads, base: &Solution
         }
     }
     let Some((mut sigma, mut mat)) = found else {
-        return fail("*FREQUENCY: styvhetsmatrisen kunde inte faktoriseras ens med negativt skift (instabilt bastillstånd?)");
+        return fail("*FREQUENCY: the stiffness matrix could not be factorized even with a negative shift (unstable base state?)");
     };
     let mmul = |x: &[f64]| ms.mul(x);
     if sigma < 0.0 && o.shift.is_none() {
-        // stelkroppsmoder: ett litet skift ger avrundningsbrus ~ ε·λ₁/|σ| i de
-        // elastiska moderna. Grov uppskattning först, sedan skift ≈ 0,1·λ₁.
+        // rigid-body modes: a small shift gives rounding noise ~ ε·λ₁/|σ| in the
+        // elastic modes. Rough estimate first, then shift ≈ 0.1·λ₁.
         let rough = EigenOptions { nev: o.nev.unwrap_or(10).min(ns), vectors: o.vectors, max_iter: 60, tol: 1e-6, allow_unconverged: true };
         let r = eigen::subspace(ns, &mat, &mmul, &rough)?;
         let elastic = r.theta.iter().map(|t| sigma + 1.0 / t).filter(|l| *l > 10.0 * sigma.abs()).fold(f64::INFINITY, f64::min);
@@ -534,9 +534,9 @@ pub fn extract(p: &Prepared, kw: &RawKeyword, loads: &StepLoads, base: &Solution
         }
     }
     if verbose {
-        eprintln!("  skift σ = {sigma:.4e}, {ns} obekanta ({} inre)", all.n_int);
+        eprintln!("  shift σ = {sigma:.4e}, {ns} unknowns ({} internal)", all.n_int);
     }
-    // egenvärden: med bara högsta frekvens ökas antalet tills gränsen passerats
+    // eigenvalues: with only the highest frequency the count is increased until the limit is passed
     let two_pi = 2.0 * std::f64::consts::PI;
     let lam_max = o.max_freq.map(|f| (two_pi * f).powi(2));
     let lam_min = o.min_freq.map(|f| (two_pi * f).powi(2));
@@ -545,7 +545,7 @@ pub fn extract(p: &Prepared, kw: &RawKeyword, loads: &StepLoads, base: &Solution
         let opts = EigenOptions { nev: want, vectors: o.vectors, ..Default::default() };
         let r = eigen::subspace(ns, &mat, &mmul, &opts)?;
         let top = r.theta.last().map(|t| sigma + 1.0 / t);
-        // med minsta frekvens ska `nev` moder ligga över gränsen
+        // with a lowest frequency, `nev` modes must lie above the limit
         let below = lam_min.map_or(0, |lm| r.theta.iter().filter(|t| sigma + 1.0 / **t < lm).count());
         let full = r.theta.len() < want || want >= ns;
         let enough = match (o.nev, lam_max, top) {
@@ -588,7 +588,7 @@ impl StepType for Frequency {
         let ex = extract(p, kw, ctx.loads, base, ctx.nlgeom, ctx.solver, ctx.opts.verbose)?;
         let Extracted { dm, all, mfull, modes, iterations, mass_norm } = ex;
         let two_pi = 2.0 * std::f64::consts::PI;
-        // utdata
+        // output
         ctx.out.frames.push(base_frame(p, &dm, base)?);
         let time = base.time;
         let rig: Vec<Vec<f64>> = (0..6).map(|j| rigid(&all, &model.nodes, j)).collect();
@@ -601,15 +601,15 @@ impl StepType for Frequency {
             let mode = i + 1;
             let mut x = v.clone();
             x.resize(all.n(), 0.0);
-            // massnormering (inre frihetsgrader ingår)
+            // mass normalization (internal degrees of freedom included)
             let gm0 = mfull.bilinear(&x, &x);
             if gm0 > 0.0 {
                 let f = 1.0 / gm0.sqrt();
                 x.iter_mut().for_each(|y| *y *= f);
             }
             if !mass_norm {
-                // största förskjutningskomponent = +1; samma faktor på alla
-                // frihetsgrader, även de inre
+                // largest displacement component = +1; the same factor on all
+                // degrees of freedom, including the internal ones
                 let mut phi = all.to_nodes(&x, nn);
                 let before = phi.clone();
                 normalize_displacement(&mut phi, &dm.active);
@@ -624,8 +624,8 @@ impl StepType for Frequency {
             let phi = all.to_nodes(&x, nn);
             let gm = mfull.bilinear(&x, &x);
             let freq = lam.max(0.0).sqrt() / two_pi;
-            // RF = K φ − λ M φ: elementens inre krafter för φ ger K φ utan de inre
-            // frihetsgradernas bidrag, som läggs till via fext
+            // RF = K φ − λ M φ: the elements' internal forces for φ give K φ without the
+            // internal degrees of freedom's contribution, which is added via fext
             let mx = mfull.mul(&x);
             let mut f: Vec<f64> = mx.iter().map(|v| v * lam).collect();
             if let Some(k) = &kint {

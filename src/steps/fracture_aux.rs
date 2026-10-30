@@ -1,20 +1,20 @@
-//! Hjälpfält för interaktionsintegralen (`fracture.rs`).
+//! Auxiliary fields for the interaction integral (`fracture.rs`).
 //!
-//! Fälten skrivs i sprickspetsens lokala koordinater (x₁ i sprickans
-//! tillväxtriktning, x₂ normal mot sprickplanet, x₃ längs sprickfronten) med
-//! dualtal i (x₁, x₂), så att förskjutningsgradienten blir exakt. Spänningen
-//! räknas ur töjningen med Hookes lag, så hjälpfältet är ett exakt
-//! elasticitetsfält (jämvikt och kompatibilitet) även för plan spänning.
+//! The fields are written in the local coordinates of the crack tip (x₁ in the crack
+//! growth direction, x₂ normal to the crack plane, x₃ along the crack front) with
+//! dual numbers in (x₁, x₂), so that the displacement gradient is exact. The stress
+//! is computed from the strain with Hooke's law, so the auxiliary field is an exact
+//! elasticity field (equilibrium and compatibility) even for plane stress.
 //!
-//! - Mod I, II: Williams asymptotiska fält med K = 1.
-//! - Mod III: antiplan skjuvning med K = 1.
-//! - T-spänning: punktkraft f = 1 i x₁ i sprickspetsen (Michell/Flamant),
+//! - Mode I, II: Williams' asymptotic fields with K = 1.
+//! - Mode III: antiplane shear with K = 1.
+//! - T-stress: point force f = 1 in x₁ at the crack tip (Michell/Flamant),
 //!   σ₁₁ = −cos³θ/(πr), σ₂₂ = −cosθ sin²θ/(πr), σ₁₂ = −cos²θ sinθ/(πr).
 
 use std::f64::consts::PI;
 use std::ops::{Add, Mul, Neg, Sub};
 
-/// Dualtal: värde och derivator med avseende på (x₁, x₂).
+/// Dual number: value and derivatives with respect to (x₁, x₂).
 #[derive(Debug, Clone, Copy)]
 pub struct D2 {
     pub v: f64,
@@ -41,7 +41,7 @@ impl D2 {
     pub fn ln(self) -> D2 {
         self.chain(self.v.ln(), 1.0 / self.v)
     }
-    /// atan2(y, x) med y = self.
+    /// atan2(y, x) with y = self.
     pub fn atan2(self, x: D2) -> D2 {
         let r2 = x.v * x.v + self.v * self.v;
         D2 { v: self.v.atan2(x.v), d: [0, 1].map(|i| (x.v * self.d[i] - self.v * x.d[i]) / r2) }
@@ -85,22 +85,22 @@ impl Neg for D2 {
     }
 }
 
-/// Hjälpfältets typ.
+/// Type of the auxiliary field.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AuxMode {
     I,
     II,
     III,
-    /// Punktkraft f = 1 i x₁ (T-spänning).
+    /// Point force f = 1 in x₁ (T-stress).
     T,
 }
 
-/// Elasticitet för hjälpfältet.
+/// Elasticity for the auxiliary field.
 #[derive(Debug, Clone, Copy)]
 pub struct Elastic {
     pub e: f64,
     pub nu: f64,
-    /// Plan spänning (annars plan töjning, även för axisymmetri och 3D).
+    /// Plane stress (otherwise plane strain, also for axisymmetry and 3D).
     pub plane_stress: bool,
 }
 
@@ -115,7 +115,7 @@ impl Elastic {
             3.0 - 4.0 * self.nu
         }
     }
-    /// E* = E (plan spänning) eller E/(1 − ν²).
+    /// E* = E (plane stress) or E/(1 − ν²).
     pub fn e_star(&self) -> f64 {
         if self.plane_stress {
             self.e
@@ -125,18 +125,18 @@ impl Elastic {
     }
 }
 
-/// Hjälpfältet i en punkt (lokala koordinater relativt spetsen).
+/// The auxiliary field at a point (local coordinates relative to the tip).
 #[derive(Debug, Clone, Copy)]
 pub struct AuxField {
-    /// Förskjutning u_j.
+    /// Displacement u_j.
     pub u: [f64; 3],
-    /// Förskjutningsgradient g[j][i] = ∂u_j/∂x_i.
+    /// Displacement gradient g[j][i] = ∂u_j/∂x_i.
     pub g: [[f64; 3]; 3],
-    /// Spänning (tensor, symmetrisk).
+    /// Stress (tensor, symmetric).
     pub s: [[f64; 3]; 3],
 }
 
-/// Hjälpfältet för `mode` i punkten (x₁, x₂).
+/// The auxiliary field for `mode` at the point (x₁, x₂).
 pub fn aux(mode: AuxMode, el: &Elastic, x1: f64, x2: f64) -> AuxField {
     let x = D2 { v: x1, d: [1.0, 0.0] };
     let y = D2 { v: x2, d: [0.0, 1.0] };

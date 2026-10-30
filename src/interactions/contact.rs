@@ -1,56 +1,56 @@
-//! Kontakt: *CONTACT PAIR och *CONTACT (general contact) med
-//! *SURFACE INTERACTION, *SURFACE BEHAVIOR och *FRICTION.
+//! Contact: *CONTACT PAIR and *CONTACT (general contact) with
+//! *SURFACE INTERACTION, *SURFACE BEHAVIOR and *FRICTION.
 //!
-//! Diskretisering (per slavnod A):
-//! - SURFACE TO SURFACE (fyrhörningar och tvånodskanter): segmentviktning.
-//!   Slavnoden får den del av varje ytelement som ligger närmast den i
-//!   parameterrummet (halva kanten, en fjärdedel av fyrhörningen) med konstant
-//!   vikt χ_A; delen integreras med fasta punkter (`tributary_points`). Gapet
-//!   h̄_A = ∫ χ_A g dA / ∫ χ_A dA, trycket p̄_A = p(h̄_A) och kraften
-//!   A_A p̄_A ∂h̄_A/∂u. Normalen är slavnormalen i varje punkt och masterpunkten
-//!   ligger längs den (strålprojektion). SMALL SLIDING: masterytans
-//!   formfunktioner i punktens projektion i referensläget. Finite sliding:
-//!   punktens cell (intervall/cirkelskiva) fördelas över masterelementen
-//!   (`cell_weights`), vilket också ger viktningen vid masterytans fria kanter.
-//!   CPRESS skrivs ut utjämnad, CPRESS_A = ∫ χ_A Σ_B N_B p̄_B dA / A_A.
-//!   General contact: ren master–slav per ytpar, finast indelade ytan som slav.
-//! - SURFACE TO SURFACE (trianglar, kvadratiska ytor): mortarvikter med
-//!   elementvis dual bas Φ på slavytan (samma som *TIE): gapet
-//!   g_A = n_A · (x_A − Σ_C T_AC x_C) med T_AC = ∫ Φ_A M_C dA / ∫ Φ_A dA.
-//! - NODE TO SURFACE (standard för *CONTACT PAIR i implicit analys):
-//!   slavnodens projektion på närmaste masteryta, T_AC = M_C(ξ), ytan =
-//!   slavnodens andel av slavytan. Med finite sliding i 2D utjämnas masterytan
-//!   nära noderna (SMOOTH=, standard 0,2).
+//! Discretization (per slave node A):
+//! - SURFACE TO SURFACE (quadrilaterals and two-node edges): segment weighting.
+//!   The slave node gets the part of each facet that lies closest to it in
+//!   parameter space (half the edge, a quarter of the quadrilateral) with constant
+//!   weight χ_A; the part is integrated with fixed points (`tributary_points`). The gap
+//!   h̄_A = ∫ χ_A g dA / ∫ χ_A dA, the pressure p̄_A = p(h̄_A) and the force
+//!   A_A p̄_A ∂h̄_A/∂u. The normal is the slave normal at each point and the master point
+//!   lies along it (ray projection). SMALL SLIDING: the master surface's
+//!   shape functions at the point's projection in the reference configuration. Finite sliding:
+//!   the point's cell (interval/disk) is distributed over the master elements
+//!   (`cell_weights`), which also gives the weighting at the master surface's free edges.
+//!   CPRESS is output smoothed, CPRESS_A = ∫ χ_A Σ_B N_B p̄_B dA / A_A.
+//!   General contact: pure master–slave per surface pair, the most finely meshed surface as slave.
+//! - SURFACE TO SURFACE (triangles, quadratic surfaces): mortar weights with an
+//!   element-wise dual basis Φ on the slave surface (same as *TIE): the gap
+//!   g_A = n_A · (x_A − Σ_C T_AC x_C) with T_AC = ∫ Φ_A M_C dA / ∫ Φ_A dA.
+//! - NODE TO SURFACE (default for *CONTACT PAIR in implicit analysis):
+//!   the slave node's projection onto the nearest master facet, T_AC = M_C(ξ), area =
+//!   the slave node's share of the slave surface. With finite sliding in 2D the master surface
+//!   is smoothed near the nodes (SMOOTH=, default 0.2).
 //!
-//! Normalkontakt (h = −g, överlappning):
-//! - HARD: straff p = k h för h ≥ 0 med en styv straffkoefficient
-//!   k = `HARD_FACTOR` · (representativ elementstyvhet)/A, så att
-//!   genomträngningen blir försumblig (i praktiken samma lösning som med
-//!   Lagrange-multiplikatorer). Yta mot yta med finite sliding och
-//!   general contact: straffmetod med standardstyvheten 10 · M/h för
-//!   den mjukaste sidan, med de ytelement som möts vid slavnoden.
-//! - LINEAR: p = k h med lutningen k från *SURFACE BEHAVIOR.
-//! - EXPONENTIAL: p = p0/(e − 1) · (h/c0 + 1) (exp(h/c0 + 1) − 1) för h ≥ −c0.
-//!   OBS: inte validerad.
+//! Normal contact (h = −g, overclosure):
+//! - HARD: penalty p = k h for h ≥ 0 with a stiff penalty coefficient
+//!   k = `HARD_FACTOR` · (representative element stiffness)/A, so that
+//!   the penetration is negligible (in practice the same solution as with
+//!   Lagrange multipliers). Surface to surface with finite sliding and
+//!   general contact: penalty method with the default stiffness 10 · M/h of
+//!   the softer side, using the facets that meet at the slave node.
+//! - LINEAR: p = k h with the slope k from *SURFACE BEHAVIOR.
+//! - EXPONENTIAL: p = p0/(e − 1) · (h/c0 + 1) (exp(h/c0 + 1) − 1) for h ≥ −c0.
+//!   NOTE: not validated.
 //!
-//! Friktion (Coulomb, *FRICTION μ) med straffreglerad fastläge ("elastisk
-//! glidning"): kritisk elastisk glidning γ = F_f · l_c med
-//! F_f = SLIP TOLERANCE (0,005) och l_c = slavytornas medelstorlek. Fastläge:
-//! τ = μ p e/γ; glidning när |e| > γ: τ = μ p ê (radiell återföring, Simo &
-//! Hughes kap. 2; Wriggers, Computational Contact Mechanics kap. 5).
-//! Tangenten är symmetrisk (kopplingen dτ/dp utelämnas).
+//! Friction (Coulomb, *FRICTION μ) with penalty-regularized sticking ("elastic
+//! slip"): critical elastic slip γ = F_f · l_c with
+//! F_f = SLIP TOLERANCE (0.005) and l_c = mean size of the slave facets. Sticking:
+//! τ = μ p e/γ; slip when |e| > γ: τ = μ p ê (radial return, Simo &
+//! Hughes ch. 2; Wriggers, Computational Contact Mechanics ch. 5).
+//! The tangent is symmetric (the coupling dτ/dp is omitted).
 //!
-//! Potentialen Π = Σ_A A_A (∫ p dh + ½ k_t |e|²) ger inre kraft och tangent:
-//! f = Σ_A A_A (−p n_A + τ_A) ⊗ c_A och K = Σ_A A_A (p' n nᵀ + K_t) ⊗ c_A c_Aᵀ,
-//! där c_A är koefficienterna (1 för slavnoden, −T_AC för masternoderna).
+//! The potential Π = Σ_A A_A (∫ p dh + ½ k_t |e|²) gives internal force and tangent:
+//! f = Σ_A A_A (−p n_A + τ_A) ⊗ c_A and K = Σ_A A_A (p' n nᵀ + K_t) ⊗ c_A c_Aᵀ,
+//! where c_A are the coefficients (1 for the slave node, −T_AC for the master nodes).
 //!
-//! SMALL SLIDING: koefficienter och normaler beräknas en gång i
-//! referensläget. Annars (finite sliding) projiceras slavytan på nytt i
-//! aktuell konfiguration vid varje utvärdering.
+//! SMALL SLIDING: coefficients and normals are computed once in the
+//! reference configuration. Otherwise (finite sliding) the slave surface is projected anew
+//! in the current configuration at every evaluation.
 
 #[path = "contact_ext.rs"]
 mod ext;
-// område acoustics2: *CONTACT DAMPING
+// area acoustics2: *CONTACT DAMPING
 #[path = "contact_damping.rs"]
 pub mod damping;
 
@@ -70,22 +70,22 @@ pub static FACTORIES: &[InteractionFactory] = &[
     InteractionFactory { keywords: &["CONTACT PAIR"], build: pair },
 ];
 
-/// Kanter med större vinkel än arccos(CORNER_COS) räknas som hörn (S2S finite sliding).
+/// Edges with an angle larger than arccos(CORNER_COS) count as corners (S2S finite sliding).
 const CORNER_COS: f64 = 0.5;
-/// Sökzon utanför masterytans fria kanter (andel av ytelementets storlek) för
-/// slavpunkter vars cell delvis ligger på masterytan (`edge_fraction`).
+/// Search zone outside the master surface's free edges (fraction of the facet size) for
+/// slave points whose cell lies partly on the master surface (`edge_fraction`).
 const EXTENSION_ZONE: f64 = 0.5;
 
-/// Klistringsstyvhet för ROUGH relativt normalens straffkoefficient (i
-/// stället för Lagrange-multiplikatorer; 1e-4 · k_hård ger fortfarande försumbar
-/// elastisk glidning men konvergerar).
+/// Sticking stiffness for ROUGH relative to the normal penalty coefficient (instead
+/// of Lagrange multipliers; 1e-4 · k_hard still gives negligible
+/// elastic slip but converges).
 const LAGRANGE_STICK: f64 = 1e-4;
 
-/// Straffkoefficient för hård kontakt relativt underliggande elements styvhet.
+/// Penalty coefficient for hard contact relative to the underlying element's stiffness.
 pub const HARD_FACTOR: f64 = 1e4;
-/// Straffkoefficient för hård kontakt (direkt metod) med SMALL SLIDING.
+/// Penalty coefficient for hard contact (direct method) with SMALL SLIDING.
 pub const HARD_FACTOR_SMALL: f64 = 1e8;
-/// Straffkoefficient för hård kontakt (direkt metod) mot en stel masteryta.
+/// Penalty coefficient for hard contact (direct method) against a rigid master surface.
 pub const HARD_FACTOR_RIGID: f64 = 1e8;
 
 #[derive(Debug, Clone, Copy)]
@@ -93,42 +93,42 @@ enum Law {
     Hard,
     Linear(f64),
     Exponential { c0: f64, p0: f64 },
-    /// PRESSURE-OVERCLOSURE=TABULAR: (överlappning, tryck), högst 32 punkter;
-    /// 0 före första punkten, sista lutningen efter sista.
+    /// PRESSURE-OVERCLOSURE=TABULAR: (overclosure, pressure), at most 32 points;
+    /// 0 before the first point, the last slope after the last one.
     Tabular([(f64, f64); 32], usize),
 }
 
-/// Hur hård kontakt upprätthålls (*SURFACE BEHAVIOR, DIRECT/PENALTY/AUGMENTED LAGRANGE).
+/// How hard contact is enforced (*SURFACE BEHAVIOR, DIRECT/PENALTY/AUGMENTED LAGRANGE).
 #[derive(Debug, Clone, Copy, PartialEq)]
 enum Enforce {
-    /// Exakt (Lagrange-multiplikatorer); här en mycket styv straffkoefficient.
+    /// Exact (Lagrange multipliers); here a very stiff penalty coefficient.
     Direct,
-    /// Linjär straffmetod med given styvhet (tryck per överlappning) eller
-    /// standardstyvheten (None), multiplicerad med skalfaktorn.
+    /// Linear penalty method with a given stiffness (pressure per overclosure) or
+    /// the default stiffness (None), multiplied by the scale factor.
     Penalty(Option<f64>, f64),
 }
 
 #[derive(Debug, Clone, Copy)]
 struct Props {
     law: Law,
-    /// None: formuleringens standard (DIRECT för nod mot yta, PENALTY för
-    /// SURFACE TO SURFACE och general contact).
+    /// None: the formulation's default (DIRECT for node to surface, PENALTY for
+    /// SURFACE TO SURFACE and general contact).
     enforce: Option<Enforce>,
     mu: f64,
     slip_tol: f64,
-    /// *SURFACE BEHAVIOR, NO SEPARATION: kontakt som har slutits öppnar inte igen.
+    /// *SURFACE BEHAVIOR, NO SEPARATION: contact that has closed does not open again.
     no_sep: bool,
-    /// *FRICTION, ROUGH: ingen glidning.
+    /// *FRICTION, ROUGH: no slip.
     rough: bool,
-    /// *FRICTION, LAGRANGE: fastläget upprätthålls (styv straffkoefficient).
+    /// *FRICTION, LAGRANGE: sticking is enforced (stiff penalty coefficient).
     lagrange: bool,
-    /// *FRICTION, ELASTIC SLIP=γ (absolut kritisk elastisk glidning).
+    /// *FRICTION, ELASTIC SLIP=γ (absolute critical elastic slip).
     elastic_slip: Option<f64>,
     /// *FRICTION, EXPONENTIAL DECAY: (μ_k, d_c), μ_s = `mu`; μ = μ_k + (μ_s − μ_k) e^(−d_c γ̇).
     decay: Option<(f64, f64)>,
-    /// *FRICTION, ANISOTROPIC: μ₂ i lokal riktning 2 (μ₁ = `mu`), `contact_ext.rs`.
+    /// *FRICTION, ANISOTROPIC: μ₂ in local direction 2 (μ₁ = `mu`), `contact_ext.rs`.
     mu2: Option<f64>,
-    /// Område acoustics2: *CONTACT DAMPING (`contact_damping.rs`).
+    /// Area acoustics2: *CONTACT DAMPING (`contact_damping.rs`).
     damp: Option<damping::Damping>,
 }
 
@@ -139,7 +139,7 @@ impl Props {
 }
 
 impl Law {
-    /// (p, dp/dh) för överlappningen h med straffkoefficienten `k_hard`.
+    /// (p, dp/dh) for the overclosure h with the penalty coefficient `k_hard`.
     fn pressure(&self, h: f64, k_hard: f64) -> (f64, f64) {
         match *self {
             Law::Hard => {
@@ -182,7 +182,7 @@ impl Law {
         }
     }
 
-    /// Kontakten är aktiv (bidrar med styvhet) vid överlappningen h.
+    /// The contact is active (contributes stiffness) at the overclosure h.
     fn active(&self, h: f64) -> bool {
         match *self {
             Law::Exponential { c0, .. } => h > -c0,
@@ -195,7 +195,7 @@ impl Law {
 fn props(m: &FeModel, kw: &RawKeyword, name: &str) -> Result<Props> {
     let up = name.trim().to_uppercase();
     let Some(si) = m.extra.iter().find(|k| k.name == "SURFACE INTERACTION" && k.param_upper("NAME").as_deref() == Some(up.as_str())) else {
-        return kw.err(format!("*SURFACE INTERACTION, NAME={name} finns inte"));
+        return kw.err(format!("*SURFACE INTERACTION, NAME={name} does not exist"));
     };
     let mut p = Props::base();
     for sub in sub_options(m, si, &["SURFACE BEHAVIOR", "FRICTION", "CONTACT DAMPING"]) {
@@ -206,21 +206,21 @@ fn props(m: &FeModel, kw: &RawKeyword, name: &str) -> Result<Props> {
                 if sub.has("PENALTY") {
                     let ty = sub.param_upper("PENALTY").unwrap_or_default();
                     if !(ty.is_empty() || ty == "LINEAR") {
-                        return sub.err(format!("PENALTY={ty} stöds inte ännu (LINEAR)"));
+                        return sub.err(format!("PENALTY={ty} is not supported yet (LINEAR)"));
                     }
-                    // dataraden: styvhet (tom = standard), (oanvänd), skalfaktor
+                    // data line: stiffness (empty = default), (unused), scale factor
                     let f: Vec<&str> = sub.data.first().map(|d| d.fields.iter().map(|s| s.trim()).collect()).unwrap_or_default();
                     let k = f.first().filter(|s| !s.is_empty()).map(|s| parse_f64(s).ok_or(())).transpose();
                     let sc = f.get(2).filter(|s| !s.is_empty()).map(|s| parse_f64(s).ok_or(())).transpose();
                     let (Ok(k), Ok(sc)) = (k, sc) else {
-                        return sub.err("ogiltigt tal på dataraden");
+                        return sub.err("invalid number on the data line");
                     };
                     if f.iter().enumerate().any(|(i, s)| i != 0 && i != 2 && !s.is_empty()) {
-                        return sub.err("bara straffstyvhet (fält 1) och skalfaktor (fält 3) stöds på dataraden");
+                        return sub.err("only penalty stiffness (field 1) and scale factor (field 3) are supported on the data line");
                     }
                     p.enforce = Some(Enforce::Penalty(k, sc.unwrap_or(1.0)));
                 } else if sub.has("AUGMENTED LAGRANGE") || sub.has("DIRECT") {
-                    // båda ger (inom toleranser) ingen genomträngning
+                    // both give (within tolerances) no penetration
                     p.enforce = Some(Enforce::Direct);
                 }
                 let v = if p.enforce.is_some_and(|e| matches!(e, Enforce::Penalty(..))) { Vec::new() } else { v };
@@ -228,50 +228,50 @@ fn props(m: &FeModel, kw: &RawKeyword, name: &str) -> Result<Props> {
                     "HARD" => Law::Hard,
                     "LINEAR" => match v.first() {
                         Some(&k) if k > 0.0 => Law::Linear(k),
-                        _ => return sub.err("PRESSURE-OVERCLOSURE=LINEAR kräver lutningen på dataraden"),
+                        _ => return sub.err("PRESSURE-OVERCLOSURE=LINEAR requires the slope on the data line"),
                     },
                     "EXPONENTIAL" => {
                         if v.len() < 2 || v[0] <= 0.0 {
-                            return sub.err("PRESSURE-OVERCLOSURE=EXPONENTIAL kräver c0, p0");
+                            return sub.err("PRESSURE-OVERCLOSURE=EXPONENTIAL requires c0, p0");
                         }
                         Law::Exponential { c0: v[0], p0: v[1] }
                     }
                     "TABULAR" => {
-                        // dataraderna: tryck, överlappning
+                        // data lines: pressure, overclosure
                         let mut t = [(0.0, 0.0); 32];
                         let mut n = 0;
                         for d in &sub.data {
                             let f = sub.floats(d)?;
                             if f.len() < 2 {
-                                return sub.err_at(d.line, "skriv tryck, överlappning");
+                                return sub.err_at(d.line, "write pressure, overclosure");
                             }
                             if n == 32 {
-                                return sub.err("högst 32 punkter i PRESSURE-OVERCLOSURE=TABULAR");
+                                return sub.err("at most 32 points in PRESSURE-OVERCLOSURE=TABULAR");
                             }
                             t[n] = (f[1], f[0]);
                             n += 1;
                         }
                         if n < 2 {
-                            return sub.err("PRESSURE-OVERCLOSURE=TABULAR kräver minst två punkter");
+                            return sub.err("PRESSURE-OVERCLOSURE=TABULAR requires at least two points");
                         }
                         t[..n].sort_by(|a, b| a.0.total_cmp(&b.0));
                         if t[0].1 != 0.0 {
-                            return sub.err("första punkten i PRESSURE-OVERCLOSURE=TABULAR måste ha trycket 0");
+                            return sub.err("the first point in PRESSURE-OVERCLOSURE=TABULAR must have pressure 0");
                         }
                         Law::Tabular(t, n)
                     }
-                    "SCALE FACTOR" => return sub.err("PRESSURE-OVERCLOSURE=SCALE FACTOR finns bara för general contact i explicit analys"),
-                    other => return sub.err(format!("PRESSURE-OVERCLOSURE={other} stöds inte ännu (HARD, LINEAR, EXPONENTIAL, TABULAR)")),
+                    "SCALE FACTOR" => return sub.err("PRESSURE-OVERCLOSURE=SCALE FACTOR is only available for general contact in explicit analysis"),
+                    other => return sub.err(format!("PRESSURE-OVERCLOSURE={other} is not supported yet (HARD, LINEAR, EXPONENTIAL, TABULAR)")),
                 };
                 if p.enforce.is_some() && !matches!(p.law, Law::Hard) {
-                    return sub.err("PENALTY/AUGMENTED LAGRANGE/DIRECT gäller bara hård kontakt");
+                    return sub.err("PENALTY/AUGMENTED LAGRANGE/DIRECT only applies to hard contact");
                 }
             }
             "FRICTION" => {
                 if sub.has("DEPENDENCIES") || sub.has("TAUMAX") || sub.has("TEST DATA") {
-                    return sub.err("beroende eller begränsad (TAUMAX) friktion stöds inte ännu");
+                    return sub.err("dependent or limited (TAUMAX) friction is not supported yet");
                 }
-                // område contact3: anisotrop friktion (μ₁, μ₂ i de lokala riktningarna)
+                // area contact3: anisotropic friction (μ₁, μ₂ in the local directions)
                 if sub.has("ANISOTROPIC") {
                     let (m1, m2) = ext::anisotropic(sub)?;
                     p.mu = m1;
@@ -287,16 +287,16 @@ fn props(m: &FeModel, kw: &RawKeyword, name: &str) -> Result<Props> {
                 p.rough = sub.has("ROUGH");
                 p.lagrange = sub.has("LAGRANGE");
                 if sub.has("EXPONENTIAL DECAY") {
-                    // datarad: μ_s, μ_k, d_c
+                    // data line: μ_s, μ_k, d_c
                     let v = sub.first_floats()?;
                     if v.len() < 3 {
-                        return sub.err("EXPONENTIAL DECAY kräver μ_s, μ_k, d_c");
+                        return sub.err("EXPONENTIAL DECAY requires μ_s, μ_k, d_c");
                     }
                     p.mu = v[0];
                     p.decay = Some((v[1], v[2]));
                 } else if !p.rough {
                     if sub.data.len() > 1 {
-                        return sub.err("tabulerad friktion stöds inte ännu (en rad med μ)");
+                        return sub.err("tabular friction is not supported yet (one line with μ)");
                     }
                     p.mu = sub.first_floats()?.first().copied().unwrap_or(0.0);
                 }
@@ -306,7 +306,7 @@ fn props(m: &FeModel, kw: &RawKeyword, name: &str) -> Result<Props> {
                 if let Some(s) = sub.param("ELASTIC SLIP") {
                     match parse_f64(s) {
                         Some(g) if g > 0.0 => p.elastic_slip = Some(g),
-                        _ => return sub.err("ELASTIC SLIP= kräver ett positivt tal"),
+                        _ => return sub.err("ELASTIC SLIP= requires a positive number"),
                     }
                 }
             }
@@ -316,34 +316,34 @@ fn props(m: &FeModel, kw: &RawKeyword, name: &str) -> Result<Props> {
     Ok(p)
 }
 
-/// Villkoret för en slavnod vid en utvärdering.
+/// The constraint for a slave node at one evaluation.
 #[derive(Debug, Clone, Default)]
 struct NodeTerm {
-    /// (nod, koefficient): 1 för slavnoden, −T_AC för masternoderna.
+    /// (node, coefficient): 1 for the slave node, −T_AC for the master nodes.
     coef: Vec<(usize, f64)>,
     normal: [f64; 3],
     area: f64,
-    /// Utjämning av nodtrycket för utdata (CPRESS): (slavnodens index, vikt).
-    /// Tom = trycket skrivs ut som det är.
+    /// Smoothing of the nodal pressure for output (CPRESS): (slave node index, weight).
+    /// Empty = the pressure is output as is.
     smooth: Vec<(usize, f64)>,
-    /// Vektorkoefficienter för gapet (normal per integrationspunkt):
-    /// g = Σ_B v_B · x_B. Tom = g = n · Σ_B c_B x_B.
+    /// Vector coefficients for the gap (normal per integration point):
+    /// g = Σ_B v_B · x_B. Empty = g = n · Σ_B c_B x_B.
     vcoef: Vec<(usize, [f64; 3])>,
 }
 
-/// Tillstånd per slavnod.
+/// State per slave node.
 #[derive(Debug, Clone, Copy, Default)]
 struct NodeState {
     p: f64,
     gap: f64,
-    /// Elastisk glidning (vektor i tangentplanet).
+    /// Elastic slip (vector in the tangent plane).
     slip: [f64; 3],
-    /// Total glidning (för CSLIP).
+    /// Total slip (for CSLIP).
     total_slip: [f64; 3],
     shear: [f64; 3],
     normal: [f64; 3],
     contact: bool,
-    /// Glidhastighet i senaste inkrementet (EXPONENTIAL DECAY).
+    /// Slip rate in the latest increment (EXPONENTIAL DECAY).
     rate: f64,
 }
 
@@ -351,15 +351,15 @@ struct NodeState {
 struct State {
     committed: Vec<NodeState>,
     trial: Vec<NodeState>,
-    /// Förskjutningar vid senast godkända inkrement och vid senaste utvärderingen.
+    /// Displacements at the last accepted increment and at the latest evaluation.
     u_committed: Vec<NodeVec>,
     u_last: Vec<NodeVec>,
-    /// Utjämningsvikter för CPRESS (se `NodeTerm::smooth`).
+    /// Smoothing weights for CPRESS (see `NodeTerm::smooth`).
     smooth_trial: Vec<Vec<(usize, f64)>>,
     smooth_committed: Vec<Vec<(usize, f64)>>,
 }
 
-/// Slavsidan: elementytor eller noder (nodbaserad yta med areor).
+/// The slave side: element faces or nodes (node-based surface with areas).
 enum SlaveSide {
     Facets(Vec<Facet>),
     Nodes(Vec<(usize, f64)>),
@@ -368,44 +368,44 @@ enum SlaveSide {
 pub struct ContactPair {
     name: String,
     slave: SlaveSide,
-    /// Slavnoderna (sorterade) och index per nod.
+    /// The slave nodes (sorted) and index per node.
     nodes: Vec<usize>,
     master: Vec<Facet>,
     master_nodes: Vec<usize>,
-    /// Masterytornas storlek (för sökavståndet bakom ytan).
+    /// Size of the master facets (for the search distance behind the surface).
     master_size: Vec<f64>,
-    /// Förlängning av masterytan vid fria kanter (S2S finite sliding), i parameterenheter.
+    /// Extension of the master surface at free edges (S2S finite sliding), in parameter units.
     master_ext: Vec<[f64; 4]>,
-    /// Granne över varje kant (ξ = −1, ξ = 1, η = −1, η = 1) i masterytan, utom över hörn.
+    /// Neighbor across each edge (ξ = −1, ξ = 1, η = −1, η = 1) in the master surface, except across corners.
     master_adj: Vec<[Option<usize>; 4]>,
     s2s: bool,
     props: Props,
-    /// Straffkoefficient (tryck per överlappning) per slavnod för HARD.
+    /// Penalty coefficient (pressure per overclosure) per slave node for HARD.
     k_hard: Vec<f64>,
-    /// Kritisk elastisk glidning.
+    /// Critical elastic slip.
     gamma: f64,
     dim: usize,
-    /// Vikt för kraftbidraget (0,5 för symmetriska par i general contact).
+    /// Weight for the force contribution (0.5 for symmetric pairs in general contact).
     weight: f64,
-    /// Utjämning av masterytan (SMOOTH=, nod mot yta med finite sliding i 2D).
+    /// Smoothing of the master surface (SMOOTH=, node to surface with finite sliding in 2D).
     smooth: f64,
-    /// SMALL SLIDING: villkoren beräknas en gång i referensläget.
+    /// SMALL SLIDING: the constraints are computed once in the reference configuration.
     small: bool,
-    /// Förberäknade villkor (SMALL SLIDING).
+    /// Precomputed constraints (SMALL SLIDING).
     fixed: Option<Vec<Option<NodeTerm>>>,
-    /// Tillägg till gapet per slavnod (*CLEARANCE): g = g_geom − g_geom,0 + c.
+    /// Addition to the gap per slave node (*CLEARANCE): g = g_geom − g_geom,0 + c.
     gap_offset: Vec<f64>,
-    /// Initialt gap per slavnod med *CLEARANCE (för tangenten vid öppet spel).
+    /// Initial gap per slave node with *CLEARANCE (for the tangent with an open clearance).
     initial_gap: Vec<f64>,
     state: Mutex<State>,
-    /// Självkontakt (slav- och masterytan är samma yta, `contact_ext.rs`):
-    /// masterytor vars element innehåller slavpunktens noder hoppas över.
+    /// Self-contact (slave and master surface are the same surface, `contact_ext.rs`):
+    /// master facets whose element contains the slave point's nodes are skipped.
     self_contact: bool,
-    /// Nodlistan för varje masterytas element (självkontakt).
+    /// The node list of each master facet's element (self-contact).
     master_elem_nodes: Vec<Vec<usize>>,
 }
 
-/// Representativ translationsstyvhet (medelvärde av diagonalen) för ett element.
+/// Representative translational stiffness (mean of the diagonal) of an element.
 fn element_stiffness(m: &FeModel, e: usize) -> Result<f64> {
     let el = &m.elements[e];
     let section = el.section.map(|s| &m.sections[s]);
@@ -445,14 +445,14 @@ fn element_stiffness(m: &FeModel, e: usize) -> Result<f64> {
     Ok(if c > 0 { s / c as f64 } else { 0.0 })
 }
 
-/// Standardstyvhet för straffmetoden vid en elementyta (tryck per
-/// överlappning): 10 · M / h, där h = elementvolym / ytans area och
-/// M = (3λ + 8μ)/9 för isotrop elasticitet. Formeln är kontrollerad
-/// för CPE4 (olika E, ν och elementhöjd); för 3D-element är den inte
-/// kontrollerad. Saknas isotropt *ELASTIC används elementets medelstyvhet (diagonalen) / ytans area.
+/// Default stiffness for the penalty method at an element face (pressure per
+/// overclosure): 10 · M / h, where h = element volume / face area and
+/// M = (3λ + 8μ)/9 for isotropic elasticity. The formula has been checked
+/// for CPE4 (different E, ν and element height); for 3D elements it has not been
+/// checked. Without an isotropic *ELASTIC the element's mean stiffness (diagonal) / face area is used.
 fn penalty_stiffness(m: &FeModel, f: &Facet) -> Result<f64> {
     let el = &m.elements[f.elem];
-    // stel yta (R3D4, R2D2, ...): oändligt styv, den deformerbara sidan bestämmer
+    // rigid surface (R3D4, R2D2, ...): infinitely stiff, the deformable side governs
     if crate::elements::rigid::is_rigid(el.etype) {
         return Ok(f64::INFINITY);
     }
@@ -473,7 +473,7 @@ fn penalty_stiffness(m: &FeModel, f: &Facet) -> Result<f64> {
     Ok(10.0 * element_stiffness(m, f.elem)? / (af * f.thick).max(1e-300))
 }
 
-/// Elementets volym (area i 2D) med divergenssatsen över elementytorna.
+/// Element volume (area in 2D) via the divergence theorem over the element faces.
 fn element_volume(m: &FeModel, e: usize, xs: &[[f64; 3]]) -> f64 {
     let el = &m.elements[e];
     let c = crate::elements::common::centroid(xs);
@@ -490,7 +490,7 @@ fn element_volume(m: &FeModel, e: usize, xs: &[[f64; 3]]) -> f64 {
     v / dim as f64
 }
 
-/// Ytans storlek: längden i 2D, √area i 3D (antagande).
+/// Facet size: the length in 2D, √area in 3D (assumption).
 fn facet_size(f: &Facet, x: &[[f64; 3]]) -> f64 {
     if f.dim == 3 {
         return geom::nodal_areas(f, x).iter().sum::<f64>().sqrt();
@@ -504,21 +504,21 @@ fn facet_size(f: &Facet, x: &[[f64; 3]]) -> f64 {
     d
 }
 
-/// Integrationspunkter (ξ, vikt i parameterytan) per hörnnod för
-/// segmentviktningen i SURFACE TO SURFACE: varje slavnod får den del av ytelementet
-/// som ligger närmast noden i parameterrummet (halva kanten i 2D, en
-/// fjärdedel av fyrhörningen i 3D) med konstant vikt 1. Punkterna i varje
-/// del är bestämda ur kontaktkrafter mot masterytor med en knyck på känt
-/// läge: i 2D fyra punkter med lika vikt i
-/// t = ½ ± √0,15 och ½ ± √0,15/3 längs halvkanten, i 3D 3 × 3 punkter med
-/// lika vikt i t = ½, ½ ± 1/(2√2) (Chebyshevs trepunktsregel) per riktning.
-/// Andra ytor (trianglar, kvadratiska) → None.
+/// Integration points (ξ, weight in the parameter face) per corner node for
+/// the segment weighting in SURFACE TO SURFACE: each slave node gets the part of the facet
+/// that lies closest to the node in parameter space (half the edge in 2D, a
+/// quarter of the quadrilateral in 3D) with constant weight 1. The points in each
+/// part were determined from contact forces against master surfaces with a kink at a known
+/// location: in 2D four points with equal weight at
+/// t = ½ ± √0.15 and ½ ± √0.15/3 along the half edge, in 3D 3 × 3 points with
+/// equal weight at t = ½, ½ ± 1/(2√2) (Chebyshev's three-point rule) per direction.
+/// Other faces (triangles, quadratic) → None.
 fn tributary_points(f: &Facet) -> Option<Vec<Vec<([f64; 2], f64)>>> {
     match (f.dim, f.nodes.len()) {
         (2, 2) => {
             let a = 0.15f64.sqrt();
             let t = [0.5 - a, 0.5 - a / 3.0, 0.5 + a / 3.0, 0.5 + a];
-            // nod 0: ξ ∈ [−1, 0], nod 1: ξ ∈ [0, 1]
+            // node 0: ξ ∈ [−1, 0], node 1: ξ ∈ [0, 1]
             Some(vec![t.iter().map(|&t| ([-1.0 + t, 0.0], 0.25)).collect(), t.iter().map(|&t| ([t, 0.0], 0.25)).collect()])
         }
         (3, 4) => {
@@ -532,7 +532,7 @@ fn tributary_points(f: &Facet) -> Option<Vec<Vec<([f64; 2], f64)>>> {
                         let mut v = Vec::new();
                         for &tr in &t {
                             for &ts in &t {
-                                // från hörnet (t = 0) mot mitten (t = 1)
+                                // from the corner (t = 0) toward the middle (t = 1)
                                 v.push(([cr * (1.0 - tr), cs * (1.0 - ts)], 1.0 / 9.0));
                             }
                         }
@@ -545,13 +545,13 @@ fn tributary_points(f: &Facet) -> Option<Vec<Vec<([f64; 2], f64)>>> {
     }
 }
 
-/// Skärningen mellan strålen p + t n och ytan: (ξ, t) om skärningen ligger
-/// inom ytelementet (tolerans 1e-6 i parameterrummet).
-/// `ext` = tillåten förlängning utanför kanterna ξ = −1, ξ = 1, η = −1, η = 1
-/// (i parameterenheter).
+/// Intersection between the ray p + t n and the facet: (ξ, t) if the intersection lies
+/// within the facet (tolerance 1e-6 in parameter space).
+/// `ext` = allowed extension outside the edges ξ = −1, ξ = 1, η = −1, η = 1
+/// (in parameter units).
 fn ray_project(f: &Facet, x: &[[f64; 3]], p: [f64; 3], n: [f64; 3], ext: [f64; 4]) -> Option<([f64; 2], f64)> {
     let tri = geom::is_tri(f.dim, x.len());
-    // två riktningar vinkelräta mot n
+    // two directions perpendicular to n
     let e1 = if f.dim == 2 { [n[1], -n[0], 0.0] } else {
         let a = if n[0].abs() < 0.9 { [1.0, 0.0, 0.0] } else { [0.0, 1.0, 0.0] };
         let d = dot(a, n);
@@ -596,8 +596,8 @@ fn ray_project(f: &Facet, x: &[[f64; 3]], p: [f64; 3], n: [f64; 3], ext: [f64; 4
         }
     }
     if !conv {
-        // stora koordinater: stegkriteriet nås inte p.g.a. avrundning; godta
-        // om strålens avstånd till punkten är försumbart relativt ytans storlek
+        // large coordinates: the step criterion is not reached due to rounding; accept
+        // if the ray's distance to the point is negligible relative to the facet size
         let fp = geom::eval(f, x, xi);
         let d = sub(fp.x, p);
         let size = norm(fp.t1) + norm(fp.t2);
@@ -619,9 +619,9 @@ fn ray_project(f: &Facet, x: &[[f64; 3]], p: [f64; 3], n: [f64; 3], ext: [f64; 4
     Some((xi, dot(sub(fp.x, p), n)))
 }
 
-/// Masterytans förlängning vid fria kanter (kanter utan granne i samma yta
-/// eller med en granne över ett hörn): `frac` av ytelementets storlek, i
-/// parameterenheter per kant (ξ = −1, ξ = 1, η = −1, η = 1).
+/// Extension of the master surface at free edges (edges without a neighbor in the same surface
+/// or with a neighbor across a corner): `frac` of the facet size, in
+/// parameter units per edge (ξ = −1, ξ = 1, η = −1, η = 1).
 fn master_extension(master: &[Facet], x: &[[f64; 3]], frac: f64) -> Vec<[f64; 4]> {
     let normal = |f: &Facet| {
         let xs: Vec<[f64; 3]> = f.nodes.iter().map(|&n| x[n]).collect();
@@ -649,12 +649,12 @@ fn master_extension(master: &[Facet], x: &[[f64; 3]], frac: f64) -> Vec<[f64; 4]
         .collect()
 }
 
-/// Andel av en cirkelskiva (radie 1, centrum i origo) med x > a och y > b.
+/// Fraction of a disk (radius 1, centered at the origin) with x > a and y > b.
 fn quadrant_fraction(a: f64, b: f64) -> f64 {
     if a >= 1.0 || b >= 1.0 {
         return 0.0;
     }
-    // x = sin θ, dx = cos θ dθ; längden av {y > b} ∩ skivan är s − max(b, −s), s = cos θ
+    // x = sin θ, dx = cos θ dθ; the length of {y > b} ∩ the disk is s − max(b, −s), s = cos θ
     let th0 = a.max(-1.0).asin();
     let th1 = std::f64::consts::FRAC_PI_2;
     let mut cuts = vec![th0, th1];
@@ -686,8 +686,8 @@ fn quadrant_fraction(a: f64, b: f64) -> f64 {
     area / std::f64::consts::PI
 }
 
-/// Grannelementen över masterytornas kanter (ξ = −1, ξ = 1, η = −1, η = 1;
-/// i 2D nod 0 och nod 1), utom över hörn (normalerna skiljer mer än
+/// The neighboring elements across the master facets' edges (ξ = −1, ξ = 1, η = −1, η = 1;
+/// in 2D node 0 and node 1), except across corners (the normals differ by more than
 /// arccos(CORNER_COS)).
 fn master_adjacency(master: &[Facet], x: &[[f64; 3]]) -> Vec<[Option<usize>; 4]> {
     let normals: Vec<[f64; 3]> = master.iter().map(|f| geom::eval(f, &f.nodes.iter().map(|&n| x[n]).collect::<Vec<_>>(), [0.0, 0.0]).normal).collect();
@@ -715,7 +715,7 @@ impl ContactPair {
         let ss = geom::surface(m, kw, slave_name)?;
         let ms = geom::surface(m, kw, master_name)?;
         if ms.kind == "NODE" {
-            return kw.err("masterytan ska vara elementbaserad");
+            return kw.err("the master surface must be element-based");
         }
         let master = geom::facets(m, ms, &name)?;
         let mut master_nodes: Vec<usize> = master.iter().flat_map(|f| f.nodes.iter().copied()).collect();
@@ -737,7 +737,7 @@ impl ContactPair {
             }
         };
         let dim = m.dim();
-        // representativ styvhet per slavnod: medel av underliggande element på båda sidor
+        // representative stiffness per slave node: mean of the underlying elements on both sides
         let mut kn = vec![0.0; nodes.len()];
         let mut cnt = vec![0usize; nodes.len()];
         let mut sizes = Vec::new();
@@ -764,10 +764,10 @@ impl ContactPair {
         let ns_facets = sizes.len();
         let master_size: Vec<f64> = master.iter().map(|f| facet_size(f, &geom::coords(m, f, None))).collect();
         sizes.extend(&master_size);
-        // karakteristisk längd = slavytornas medelstorlek (kontrollerat i 2D;
-        // utan elementbaserad slavyta används masterytan)
+        // characteristic length = mean size of the slave facets (checked in 2D;
+        // without an element-based slave surface the master surface is used)
         let lc = if ns_facets > 0 { sizes[..ns_facets].iter().sum::<f64>() / ns_facets as f64 } else { sizes.iter().sum::<f64>() / sizes.len().max(1) as f64 };
-        // tributär area per slavnod (för straffkoefficientens skalning)
+        // tributary area per slave node (for scaling the penalty coefficient)
         let mut area = vec![0.0; nodes.len()];
         match &slave {
             SlaveSide::Facets(fs) => {
@@ -784,17 +784,17 @@ impl ContactPair {
                 }
             }
         }
-        // stel masteryta (R3D4, R2D2, ...): bara slavsidan deformeras
+        // rigid master surface (R3D4, R2D2, ...): only the slave side deforms
         let rigid_master = !master.is_empty() && master.iter().all(|f| crate::elements::rigid::is_rigid(m.elements[f.elem].etype));
-        // straffmetod för SURFACE TO SURFACE med finite sliding, annars direkt
+        // penalty method for SURFACE TO SURFACE with finite sliding, otherwise direct
         let enforce = props.enforce.unwrap_or(if s2s && !small { Enforce::Penalty(None, 1.0) } else { Enforce::Direct });
         let k_hard: Vec<f64> = match enforce {
             Enforce::Penalty(Some(k), sc) => vec![k * sc; nodes.len()],
             Enforce::Penalty(None, sc) => {
-                // standardstyvhet: 10 · M/h för den mjukaste sidan, med de
-                // ytelement som möts vid slavnoden (närmaste vända masteryta i
-                // referensläget och slavnodens ytelement vända mot den); general
-                // contact ger samma resultat som motsvarande *CONTACT PAIR
+                // default stiffness: 10 · M/h of the softer side, using the
+                // facets that meet at the slave node (nearest facing master facet in the
+                // reference configuration and the slave node's facets facing it); general
+                // contact gives the same result as the corresponding *CONTACT PAIR
                 let pmf: Vec<f64> = master.iter().map(|f| penalty_stiffness(m, f)).collect::<Result<_>>()?;
                 let mnorm: Vec<[f64; 3]> = master.iter().map(|f| geom::eval(f, &geom::coords(m, f, None), [0.0, 0.0]).normal).collect();
                 let pm_all = pmf.iter().sum::<f64>() / pmf.len().max(1) as f64;
@@ -805,7 +805,7 @@ impl ContactPair {
                         SlaveSide::Nodes(_) => Vec::new(),
                     };
                     let snorm: Vec<[f64; 3]> = sfs.iter().map(|f| geom::eval(f, &geom::coords(m, f, None), [0.0, 0.0]).normal).collect();
-                    // närmaste masteryta som är vänd mot någon av slavnodens ytor
+                    // nearest master facet facing any of the slave node's facets
                     let mut best: Option<(f64, usize)> = None;
                     for (j, f) in master.iter().enumerate() {
                         if !snorm.is_empty() && !snorm.iter().any(|ns| dot(*ns, mnorm[j]) < -0.5) {
@@ -830,7 +830,7 @@ impl ContactPair {
                     }
                     let mut kp = if pc > 0 { (ps / pc as f64).min(pm) } else { pm };
                     if !kp.is_finite() {
-                        // stel masteryta utan vänd slavyta: slavnodens egna ytor
+                        // rigid master surface without a facing slave facet: the slave node's own facets
                         let v: Vec<f64> = sfs.iter().map(|f| penalty_stiffness(m, f)).collect::<Result<_>>()?;
                         kp = v.iter().sum::<f64>() / v.len().max(1) as f64;
                     }
@@ -843,15 +843,15 @@ impl ContactPair {
                 .map(|i| {
                     let ks = if cnt[i] > 0 { kn[i] / cnt[i] as f64 } else { mk };
                     let k = if ks > 0.0 && mk > 0.0 { 2.0 * ks * mk / (ks + mk) } else { ks.max(mk) };
-                    // SMALL SLIDING är (bortsett från kontaktstatus) linjärt och tål
-                    // en styvare straffkoefficient utan konvergensproblem
+                    // SMALL SLIDING is (apart from the contact status) linear and tolerates
+                    // a stiffer penalty coefficient without convergence problems
                     let f = if small { HARD_FACTOR_SMALL } else if rigid_master { HARD_FACTOR_RIGID } else { HARD_FACTOR };
                     f * k / area[i].max(1e-300)
                 })
                 .collect(),
         };
         if crate::settings::with(|s| s.contact_debug) {
-            eprintln!("kontakt {name}: master k={mk:.6e}, slav k={:?}, A={:?}", kn.iter().zip(&cnt).map(|(k, c)| k / (*c).max(1) as f64).collect::<Vec<_>>(), area);
+            eprintln!("contact {name}: master k={mk:.6e}, slave k={:?}, A={:?}", kn.iter().zip(&cnt).map(|(k, c)| k / (*c).max(1) as f64).collect::<Vec<_>>(), area);
         }
         let ns = nodes.len();
         let master_ext = if s2s && !small { master_extension(&master, &m.nodes, EXTENSION_ZONE) } else { vec![[0.0; 4]; master.len()] };
@@ -894,10 +894,10 @@ impl ContactPair {
         Ok(cp)
     }
 
-    /// *CLEARANCE, SLAVE=, MASTER=, VALUE= eller TABULAR (datarader "nod eller
-    /// nodset, värde"; senare rader går före tidigare): det
-    /// initiala gapet sätts till det givna värdet utan att geometrin ändras,
-    /// g = g_geom − g_geom,0 + c (COPEN = c i frame 0). Bara för
+    /// *CLEARANCE, SLAVE=, MASTER=, VALUE= or TABULAR (data lines "node or
+    /// node set, value"; later lines take precedence over earlier ones): the
+    /// initial gap is set to the given value without changing the geometry,
+    /// g = g_geom − g_geom,0 + c (COPEN = c in frame 0). Only for
     /// SMALL SLIDING.
     fn apply_clearance(&mut self, m: &FeModel, slave: &str, master: &str) -> Result<()> {
         let (su, mu) = (slave.trim().to_uppercase(), master.trim().to_uppercase());
@@ -908,15 +908,15 @@ impl ContactPair {
                 continue;
             }
             if !self.small {
-                return kw.err("*CLEARANCE gäller bara kontaktpar med SMALL SLIDING");
+                return kw.err("*CLEARANCE only applies to contact pairs with SMALL SLIDING");
             }
             let mut c: Vec<Option<f64>> = vec![None; self.nodes.len()];
             if let Some(v) = kw.param("VALUE") {
-                // VALUE gäller alla slavnoder; dataraderna används inte
-                let Some(v) = parse_f64(v) else { return kw.err("VALUE= ska vara ett tal") };
+                // VALUE applies to all slave nodes; the data lines are not used
+                let Some(v) = parse_f64(v) else { return kw.err("VALUE= must be a number") };
                 c.iter_mut().for_each(|x| *x = Some(v));
             } else if !kw.has("TABULAR") {
-                return kw.err("*CLEARANCE kräver VALUE= eller TABULAR");
+                return kw.err("*CLEARANCE requires VALUE= or TABULAR");
             }
             for d in kw.records().into_iter().filter(|_| kw.param("VALUE").is_none()) {
                 let f: Vec<&str> = d.fields.iter().map(|s| s.trim()).filter(|s| !s.is_empty()).collect();
@@ -924,17 +924,17 @@ impl ContactPair {
                     continue;
                 }
                 if f.len() < 2 {
-                    return kw.err_at(d.line, "skriv nod (eller nodset), spel");
+                    return kw.err_at(d.line, "write node (or node set), clearance");
                 }
-                let Some(v) = parse_f64(f[1]) else { return kw.err_at(d.line, "spelet ska vara ett tal") };
+                let Some(v) = parse_f64(f[1]) else { return kw.err_at(d.line, "the clearance must be a number") };
                 for n in geom::node_ref(m, kw, f[0])? {
                     match self.nodes.binary_search(&n) {
                         Ok(i) => c[i] = Some(v),
-                        Err(_) => return kw.err_at(d.line, format!("nod {} är inte slavnod i paret", m.node_name(n))),
+                        Err(_) => return kw.err_at(d.line, format!("node {} is not a slave node in the pair", m.node_name(n))),
                     }
                 }
             }
-            let Some(terms) = &self.fixed else { return kw.err("*CLEARANCE kräver SMALL SLIDING") };
+            let Some(terms) = &self.fixed else { return kw.err("*CLEARANCE requires SMALL SLIDING") };
             for (i, t) in terms.iter().enumerate() {
                 let (Some(t), Some(ci)) = (t, c[i]) else { continue };
                 let g0: f64 = if t.vcoef.is_empty() {
@@ -955,11 +955,11 @@ impl ContactPair {
         Ok(())
     }
 
-    /// Villkor per slavnod i konfigurationen `x` (alla noders koordinater).
+    /// Constraints per slave node in the configuration `x` (coordinates of all nodes).
     fn terms(&self, _m: &FeModel, x: &[[f64; 3]]) -> Vec<Option<NodeTerm>> {
         let mx: Vec<Vec<[f64; 3]>> = self.master.iter().map(|f| f.nodes.iter().map(|&n| x[n]).collect()).collect();
-        // närmaste masteryta som är vänd mot slavytan (om slavnormalen ges)
-        // självkontakt: slavpunktens noder (masterytor i samma element hoppas över)
+        // nearest master facet facing the slave surface (if the slave normal is given)
+        // self-contact: the slave point's nodes (master facets in the same element are skipped)
         let skip: std::cell::RefCell<Vec<usize>> = std::cell::RefCell::new(Vec::new());
         let skipped = |i: usize| self.self_contact && self.master_elem_nodes[i].iter().any(|n| skip.borrow().contains(n));
         let closest = |p: [f64; 3], ns: Option<[f64; 3]>| -> Option<(usize, [f64; 2], [f64; 3], [f64; 3])> {
@@ -973,15 +973,15 @@ impl ContactPair {
                     continue;
                 }
                 let fp = geom::eval(f, &mx[i], xi);
-                // masterytans normal ska vara ungefär motriktad slavnormalen
-                // (inom 60°), annars är ytorna inte vända mot varandra
+                // the master facet normal should be roughly opposite to the slave normal
+                // (within 60°), otherwise the surfaces do not face each other
                 if let Some(n) = ns {
                     if dot(n, fp.normal) > -0.5 * norm(n) {
                         continue;
                     }
                 }
-                // punkter långt bakom masterytan (mer än en halv ytstorlek) är
-                // inte i kontakt med den (t.ex. kroppens baksida i general contact)
+                // points far behind the master surface (more than half a facet size) are
+                // not in contact with it (e.g. the back side of the body in general contact)
                 if dot(sub(p, fp.x), fp.normal) < -0.5 * self.master_size[i] {
                     continue;
                 }
@@ -991,8 +991,8 @@ impl ContactPair {
             }
             best.map(|b| (b.0, b.1, b.3, b.4))
         };
-        // masterpunkt längs slavnormalen (S2S): ytan som strålen x_s − t n_s
-        // träffar inom ytelementet närmast slavpunkten (minst |t|)
+        // master point along the slave normal (S2S): the facet that the ray x_s − t n_s
+        // hits within the facet closest to the slave point (smallest |t|)
         let closest_ray = |p: [f64; 3], ns: [f64; 3]| -> Option<(usize, [f64; 2], [f64; 3], [f64; 3])> {
             let mut best: Option<(usize, [f64; 2], f64, [f64; 3], [f64; 3])> = None;
             for (i, f) in self.master.iter().enumerate() {
@@ -1004,11 +1004,11 @@ impl ContactPair {
                 if dot(ns, fp.normal) > -0.5 {
                     continue;
                 }
-                // t < 0: genomträngning; för långt bakom masterytan räknas inte
+                // t < 0: penetration; too far behind the master surface does not count
                 if t < -0.5 * self.master_size[i] {
                     continue;
                 }
-                // träffar i förlängningen räknas efter träffar inom ytan
+                // hits in the extension count after hits within the facet
                 let outside = xi[0].abs() > 1.0 + 1e-9 || (f.dim == 3 && xi[1].abs() > 1.0 + 1e-9);
                 let key = t.abs() + if outside { 1e30 } else { 0.0 };
                 if best.as_ref().is_none_or(|b| key < b.2) {
@@ -1021,9 +1021,9 @@ impl ContactPair {
         let idx = |n: usize| self.nodes.binary_search(&n).unwrap();
         match &self.slave {
             SlaveSide::Facets(fs) if self.s2s && fs.iter().all(|f| tributary_points(f).is_some()) => {
-                // segmentviktning: konstant vikt över slavnodens del av ytelementet
+                // segment weighting: constant weight over the slave node's part of the facet
                 let mut acc: Vec<(f64, BTreeMap<usize, f64>, BTreeMap<usize, f64>, [f64; 3])> = vec![(0.0, BTreeMap::new(), BTreeMap::new(), [0.0; 3]); self.nodes.len()];
-                // vektorkoefficienter: Σ_p w_p (−n_p) N_B (slav) och −Σ_p w_p (−n_p) M_C (master)
+                // vector coefficients: Σ_p w_p (−n_p) N_B (slave) and −Σ_p w_p (−n_p) M_C (master)
                 let mut vacc: Vec<BTreeMap<usize, [f64; 3]>> = vec![BTreeMap::new(); self.nodes.len()];
                 for sf in fs {
                     let xs: Vec<[f64; 3]> = sf.nodes.iter().map(|&n| x[n]).collect();
@@ -1037,14 +1037,14 @@ impl ContactPair {
                             }
                             let Some((mi, mxi, _, xproj)) = closest_ray(fp.x, fp.normal) else {
                                 if crate::settings::with(|s| s.contact_debug) {
-                                    eprintln!("cell: ingen masterpunkt för {:?}", fp.x);
+                                    eprintln!("cell: no master point for {:?}", fp.x);
                                 }
                                 continue;
                             };
                             let mf = &self.master[mi];
                             let (shm, _, _) = geom::shape(mf.dim, mf.nodes.len(), mxi);
-                            // masterytans vikter: SMALL SLIDING formfunktionerna i
-                            // projektionen, annars cellfördelningen (`cell_weights`)
+                            // master surface weights: SMALL SLIDING the shape functions at the
+                            // projection, otherwise the cell distribution (`cell_weights`)
                             let (mw, phi) = if self.small {
                                 (mf.nodes.iter().copied().zip(shm.iter().copied()).collect::<Vec<_>>(), 1.0)
                             } else {
@@ -1143,7 +1143,7 @@ impl ContactPair {
                 }
             }
             _ => {
-                // nod mot yta
+                // node to surface
                 let mut area = vec![0.0; self.nodes.len()];
                 let mut nsl: Vec<Option<[f64; 3]>> = vec![None; self.nodes.len()];
                 match &self.slave {
@@ -1186,19 +1186,19 @@ impl ContactPair {
         out
     }
 
-    /// Mastervikter för en slavpunkt med finite sliding (SURFACE TO SURFACE).
-    /// Varje integrationspunkt representerar en cell med radien r kring
-    /// punkten: ett intervall [p − r, p + r] i 2D, en cirkelskiva i 3D, med
-    /// r = avståndet från den yttersta integrationspunkten till delområdets
-    /// kant ((½ − √0,15) · halvkantens längd i 2D, (½ − 1/(2√2)) · √(fjärdedelens
-    /// area) i 3D). Cellen fördelas på masterytans ytelement efter hur stor
-    /// andel av den som ligger på respektive element (grannar över kanter och
-    /// hörn i samma yta), och varje elements formfunktioner tas i punkten
-    /// (förlängda utanför elementet). Andelar utanför fria kanter faller bort.
-    /// Returnerar (vikter per masternod, summan av andelarna). Kontrollerat med
-    /// krafter på masternoder vid olika lägen av
-    /// en masternod/-kant relativt slavpunkterna (2D och 3D) och föreskrivna
-    /// förskjutningar nära masterytans ände.
+    /// Master weights for a slave point with finite sliding (SURFACE TO SURFACE).
+    /// Each integration point represents a cell with radius r around
+    /// the point: an interval [p − r, p + r] in 2D, a disk in 3D, with
+    /// r = the distance from the outermost integration point to the subregion's
+    /// edge ((½ − √0.15) · half-edge length in 2D, (½ − 1/(2√2)) · √(quarter's
+    /// area) in 3D). The cell is distributed over the master facets according to how large
+    /// a fraction of it lies on each element (neighbors across edges and
+    /// corners in the same surface), and each element's shape functions are taken at the point
+    /// (extended outside the element). Fractions outside free edges are dropped.
+    /// Returns (weights per master node, sum of the fractions). Checked with
+    /// forces on master nodes for different positions of
+    /// a master node/edge relative to the slave points (2D and 3D) and prescribed
+    /// displacements near the end of the master surface.
     #[allow(clippy::too_many_arguments)]
     fn cell_weights(&self, mx: &[Vec<[f64; 3]>], sf: &Facet, xs: &[[f64; 3]], mi: usize, mxi: [f64; 2], p: [f64; 3], ns: [f64; 3]) -> (Vec<(usize, f64)>, f64) {
         let mf = &self.master[mi];
@@ -1214,13 +1214,13 @@ impl ContactPair {
             return (shape_at(mi, mxi), if inside { 1.0 } else { 0.0 });
         }
         let fp = geom::eval(mf, &mx[mi], mxi);
-        // punkten i grannens parameterrum (förlängt utanför grannen)
+        // the point in the neighbor's parameter space (extended outside the neighbor)
         let at = |j: usize| -> Option<Vec<(usize, f64)>> { ray_project(&self.master[j], &mx[j], p, ns, [3.0; 4]).map(|(xi, _)| shape_at(j, xi)) };
         let mut parts: Vec<(Option<usize>, f64)> = Vec::new();
         if lin2 {
             let r = (0.5 - 0.15f64.sqrt()) * 0.5 * norm(sub(xs[1], xs[0]));
             let l = norm(fp.t1);
-            // avstånd till kanterna ξ = −1 och ξ = 1 (negativt utanför)
+            // distance to the edges ξ = −1 and ξ = 1 (negative outside)
             let d = [(1.0 + mxi[0]) * l, (1.0 - mxi[0]) * l];
             let mut own = 1.0;
             for k in 0..2 {
@@ -1235,7 +1235,7 @@ impl ContactPair {
             let area: f64 = geom::nodal_areas(sf, xs).iter().sum();
             let r = (0.5 - 0.5 / 2f64.sqrt()) * (0.25 * area).sqrt();
             let (l1, l2) = (norm(fp.t1), norm(fp.t2));
-            // kanter: ξ = −1, ξ = 1, η = −1, η = 1
+            // edges: ξ = −1, ξ = 1, η = −1, η = 1
             let d = [(1.0 + mxi[0]) * l1, (1.0 - mxi[0]) * l1, (1.0 + mxi[1]) * l2, (1.0 - mxi[1]) * l2];
             let seg = |d: f64| -> f64 {
                 let q = (d / r).clamp(-1.0, 1.0);
@@ -1249,7 +1249,7 @@ impl ContactPair {
                     parts.push((self.master_adj[mi][k], fr[k]));
                 }
             }
-            // hörn: andelen bortom två kanter har räknats för båda kanterna
+            // corners: the fraction beyond two edges has been counted for both edges
             for (k1, k2) in [(0, 2), (0, 3), (1, 2), (1, 3)] {
                 if fr[k1] > 0.0 && fr[k2] > 0.0 {
                     let c = quadrant_fraction(d[k1] / r, d[k2] / r);
@@ -1280,7 +1280,7 @@ impl ContactPair {
             let sh = if j == mi { Some(shape_at(mi, mxi)) } else { at(j) };
             let Some(sh) = sh else {
                 if crate::settings::with(|s| s.contact_debug) {
-                    eprintln!("cell: grannen {j} saknar projektion (p={p:?})");
+                    eprintln!("cell: neighbor {j} has no projection (p={p:?})");
                 }
                 continue;
             };
@@ -1290,16 +1290,16 @@ impl ContactPair {
             }
         }
         if crate::settings::with(|s| s.contact_debug) && total < 1.0 - 1e-12 {
-            eprintln!("cell: andel {total} vid {p:?}, master {mi} ξ={mxi:?}, grannar {:?}", self.master_adj[mi]);
+            eprintln!("cell: fraction {total} at {p:?}, master {mi} ξ={mxi:?}, neighbors {:?}", self.master_adj[mi]);
         }
         (w.into_iter().filter(|p| p.1 != 0.0).collect(), total)
     }
 
-    /// Utjämnad masteryta (2D, finite sliding, nod mot yta): nära en masternod B
-    /// mellan grannarna A och C ersätts kanterna av en kvadratisk Bézierkurva
-    /// från P_a = B + s (A − B) till P_b = B + s (C − B) med B som styrpunkt
-    /// (s = SMOOTH, standard 0,2). Ger vikterna för A, B, C och normalen i
-    /// slavpunktens projektion på kurvan.
+    /// Smoothed master surface (2D, finite sliding, node to surface): near a master node B
+    /// between the neighbors A and C the edges are replaced by a quadratic Bézier curve
+    /// from P_a = B + s (A − B) to P_b = B + s (C − B) with B as control point
+    /// (s = SMOOTH, default 0.2). Gives the weights for A, B, C and the normal at
+    /// the slave point's projection onto the curve.
     fn smoothed(&self, x: &[[f64; 3]], mi: usize, xi: f64, p: [f64; 3], n_facet: [f64; 3]) -> Option<(Vec<(usize, f64)>, [f64; 3])> {
         let s = self.smooth;
         let mf = &self.master[mi];
@@ -1307,7 +1307,7 @@ impl ContactPair {
             return None;
         }
         let z = 0.5 * (xi + 1.0);
-        // nod B och grannkanten
+        // node B and the neighboring edge
         let (b, c) = if z < s {
             (mf.nodes[0], mf.nodes[1])
         } else if z > 1.0 - s {
@@ -1365,7 +1365,7 @@ impl Interaction for ContactPair {
         match &self.fixed {
             Some(f) => f.iter().flatten().map(|t| t.coef.iter().map(|c| c.0).collect()).collect(),
             None => {
-                // slavnoden, slavnoderna i dess ytelement (utjämnad viktning) och alla masternoder
+                // the slave node, the slave nodes of its facets (smoothed weighting) and all master nodes
                 let mut patch: Vec<Vec<usize>> = self.nodes.iter().map(|&n| vec![n]).collect();
                 if let SlaveSide::Facets(fs) = &self.slave {
                     for f in fs {
@@ -1380,7 +1380,7 @@ impl Interaction for ContactPair {
                     .map(|mut v| {
                         v.sort_unstable();
                         v.dedup();
-                        // självkontakt: masternoderna är också slavnoder
+                        // self-contact: the master nodes are also slave nodes
                         v.extend(self.master_nodes.iter().copied().filter(|n| self.self_contact || self.nodes.binary_search(n).is_err()));
                         v
                     })
@@ -1403,7 +1403,7 @@ impl Interaction for ContactPair {
         if crate::settings::with(|s| s.contact_debug) {
             for (i, t) in terms.iter().enumerate() {
                 if let Some(t) = t {
-                    eprintln!("kontakt {} nod {}: n={:?} A={:.4e} c={:?}", self.name, m.node_name(self.nodes[i]), t.normal, t.area, t.coef.iter().map(|(n, c)| (m.node_label[*n], (c * 1e4).round() / 1e4)).collect::<Vec<_>>());
+                    eprintln!("contact {} node {}: n={:?} A={:.4e} c={:?}", self.name, m.node_name(self.nodes[i]), t.normal, t.area, t.coef.iter().map(|(n, c)| (m.node_label[*n], (c * 1e4).round() / 1e4)).collect::<Vec<_>>());
                 }
             }
         }
@@ -1412,7 +1412,7 @@ impl Interaction for ContactPair {
         let dim = self.dim;
         for (i, t) in terms.iter().enumerate() {
             let old = st.committed[i];
-            // glidhastigheten från föregående iteration (EXPONENTIAL DECAY, implicit)
+            // slip rate from the previous iteration (EXPONENTIAL DECAY, implicit)
             let rate_it = st.trial[i].rate;
             let mut ns = NodeState { total_slip: old.total_slip, ..Default::default() };
             let Some(t) = t else {
@@ -1422,7 +1422,7 @@ impl Interaction for ContactPair {
             };
             st.smooth_trial[i].clone_from(&t.smooth);
             let n = t.normal;
-            // gap och relativ förskjutning sedan inkrementets början
+            // gap and relative displacement since the start of the increment
             let mut r = [0.0; 3];
             let mut dr = [0.0; 3];
             for &(b, c) in &t.coef {
@@ -1439,7 +1439,7 @@ impl Interaction for ContactPair {
             let h = -g;
             let kh = self.k_hard[i];
             let (mut p, mut dp) = self.props.law.pressure(h, kh);
-            // NO SEPARATION: slutna kontakter öppnar inte (dragkraft tillåts)
+            // NO SEPARATION: closed contacts do not open (tension allowed)
             let bonded = self.props.no_sep && old.contact && h < 0.0;
             if bonded {
                 let k = match self.props.law {
@@ -1449,10 +1449,10 @@ impl Interaction for ContactPair {
                 p = k * h;
                 dp = k;
             }
-            // initialt öppet spel (*CLEARANCE): normalstyvheten tas med i tangenten
-            // tills spelet öppnar mer än det givna, så att en kropp som bara hålls
-            // av kontakten inte blir en mekanism i första iterationen (påverkar
-            // bara iterationsvägen, inte jämvikten)
+            // initially open clearance (*CLEARANCE): the normal stiffness is included in the tangent
+            // until the clearance opens more than the given one, so that a body held only
+            // by the contact does not become a mechanism in the first iteration (affects
+            // only the iteration path, not the equilibrium)
             let pre_open = self.initial_gap[i] > 0.0 && !old.contact && g > 0.0 && g <= 2.0 * self.initial_gap[i];
             if pre_open {
                 dp = match self.props.law {
@@ -1463,19 +1463,19 @@ impl Interaction for ContactPair {
             let area = t.area * self.weight;
             ns.p = p;
             ns.contact = self.props.law.active(h) || bonded;
-            // friktion
+            // friction
             let mut tau = [0.0; 3];
             let mut kt: Option<[[f64; 3]; 3]> = None;
-            // ∂τ/∂p (för den osymmetriska friktionstangenten dτ/dp · dp/dh)
+            // ∂τ/∂p (for the unsymmetric friction tangent dτ/dp · dp/dh)
             let mut dtau_dp = [0.0; 3];
-            // osymmetrisk del av friktionstangenten (anisotrop friktion, contact_ext.rs)
+            // unsymmetric part of the friction tangent (anisotropic friction, contact_ext.rs)
             let mut kt_skew: Option<[[f64; 3]; 3]> = None;
             ns.normal = n;
             let dn = dot(dr, n);
             let ds = [dr[0] - dn * n[0], dr[1] - dn * n[1], dr[2] - dn * n[2]];
             let fric = (self.props.mu > 0.0 || self.props.rough) && ns.contact && (p > 0.0 || (self.props.rough && bonded));
             if ns.contact && !fric {
-                // friktionsfritt: all tangentiell relativ rörelse är glidning
+                // frictionless: all tangential relative motion is slip
                 for c in 0..3 {
                     ns.total_slip[c] += ds[c];
                 }
@@ -1485,17 +1485,17 @@ impl Interaction for ContactPair {
                 let eon = dot(eo, n);
                 let e_tr = [eo[0] - eon * n[0] + ds[0], eo[1] - eon * n[1] + ds[1], eo[2] - eon * n[2] + ds[2]];
                 let e_len = norm(e_tr);
-                // friktionskoefficient (EXPONENTIAL DECAY: från glidhastigheten i inkrementet)
+                // friction coefficient (EXPONENTIAL DECAY: from the slip rate in the increment)
                 let mu = match self.props.decay {
                     Some((mk, dc)) => mk + (self.props.mu - mk) * (-dc * rate_it).exp(),
                     _ => self.props.mu,
                 };
-                // ROUGH: ingen glidgräns; LAGRANGE: fastläget med den styva straffkoefficienten
+                // ROUGH: no slip limit; LAGRANGE: sticking with the stiff penalty coefficient
                 let mu_p = if self.props.rough { f64::INFINITY } else { mu * p };
                 let gam = if self.props.rough {
                     f64::INFINITY
                 } else if self.props.lagrange {
-                    // fastläget nästan exakt: 1 % av standardens elastiska glidning
+                    // sticking almost exact: 1 % of the default elastic slip
                     (0.01 * self.gamma).max(1e-300)
                 } else {
                     self.props.elastic_slip.unwrap_or(self.gamma).max(1e-300)
@@ -1513,7 +1513,7 @@ impl Interaction for ContactPair {
                     pt[1][2] = 0.0;
                 }
                 if let (Some(mu2), 3, false) = (self.props.mu2, dim, self.props.rough) {
-                    // område contact3: anisotrop friktion (contact_ext.rs)
+                    // area contact3: anisotropic friction (contact_ext.rs)
                     let a = ext::aniso_friction(e_tr, n, p, mu, mu2, gam);
                     tau = a.tau;
                     dtau_dp = a.dtau_dp;
@@ -1542,7 +1542,7 @@ impl Interaction for ContactPair {
                     }
                     kt = Some(kk);
                 }
-                // total glidning: tangentiell relativ rörelse minus ändringen av den elastiska delen
+                // total slip: tangential relative motion minus the change of the elastic part
                 for c in 0..3 {
                     ns.total_slip[c] = old.total_slip[c] + ds[c] - (ns.slip[c] - (eo[c] - eon * n[c]));
                 }
@@ -1552,10 +1552,10 @@ impl Interaction for ContactPair {
                 ns.shear = tau;
             }
             st.trial[i] = ns;
-            // område acoustics2: viskös kontaktdämpning μ A v (normal och s·tangentiell)
+            // area acoustics2: viscous contact damping μ A v (normal and s·tangential)
             if let (Some(dm), true) = (self.props.damp, ctx.dt > 0.0) {
-                // koefficienten från det aktuella spelet (kontrollerat;
-                // spelet vid inkrementets början ger 6 % fel)
+                // the coefficient from the current clearance (checked;
+                // the clearance at the start of the increment gives a 6 % error)
                 let mu = dm.coefficient(g);
                 if mu > 0.0 {
                     let tf = dm.tangent.unwrap_or(0.0);
@@ -1587,7 +1587,7 @@ impl Interaction for ContactPair {
             if !ns.contact && p == 0.0 && !pre_open {
                 continue;
             }
-            // krafter: f_B = A c_B (−p n + τ), med vektorkoefficienter f_B = A (−p v_B + c_B τ)
+            // forces: f_B = A c_B (−p n + τ), with vector coefficients f_B = A (−p v_B + c_B τ)
             let vec_n = !t.vcoef.is_empty();
             let tr = if vec_n { tau } else { [-p * n[0] + tau[0], -p * n[1] + tau[1], -p * n[2] + tau[2]] };
             for &(b, c) in &t.coef {
@@ -1634,8 +1634,8 @@ impl Interaction for ContactPair {
                         }
                     }
                 }
-                // osymmetrisk lösare: friktionskraftens beroende av trycket,
-                // ∂f_B1/∂x_B2 = A c₁ c₂ (∂τ/∂p) p' (−n)ᵀ (utelämnas i den symmetriska tangenten)
+                // unsymmetric solver: dependence of the friction force on the pressure,
+                // ∂f_B1/∂x_B2 = A c₁ c₂ (∂τ/∂p) p' (−n)ᵀ (omitted in the symmetric tangent)
                 if let (Some(sk), true) = (kt_skew, k.is_unsymmetric()) {
                     ext::add_skew(k, &t.coef, area, &sk, dim);
                 }
@@ -1684,7 +1684,7 @@ impl Interaction for ContactPair {
             co.values.push((n, vec![s.gap]));
             let t = local_tangents(s.normal, self.dim);
             for k in 0..ncomp {
-                // CSHEAR har samma tecken som den elastiska glidningen
+                // CSHEAR has the same sign as the elastic slip
                 sh[k].values.push((n, vec![dot(s.shear, t[k])]));
                 sl[k].values.push((n, vec![dot(s.total_slip, t[k])]));
             }
@@ -1697,9 +1697,9 @@ impl Interaction for ContactPair {
     }
 }
 
-/// Lokala tangentriktningar för kontaktutdata (CSHEAR/CSLIP):
-/// i 2D t₁ = (n_y, −n_x); i 3D t₁ = globala x projicerad på tangentplanet
-/// (globala z om normalen är nästan parallell med x) och t₂ = n × t₁.
+/// Local tangent directions for contact output (CSHEAR/CSLIP):
+/// in 2D t₁ = (n_y, −n_x); in 3D t₁ = global x projected onto the tangent plane
+/// (global z if the normal is nearly parallel to x) and t₂ = n × t₁.
 fn local_tangents(n: [f64; 3], dim: usize) -> [[f64; 3]; 2] {
     if norm(n) == 0.0 {
         return [[0.0; 3]; 2];
@@ -1716,28 +1716,28 @@ fn local_tangents(n: [f64; 3], dim: usize) -> [[f64; 3]; 2] {
 }
 
 fn pair(m: &FeModel, kw: &RawKeyword) -> Result<Vec<Box<dyn Interaction>>> {
-    // bara explicita steg: kontakten sköts av steps/explicit_contact.rs
+    // explicit steps only: contact is handled by steps/explicit_contact.rs
     if crate::steps::explicit::contact::only_explicit(m) {
         return Ok(Vec::new());
     }
-    // område multiphysics: ytor på värmeledningselement har bara termisk kontakt (thermal_contact.rs)
+    // area multiphysics: surfaces on heat transfer elements only have thermal contact (thermal_contact.rs)
     if super::thermal_contact::only_heat(m, kw) {
         return Ok(Vec::new());
     }
     let ip = crate::inp::required(kw, "INTERACTION")?;
-    // område cavity: kohesiv kontakt (*COHESIVE BEHAVIOR) i interactions/cohesive_contact.rs
+    // area cavity: cohesive contact (*COHESIVE BEHAVIOR) in interactions/cohesive_contact.rs
     if super::cohesive_contact::is_cohesive(m, ip) {
         return Ok(Vec::new());
     }
     let p = props(m, kw, ip)?;
-    // nod mot yta är standard för *CONTACT PAIR
+    // node to surface is the default for *CONTACT PAIR
     let ty = kw.param_upper("TYPE").unwrap_or_else(|| "NODE TO SURFACE".into());
     let s2s = match ty.as_str() {
         "SURFACE TO SURFACE" => true,
         "NODE TO SURFACE" => false,
-        other => return kw.err(format!("TYPE={other} stöds inte (NODE TO SURFACE, SURFACE TO SURFACE)")),
+        other => return kw.err(format!("TYPE={other} is not supported (NODE TO SURFACE, SURFACE TO SURFACE)")),
     };
-    // ADJUST= justerar slavnoderna när filen läses (`adjust_slaves`)
+    // ADJUST= adjusts the slave nodes when the file is read (`adjust_slaves`)
     let small = kw.has("SMALL SLIDING");
     let mut out: Vec<Box<dyn Interaction>> = Vec::new();
     for d in kw.records() {
@@ -1746,9 +1746,9 @@ fn pair(m: &FeModel, kw: &RawKeyword) -> Result<Vec<Box<dyn Interaction>>> {
             continue;
         }
         if f.len() < 2 {
-            return kw.err_at(d.line, "skriv slavyta, masteryta");
+            return kw.err_at(d.line, "write slave surface, master surface");
         }
-        // analytisk stel masteryta: interactions/analytical.rs
+        // analytical rigid master surface: interactions/analytical.rs
         if super::analytical::is_analytical(m, f[1]) {
             continue;
         }
@@ -1765,7 +1765,7 @@ fn pair(m: &FeModel, kw: &RawKeyword) -> Result<Vec<Box<dyn Interaction>>> {
 
 // ---------------------------------------------------------------- general contact
 
-/// Yttre elementytor (ytor som bara ett element har) per kropp (sammanhängande nät).
+/// Exterior element faces (faces owned by only one element) per body (connected mesh).
 fn exterior(m: &FeModel) -> Vec<(usize, Vec<(usize, String)>)> {
     let mut count: BTreeMap<Vec<usize>, Vec<(usize, usize)>> = BTreeMap::new();
     for (e, el) in m.elements.iter().enumerate() {
@@ -1779,7 +1779,7 @@ fn exterior(m: &FeModel) -> Vec<(usize, Vec<(usize, String)>)> {
             count.entry(key).or_default().push((e, fi));
         }
     }
-    // kroppar: union-find över noder via element
+    // bodies: union-find over nodes via elements
     let mut parent: Vec<usize> = (0..m.nodes.len()).collect();
     fn find(p: &mut [usize], i: usize) -> usize {
         let mut r = i;
@@ -1814,7 +1814,7 @@ fn exterior(m: &FeModel) -> Vec<(usize, Vec<(usize, String)>)> {
 }
 
 fn general(m: &FeModel, kw: &RawKeyword) -> Result<Vec<Box<dyn Interaction>>> {
-    // bara explicita steg: kontakten sköts av steps/explicit_contact.rs
+    // explicit steps only: contact is handled by steps/explicit_contact.rs
     if crate::steps::explicit::contact::only_explicit(m) {
         return Ok(Vec::new());
     }
@@ -1822,7 +1822,7 @@ fn general(m: &FeModel, kw: &RawKeyword) -> Result<Vec<Box<dyn Interaction>>> {
     let mut pairs: Vec<(String, String)> = Vec::new();
     let mut all = false;
     let mut ip: Option<String> = None;
-    // egenskaper per ytpar: (yta, yta, interaktion)
+    // properties per surface pair: (surface, surface, interaction)
     let mut per_pair: Vec<(String, String, String)> = Vec::new();
     for s in &subs {
         match s.name.as_str() {
@@ -1835,7 +1835,7 @@ fn general(m: &FeModel, kw: &RawKeyword) -> Result<Vec<Box<dyn Interaction>>> {
                     if f.len() >= 2 && !f[0].is_empty() && !f[1].is_empty() {
                         pairs.push((f[0].to_string(), f[1].to_string()));
                     } else if f.first().is_some_and(|x| !x.is_empty()) {
-                        // område contact3: självkontakt (en yta)
+                        // area contact3: self-contact (one surface)
                         pairs.push((f[0].to_string(), f[0].to_string()));
                     }
                 }
@@ -1847,16 +1847,16 @@ fn general(m: &FeModel, kw: &RawKeyword) -> Result<Vec<Box<dyn Interaction>>> {
                         if f[0].is_empty() && f[1].is_empty() {
                             ip = Some(f[2].to_string());
                         } else if f[0].is_empty() || f[1].is_empty() {
-                            return s.err_at(d.line, "egenskaper för en enda yta stöds inte ännu (skriv två ytor eller ' , , INTERAKTION')");
+                            return s.err_at(d.line, "properties for a single surface are not supported yet (write two surfaces or ' , , INTERACTION')");
                         } else {
                             per_pair.push((f[0].to_uppercase(), f[1].to_uppercase(), f[2].to_string()));
                         }
                     }
                 }
             }
-            // *CONTACT INITIALIZATION ASSIGNMENT justerar noderna när filen läses (`adjust_slaves`)
+            // *CONTACT INITIALIZATION ASSIGNMENT adjusts the nodes when the file is read (`adjust_slaves`)
             "CONTACT EXCLUSIONS" | "SURFACE PROPERTY ASSIGNMENT" => {
-                return s.err("stöds inte ännu");
+                return s.err("is not supported yet");
             }
             _ => {}
         }
@@ -1878,8 +1878,8 @@ fn general(m: &FeModel, kw: &RawKeyword) -> Result<Vec<Box<dyn Interaction>>> {
                 pairs.push((format!("_GC_KROPP{a}"), format!("_GC_KROPP{b}")));
             }
         }
-        // område contact3: ALL EXTERIOR omfattar självkontakt för varje kropp
-        // (bara om kroppen kan komma i kontakt med sig själv, `ext::can_self_contact`)
+        // area contact3: ALL EXTERIOR includes self-contact for each body
+        // (only if the body can come into contact with itself, `ext::can_self_contact`)
         for (a, (_, faces)) in bodies.iter().enumerate() {
             if ext::can_self_contact(m, faces) {
                 pairs.push((format!("_GC_KROPP{a}"), format!("_GC_KROPP{a}")));
@@ -1887,22 +1887,22 @@ fn general(m: &FeModel, kw: &RawKeyword) -> Result<Vec<Box<dyn Interaction>>> {
         }
     }
     if pairs.is_empty() {
-        return fail(format!("{}: *CONTACT utan kontaktytor (*CONTACT INCLUSIONS)", kw.location()));
+        return fail(format!("{}: *CONTACT without contact surfaces (*CONTACT INCLUSIONS)", kw.location()));
     }
     for (a, b) in pairs {
         if a.eq_ignore_ascii_case(&b) {
             out.push(Box::new(ext::self_pair(&tmp, kw, &a, &per_pair, p)?));
             continue;
         }
-        // ren master–slav per ytpar: ytan med finast nät
-        // (minst medelstorlek på ytelementen) blir slav; vid lika storlek den
-        // yta vars element kommer först.
+        // pure master–slave per surface pair: the surface with the finest mesh
+        // (smallest mean facet size) becomes slave; for equal size the
+        // surface whose element comes first.
         let (sa, ea) = surface_size(&tmp, kw, &a)?;
         let (sb, eb) = surface_size(&tmp, kw, &b)?;
         let a_slave = if (sa - sb).abs() <= 1e-6 * sa.max(sb) { ea <= eb } else { sa < sb };
         let (s, mm) = if a_slave { (&a, &b) } else { (&b, &a) };
         let name = format!("*CONTACT {s}/{mm} ({})", kw.location());
-        // *CONTACT PROPERTY ASSIGNMENT för just det här ytparet (i valfri ordning)
+        // *CONTACT PROPERTY ASSIGNMENT for this particular surface pair (in any order)
         let (ua, ub) = (a.to_uppercase(), b.to_uppercase());
         let pp = match per_pair.iter().find(|(x, y, _)| (*x == ua && *y == ub) || (*x == ub && *y == ua)) {
             Some((_, _, n)) => props(m, kw, n)?,
@@ -1913,7 +1913,7 @@ fn general(m: &FeModel, kw: &RawKeyword) -> Result<Vec<Box<dyn Interaction>>> {
     Ok(out)
 }
 
-/// Medelstorlek för ytans ytelement och dess första element (för valet av slavyta).
+/// Mean facet size of the surface and its first element (for choosing the slave surface).
 fn surface_size(m: &FeModel, kw: &RawKeyword, name: &str) -> Result<(f64, usize)> {
     let fs = geom::facets(m, geom::surface(m, kw, name)?, name)?;
     let mut s = 0.0;
@@ -1924,9 +1924,9 @@ fn surface_size(m: &FeModel, kw: &RawKeyword, name: &str) -> Result<(f64, usize)
     Ok((s / fs.len().max(1) as f64, first))
 }
 
-// ------------------------------------------------ för analytiska stela ytor
+// ------------------------------------------------ for analytical rigid surfaces
 
-/// Kontaktegenskaperna från *SURFACE INTERACTION för `interactions/analytical.rs`.
+/// Contact properties from *SURFACE INTERACTION for `interactions/analytical.rs`.
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct PairProps(Props);
 
@@ -1934,7 +1934,7 @@ impl PairProps {
     pub(crate) fn read(m: &FeModel, kw: &RawKeyword, name: &str) -> Result<PairProps> {
         props(m, kw, name).map(PairProps)
     }
-    /// (p, dp/dh) för överlappningen h med straffkoefficienten `k_hard` (HARD).
+    /// (p, dp/dh) for the overclosure h with the penalty coefficient `k_hard` (HARD).
     pub(crate) fn pressure(&self, h: f64, k_hard: f64) -> (f64, f64) {
         self.0.law.pressure(h, k_hard)
     }
@@ -1947,11 +1947,11 @@ impl PairProps {
     pub(crate) fn slip_tol(&self) -> f64 {
         self.0.slip_tol
     }
-    /// Hård kontakt (PRESSURE-OVERCLOSURE=HARD, direkt eller med straff).
+    /// Hard contact (PRESSURE-OVERCLOSURE=HARD, direct or with penalty).
     pub(crate) fn is_hard(&self) -> bool {
         matches!(self.0.law, Law::Hard)
     }
-    /// Hård kontakt med straffmetod: Some((given styvhet eller None = standardstyvhet, skalfaktor)).
+    /// Hard contact with penalty method: Some((given stiffness or None = default stiffness, scale factor)).
     pub(crate) fn penalty(&self) -> Option<(Option<f64>, f64)> {
         match self.0.enforce {
             Some(Enforce::Penalty(k, s)) => Some((k, s)),
@@ -1960,36 +1960,36 @@ impl PairProps {
     }
 }
 
-/// Representativ translationsstyvhet för ett element (som för kontaktpar).
+/// Representative translational stiffness of an element (as for contact pairs).
 pub(crate) fn representative_stiffness(m: &FeModel, e: usize) -> Result<f64> {
     element_stiffness(m, e)
 }
 
-/// Standardstyvhet för straffmetoden vid en elementyta.
+/// Default stiffness for the penalty method at an element face.
 pub(crate) fn default_penalty(m: &FeModel, f: &Facet) -> Result<f64> {
     penalty_stiffness(m, f)
 }
 
-/// Ytelementets storlek (för den kritiska elastiska glidningen).
+/// Facet size (for the critical elastic slip).
 pub(crate) fn facet_length(f: &Facet, x: &[[f64; 3]]) -> f64 {
     facet_size(f, x)
 }
 
-/// Lokala tangentriktningar för CSHEAR/CSLIP.
+/// Local tangent directions for CSHEAR/CSLIP.
 pub(crate) fn output_tangents(n: [f64; 3], dim: usize) -> [[f64; 3]; 2] {
     local_tangents(n, dim)
 }
 
 impl ContactPair {
-    /// Gör paret till självkontakt (slav = master, `contact_ext.rs`).
+    /// Makes the pair a self-contact (slave = master, `contact_ext.rs`).
     fn make_self(&mut self, m: &FeModel) {
         self.self_contact = true;
         self.master_elem_nodes = self.master.iter().map(|f| m.elements[f.elem].nodes.clone()).collect();
     }
 }
 
-/// Töjningsfri justering av slavnoder (*CONTACT PAIR, ADJUST= och
-/// *CONTACT INITIALIZATION DATA), anropas när filen är läst (`contact_ext.rs`).
+/// Strain-free adjustment of slave nodes (*CONTACT PAIR, ADJUST= and
+/// *CONTACT INITIALIZATION DATA), called once the file has been read (`contact_ext.rs`).
 pub fn adjust_slaves(m: &mut FeModel) -> Result<()> {
     ext::adjust(m)
 }

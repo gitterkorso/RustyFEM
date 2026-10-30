@@ -1,49 +1,49 @@
-//! Viskoelasticitet i tidsplanet (*VISCOELASTIC, TIME=PRONY) med *ELASTIC
-//! (små töjningar) eller *HYPERELASTIC (stora töjningar).
+//! Time-domain viscoelasticity (*VISCOELASTIC, TIME=PRONY) with *ELASTIC
+//! (small strains) or *HYPERELASTIC (large strains).
 //!
-//! Relaxationsfunktionerna är Prony-serier med gemensamma relaxationstider:
+//! The relaxation functions are Prony series with common relaxation times:
 //!
 //!   G(t) = G0 (1 − Σ gᵢ (1 − e^(−t/τᵢ))),  K(t) = K0 (1 − Σ kᵢ (1 − e^(−t/τᵢ))),
 //!
-//! dataraderna är (gᵢ, kᵢ, τᵢ). Elasticitetskonstanterna i *ELASTIC och
-//! *HYPERELASTIC är långtidsvärden (MODULI=LONG TERM, standard för
-//! båda) eller momentana (MODULI=INSTANTANEOUS): G0 = G∞/(1 − Σgᵢ) och
+//! the data lines are (gᵢ, kᵢ, τᵢ). The elastic constants in *ELASTIC and
+//! *HYPERELASTIC are long-term values (MODULI=LONG TERM, default for
+//! both) or instantaneous (MODULI=INSTANTANEOUS): G0 = G∞/(1 − Σgᵢ) and
 //! K0 = K∞/(1 − Σkᵢ).
 //!
-//! **Små töjningar**: deviatorn är
-//! s = 2G0 (e − Σ gᵢ eᵢ) och trycket −p = K0 (φ − Σ kᵢ φᵢ) med de viskösa
-//! töjningarna eᵢ, φᵢ. Med töjningen linjär i tiden under inkrementet blir
+//! **Small strains**: the deviator is
+//! s = 2G0 (e − Σ gᵢ eᵢ) and the pressure −p = K0 (φ − Σ kᵢ φᵢ) with the viscous
+//! strains eᵢ, φᵢ. With the strain linear in time during the increment,
 //!
 //!   Δeᵢ = aᵢ Δe + (1 − e^(−Δt/τᵢ)) (eₙ − eᵢ,ₙ),  aᵢ = 1 − τᵢ/Δt (1 − e^(−Δt/τᵢ))
 //!
-//! (aᵢ ≈ Δt/(2τᵢ) för Δt/τᵢ < 10⁻⁷) och tangenten G_T = G0 (1 − Σ gᵢ aᵢ),
-//! K_T = K0 (1 − Σ kᵢ aᵢ). Plan spänning och stänger löses med 3D-uppdateringen
-//! och lokal Newton på de spänningsfria komponenterna (`plasticity::update_reduced`).
+//! (aᵢ ≈ Δt/(2τᵢ) for Δt/τᵢ < 10⁻⁷) and the tangent G_T = G0 (1 − Σ gᵢ aᵢ),
+//! K_T = K0 (1 − Σ kᵢ aᵢ). Plane stress and trusses are solved with the 3D update
+//! and local Newton on the stress-free components (`plasticity::update_reduced`).
 //!
-//! **Stora töjningar**:
-//! den momentana Kirchhoffspänningen τ0 = τ0ᴰ(F̄) + τ0ᴴ(J) I kommer från den
-//! hyperelastiska modellen (med momentana konstanter) och de inre
-//! spänningarna integreras med framåtförd deviatordel:
+//! **Large strains**:
+//! the instantaneous Kirchhoff stress τ0 = τ0ᴰ(F̄) + τ0ᴴ(J) I comes from the
+//! hyperelastic model (with instantaneous constants) and the internal
+//! stresses are integrated with a push-forward of the deviatoric part:
 //!
 //!   τᵢᴰ(t+Δt) = αᵢ gᵢ τ0ᴰ(t+Δt) + βᵢ gᵢ ΔF̄ τ0ᴰ(t) ΔF̄ᵀ + γᵢ ΔF̄ τᵢᴰ(t) ΔF̄ᵀ,
 //!   τᵢᴴ(t+Δt) = αᵢ kᵢ τ0ᴴ(t+Δt) + βᵢ kᵢ τ0ᴴ(t) + γᵢ τᵢᴴ(t),
 //!
 //! γᵢ = e^(−Δt/τᵢ), αᵢ = 1 − τᵢ/Δt (1 − γᵢ), βᵢ = τᵢ/Δt (1 − γᵢ) − γᵢ, ΔF̄ =
-//! F̄(t+Δt) F̄(t)⁻¹, och τ = τ0 − Σ dev τᵢᴰ − Σ τᵢᴴ I. Tangenten är
-//! Jaumann-tangenten C^(τJ)/J av hela uppdateringen (numerisk perturbation av
-//! F som i `hyperelastic_split.rs`), samma konvention som `hyperelastic.rs`.
-//! Plan spänning stöds inte med stora töjningar.
+//! F̄(t+Δt) F̄(t)⁻¹, and τ = τ0 − Σ dev τᵢᴰ − Σ τᵢᴴ I. The tangent is
+//! the Jaumann tangent C^(τJ)/J of the full update (numerical perturbation of
+//! F as in `hyperelastic_split.rs`), the same convention as `hyperelastic.rs`.
+//! Plane stress is not supported with large strains.
 //!
-//! Läget per steg (`time_dependence.rs`): *VISCO och *DYNAMIC integrerar i
-//! tiden; *STATIC ger det momentana svaret (Δt = 0: de inre töjningarna/
-//! spänningarna ändras inte, utom framföringen); *STATIC, LONG TERM ger den
-//! fullt relaxerade lösningen i varje inkrement (bara stegets slut är
-//! meningsfullt).
+//! The mode per step (`time_dependence.rs`): *VISCO and *DYNAMIC integrate in
+//! time; *STATIC gives the instantaneous response (Δt = 0: the internal strains/
+//! stresses do not change, except for the push-forward); *STATIC, LONG TERM gives the
+//! fully relaxed solution in each increment (only the end of the step is
+//! meaningful).
 //!
-//! Felmåttet för CETOL är skillnaden i viskös töjningsökning
-//! beräknad med töjningshastigheterna vid inkrementets början och slut:
-//! Δē = Δt Σ ((gᵢ s0 − sᵢ)ₙ₊₁ − (gᵢ s0 − sᵢ)ₙ)/(2G0 τᵢ) och motsvarande Δφ̄ för
-//! volymdelen, Δε = √(2/3 Δē:Δē + 1/3 Δφ̄²).
+//! The error measure for CETOL is the difference in viscous strain increment
+//! computed with the strain rates at the start and end of the increment:
+//! Δē = Δt Σ ((gᵢ s0 − sᵢ)ₙ₊₁ − (gᵢ s0 − sᵢ)ₙ)/(2G0 τᵢ) and the corresponding Δφ̄ for
+//! the volumetric part, Δε = √(2/3 Δē:Δē + 1/3 Δφ̄²).
 
 use super::anisotropic::reduce_6x6;
 use super::hyperelastic_split::{jaumann_tangent, voigt, HyperModel};
@@ -58,20 +58,20 @@ use std::sync::Arc;
 
 pub static FACTORIES: &[MaterialFactory] = &[
     MaterialFactory {
-        name: "viskoelasticitet (*VISCOELASTIC, TIME=PRONY) med *ELASTIC",
+        name: "viscoelasticity (*VISCOELASTIC, TIME=PRONY) with *ELASTIC",
         consumes: &["ELASTIC", "VISCOELASTIC"],
         priority: 20,
         build: Some(build_small),
     },
     MaterialFactory {
-        name: "viskoelasticitet (*VISCOELASTIC, TIME=PRONY) med *HYPERELASTIC",
+        name: "viscoelasticity (*VISCOELASTIC, TIME=PRONY) with *HYPERELASTIC",
         consumes: &["HYPERELASTIC", "VISCOELASTIC"],
         priority: 20,
         build: Some(build_finite),
     },
 ];
 
-/// Prony-serien: (gᵢ, kᵢ, τᵢ).
+/// The Prony series: (gᵢ, kᵢ, τᵢ).
 #[derive(Debug, Clone)]
 pub struct Prony {
     pub terms: Vec<(f64, f64, f64)>,
@@ -80,16 +80,16 @@ pub struct Prony {
 impl Prony {
     pub fn parse(kw: &RawKeyword) -> Result<Prony> {
         if kw.has("FREQUENCY") {
-            return kw.err("*VISCOELASTIC, FREQUENCY= (frekvensplanet) stöds inte ännu");
+            return kw.err("*VISCOELASTIC, FREQUENCY= (frequency domain) is not yet supported");
         }
         match kw.param_upper("TIME").as_deref() {
             Some("PRONY") => {}
-            Some(o) => return kw.err(format!("TIME={o} stöds inte ännu (bara TIME=PRONY)")),
-            None => return kw.err("*VISCOELASTIC kräver TIME=PRONY (andra former stöds inte ännu)"),
+            Some(o) => return kw.err(format!("TIME={o} is not yet supported (only TIME=PRONY)")),
+            None => return kw.err("*VISCOELASTIC requires TIME=PRONY (other forms are not yet supported)"),
         }
         for p in ["NONLINEAR", "TYPE", "PRELOAD"] {
             if kw.has(p) && !(p == "TYPE" && kw.param_upper("TYPE").as_deref() == Some("ISOTROPIC")) {
-                return kw.err(format!("parametern {p} stöds inte ännu"));
+                return kw.err(format!("parameter {p} is not yet supported"));
             }
         }
         let mut terms = Vec::new();
@@ -99,16 +99,16 @@ impl Prony {
             let k = v.get(1).copied().unwrap_or(0.0);
             let tau = v.get(2).copied().unwrap_or(0.0);
             if !(g >= 0.0 && k >= 0.0 && tau > 0.0) {
-                return kw.err_at(d.line, "Prony-termen kräver gᵢ ≥ 0, kᵢ ≥ 0 och τᵢ > 0");
+                return kw.err_at(d.line, "the Prony term requires gᵢ ≥ 0, kᵢ ≥ 0 and τᵢ > 0");
             }
             terms.push((g, k, tau));
         }
         if terms.is_empty() {
-            return kw.err("Prony-serien saknas");
+            return kw.err("the Prony series is missing");
         }
         let p = Prony { terms };
         if !(p.sum_g() < 1.0 && p.sum_k() < 1.0) {
-            return kw.err("summan av gᵢ och summan av kᵢ ska vara mindre än 1");
+            return kw.err("the sum of gᵢ and the sum of kᵢ must be less than 1");
         }
         Ok(p)
     }
@@ -122,8 +122,8 @@ impl Prony {
     }
 }
 
-/// Integrationskoefficienter (α, β, γ) för en term med relaxationstiden `tau`
-/// och tidsinkrementet `dt` (∞ = fullt relaxerat).
+/// Integration coefficients (α, β, γ) for a term with relaxation time `tau`
+/// and time increment `dt` (∞ = fully relaxed).
 fn coeffs(dt: f64, tau: f64) -> (f64, f64, f64) {
     if dt.is_infinite() {
         return (1.0, 0.0, 0.0);
@@ -137,7 +137,7 @@ fn coeffs(dt: f64, tau: f64) -> (f64, f64, f64) {
     (a, (1.0 - g) / x - g, g)
 }
 
-/// Inkrementets tid för materialet enligt stegets läge.
+/// The increment time for the material according to the step mode.
 fn effective_dt(td: &TimeDependence, dt: f64) -> f64 {
     match td.visco() {
         VISCO_ACTIVE => dt.max(0.0),
@@ -146,12 +146,12 @@ fn effective_dt(td: &TimeDependence, dt: f64) -> f64 {
     }
 }
 
-/// Om MODULI=INSTANTANEOUS anges (annars LONG TERM, standard).
+/// Whether MODULI=INSTANTANEOUS is given (otherwise LONG TERM, the default).
 fn instantaneous(kw: &RawKeyword) -> Result<bool> {
     match kw.param_upper("MODULI").as_deref() {
         None | Some("LONG TERM") => Ok(false),
         Some("INSTANTANEOUS") => Ok(true),
-        Some(o) => kw.err(format!("MODULI={o} ska vara LONG TERM eller INSTANTANEOUS")),
+        Some(o) => kw.err(format!("MODULI={o} must be LONG TERM or INSTANTANEOUS")),
     }
 }
 
@@ -162,20 +162,20 @@ fn without_moduli(kw: &RawKeyword) -> RawKeyword {
 }
 
 // ---------------------------------------------------------------------------
-// Små töjningar
+// Small strains
 // ---------------------------------------------------------------------------
 
-/// Linjär viskoelasticitet med isotrop elasticitet.
+/// Linear viscoelasticity with isotropic elasticity.
 #[derive(Debug)]
 pub struct ViscoSmall {
-    /// Momentana moduler.
+    /// Instantaneous moduli.
     g0: f64,
     k0: f64,
     prony: Prony,
     td: TimeDependence,
 }
 
-/// Tillståndslayout: [ε 3D (6), per term: eᵢ (6, tensorkomponenter), φᵢ].
+/// State layout: [ε 3D (6), per term: eᵢ (6, tensor components), φᵢ].
 const EPS: usize = 0;
 const TERM: usize = 6;
 const TSTRIDE: usize = 7;
@@ -191,12 +191,12 @@ fn build_small(def: &MaterialDef) -> Result<Option<Arc<dyn MaterialModel>>> {
     }
     let ty = ek.param_upper("TYPE").unwrap_or_else(|| "ISOTROPIC".into());
     if ty != "ISOTROPIC" {
-        return ek.err("*VISCOELASTIC stöds bara med isotrop elasticitet (TYPE=ISOTROPIC)");
+        return ek.err("*VISCOELASTIC is only supported with isotropic elasticity (TYPE=ISOTROPIC)");
     }
     let inst = instantaneous(ek)?;
     let tab = super::thermal_elastic::iso_table(&without_moduli(ek))?;
     if tab.len() > 1 {
-        return ek.err("temperaturberoende elasticitet med *VISCOELASTIC stöds inte ännu");
+        return ek.err("temperature-dependent elasticity with *VISCOELASTIC is not yet supported");
     }
     let prony = Prony::parse(vk)?;
     let (e, nu) = (tab[0].0, tab[0].1);
@@ -220,7 +220,7 @@ fn iso_from_gk(g: f64, k: f64) -> M6 {
     d
 }
 
-/// Deviator (tensorkomponenter) och volymtöjning för en töjning med ingenjörsskjuvning.
+/// Deviator (tensor components) and volumetric strain for a strain with engineering shear.
 fn split(eps: &V6) -> (V6, f64) {
     let phi = eps[0] + eps[1] + eps[2];
     let e = [eps[0] - phi / 3.0, eps[1] - phi / 3.0, eps[2] - phi / 3.0, 0.5 * eps[3], 0.5 * eps[4], 0.5 * eps[5]];
@@ -322,20 +322,20 @@ impl MaterialModel for ViscoSmall {
 }
 
 // ---------------------------------------------------------------------------
-// Stora töjningar
+// Large strains
 // ---------------------------------------------------------------------------
 
-/// Viskoelasticitet ovanpå en hyperelastisk modell.
+/// Viscoelasticity on top of a hyperelastic model.
 pub struct ViscoHyper {
     inner: Arc<dyn MaterialModel>,
-    /// Skalfaktorer från de angivna konstanterna till de momentana (deviator, volym).
+    /// Scale factors from the given constants to the instantaneous ones (deviator, volume).
     sd: f64,
     sv: f64,
     prony: Prony,
     td: TimeDependence,
 }
 
-/// Tillståndslayout: [Fₙ (9, radvis), per term: τᵢᴰ (6, Voigt), τᵢᴴ].
+/// State layout: [Fₙ (9, row-wise), per term: τᵢᴰ (6, Voigt), τᵢᴴ].
 const FN: usize = 0;
 const HTERM: usize = 9;
 
@@ -346,7 +346,7 @@ fn build_finite(def: &MaterialDef) -> Result<Option<Arc<dyn MaterialModel>>> {
     }
     let Some(hk) = def.behavior("HYPERELASTIC") else { return Ok(None) };
     if def.behavior("ELASTIC").is_some() {
-        return hk.err("*HYPERELASTIC och *ELASTIC i samma material stöds inte");
+        return hk.err("*HYPERELASTIC and *ELASTIC in the same material are not supported");
     }
     let inst = instantaneous(hk)?;
     let prony = Prony::parse(vk)?;
@@ -355,10 +355,10 @@ fn build_finite(def: &MaterialDef) -> Result<Option<Arc<dyn MaterialModel>>> {
     rest.behaviors = rest.behaviors.iter().map(without_moduli).collect();
     let inner = super::build(&rest)?;
     let Some(h) = inner.hyperelastic() else {
-        return hk.err("den hyperelastiska modellen saknar uppdelning i deviator och volym");
+        return hk.err("the hyperelastic model has no split into deviator and volume");
     };
     if h.incompressible() {
-        return hk.err("*VISCOELASTIC med helt inkompressibel *HYPERELASTIC (D1 = 0) stöds inte ännu");
+        return hk.err("*VISCOELASTIC with fully incompressible *HYPERELASTIC (D1 = 0) is not yet supported");
     }
     let (sd, sv) = if inst { (1.0, 1.0) } else { (1.0 / (1.0 - prony.sum_g()), 1.0 / (1.0 - prony.sum_k())) };
     Ok(Some(Arc::new(ViscoHyper { inner, sd, sv, prony, td: TimeDependence::default() })))
@@ -383,23 +383,23 @@ fn push(df: &M3, a: &M3) -> M3 {
 
 impl ViscoHyper {
     fn hyper(&self) -> &dyn HyperModel {
-        self.inner.hyperelastic().expect("kontrollerat i build")
+        self.inner.hyperelastic().expect("checked in build")
     }
 
-    /// Momentan (deviatorisk Kirchhoff, τᴴ) för F.
+    /// Instantaneous (deviatoric Kirchhoff, τᴴ) for F.
     fn instant(&self, f: &M3) -> Result<(M3, f64)> {
         let h = self.hyper();
         let j = t::det(f);
         if !(j > 0.0) {
-            return fail("hyperelastiskt material: J ≤ 0 (elementet har vänts ut och in)");
+            return fail("hyperelastic material: J ≤ 0 (the element has been turned inside out)");
         }
         let td = t::scale(&h.tau_dev(f)?, self.sd);
         let (up, _) = h.vol(j);
         Ok((td, self.sv * j * up))
     }
 
-    /// Kirchhoffspänningen vid F (inkrementets slut) från tillståndet `st`;
-    /// skriver nytt tillstånd i `stn` om det ges. Returnerar (τ, felmått).
+    /// The Kirchhoff stress at F (end of the increment) from the state `st`;
+    /// writes the new state to `stn` if given. Returns (τ, error measure).
     fn tau(&self, f1: &M3, st: &[f64], dt: f64, stn: Option<&mut [f64]>) -> Result<(M3, f64)> {
         let fnn: M3 = [[st[FN], st[FN + 1], st[FN + 2]], [st[FN + 3], st[FN + 4], st[FN + 5]], [st[FN + 6], st[FN + 7], st[FN + 8]]];
         let (j0, j1) = (t::det(&fnn), t::det(f1));
@@ -490,11 +490,11 @@ impl MaterialModel for ViscoHyper {
 
     fn update(&self, input: &MatInput, state_old: &[f64], state_new: &mut [f64]) -> Result<MatOutput> {
         let Some(f) = input.defgrad else {
-            return fail("*HYPERELASTIC kräver NLGEOM=YES på *STEP");
+            return fail("*HYPERELASTIC requires NLGEOM=YES on *STEP");
         };
         let mode = input.mode;
         if matches!(mode, StressMode::PlaneStress | StressMode::Uniaxial) {
-            return fail("*HYPERELASTIC med *VISCOELASTIC stöds inte i plan spänning eller stänger ännu");
+            return fail("*HYPERELASTIC with *VISCOELASTIC is not yet supported in plane stress or trusses");
         }
         let dt = effective_dt(&self.td, input.dt);
         let (tau, err) = self.tau(&f, state_old, dt, Some(state_new))?;

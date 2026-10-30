@@ -1,9 +1,9 @@
-//! Användarelement (*USER ELEMENT) kan vara olinjära utan att kärnan vet om
-//! det (elementgränssnittet saknar `is_linear`). Implicit analys itererar
-//! alltid med Newton; här registreras därför en interaktion utan bidrag som
-//! säger att modellen inte är linjär, så att *STATIC använder Newton–Raphson
-//! (en linjär UEL konvergerar då i första iterationen). Följden är att
-//! perturbationssteg med användarelement inte stöds.
+//! User elements (*USER ELEMENT) can be nonlinear without the core knowing
+//! it (the element interface has no `is_linear`). Implicit analysis always
+//! iterates with Newton; an interaction without contribution is therefore registered here that
+//! says the model is not linear, so that *STATIC uses Newton–Raphson
+//! (a linear UEL then converges in the first iteration). As a consequence,
+//! perturbation steps with user elements are not supported.
 
 use super::{Interaction, InteractionFactory};
 use crate::fem::model::{FeModel, RawKeyword};

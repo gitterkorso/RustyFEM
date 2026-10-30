@@ -1,27 +1,28 @@
-//! Akustisk–strukturell koppling (ASI) med *TIE mellan en akustisk yta
-//! (ytor på AC-element) och en strukturell yta (kontinuum, skal), i valfri
-//! ordning.
+//! Acoustic–structural coupling (ASI) with *TIE between an acoustic surface
+//! (faces of AC elements) and a structural surface (continuum, shell), in any
+//! order.
 //!
-//! Kopplingsmatrisen S_{a,(b,i)} = ∫ N_a n_i N_b dS med n = fluidens
-//! utåtriktade normal. Yta mot yta (standard för solider): integration över
-//! den akustiska ytan med N_b strukturytans formfunktioner i projektionen av
-//! integrationspunkten (närmaste yta inom positionstoleransen). Nod mot yta
-//! (TYPE=NODE TO SURFACE, och som standard när strukturytan är ett
-//! skal): slavytans noder kopplas med sin nodarea ∫ N dS till masterytans
-//! formfunktioner i nodens projektion. Axisymmetriska ytor integreras över
-//! hela varvet (2π r) och plana med tjockleken.
+//! The coupling matrix S_{a,(b,i)} = ∫ N_a n_i N_b dS with n = the fluid's
+//! outward normal. Surface-to-surface (default for solids): integration over
+//! the acoustic surface with N_b the structural surface's shape functions at
+//! the projection of the integration point (closest facet within the position
+//! tolerance). Node-to-surface (TYPE=NODE TO SURFACE, and by default when the
+//! structural surface is a shell): the slave surface nodes are coupled with
+//! their nodal area ∫ N dS to the master surface shape functions at the node's
+//! projection. Axisymmetric surfaces are integrated over the full revolution
+//! (2π r) and planar ones with the thickness.
 //!
-//! Med S gäller (Zienkiewicz–Newton, se `steps/acoustic.rs`):
+//! With S (Zienkiewicz–Newton, see `steps/acoustic.rs`):
 //!
 //! ```text
-//!   M_s ü + K_s u − Sᵀ p = F          (trycket verkar på strukturen längs n)
+//!   M_s ü + K_s u − Sᵀ p = F          (the pressure acts on the structure along n)
 //!   M_f p̈ + K_f p + S ü = Q
 //! ```
 //!
-//! Interaktionen här ger bara matrisstrukturen (`connectivity`) så att
-//! lösarens mönster innehåller kopplingen; matrisen själv byggs av de
-//! akustiska stegen med `coupling`. `constraints.rs` hoppar över
-//! *TIE-par som är akustisk–strukturella (`is_acoustic_pair`).
+//! The interaction here only provides the matrix structure (`connectivity`) so
+//! that the solver's pattern contains the coupling; the matrix itself is built
+//! by the acoustic steps with `coupling`. `constraints.rs` skips *TIE pairs
+//! that are acoustic–structural (`is_acoustic_pair`).
 
 use super::geom::{self, Facet};
 use super::{Interaction, InteractionFactory};
@@ -31,26 +32,26 @@ use crate::model::Result;
 
 pub static FACTORIES: &[InteractionFactory] = &[InteractionFactory { keywords: &["TIE"], build: tie }];
 
-/// Ytan består av akustiska elementytor.
+/// The surface consists of acoustic element faces.
 pub fn is_acoustic_surface(m: &FeModel, s: &Surface) -> bool {
     s.kind != "NODE" && !s.faces.is_empty() && s.faces.iter().all(|(e, _)| acoustic::is_acoustic(m.elements[*e].etype))
 }
 
-/// *TIE-paret (slavyta, masteryta) kopplar en akustisk och en strukturell yta.
+/// The *TIE pair (slave surface, master surface) couples an acoustic and a structural surface.
 pub fn is_acoustic_pair(m: &FeModel, kw: &RawKeyword, a: &str, b: &str) -> Result<bool> {
     let sa = geom::surface(m, kw, a)?;
     let sb = geom::surface(m, kw, b)?;
     Ok(is_acoustic_surface(m, sa) != is_acoustic_surface(m, sb))
 }
 
-/// Ett ASI-par: kopplingsmatrisens poster (trycknod, strukturnod, riktning 0–2, värde).
+/// An ASI pair: the coupling matrix entries (pressure node, structural node, direction 0–2, value).
 pub struct Coupling {
     pub name: String,
     pub entries: Vec<(usize, usize, usize, f64)>,
-    /// Nodgrupper (en fluidyta och strukturnoderna den kopplas till).
+    /// Node groups (a fluid facet and the structural nodes it is coupled to).
     pub groups: Vec<Vec<usize>>,
-    /// Nod mot yta med fluiden som slav: trycknodens förskjutning interpolerad
-    /// från strukturen (nod, [(strukturnod, vikt)]); U skrivs ut där.
+    /// Node-to-surface with the fluid as slave: the pressure node's displacement
+    /// interpolated from the structure (node, [(structural node, weight)]); U is output there.
     pub fluid_u: Vec<(usize, Vec<(usize, f64)>)>,
 }
 
@@ -71,7 +72,7 @@ fn tie(m: &FeModel, kw: &RawKeyword) -> Result<Vec<Box<dyn Interaction>>> {
     Ok(couplings_of(m, kw)?.into_iter().map(|c| Box::new(AsiTie { c }) as Box<dyn Interaction>).collect())
 }
 
-/// Alla ASI-kopplingar i modellen (från *TIE).
+/// All ASI couplings in the model (from *TIE).
 pub fn couplings(m: &FeModel) -> Result<Vec<Coupling>> {
     let mut out = Vec::new();
     for kw in m.extra.iter().filter(|k| k.name == "TIE") {
@@ -95,7 +96,7 @@ fn surface_size(m: &FeModel, f: &[Facet]) -> f64 {
     size / f.len().max(1) as f64
 }
 
-/// Närmaste yta bland `sf` för punkten `p`: (yta, ξ, avstånd).
+/// Closest facet among `sf` for the point `p`: (facet, ξ, distance).
 fn closest(sf: &[Facet], sx: &[Vec<[f64; 3]>], p: [f64; 3], size: f64) -> Option<(usize, [f64; 2], f64)> {
     let mut best: Option<(usize, [f64; 2], f64, bool)> = None;
     for (i, s) in sf.iter().enumerate() {
@@ -111,8 +112,8 @@ fn closest(sf: &[Facet], sx: &[Vec<[f64; 3]>], p: [f64; 3], size: f64) -> Option
     best.map(|b| (b.0, b.1, b.2))
 }
 
-/// Ytans vikt i integrationspunkten: längd · tjocklek (plana), area (3D) eller
-/// längd · 2π r (axisymmetriska element).
+/// The facet weight at the integration point: length · thickness (planar), area
+/// (3D) or length · 2π r (axisymmetric elements).
 fn weight(m: &FeModel, fc: &Facet, fp: &geom::FacetPoint, wg: f64) -> f64 {
     let et = m.elements[fc.elem].etype;
     let axisym = acoustic::lookup(et.name()).is_some_and(|a| a.geom.axisym) || et.family() == crate::elements::Family::Axisymmetric;
@@ -137,29 +138,29 @@ fn couplings_of(m: &FeModel, kw: &RawKeyword) -> Result<Vec<Coupling>> {
         let fluid_slave = is_acoustic_surface(m, sa);
         let (fluid, solid) = if fluid_slave { (sa, sb) } else { (sb, sa) };
         if solid.kind == "NODE" {
-            return kw.err("den strukturella ytan i en akustisk–strukturell *TIE ska vara elementbaserad");
+            return kw.err("the structural surface in an acoustic–structural *TIE must be element-based");
         }
-        let name = format!("*TIE {} ({}, akustisk–strukturell)", kw.param("NAME").unwrap_or(""), kw.location());
+        let name = format!("*TIE {} ({}, acoustic–structural)", kw.param("NAME").unwrap_or(""), kw.location());
         let ff = geom::facets(m, fluid, &name)?;
         let sf = geom::facets(m, solid, &name)?;
         let fx: Vec<Vec<[f64; 3]>> = ff.iter().map(|f| geom::coords(m, f, None)).collect();
         let sx: Vec<Vec<[f64; 3]>> = sf.iter().map(|f| geom::coords(m, f, None)).collect();
         let size = surface_size(m, &sf).max(surface_size(m, &ff));
         let tol = tol_given.unwrap_or(0.05 * size);
-        // nod mot yta om TYPE=NODE TO SURFACE, eller som standard när
-        // strukturytan består av skal/membran (med varning)
+        // node-to-surface if TYPE=NODE TO SURFACE, or by default when the
+        // structural surface consists of shells/membranes (with a warning)
         let shells = sf.iter().all(|f| matches!(m.elements[f.elem].etype.family(), crate::elements::Family::Shell | crate::elements::Family::Membrane));
         let n2s = match ty.as_deref() {
             Some("NODE TO SURFACE") => true,
             Some("SURFACE TO SURFACE") => false,
             None => shells,
-            Some(x) => return kw.err(format!("TYPE={x} stöds inte för akustisk–strukturell *TIE")),
+            Some(x) => return kw.err(format!("TYPE={x} is not supported for acoustic–structural *TIE")),
         };
         let mut entries = Vec::new();
         let mut groups = Vec::new();
         let mut fluid_u = Vec::new();
         if !n2s {
-            // yta mot yta: integrera över fluidytan
+            // surface-to-surface: integrate over the fluid surface
             for (fi, fc) in ff.iter().enumerate() {
                 let xs = &fx[fi];
                 let mut touched: Vec<usize> = fc.nodes.clone();
@@ -193,8 +194,8 @@ fn couplings_of(m: &FeModel, kw: &RawKeyword) -> Result<Vec<Coupling>> {
                 groups.push(touched);
             }
         } else if fluid_slave {
-            // nod mot yta, fluiden är slav: varje trycknod a får A_a = ∫ N_a n dS
-            // och kopplas till strukturytans formfunktioner i nodens projektion
+            // node-to-surface, the fluid is slave: each pressure node a gets A_a = ∫ N_a n dS
+            // and is coupled to the structural surface shape functions at the node's projection
             use std::collections::BTreeMap;
             let mut area: BTreeMap<usize, [f64; 3]> = BTreeMap::new();
             for (fi, fc) in ff.iter().enumerate() {
@@ -234,8 +235,8 @@ fn couplings_of(m: &FeModel, kw: &RawKeyword) -> Result<Vec<Coupling>> {
                 fluid_u.push((pn, interp));
             }
         } else {
-            // nod mot yta, strukturen är slav: varje strukturnod b får ∫ N_b dS
-            // och kopplas till fluidytans formfunktioner (och normal) i projektionen
+            // node-to-surface, the structure is slave: each structural node b gets ∫ N_b dS
+            // and is coupled to the fluid surface shape functions (and normal) at the projection
             use std::collections::BTreeMap;
             let mut area: BTreeMap<usize, f64> = BTreeMap::new();
             for (si, sc) in sf.iter().enumerate() {
@@ -271,7 +272,7 @@ fn couplings_of(m: &FeModel, kw: &RawKeyword) -> Result<Vec<Coupling>> {
             }
         }
         if entries.is_empty() {
-            return kw.err(format!("{name}: ingen del av den akustiska ytan ligger inom positionstoleransen från strukturytan"));
+            return kw.err(format!("{name}: no part of the acoustic surface lies within the position tolerance of the structural surface"));
         }
         out.push(Coupling { name, entries, groups, fluid_u });
     }

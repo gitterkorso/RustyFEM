@@ -1,44 +1,44 @@
-//! Område explicit_adv: omvandling av kontinuumelement till SPH-partiklar i
-//! analysens början (`*SECTION CONTROLS, ELEMENT CONVERSION=YES`) i
-//! explicit analys.
+//! Area explicit_adv: conversion of continuum elements to SPH particles at
+//! the start of the analysis (`*SECTION CONTROLS, ELEMENT CONVERSION=YES`) in
+//! explicit analysis.
 //!
-//! Anropas från `inp::read` när filen är läst (`apply`). Föräldraelementen
-//! (C3D8R, C3D8) i ett *SOLID SECTION vars CONTROLS= har ELEMENT
-//! CONVERSION=YES ersätts av vilande element (`SPH_PARENT`, ingen kraft eller
-//! massa) och partiklar (PC3D) skapas:
+//! Called from `inp::read` once the file has been read (`apply`). The parent elements
+//! (C3D8R, C3D8) in a *SOLID SECTION whose CONTROLS= has ELEMENT
+//! CONVERSION=YES are replaced by dormant elements (`SPH_PARENT`, no force or
+//! mass) and particles (PC3D) are created:
 //!
-//! - `SPH CONVERSION=PER ELEMENT` med `CONVERSION CRITERION=TIME` och
-//!   tröskeln 0 (fjärde dataraden: antal partiklar per isoparametrisk
-//!   riktning n ≤ 7, tröskel): n³ partiklar i ξᵢ = −1 + (2i + 1)/n, var och en
-//!   med volymen Vₑ/n³ (massan delas lika) och L = ½(Vₑ/n³)^⅓.
-//! - `SPH CONVERSION=BACKGROUND GRID` (standard): partiklar i ett likformigt
-//!   rutnät med sidan a (fjärde dataraden, standard: elementens medelstorlek
-//!   Vₑ^⅓) med cellernas mittpunkter i c₀ + (k + ½)a, c₀ = elementmängdens
-//!   masscentrum (avläst: 6³ partiklar i en kub med sidan 6a); bara punkter inuti
-//!   ett föräldraelement ger partiklar, alla med volymen a³ (L = a/2).
+//! - `SPH CONVERSION=PER ELEMENT` with `CONVERSION CRITERION=TIME` and
+//!   threshold 0 (fourth data line: number of particles per isoparametric
+//!   direction n ≤ 7, threshold): n³ particles at ξᵢ = −1 + (2i + 1)/n, each
+//!   with volume Vₑ/n³ (the mass is divided equally) and L = ½(Vₑ/n³)^⅓.
+//! - `SPH CONVERSION=BACKGROUND GRID` (default): particles in a uniform
+//!   grid with spacing a (fourth data line, default: the mean element size
+//!   Vₑ^⅓) with cell centers at c₀ + (k + ½)a, c₀ = the element set's
+//!   center of mass (observed: 6³ particles in a cube with side 6a); only points inside
+//!   a parent element produce particles, all with volume a³ (L = a/2).
 //!
-//! Partiklarna får nya nod- och elementnummer efter de största i instansen
-//! (testfallen jämför därför energier och föräldranätets
-//! oberoende storheter). Dessutom skapas
-//! mängderna `<ELSET>_SECT_SPH` (partiklarna), `<ELSET>_SECT_E_SPH` (deras
-//! noder), `ALL_GENERATED_ELEMENTS_SPH` och nodytan `<ELSET>_SECT_NE_SPH`.
-//! Begynnelsehastigheten: partiklarna i ett föräldraelement som har en nod
-//! med *INITIAL CONDITIONS, TYPE=VELOCITY får nodens hastighet (villkoret
-//! tillämpas på partiklarna i alla element som rör nodmängden), och *DLOAD (GRAV) på föräldraelementen gäller partiklarna. Konvertering vid
-//! en senare tid eller efter töjnings-/spänningskriterier stöds inte ännu.
+//! The particles get new node and element numbers after the largest in the instance
+//! (the test cases therefore compare energies and quantities independent of the
+//! parent mesh). In addition the sets
+//! `<ELSET>_SECT_SPH` (the particles), `<ELSET>_SECT_E_SPH` (their
+//! nodes), `ALL_GENERATED_ELEMENTS_SPH` and the node surface `<ELSET>_SECT_NE_SPH` are created.
+//! Initial velocity: the particles in a parent element that has a node
+//! with *INITIAL CONDITIONS, TYPE=VELOCITY get the node's velocity (the condition
+//! is applied to the particles in all elements touching the node set), and *DLOAD (GRAV) on the parent elements applies to the particles. Conversion at
+//! a later time or by strain/stress criteria is not yet supported.
 
 use crate::elements::explicit_adv::AdvElem;
 use crate::fem::model::{parse_f64, DataLine, FeModel, RawKeyword, SectionDef, SectionKind, Surface};
 use crate::model::{fail, Result};
 use std::collections::{BTreeMap, HashMap};
 
-/// Vilande föräldraelement efter omvandlingen (inga krafter eller massor).
+/// Dormant parent element after the conversion (no forces or masses).
 pub static SPH_PARENT8: AdvElem = AdvElem { name: "SPH_PARENT", nodes: 8, rot: false };
 
-/// Nyckelordet med partiklarnas karakteristiska längd (elementindex, L).
+/// The keyword with the particles' characteristic length (element index, L).
 pub const LENGTHS: &str = "RUSTYFEM SPH LENGTH";
 
-/// Formfunktionerna för en åttanodig hexaeder i ξ.
+/// Shape functions for an eight-node hexahedron at ξ.
 pub fn hex_shape(xi: [f64; 3]) -> [f64; 8] {
     let nat: [[f64; 3]; 8] = [[-1., -1., -1.], [1., -1., -1.], [1., 1., -1.], [-1., 1., -1.], [-1., -1., 1.], [1., -1., 1.], [1., 1., 1.], [-1., 1., 1.]];
     std::array::from_fn(|a| 0.125 * (1.0 + nat[a][0] * xi[0]) * (1.0 + nat[a][1] * xi[1]) * (1.0 + nat[a][2] * xi[2]))
@@ -49,8 +49,8 @@ fn map(x: &[[f64; 3]], xi: [f64; 3]) -> [f64; 3] {
     std::array::from_fn(|c| (0..8).map(|a| n[a] * x[a][c]).sum())
 }
 
-/// Isoparametriska koordinater för punkten `p` i hexaedern `x` (Newton med
-/// differensjacobian), `None` om iterationen inte konvergerar.
+/// Isoparametric coordinates of the point `p` in the hexahedron `x` (Newton with
+/// finite-difference Jacobian), `None` if the iteration does not converge.
 pub fn inverse(x: &[[f64; 3]], p: [f64; 3]) -> Option<[f64; 3]> {
     let mut xi = [0.0; 3];
     for _ in 0..30 {
@@ -86,7 +86,7 @@ fn hex_volume(x: &[[f64; 3]]) -> f64 {
     crate::steps::explicit::dt::geometry(crate::elements::Family::Continuum3D, "C3D8R", &xs).map_or(0.0, |g| g.vol)
 }
 
-/// Omvandlar föräldraelementen till partiklar (se modulens dokumentation).
+/// Converts the parent elements to particles (see the module documentation).
 pub fn apply(m: &mut FeModel) -> Result<()> {
     let mut jobs: Vec<(usize, RawKeyword)> = Vec::new();
     for (si, sec) in m.sections.iter().enumerate() {
@@ -112,29 +112,29 @@ pub fn apply(m: &mut FeModel) -> Result<()> {
         let per_element = match sc.param_upper("SPH CONVERSION").as_deref() {
             Some("PER ELEMENT") => true,
             None | Some("BACKGROUND GRID") => false,
-            Some(o) => return sc.err(format!("SPH CONVERSION={o} stöds inte (PER ELEMENT, BACKGROUND GRID)")),
+            Some(o) => return sc.err(format!("SPH CONVERSION={o} is not supported (PER ELEMENT, BACKGROUND GRID)")),
         };
         if per_element {
             match sc.param_upper("CONVERSION CRITERION").as_deref() {
                 None | Some("TIME") => {}
-                Some(o) => return sc.err(format!("CONVERSION CRITERION={o} stöds inte ännu (bara TIME med tröskeln 0)")),
+                Some(o) => return sc.err(format!("CONVERSION CRITERION={o} is not yet supported (only TIME with threshold 0)")),
             }
             if field(3, 1).unwrap_or(0.0) != 0.0 {
-                return sc.err("CONVERSION CRITERION=TIME: bara omvandling i analysens början (tröskeln 0) stöds ännu");
+                return sc.err("CONVERSION CRITERION=TIME: only conversion at the start of the analysis (threshold 0) is supported so far");
             }
         }
         if sc.data.get(3).and_then(|d| d.fields.get(1)).is_some_and(|f| !f.trim().is_empty() && parse_f64(f).is_none()) {
-            return sc.err("BACKGROUND GRID: orienteringar för rutnätet stöds inte ännu");
+            return sc.err("BACKGROUND GRID: orientations for the grid are not yet supported");
         }
-        let Some(set) = m.elsets.get(&sec.elset).cloned() else { return sec.raw.err(format!("elementsetet '{}' finns inte", sec.elset)) };
+        let Some(set) = m.elsets.get(&sec.elset).cloned() else { return sec.raw.err(format!("element set '{}' does not exist", sec.elset)) };
         let inst = set.first().map(|&e| m.elements[e].inst).unwrap_or(0);
         for &e in &set {
             let name = m.elements[e].etype.name();
             if !matches!(name, "C3D8R" | "C3D8") {
-                return sec.raw.err(format!("ELEMENT CONVERSION: {name} stöds inte ännu (C3D8R, C3D8)"));
+                return sec.raw.err(format!("ELEMENT CONVERSION: {name} is not yet supported (C3D8R, C3D8)"));
             }
         }
-        // positioner, volym per partikel och föräldraelementets formfunktioner
+        // positions, volume per particle and the parent element's shape functions
         let mut gen: Vec<(usize, [f64; 3], f64, [f64; 8])> = Vec::new();
         if per_element {
             let n = field(3, 0).unwrap_or(1.0).round().clamp(1.0, 7.0) as usize;
@@ -154,7 +154,7 @@ pub fn apply(m: &mut FeModel) -> Result<()> {
             let vols: Vec<f64> = set.iter().map(|&e| hex_volume(&m.elements[e].nodes.iter().map(|&k| m.nodes[k]).collect::<Vec<_>>())).collect();
             let vtot: f64 = vols.iter().sum();
             let a = field(3, 0).filter(|&a| a > 0.0).unwrap_or_else(|| (vtot / set.len() as f64).cbrt());
-            // origo i masscentrum (elementens tyngdpunkter viktade med volymen)
+            // origin at the center of mass (element centroids weighted by volume)
             let mut c0 = [0.0; 3];
             for (q, &e) in set.iter().enumerate() {
                 let x: Vec<[f64; 3]> = m.elements[e].nodes.iter().map(|&k| m.nodes[k]).collect();
@@ -188,12 +188,12 @@ pub fn apply(m: &mut FeModel) -> Result<()> {
             }
         }
         if gen.is_empty() {
-            return sec.raw.err("ELEMENT CONVERSION: inga partiklar skapades (för stort rutnät?)");
+            return sec.raw.err("ELEMENT CONVERSION: no particles were created (grid too coarse?)");
         }
-        // nya nod- och elementnummer efter de största i instansen
+        // new node and element numbers after the largest in the instance
         let mut nlab = (0..m.nodes.len()).filter(|&i| m.node_inst[i] == inst).map(|i| m.node_label[i]).max().unwrap_or(0);
         let mut elab = m.elements.iter().filter(|el| el.inst == inst).map(|el| el.label).max().unwrap_or(0);
-        let pc3d = crate::elements::lookup("PC3D").expect("PC3D är registrerat");
+        let pc3d = crate::elements::lookup("PC3D").expect("PC3D is registered");
         let new_sec = m.sections.len();
         let lmean = gen.iter().map(|g| 0.5 * g.2.cbrt()).sum::<f64>() / gen.len() as f64;
         let mut raw = sec.raw.clone();
@@ -219,7 +219,7 @@ pub fn apply(m: &mut FeModel) -> Result<()> {
         m.nsets.insert(nset, nodes.clone());
         m.surfaces.insert(format!("{}_SECT_NE_SPH", sec.elset), Surface { kind: "NODE".into(), faces: Vec::new(), nodes: nodes.iter().map(|&n| (n, 1.0)).collect(), source: sec.raw.location() });
         m.elsets.insert(set_name, elems);
-        // föräldrarna blir vilande
+        // the parents become dormant
         for &e in &set {
             m.elements[e].etype = &SPH_PARENT8;
         }
@@ -227,13 +227,13 @@ pub fn apply(m: &mut FeModel) -> Result<()> {
     let mut ag = m.elsets.get("ALL_GENERATED_ELEMENTS_SPH").cloned().unwrap_or_default();
     ag.extend(all_generated);
     m.elsets.insert("ALL_GENERATED_ELEMENTS_SPH".into(), ag);
-    // partiklarnas längder (massan per partikel)
+    // the particles' lengths (mass per particle)
     let mut kw = RawKeyword { name: LENGTHS.into(), params: Vec::new(), data: Vec::new(), file: String::new(), line: 0 };
     for (e, l) in &lengths {
         kw.data.push(DataLine { fields: vec![e.to_string(), format!("{l:e}")], line: 0, continued: false });
     }
     m.extra.push(kw);
-    // begynnelsehastigheten från föräldraelementets noder
+    // initial velocity from the parent element's nodes
     let mut vel: BTreeMap<usize, [f64; 3]> = BTreeMap::new();
     let mut add = Vec::new();
     for kw in m.extra.iter().filter(|k| k.name == "INITIAL CONDITIONS" && k.param_upper("TYPE").as_deref() == Some("VELOCITY")) {
@@ -252,8 +252,8 @@ pub fn apply(m: &mut FeModel) -> Result<()> {
             let pn = m.elements[pe].nodes.clone();
             for (n, _sh) in list {
                 for c in 0..3 {
-                    // partiklarna i ett föräldraelement som rör en nod med
-                    // begynnelsehastighet får hela nodens hastighet (största beloppet)
+                    // the particles in a parent element touching a node with
+                    // initial velocity get the node's full velocity (largest magnitude)
                     let v = pn.iter().filter_map(|k| vel.get(k).map(|x| x[c])).fold(0.0f64, |a, b| if b.abs() > a.abs() { b } else { a });
                     if v != 0.0 {
                         out.data.push(DataLine { fields: vec![format!("#{n}"), (c + 1).to_string(), format!("{v:e}")], line: 0, continued: false });
@@ -264,7 +264,7 @@ pub fn apply(m: &mut FeModel) -> Result<()> {
         add.push(out);
     }
     m.extra.extend(add);
-    // *DLOAD (GRAV, BX, BY, BZ) på föräldrarna gäller partiklarna
+    // *DLOAD (GRAV, BX, BY, BZ) on the parents applies to the particles
     let elem_of_node: HashMap<usize, usize> = m.elements.iter().enumerate().filter(|(_, el)| el.etype.name() == "PC3D").map(|(e, el)| (el.nodes[0], e)).collect();
     for step in m.steps.iter_mut() {
         for blk in step.dloads.iter_mut() {
@@ -272,7 +272,7 @@ pub fn apply(m: &mut FeModel) -> Result<()> {
             for dl in &blk.items {
                 if let Some(list) = parent_of.get(&dl.elem) {
                     if !matches!(dl.kind.as_str(), "GRAV" | "BX" | "BY" | "BZ") {
-                        return fail(format!("ELEMENT CONVERSION: *DLOAD {} på föräldraelement stöds inte", dl.kind));
+                        return fail(format!("ELEMENT CONVERSION: *DLOAD {} on parent elements is not supported", dl.kind));
                     }
                     for (n, _) in list {
                         let mut d = dl.clone();
@@ -288,7 +288,7 @@ pub fn apply(m: &mut FeModel) -> Result<()> {
     Ok(())
 }
 
-/// Partikelns karakteristiska längd efter omvandlingen (elementindex → L).
+/// The particle's characteristic length after the conversion (element index → L).
 pub fn lengths(m: &FeModel) -> HashMap<usize, f64> {
     let mut h = HashMap::new();
     for kw in m.extra.iter().filter(|k| k.name == LENGTHS) {

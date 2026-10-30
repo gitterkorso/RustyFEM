@@ -1,24 +1,24 @@
-//! *SUBSTRUCTURE GENERATE: statisk kondensering till bevarade frihetsgrader.
+//! *SUBSTRUCTURE GENERATE: static condensation to retained degrees of freedom.
 //!
-//! Steget bygger styvheten K (och med MASS MATRIX=YES massan M) i
-//! bastillståndet, delar frihetsgraderna i bevarade r (*RETAINED NODAL DOFS)
-//! och inre i (låsta frihetsgrader från *BOUNDARY tas bort) och kondenserar:
+//! The step builds the stiffness K (and with MASS MATRIX=YES the mass M) in
+//! the base state, splits the degrees of freedom into retained r (*RETAINED NODAL DOFS)
+//! and internal i (locked degrees of freedom from *BOUNDARY are removed) and condenses:
 //!
 //! ```text
 //! X = K_ii⁻¹ K_ir,   K_red = K_rr − K_ri X,   T = [I; −X],   M_red = Tᵀ M T
 //! ```
 //!
-//! (Guyan-reduktion av massan, standard utan bevarade egenmoder).
-//! Substrukturen sparas i registret i processen och, med en jobbkontext, som
-//! `<jobb>_<Zn>.rfsub` i jobbkatalogen. Den används som element med
-//! *ELEMENT, TYPE=Zn, FILE=<jobb> (`elements/matrix_element.rs`); finns
-//! varken registerposten eller filen men `<jobb>.inp` ligger i samma katalog
-//! körs genereringen först (i processen). De bevarade noderna ordnas i
-//! stigande nodnummer, som krävs för elementets noder.
+//! (Guyan reduction of the mass, default without retained eigenmodes).
+//! The substructure is stored in the in-process registry and, with a job context, as
+//! `<job>_<Zn>.rfsub` in the job directory. It is used as an element with
+//! *ELEMENT, TYPE=Zn, FILE=<job> (`elements/matrix_element.rs`); if
+//! neither the registry entry nor the file exists but `<job>.inp` is in the same directory,
+//! the generation runs first (in the process). The retained nodes are ordered by
+//! increasing node number, as required for the element's nodes.
 //!
-//! Begränsningar: inga lastfall (*SUBSTRUCTURE LOAD CASE), inga bevarade
-//! egenmoder, ingen återvinning av inre resultat (spänningar i substrukturen),
-//! inga villkor (MPC/*TIE) som kopplar bevarade frihetsgrader.
+//! Limitations: no load cases (*SUBSTRUCTURE LOAD CASE), no retained
+//! eigenmodes, no recovery of internal results (stresses in the substructure),
+//! no constraints (MPC/*TIE) coupling retained degrees of freedom.
 
 use super::api::{StepCtx, StepType};
 use crate::elements::MassKind;
@@ -37,21 +37,21 @@ pub struct Generate;
 
 pub static STEP_TYPES: &[&dyn StepType] = &[&Generate];
 
-/// En genererad substruktur.
+/// A generated substructure.
 #[derive(Debug, Clone)]
 pub struct SubLib {
-    /// Jobbet som genererade substrukturen (versaler, tomt utan jobbkontext).
+    /// The job that generated the substructure (upper case, empty without a job context).
     pub source: String,
-    /// Löpnummer (skiljer olika genereringar åt i elementcachen).
+    /// Serial number (distinguishes different generations in the element cache).
     pub serial: u64,
-    /// Typnamnet, t.ex. "Z1".
+    /// The type name, e.g. "Z1".
     pub name: String,
-    /// Bevarade noder (instans, nummer) och koordinater, i stigande nodnummer.
+    /// Retained nodes (instance, number) and coordinates, by increasing node number.
     pub labels: Vec<(String, i64)>,
     pub coords: Vec<[f64; 3]>,
-    /// Bevarade frihetsgrader per nod (stigande).
+    /// Retained degrees of freedom per node (increasing).
     pub dofs: Vec<Vec<Dof>>,
-    /// Kondenserad styvhet och massa, täta och radvisa.
+    /// Condensed stiffness and mass, dense and row-major.
     pub k: Vec<f64>,
     pub m: Option<Vec<f64>>,
 }
@@ -67,7 +67,7 @@ fn next_serial() -> u64 {
     S.fetch_add(1, Ordering::Relaxed)
 }
 
-/// Lägger substrukturen i registret.
+/// Puts the substructure in the registry.
 pub fn register(lib: SubLib) -> Arc<SubLib> {
     let a = Arc::new(lib);
     registry().lock().unwrap_or_else(|e| e.into_inner()).insert((a.source.clone(), a.name.clone()), a.clone());
@@ -75,7 +75,7 @@ pub fn register(lib: SubLib) -> Arc<SubLib> {
 }
 
 impl SubLib {
-    /// Textformatet `rustyfem-substructure 1`.
+    /// The text format `rustyfem-substructure 1`.
     pub fn to_text(&self) -> String {
         let mut s = String::from("# rustyfem-substructure 1\n");
         let _ = writeln!(s, "NAME;{}", self.name);
@@ -108,7 +108,7 @@ impl SubLib {
                 continue;
             }
             let p: Vec<&str> = t.split(';').collect();
-            let bad = || FemError(format!("substrukturfil rad {}: oläsbar rad '{t}'", no + 1));
+            let bad = || FemError(format!("substructure file line {}: unreadable line '{t}'", no + 1));
             let num = |s: &str| s.trim().parse::<f64>().map_err(|_| bad());
             let int = |s: &str| s.trim().parse::<i64>().map_err(|_| bad());
             match p[0] {
@@ -128,7 +128,7 @@ impl SubLib {
         let mut has_m = false;
         for (is_m, i, j, v) in ent {
             if i >= n || j >= n {
-                return fail("substrukturfilen har matrisindex utanför de bevarade frihetsgraderna");
+                return fail("the substructure file has matrix indices outside the retained degrees of freedom");
             }
             let a = if is_m {
                 has_m = true;
@@ -144,17 +144,17 @@ impl SubLib {
     }
 }
 
-/// Substrukturen för *ELEMENT, TYPE=`ty`, FILE=`file` (se modulens dokumentation).
+/// The substructure for *ELEMENT, TYPE=`ty`, FILE=`file` (see the module documentation).
 pub fn find(ctx: &InpCtx, file: Option<&str>, ty: &str) -> Result<Arc<SubLib>> {
     let src = file.map(|f| f.trim_end_matches(".sim").trim_end_matches(".SIM").to_uppercase()).unwrap_or_default();
     let get = |src: &str| registry().lock().unwrap_or_else(|e| e.into_inner()).get(&(src.to_string(), ty.to_string())).cloned();
     let Some(f) = file else {
-        // utan FILE=: senast genererade substruktur med typnamnet
+        // without FILE=: the most recently generated substructure with the type name
         if let Some(l) = get("") {
             return Ok(l);
         }
         let any = registry().lock().unwrap_or_else(|e| e.into_inner()).iter().filter(|((_, t), _)| t == ty).map(|(_, v)| v.clone()).max_by_key(|l| l.serial);
-        return any.ok_or_else(|| FemError(format!("substrukturen {ty} finns inte (ange FILE=jobb som genererade den)")));
+        return any.ok_or_else(|| FemError(format!("the substructure {ty} does not exist (give FILE=the job that generated it)")));
     };
     let stem = f.trim_end_matches(".sim").trim_end_matches(".SIM");
     let mut dirs = Vec::new();
@@ -175,7 +175,7 @@ pub fn find(ctx: &InpCtx, file: Option<&str>, ty: &str) -> Result<Arc<SubLib>> {
     if let Some(l) = get(&src) {
         return Ok(l);
     }
-    // genereringsjobbet ligger bredvid: kör det först
+    // the generation job is next to it: run it first
     for d in &dirs {
         let p = d.join(format!("{stem}.inp"));
         if p.exists() {
@@ -183,16 +183,16 @@ pub fn find(ctx: &InpCtx, file: Option<&str>, ty: &str) -> Result<Arc<SubLib>> {
             if let Some(l) = get(&src) {
                 return Ok(l);
             }
-            return fail(format!("{} genererade inte substrukturen {ty}", p.display()));
+            return fail(format!("{} did not generate the substructure {ty}", p.display()));
         }
     }
-    fail(format!("substrukturen {ty} från jobbet {stem} finns inte ({stem}_{ty}.rfsub eller {stem}.inp saknas)"))
+    fail(format!("the substructure {ty} from the job {stem} does not exist ({stem}_{ty}.rfsub or {stem}.inp is missing)"))
 }
 
-/// Kör ett genereringsjobb i processen (filerna skrivs i en temporär katalog).
+/// Runs a generation job in the process (the files are written to a temporary directory).
 pub fn run_generation(inp: &Path) -> Result<()> {
     let mut job = super::restart::Job::for_file(inp);
-    job.dir = std::env::temp_dir().join("rustyfem-jobb").join(format!("{}", std::process::id()));
+    job.dir = std::env::temp_dir().join("rustyfem-job").join(format!("{}", std::process::id()));
     let _ = std::fs::create_dir_all(&job.dir);
     job.deck = super::restart::file_deck(inp).ok();
     let _scope = super::restart::scope(job);
@@ -202,9 +202,9 @@ pub fn run_generation(inp: &Path) -> Result<()> {
 }
 
 // ---------------------------------------------------------------------------
-// Assemblering av element och interaktioner i (nod, slot)-par
+// Assembly of elements and interactions into (node, slot) pairs
 
-/// Elementets tangentstyvhet i tillståndet (linjär styvhet för linjära element).
+/// The element's tangent stiffness in the state (linear stiffness for linear elements).
 pub fn element_stiffness(p: &Prepared, e: usize, state: &crate::fem::state::SolutionState, nlgeom: bool) -> Result<Vec<f64>> {
     let el = &p.model.elements[e];
     let ctx = p.ctx(e, nlgeom, state.time, 0.0);
@@ -225,7 +225,7 @@ pub fn element_stiffness(p: &Prepared, e: usize, state: &crate::fem::state::Solu
     }
 }
 
-/// Glesa matriser nycklade på ((nod, slot), (nod, slot)), båda trianglarna.
+/// Sparse matrices keyed on ((node, slot), (node, slot)), both triangles.
 pub type PairMatrix = BTreeMap<((usize, usize), (usize, usize)), f64>;
 
 struct PairSink<'a>(&'a mut PairMatrix);
@@ -236,8 +236,8 @@ impl TangentSink for PairSink<'_> {
     }
 }
 
-/// Styvhet (och massa) för hela modellen i bastillståndet, utan randvillkor.
-/// `elems` begränsar till vissa element (alla om `None`).
+/// Stiffness (and mass) for the whole model in the base state, without boundary conditions.
+/// `elems` restricts to certain elements (all if `None`).
 pub fn assemble_pairs(p: &Prepared, state: &crate::fem::state::SolutionState, nlgeom: bool, mass: bool, elems: Option<&BTreeSet<usize>>) -> Result<(PairMatrix, Option<PairMatrix>)> {
     let m = p.model;
     let mut k = PairMatrix::new();
@@ -288,24 +288,24 @@ pub fn assemble_pairs(p: &Prepared, state: &crate::fem::state::SolutionState, nl
 }
 
 // ---------------------------------------------------------------------------
-// Steget
+// The step
 
-/// Bevarade (nod, slot) från *RETAINED NODAL DOFS.
+/// Retained (node, slot) from *RETAINED NODAL DOFS.
 fn retained(step: &StepDef, prep: &Prepared) -> Result<BTreeSet<(usize, usize)>> {
     let mut set = BTreeSet::new();
     for kw in step.extra.iter().filter(|k| k.name == "RETAINED NODAL DOFS") {
         for d in &kw.data {
-            let n: usize = d.fields[0].parse().map_err(|_| FemError(format!("{}: internt fel i nodlistan", kw.location())))?;
-            let dd: Dof = d.fields[1].parse().map_err(|_| FemError(format!("{}: internt fel i nodlistan", kw.location())))?;
+            let n: usize = d.fields[0].parse().map_err(|_| FemError(format!("{}: internal error in the node list", kw.location())))?;
+            let dd: Dof = d.fields[1].parse().map_err(|_| FemError(format!("{}: internal error in the node list", kw.location())))?;
             let s = dof::slot_of(dd);
             if prep.active[n] & (1 << s) == 0 {
-                return kw.err(format!("nod {} har inte frihetsgrad {dd}", prep.model.node_name(n)));
+                return kw.err(format!("node {} does not have degree of freedom {dd}", prep.model.node_name(n)));
             }
             set.insert((n, s));
         }
     }
     if set.is_empty() {
-        return fail("*SUBSTRUCTURE GENERATE kräver *RETAINED NODAL DOFS");
+        return fail("*SUBSTRUCTURE GENERATE requires *RETAINED NODAL DOFS");
     }
     Ok(set)
 }
@@ -329,30 +329,30 @@ impl StepType for Generate {
         let kw = ctx.step.procedure.as_ref().unwrap();
         let ty = match kw.param_upper("TYPE").or_else(|| kw.param_upper("NAME")) {
             Some(t) if t.strip_prefix('Z').and_then(|s| s.parse::<u32>().ok()).is_some() => t,
-            Some(t) => return kw.err(format!("TYPE={t} ska vara Zn (n = heltal)")),
-            None => return kw.err("TYPE=Zn saknas"),
+            Some(t) => return kw.err(format!("TYPE={t} must be Zn (n = integer)")),
+            None => return kw.err("TYPE=Zn is missing"),
         };
         if kw.flag("RETAINED EIGENMODES", false).unwrap_or(false) || ctx.step.extra.iter().any(|k| k.name == "SELECT EIGENMODES" || k.name == "SUBSTRUCTURE LOAD CASE") {
-            return kw.err("bevarade egenmoder och lastfall (*SUBSTRUCTURE LOAD CASE) stöds inte");
+            return kw.err("retained eigenmodes and load cases (*SUBSTRUCTURE LOAD CASE) are not supported");
         }
         let with_mass = kw.flag("MASS MATRIX", false)?;
         let ret = retained(ctx.step, p)?;
         let mut cons: BTreeSet<(usize, usize)> = ctx.loads.bc.keys().copied().collect();
         for r in &ret {
             if cons.contains(r) {
-                return kw.err(format!("frihetsgrad {} i nod {} är både bevarad och låst", dof::SLOT_DOF[r.1], m.node_name(r.0)));
+                return kw.err(format!("degree of freedom {} at node {} is both retained and locked", dof::SLOT_DOF[r.1], m.node_name(r.0)));
             }
         }
         cons.extend(ret.iter().copied());
         let (dm, mut kii) = assembly::dofmap(p, &cons, ctx.solver)?;
         let (kp, mp) = assemble_pairs(p, ctx.state, ctx.nlgeom, with_mass, None)?;
-        // bevarade frihetsgrader i stigande nodnummer, slot
+        // retained degrees of freedom by increasing node number, slot
         let mut rlist: Vec<(usize, usize)> = ret.iter().copied().collect();
         rlist.sort_by(|a, b| label_order(m, a.0, b.0).then(a.1.cmp(&b.1)));
         let ridx: HashMap<(usize, usize), usize> = rlist.iter().enumerate().map(|(i, &k)| (k, i)).collect();
         let nr = rlist.len();
         let ni = dm.n_eq;
-        // K_ii i systemmatrisen, K_ir och K_rr täta
+        // K_ii in the system matrix, K_ir and K_rr dense
         let mut kir = vec![vec![0.0; ni]; nr];
         let mut krr = vec![0.0; nr * nr];
         for (&(a, b), &v) in &kp {
@@ -414,7 +414,7 @@ impl StepType for Generate {
                 Some(out)
             }
         };
-        // noder och frihetsgrader
+        // nodes and degrees of freedom
         let mut labels = Vec::new();
         let mut coords = Vec::new();
         let mut dofs: Vec<Vec<Dof>> = Vec::new();
@@ -428,17 +428,17 @@ impl StepType for Generate {
             }
             dofs.last_mut().unwrap().push(dof::SLOT_DOF[s]);
         }
-        // frihetsgraderna per nod stigande (slot 7 = NT11 kommer sist)
+        // the degrees of freedom per node increasing (slot 7 = NT11 comes last)
         let job = super::restart::job();
         let source = job.as_ref().map(|j| j.name.to_uppercase()).unwrap_or_default();
         let lib = SubLib { source, serial: next_serial(), name: ty.clone(), labels, coords, dofs, k: kred, m: mred };
         if let Some(j) = &job {
             let path = j.file(&format!("_{ty}.rfsub"));
-            std::fs::write(&path, lib.to_text()).map_err(|e| FemError(format!("kunde inte skriva {}: {e}", path.display())))?;
+            std::fs::write(&path, lib.to_text()).map_err(|e| FemError(format!("could not write {}: {e}", path.display())))?;
         }
         register(lib);
         if ctx.opts.verbose {
-            eprintln!("  substruktur {ty}: {nr} bevarade och {ni} inre frihetsgrader");
+            eprintln!("  substructure {ty}: {nr} retained and {ni} internal degrees of freedom");
         }
         ctx.out.increments = 1;
         Ok(())

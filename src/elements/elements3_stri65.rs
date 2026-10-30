@@ -1,32 +1,32 @@
-//! STRI65: sexnodigt tunt triangelskal med fem frihetsgrader per nod
-//! (område elements3).
+//! STRI65: six-node thin triangular shell with five degrees of freedom per node
+//! (area elements3).
 //!
-//! Formulering:
+//! Formulation:
 //!
-//! - Geometri och förskjutningar med de kvadratiska formfunktionerna (T6),
-//!   naturliga koordinater (r, s) = (L2, L3).
-//! - Membran och böjning (krökning ur rotationerna, som S8R/S9R5 i
-//!   `shell3_q9.rs`) i tre punkter (2/3, 1/6, 1/6) osv. med vikten A/3.
-//! - Kirchhoffvillkoret som straff på tvärskjuvningen γ_t = n·u,t + θ·(n × t):
-//!   - längs varje kant i kantens två gausspunkter (±1/√3), riktning längs
-//!     kanten, vikt A/5 per punkt (sex punkter),
-//!   - inne i elementet i mittpunkterna P_k av den inre triangelns kanter
-//!     (L_k = 1/2, de andra 1/4) med riktningen längs motstående kant k:
-//!     värdena h₁ (2→3), h₂ (3→1), h₃ (1→2). Med kantlängderna L_q = |x₃ − x₂|,
-//!     L_s = |x₁ − x₃|, L_r = |x₂ − x₁|, S = L_q + L_s + L_r och
+//! - Geometry and displacements with the quadratic shape functions (T6),
+//!   natural coordinates (r, s) = (L2, L3).
+//! - Membrane and bending (curvature from the rotations, like S8R/S9R5 in
+//!   `shell3_q9.rs`) at three points (2/3, 1/6, 1/6) etc. with the weight A/3.
+//! - The Kirchhoff condition as a penalty on the transverse shear γ_t = n·u,t + θ·(n × t):
+//!   - along each edge at the edge's two Gauss points (±1/√3), direction along
+//!     the edge, weight A/5 per point (six points),
+//!   - inside the element at the midpoints P_k of the inner triangle's edges
+//!     (L_k = 1/2, the others 1/4) with the direction along the opposite edge k:
+//!     the values h₁ (2→3), h₂ (3→1), h₃ (1→2). With the edge lengths L_q = |x₃ − x₂|,
+//!     L_s = |x₁ − x₃|, L_r = |x₂ − x₁|, S = L_q + L_s + L_r and
 //!     λ = h₁/S + c·(L_s h₂ + L_r h₃), c = (L_s + L_r)/(S(L_s² + L_r²)),
-//!     straffas (h₃ − L_r λ) och (h₂ − L_s λ) med vikten 0,4·A vardera (nod 1
-//!     är alltså särskild).
-//!   Varje straff har styvheten 5/6·G·t·f(a)·a med vikten a och
-//!   slankhetskompensationen f(a) = 1/(1 + 0,25·10⁻⁴·a/t²).
-//! - Femfrihetsgradsnoderna assembleras med sex globala frihetsgrader (se
-//!   `shell3.rs`): rotationerna verkar genom sina komponenter i nodens
-//!   tangentplan och rotationen kring nodnormalen får styvheten `DRILL_EPS`.
-//! - Massa: konsistent för förskjutningarna (sexpunktsregel av grad 4,
-//!   även för krökta element), ingen rotationströghet.
+//!     (h₃ − L_r λ) and (h₂ − L_s λ) are penalized with the weight 0.4·A each (node 1
+//!     is thus special).
+//!   Each penalty has the stiffness 5/6·G·t·f(a)·a with the weight a and
+//!   the slenderness compensation f(a) = 1/(1 + 0.25·10⁻⁴·a/t²).
+//! - The five-degree-of-freedom nodes are assembled with six global degrees of freedom (see
+//!   `shell3.rs`): the rotations act through their components in the node's
+//!   tangent plane and the rotation about the nodal normal gets the stiffness `DRILL_EPS`.
+//! - Mass: consistent for the displacements (six-point rule of degree 4,
+//!   also for curved elements), no rotary inertia.
 //!
-//! Utdata i de tre integrationspunkterna: S (sektionspunkterna 1 och n), SF
-//! (SF4 = SF5 = 0 som för tunna skal) och SM.
+//! Output at the three integration points: S (section points 1 and n), SF
+//! (SF4 = SF5 = 0 as for thin shells) and SM.
 
 use super::super::api::{not_implemented, ElemCtx, ElemResponse, ElementType, Family, IpField, MassKind};
 use super::super::common::{self, cross, dot, norm, scale};
@@ -43,12 +43,12 @@ const NAME: &str = "STRI65";
 const ND: usize = 6;
 const NN: usize = 6;
 const NDOF: usize = 36;
-/// Integrationspunkter (r, s) = (L2, L3), vikt 1/6 (referenstriangelns area 1/2).
+/// Integration points (r, s) = (L2, L3), weight 1/6 (the reference triangle area 1/2).
 pub const IPS: [(f64, f64); 3] = [(1.0 / 6.0, 1.0 / 6.0), (2.0 / 3.0, 1.0 / 6.0), (1.0 / 6.0, 2.0 / 3.0)];
-/// Naturliga koordinater för noderna.
+/// Natural coordinates of the nodes.
 pub const NAT6: [[f64; 2]; 6] = [[0.0, 0.0], [1.0, 0.0], [0.0, 1.0], [0.5, 0.0], [0.5, 0.5], [0.0, 0.5]];
 
-/// T6-formfunktioner och derivator med avseende på (r, s).
+/// T6 shape functions and derivatives with respect to (r, s).
 pub fn shape6(r: f64, s: f64) -> ([f64; 6], [[f64; 6]; 2]) {
     let l = 1.0 - r - s;
     let n = [l * (2.0 * l - 1.0), r * (2.0 * r - 1.0), s * (2.0 * s - 1.0), 4.0 * l * r, 4.0 * r * s, 4.0 * s * l];
@@ -61,7 +61,7 @@ fn tangents(x: &[[f64; 3]], d: &[[f64; 6]; 2]) -> [[f64; 3]; 2] {
     [0, 1].map(|a| [0, 1, 2].map(|c| (0..NN).map(|i| d[a][i] * x[i][c]).sum()))
 }
 
-/// Nodnormaler ur elementets egen geometri.
+/// Nodal normals from the element's own geometry.
 pub fn own_normals(x: &[[f64; 3]]) -> Option<[[f64; 3]; 6]> {
     let mut nrm = [[0.0; 3]; 6];
     for (i, &[r, s]) in NAT6.iter().enumerate() {
@@ -110,7 +110,7 @@ fn put(row: &mut [f64], i: usize, off: usize, v: [f64; 3], f: f64) {
     }
 }
 
-/// Membran- och böjoperatorer (3 × 36 vardera), som S8R/S9R5.
+/// Membrane and bending operators (3 × 36 each), like S8R/S9R5.
 fn strain_ops(p: &Pt) -> (Vec<f64>, Vec<f64>) {
     let n = NDOF;
     let [e1, e2, nv] = p.r;
@@ -152,8 +152,8 @@ fn strain_ops(p: &Pt) -> (Vec<f64>, Vec<f64>) {
     (bm, bb)
 }
 
-/// Tvärskjuvningen i punkten (r, s) längs den naturliga riktningen `dir`:
-/// (vektor, |x,dir|).
+/// The transverse shear at the point (r, s) along the natural direction `dir`:
+/// (vector, |x,dir|).
 fn shear_vec(x: &[[f64; 3]], nrm: &[[f64; 3]; 6], r: f64, s: f64, dir: [f64; 2]) -> (Vec<f64>, f64) {
     let p = point(x, nrm, r, s);
     let nv = p.r[2];
@@ -176,13 +176,13 @@ pub struct Setup {
     pub area: f64,
 }
 
-/// Kirchhoffstraffen: (vektor, styvhet).
+/// The Kirchhoff penalties: (vector, stiffness).
 fn shear_terms(su: &Setup) -> Vec<(Vec<f64>, f64)> {
     let sec = &su.sec;
     let (k0, t, a) = (k_shear(sec), sec.t, su.area);
     let mut out = Vec::with_capacity(8);
     let g1 = 0.5 - 0.5 / 3f64.sqrt();
-    // kanter: (start, riktning)
+    // edges: (start, direction)
     let edges: [([f64; 2], [f64; 2]); 3] = [([0.0, 0.0], [1.0, 0.0]), ([1.0, 0.0], [-1.0, 1.0]), ([0.0, 1.0], [0.0, -1.0])];
     let we = a / 5.0;
     for (p0, dir) in edges {
@@ -191,7 +191,7 @@ fn shear_terms(su: &Setup) -> Vec<(Vec<f64>, f64)> {
             out.push((v, k0 * fp(we, t) * we));
         }
     }
-    // inre punkter: P1 (2→3), P2 (3→1), P3 (1→2)
+    // inner points: P1 (2→3), P2 (3→1), P3 (1→2)
     let (h1, lq) = shear_vec(&su.x, &su.nrm, 0.25, 0.25, [-1.0, 1.0]);
     let (h2, ls) = shear_vec(&su.x, &su.nrm, 0.5, 0.25, [0.0, -1.0]);
     let (h3, lr) = shear_vec(&su.x, &su.nrm, 0.25, 0.5, [1.0, 0.0]);
@@ -209,7 +209,7 @@ impl Stri65 {
     pub fn setup(&self, ctx: &ElemCtx) -> Result<Setup> {
         let x = ctx.x.clone();
         if x.len() != 6 {
-            return fail(format!("element {} ({NAME}) har {} noder, ska ha 6", ctx.label, x.len()));
+            return fail(format!("element {} ({NAME}) has {} nodes, should have 6", ctx.label, x.len()));
         }
         let Some(own) = own_normals(&x) else {
             return fail(format!("element {} ({NAME}): {}", ctx.label, common::DISTORTED));
@@ -258,7 +258,7 @@ impl Stri65 {
         k
     }
 
-    /// Punkter för ytintegraler (6 punkter, grad 4, som massan): (N, normal, dA).
+    /// Points for surface integrals (6 points, degree 4, like the mass): (N, normal, dA).
     fn area_points(su: &Setup) -> Vec<([f64; 6], [f64; 3], f64)> {
         let (a, b) = (0.445_948_490_915_965, 0.091_576_213_509_771);
         let (wa, wb) = (0.223_381_589_678_011, 0.109_951_743_655_322);
@@ -287,7 +287,7 @@ impl Stri65 {
         up
     }
 
-    /// Generaliserade töjningar i integrationspunkterna.
+    /// Generalized strains at the integration points.
     pub fn gen(su: &Setup, u: &[f64]) -> Vec<Gen> {
         let up = Self::up(su, u);
         IPS.iter()
@@ -333,11 +333,11 @@ impl ElementType for Stri65 {
 
     fn internal_force(&self, ctx: &ElemCtx, u: &[f64], _du: &[f64], _so: &[f64], _sn: &mut Vec<f64>, tangent: bool) -> Result<ElemResponse> {
         if ctx.nlgeom {
-            return not_implemented("geometrisk olinjäritet (NLGEOM)", NAME);
+            return not_implemented("geometric nonlinearity (NLGEOM)", NAME);
         }
         if let Some(m) = ctx.material {
             if !m.is_linear() {
-                return not_implemented(&format!("olinjärt material ({})", m.name()), NAME);
+                return not_implemented(&format!("nonlinear material ({})", m.name()), NAME);
             }
         }
         let k = self.stiffness(ctx)?;
@@ -361,7 +361,7 @@ impl ElementType for Stri65 {
             }
         }
         if kind == MassKind::Lumped {
-            // radsummorna i förskjutningarna
+            // the row sums in the displacements
             for i in 0..NN {
                 for d in 0..3 {
                     let r = ND * i + d;
@@ -380,7 +380,7 @@ impl ElementType for Stri65 {
         let su = self.setup(ctx)?;
         let body = common::body_load_vector(&load.kind, load.magnitude, &load.extra, su.sec.rho, NAME)?;
         if load.kind != "P" && body.is_none() {
-            return not_implemented(&format!("lasttypen {}", load.kind), NAME);
+            return not_implemented(&format!("load type {}", load.kind), NAME);
         }
         let mut f = vec![0.0; NDOF];
         for (nv, nrm, da) in Self::area_points(&su) {

@@ -1,19 +1,19 @@
-//! STRI3: plant treknutsskal för tunna skal, sex frihetsgrader per nod
-//! (område shells3).
+//! STRI3: flat three-node shell for thin shells, six degrees of freedom per node
+//! (area shells3).
 //!
-//! Formulering:
+//! Formulation:
 //!
-//! - Lokalt system: normal n = (x2 − x1) × (x3 − x1), 1-axel enligt
-//!   standardaxlarna (projektionen av global X), 2 = n × 1.
-//! - Membran: konstant töjning (CST).
-//! - Böjning: diskret Kirchhofftriangel (DKT, Batoz–Bathe–Ho 1980) med
-//!   βx = θy, βy = −θx, integrerad med tre punkter; ingen tvärskjuvning.
-//! - Drill: straff kᵢ(θzᵢ − ωᵢ)² i varje nod, där ωᵢ är medelvärdet av de två
-//!   anslutande kanternas kordrotationer och kᵢ = 10⁻³·G·t·A/3.
-//! - Massa: diagonal, ρtA/3 per nod och ρt³/12·A/3 för alla tre rotationerna.
+//! - Local system: normal n = (x2 − x1) × (x3 − x1), 1-axis according to
+//!   the default axes (the projection of global X), 2 = n × 1.
+//! - Membrane: constant strain (CST).
+//! - Bending: discrete Kirchhoff triangle (DKT, Batoz–Bathe–Ho 1980) with
+//!   βx = θy, βy = −θx, integrated with three points; no transverse shear.
+//! - Drill: penalty kᵢ(θzᵢ − ωᵢ)² at each node, where ωᵢ is the mean of the two
+//!   adjacent edges' chord rotations and kᵢ = 10⁻³·G·t·A/3.
+//! - Mass: diagonal, ρtA/3 per node and ρt³/12·A/3 for all three rotations.
 //!
-//! Utdata i tre integrationspunkter (arealkoordinaterna (2/3, 1/6, 1/6) osv.):
-//! S i sektionspunkterna 1 och n, SF (SF4 = SF5 = 0) och SM.
+//! Output at three integration points (area coordinates (2/3, 1/6, 1/6) etc.):
+//! S at section points 1 and n, SF (SF4 = SF5 = 0) and SM.
 
 use super::super::api::{not_implemented, ElemCtx, ElemResponse, ElementType, Family, IpField, MassKind};
 use super::super::common::{self, cross, dot, norm, scale, sub};
@@ -27,11 +27,11 @@ pub static STRI3: Stri3 = Stri3;
 
 const ND: usize = 6;
 const NDOF: usize = 18;
-/// Integrationspunkter (L2, L3) för utdata och böjning.
+/// Integration points (L2, L3) for output and bending.
 const IPS: [(f64, f64); 3] = [(1.0 / 6.0, 1.0 / 6.0), (2.0 / 3.0, 1.0 / 6.0), (1.0 / 6.0, 2.0 / 3.0)];
 
-/// DKT-krökningsoperatorn (3 × 9, frihetsgrader (w, θx, θy) per nod) i
-/// punkten (ξ, η) = (L2, L3).
+/// The DKT curvature operator (3 × 9, degrees of freedom (w, θx, θy) per node) at
+/// the point (ξ, η) = (L2, L3).
 pub fn dkt_b(x: [f64; 3], y: [f64; 3], xi: f64, eta: f64) -> [[f64; 9]; 3] {
     let (x23, x31, x12) = (x[1] - x[2], x[2] - x[0], x[0] - x[1]);
     let (y23, y31, y12) = (y[1] - y[2], y[2] - y[0], y[0] - y[1]);
@@ -102,13 +102,13 @@ pub fn dkt_b(x: [f64; 3], y: [f64; 3], xi: f64, eta: f64) -> [[f64; 9]; 3] {
     out
 }
 
-/// Lokalt system: rader (e1, e2, n) och plana koordinater relativt nod 1.
+/// Local system: rows (e1, e2, n) and in-plane coordinates relative to node 1.
 pub fn frame(ctx: &ElemCtx, name: &str) -> Result<([[f64; 3]; 3], [f64; 3], [f64; 3], f64)> {
     let xg = &ctx.x;
     let nv = cross(sub(xg[1], xg[0]), sub(xg[2], xg[0]));
     let a2 = norm(nv);
     if !(a2 > 0.0) {
-        return fail(format!("element {} ({name}) har ingen area", ctx.label));
+        return fail(format!("element {} ({name}) has zero area", ctx.label));
     }
     let r = default_axes(nv);
     let mut x = [0.0; 3];
@@ -121,7 +121,7 @@ pub fn frame(ctx: &ElemCtx, name: &str) -> Result<([[f64; 3]; 3], [f64; 3], [f64
     Ok((r, x, y, 0.5 * a2))
 }
 
-/// Lokala operatorer: membran (3 × 18), drillvektorer (3 × 18) och DKT per punkt.
+/// Local operators: membrane (3 × 18), drill vectors (3 × 18) and DKT per point.
 struct Ops {
     bm: [[f64; NDOF]; 3],
     drill: [[f64; NDOF]; 3],
@@ -138,7 +138,7 @@ fn ops(x: [f64; 3], y: [f64; 3], a: f64) -> Ops {
         bm[2][ND * i] = by[i];
         bm[2][ND * i + 1] = bx[i];
     }
-    // kordrotationer: kant p → q, ω = (τx Δv − τy Δu)/L
+    // chord rotations: edge p → q, ω = (τx Δv − τy Δu)/L
     let chord = |p: usize, q: usize, g: &mut [f64; NDOF], f: f64| {
         let (dx, dy) = (x[q] - x[p], y[q] - y[p]);
         let l2 = dx * dx + dy * dy;
@@ -237,7 +237,7 @@ impl ElementType for Stri3 {
 
     fn internal_force(&self, ctx: &ElemCtx, u: &[f64], _du: &[f64], _so: &[f64], _sn: &mut Vec<f64>, tangent: bool) -> Result<ElemResponse> {
         if ctx.nlgeom {
-            return not_implemented("geometrisk olinjäritet (NLGEOM)", "STRI3");
+            return not_implemented("geometric nonlinearity (NLGEOM)", "STRI3");
         }
         let k = self.stiffness(ctx)?;
         Ok(ElemResponse { fint: common::matvec(&k, u), k: tangent.then_some(k) })
@@ -265,7 +265,7 @@ impl ElementType for Stri3 {
         let q = match (load.kind.as_str(), body) {
             ("P", _) => scale(r[2], load.magnitude),
             (_, Some(b)) => scale(b, sec.t),
-            _ => return not_implemented(&format!("lasttypen {}", load.kind), "STRI3"),
+            _ => return not_implemented(&format!("load type {}", load.kind), "STRI3"),
         };
         let mut f = vec![0.0; NDOF];
         for i in 0..3 {

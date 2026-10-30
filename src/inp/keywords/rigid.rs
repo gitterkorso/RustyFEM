@@ -1,6 +1,6 @@
-//! *RIGID BODY (stela kroppar). Nyckelordet sparas i modellen och tolkas av
-//! `interactions/rigid_body.rs`. Stela element (R3D4, R3D3, R2D2, RAX2)
-//! finns i `elements/rigid.rs`.
+//! *RIGID BODY (rigid bodies). The keyword is stored in the model and parsed by
+//! `interactions/rigid_body.rs`. Rigid elements (R3D4, R3D3, R2D2, RAX2)
+//! are in `elements/rigid.rs`.
 
 use crate::fem::model::RawKeyword;
 use crate::inp::{InpCtx, Keyword, Kind};
@@ -11,8 +11,8 @@ pub static KEYWORDS: &[Keyword] = &[Keyword { name: "RIGID BODY", kind: Kind::Mo
 fn rigid_body(ctx: &mut InpCtx, kw: &RawKeyword) -> Result<()> {
     crate::inp::required(kw, "REF NODE")?;
     let mut k = kw.clone();
-    // inne i en part syftar namnen på partens noder och set; *INSTANCE lägger
-    // till instansens namn (se assembly.rs och interactions/rigid_body.rs)
+    // inside a part the names refer to the part's nodes and sets; *INSTANCE adds
+    // the instance name (see assembly.rs and interactions/rigid_body.rs)
     if let Some((name, _)) = &ctx.part {
         k.params.push(("_PART".into(), name.clone()));
     }

@@ -1,4 +1,4 @@
-# Trianglar (CPS3) med egenvikt och sidolast.
+# Triangles (CPS3) with self-weight and lateral load.
 elements tri
 material aluminium
 plate x=0..1 y=0..0.5 t=0.005 size=0.04

@@ -1,16 +1,16 @@
-//! Kontakt och termisk kontakt (*GAP CONDUCTANCE, *GAP RADIATION) i
-//! *COUPLED TEMPERATURE-DISPLACEMENT (inkluderas med `#[path]` från
+//! Contact and thermal contact (*GAP CONDUCTANCE, *GAP RADIATION) in
+//! *COUPLED TEMPERATURE-DISPLACEMENT (included with `#[path]` from
 //! `heat_coupled.rs`).
 //!
-//! Med kontakt beror värmeledningen av förskjutningarna (spaltavståndet d i
-//! spaltkonduktansen k(d)) och jämvikten av temperaturerna (termisk töjning),
-//! så tangenten är inte längre blocktriangulär. Varje inkrement löses då med
-//! blockvis Gauss–Seidel: värmeledningen med förskjutningarna från föregående
-//! varv, jämvikten (med mekanisk kontakt, `heat_stress.rs`) med de nya
-//! temperaturerna, upprepat från inkrementets början tills temperaturer och
-//! förskjutningar inte ändras (relativt 10⁻⁹); förskjutningarna till
-//! värmeledningen underrelaxeras när varven inte drar ihop sig. Den konvergerade lösningen är
-//! den fullt kopplade (hela systemet löst samtidigt med Newton).
+//! With contact the heat conduction depends on the displacements (the gap distance d in
+//! the gap conductance k(d)) and the equilibrium on the temperatures (thermal strain),
+//! so the tangent is no longer block triangular. Each increment is then solved with
+//! block Gauss–Seidel: the heat conduction with the displacements from the previous
+//! pass, the equilibrium (with mechanical contact, `heat_stress.rs`) with the new
+//! temperatures, repeated from the start of the increment until temperatures and
+//! displacements no longer change (relative 10⁻⁹); the displacements passed to
+//! the heat conduction are under-relaxed when the passes do not contract. The converged solution is
+//! the fully coupled one (the whole system solved simultaneously with Newton).
 
 use super::super::heat::{HeatSystem, TS};
 use super::super::heat_stress::ThermoSystem;
@@ -20,17 +20,17 @@ use super::{solve_increment, temps};
 use crate::fem::dof::NodeVec;
 use crate::model::Result;
 
-/// Största antal varv per inkrement.
+/// Maximum number of passes per increment.
 const MAX_PASSES: usize = 200;
-/// Relativ tolerans för ändringen mellan två varv.
+/// Relative tolerance for the change between two passes.
 const TOL: f64 = 1e-9;
 
-/// Löser inkrementet [t0, t1] för båda delsystemen; returnerar antalet
-/// iterationer. Med värme från plastisk dissipation (område coupled2):
-/// `plastic` = (η per element, inkrementets längd i tid). Värmekällan
-/// η σ:Δεᵖˡ/Δt räknas i varje varv ur jämvikten i föregående varv
-/// (`materials::inelastic_heat::nodal_heat`), så att den konvergerade
-/// lösningen är den fullt kopplade bakåt-Euler-lösningen.
+/// Solves the increment [t0, t1] for both subsystems; returns the number of
+/// iterations. With heat from plastic dissipation (area coupled2):
+/// `plastic` = (η per element, increment length in time). The heat source
+/// η σ:Δεᵖˡ/Δt is computed in each pass from the equilibrium of the previous pass
+/// (`materials::inelastic_heat::nodal_heat`), so that the converged
+/// solution is the fully coupled backward Euler solution.
 pub(super) fn solve_coupled_with(heat: &mut HeatSystem, mech: &mut ThermoSystem, ctrl: &Controls, t0: f64, t1: f64, verbose: bool, plastic: Option<(&[f64], f64)>) -> Result<usize> {
     let h0 = heat.u_committed.clone();
     let m0 = mech.u_committed.clone();
@@ -42,7 +42,7 @@ pub(super) fn solve_coupled_with(heat: &mut HeatSystem, mech: &mut ThermoSystem,
     let mut omega = 1.0f64;
     let mut du_prev = f64::INFINITY;
     for pass in 0..MAX_PASSES {
-        // plastisk värme ur föregående varvs jämvikt
+        // plastic heat from the previous pass's equilibrium
         if let Some((eta, dt)) = plastic {
             heat.source = if pass == 0 || dt <= 0.0 {
                 Vec::new()
@@ -50,7 +50,7 @@ pub(super) fn solve_coupled_with(heat: &mut HeatSystem, mech: &mut ThermoSystem,
                 crate::materials::inelastic_heat::nodal_heat(heat.p, &s0, &mech.state_old, eta)?.into_iter().map(|q| q / dt).collect()
             };
         }
-        // värmeledning med förskjutningarna från föregående varv
+        // heat conduction with the displacements from the previous pass
         heat.u_committed.clone_from(&h0);
         for (h, d) in heat.u_committed.iter_mut().zip(&disp) {
             for s in 0..TS {
@@ -59,7 +59,7 @@ pub(super) fn solve_coupled_with(heat: &mut HeatSystem, mech: &mut ThermoSystem,
         }
         iterations += solve_increment(heat, ctrl, t0, t1)?;
         let tn = temps(&heat.u_committed);
-        // jämvikt med de nya temperaturerna
+        // equilibrium with the new temperatures
         mech.u_committed.clone_from(&m0);
         mech.state_old.clone_from(&s0);
         iterations += solve_mech(mech, ctrl, t0, t1, &before, &tn)?;
@@ -68,13 +68,13 @@ pub(super) fn solve_coupled_with(heat: &mut HeatSystem, mech: &mut ThermoSystem,
         let uscale = un.iter().flat_map(|v| v[..TS].iter()).fold(1e-30f64, |m, v| m.max(v.abs()));
         let dt = t_prev.as_ref().map_or(f64::INFINITY, |tp| tp.iter().zip(&tn).fold(0.0f64, |m, (a, b)| m.max((a - b).abs())));
         let du = disp.iter().zip(&un).flat_map(|(a, b)| (0..TS).map(move |s| (a[s] - b[s]).abs())).fold(0.0f64, f64::max);
-        // underrelaxering när varven inte drar ihop sig (kontakten öppnar och
-        // sluter, spaltkonduktansen ändras snabbt med d)
+        // under-relaxation when the passes do not contract (the contact opens and
+        // closes, the gap conductance changes rapidly with d)
         if pass > 0 && du > 0.7 * du_prev {
             omega = (0.5 * omega).max(0.02);
         }
         if std::env::var_os("RUSTYFEM_KOPPLAD_DEBUG").is_some() {
-            eprintln!("    varv {pass}: dT = {dt:.3e}, du = {du:.3e}, ω = {omega}");
+            eprintln!("    pass {pass}: dT = {dt:.3e}, du = {du:.3e}, ω = {omega}");
         }
         du_prev = du;
         for (d, u) in disp.iter_mut().zip(&un) {
@@ -83,15 +83,15 @@ pub(super) fn solve_coupled_with(heat: &mut HeatSystem, mech: &mut ThermoSystem,
             }
         }
         t_prev = Some(tn);
-        // efter många varv: godta lösningen när ändringarna ligger på
-        // jämviktsiterationernas noggrannhet (kontaktstatus nära slutning)
+        // after many passes: accept the solution when the changes are at
+        // the accuracy of the equilibrium iterations (contact status near closure)
         let done = (pass > 0 && dt <= TOL * tscale && du <= TOL * uscale) || (pass >= 30 && dt <= 1e-6 * tscale && du <= 1e-4 * uscale);
         let done = done && (plastic.is_none() || pass > 1);
         if done {
             if verbose {
-                eprintln!("  kopplad kontakt: {} varv", pass + 1);
+                eprintln!("  coupled contact: {} passes", pass + 1);
             }
-            // värmeledningens förskjutningar = de slutliga (för utdata av spaltflödet)
+            // the heat conduction's displacements = the final ones (for output of the gap flux)
             for (h, d) in heat.u_committed.iter_mut().zip(&mech.u_committed) {
                 for s in 0..TS {
                     h[s] = d[s];
@@ -100,13 +100,13 @@ pub(super) fn solve_coupled_with(heat: &mut HeatSystem, mech: &mut ThermoSystem,
             return Ok(iterations);
         }
     }
-    eprintln!("varning: kopplad temperatur–förskjutning med kontakt: delsystemen konvergerade inte inom {MAX_PASSES} varv");
+    eprintln!("warning: coupled temperature–displacement with contact: the subsystems did not converge within {MAX_PASSES} passes");
     Ok(iterations)
 }
 
-/// Jämvikten över [t0, t1] med automatisk delning av inkrementet (kontakten
-/// som sluts kan kräva mindre steg); temperaturerna interpoleras linjärt
-/// mellan inkrementets början `ta` och slut `tb`.
+/// The equilibrium over [t0, t1] with automatic subdivision of the increment (contact
+/// that closes may require smaller steps); the temperatures are interpolated linearly
+/// between the start `ta` and end `tb` of the increment.
 fn solve_mech(mech: &mut ThermoSystem, ctrl: &Controls, t0: f64, t1: f64, ta: &[f64], tb: &[f64]) -> Result<usize> {
     let sub = Controls { initial: 1.0, fixed: false, min: 1e-6, max: 1.0, max_increments: 1000, ..ctrl.clone() };
     let mut span = Span { sys: mech, t0, t1, ta, tb };

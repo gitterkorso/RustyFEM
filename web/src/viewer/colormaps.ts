@@ -1,10 +1,10 @@
-// Färgskalor för konturer, som 256 RGB-värden.
+// Color maps for contours, as 256 RGB values.
 
-export type ColormapName = "regnbåge" | "turbo" | "viridis" | "kall–varm" | "grå";
+export type ColormapName = "rainbow" | "turbo" | "viridis" | "cool–warm" | "gray";
 
 const stops: Record<ColormapName, [number, number, number][]> = {
-  // regnbågsskala: blått → cyan → grönt → gult → rött
-  regnbåge: [
+  // rainbow scale: blue → cyan → green → yellow → red
+  rainbow: [
     [0, 0, 255],
     [0, 93, 255],
     [0, 185, 255],
@@ -41,7 +41,7 @@ const stops: Record<ColormapName, [number, number, number][]> = {
     [180, 222, 44],
     [253, 231, 37],
   ],
-  "kall–varm": [
+  "cool–warm": [
     [59, 76, 192],
     [98, 130, 234],
     [141, 176, 254],
@@ -52,7 +52,7 @@ const stops: Record<ColormapName, [number, number, number][]> = {
     [222, 96, 77],
     [180, 4, 38],
   ],
-  grå: [
+  gray: [
     [30, 30, 30],
     [235, 235, 235],
   ],
@@ -60,7 +60,7 @@ const stops: Record<ColormapName, [number, number, number][]> = {
 
 export const colormapNames = Object.keys(stops) as ColormapName[];
 
-/** 256 färger (RGBA, 0–255) för en färgskala. */
+/** 256 colors (RGBA, 0–255) for a color map. */
 export function colormap(name: ColormapName): Uint8Array {
   const s = stops[name];
   const out = new Uint8Array(256 * 4);
@@ -74,7 +74,7 @@ export function colormap(name: ColormapName): Uint8Array {
   return out;
 }
 
-/** CSS-gradient för färgskalan (för teckenförklaringen). */
+/** CSS gradient for the color map (for the legend). */
 export function colormapCss(name: ColormapName, levels: number, dir = "to top"): string {
   const s = stops[name];
   if (levels > 0) {

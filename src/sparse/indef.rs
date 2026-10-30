@@ -1,38 +1,38 @@
-//! Multifrontal LDLᵀ för symmetriska, indefinita matriser.
+//! Multifrontal LDLᵀ for symmetric indefinite matrices.
 //!
-//! Samma ordning och trädstruktur som den positivt definita faktoriseringen
-//! (`sparse::analyse`), men D får 1×1- och 2×2-block:
+//! Same ordering and tree structure as the positive definite factorization
+//! (`sparse::analyse`), but D gets 1×1 and 2×2 blocks:
 //!
-//! - Inom en front väljs pivoter bland de fullt summerade variablerna med
-//!   tröskelpivotering av Bunch–Kaufman-typ (Duff–Reid, MA27/MA57): en 1×1-pivot
-//!   godtas om |a_jj| ≥ u·max_i |a_ij| och en 2×2-pivot (j, r) om
-//!   |D⁻¹|·[max|a_ij|, max|a_ir|]ᵀ ≤ 1/u, där maxima tas över hela fronten
-//!   (även raderna som elimineras senare). Standard u = 0,01.
-//! - Variabler som inte klarar testet fördröjs (delayed pivots): de skickas
-//!   vidare till föräldern som extra fullt summerade variabler tillsammans med
-//!   barnets uppdateringsmatris. I roten (inga senare rader) används vanlig
-//!   Bunch–Kaufman med α = (1+√17)/8 på resten, vilket alltid ger en stabil
-//!   pivot om matrisen är regulär.
-//! - Tröghet (antal negativa, noll- och positiva egenvärden) räknas ur D enligt
-//!   Sylvesters tröghetslag; antalet negativa ger varningen om
-//!   negativa egenvärden.
+//! - Within a front, pivots are chosen among the fully summed variables with
+//!   Bunch–Kaufman-type threshold pivoting (Duff–Reid, MA27/MA57): a 1×1 pivot
+//!   is accepted if |a_jj| ≥ u·max_i |a_ij| and a 2×2 pivot (j, r) if
+//!   |D⁻¹|·[max|a_ij|, max|a_ir|]ᵀ ≤ 1/u, where the maxima are taken over the whole front
+//!   (including rows eliminated later). Default u = 0.01.
+//! - Variables that fail the test are delayed (delayed pivots): they are passed
+//!   on to the parent as extra fully summed variables together with
+//!   the child's update matrix. At the root (no later rows) ordinary
+//!   Bunch–Kaufman with α = (1+√17)/8 is used on the rest, which always gives a stable
+//!   pivot if the matrix is regular.
+//! - Inertia (number of negative, zero and positive eigenvalues) is computed from D using
+//!   Sylvester's law of inertia; the number of negative ones gives the warning about
+//!   negative eigenvalues.
 //!
-//! Referenser: Bunch & Kaufman (1977), Duff & Reid (1983) "The multifrontal
+//! References: Bunch & Kaufman (1977), Duff & Reid (1983) "The multifrontal
 //! solution of indefinite sparse symmetric linear equations", Liu (1992).
 
 use super::{dot, kern, Lower, Symbolic, PAR_FLOPS};
 use crate::par;
 
-/// Standardtröskel u för pivotering inom fronterna.
+/// Default threshold u for pivoting within the fronts.
 pub const THRESHOLD: f64 = 0.01;
-/// En pivot räknas som noll om |d| ≤ ZERO_TOL·(största tal i kolumnen i ursprungsmatrisen).
+/// A pivot counts as zero if |d| ≤ ZERO_TOL·(largest entry in the column of the original matrix).
 pub const ZERO_TOL: f64 = 1e-12;
-/// Bunch–Kaufmans α = (1 + √17)/8.
+/// Bunch–Kaufman's α = (1 + √17)/8.
 const ALPHA: f64 = 0.640_388_203_202_207_9;
-/// Pivotblockets bredd.
+/// Width of the pivot block.
 const KB: usize = 64;
 
-/// Tröghet: antal negativa, noll- och positiva egenvärden.
+/// Inertia: number of negative, zero and positive eigenvalues.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct Inertia {
     pub neg: usize,
@@ -40,37 +40,37 @@ pub struct Inertia {
     pub pos: usize,
 }
 
-/// En faktoriserad del av en front: L = [L11; L21], D blockdiagonal.
+/// A factorized part of a front: L = [L11; L21], D block diagonal.
 struct IFront {
-    /// Pivoternas ekvationer i elimineringsordning.
+    /// The pivots' equations in elimination order.
     piv: Vec<usize>,
-    /// Strikt undre L11, packad radvis (rad i börjar på i(i−1)/2).
+    /// Strictly lower L11, packed row-wise (row i starts at i(i−1)/2).
     l11: Vec<f64>,
-    /// D:s diagonal.
+    /// Diagonal of D.
     d: Vec<f64>,
-    /// e[i] = D(i+1, i) om en 2×2-pivot börjar i i, annars 0.
+    /// e[i] = D(i+1, i) if a 2×2 pivot starts at i, otherwise 0.
     e: Vec<f64>,
-    /// 1 = 1×1, 2 = första i ett 2×2-block, 0 = andra i ett 2×2-block.
+    /// 1 = 1×1, 2 = first of a 2×2 block, 0 = second of a 2×2 block.
     kind: Vec<u8>,
-    /// Ekvationer för L21:s rader.
+    /// Equations for the rows of L21.
     rows: Vec<usize>,
-    /// L21, rows.len() × piv.len(), radvis.
+    /// L21, rows.len() × piv.len(), row-wise.
     l21: Vec<f64>,
 }
 
-/// Indefinit faktor P·A·Pᵀ = L·D·Lᵀ.
+/// Indefinite factor P·A·Pᵀ = L·D·Lᵀ.
 pub struct IndefFactor {
     fronts: Vec<IFront>,
     pub inertia: Inertia,
-    /// Antal pivoter som fördröjdes minst ett steg och antal 2×2-block.
+    /// Number of pivots delayed at least one step and number of 2×2 blocks.
     pub delayed: usize,
     pub two_by_two: usize,
 }
 
-/// Inställningar.
+/// Settings.
 #[derive(Debug, Clone, Copy)]
 pub struct IndefOptions {
-    /// Tröskel u ∈ (0, 0,5]; större ger stabilare men fler fördröjda pivoter.
+    /// Threshold u ∈ (0, 0.5]; larger is more stable but gives more delayed pivots.
     pub threshold: f64,
 }
 
@@ -94,7 +94,7 @@ struct NodeOut {
     delayed: usize,
 }
 
-/// Största tal i varje kolumn (båda trianglarna) i den undre triangeln `a`.
+/// Largest entry in each column (both triangles) of the lower triangle `a`.
 pub(crate) fn column_scale(a: &Lower, n: usize) -> Vec<f64> {
     let mut s = vec![0.0f64; n];
     for c in 0..n {
@@ -107,8 +107,8 @@ pub(crate) fn column_scale(a: &Lower, n: usize) -> Vec<f64> {
     s
 }
 
-/// Numerisk indefinit faktorisering. `Err(ekvation)` om matrisen är singulär
-/// (en pivot som är noll relativt kolumnens storlek återstår i roten).
+/// Numerical indefinite factorization. `Err(equation)` if the matrix is singular
+/// (a pivot that is zero relative to the column size remains at the root).
 pub fn factor(sym: &Symbolic, a: &Lower) -> Result<IndefFactor, usize> {
     factor_with(sym, a, IndefOptions::default())
 }
@@ -179,7 +179,7 @@ fn factor_node(ctx: &Ctx, t: usize, threads: usize, root: bool) -> Result<NodeOu
         let o = res?;
         out.extend(o.fronts);
         delayed += o.delayed;
-        // fördröjda variabler från barnet ligger före den här frontens ekvationer
+        // delayed variables from the child come before this front's equations
         fs.extend(o.idx.iter().copied().filter(|&g| g < start));
         parts.push((o.upd, o.idx));
     }
@@ -192,13 +192,13 @@ fn factor_node(ctx: &Ctx, t: usize, threads: usize, root: bool) -> Result<NodeOu
         if g >= start && g < start + k {
             g - start
         } else if g < start {
-            dmap[dmap.binary_search_by_key(&g, |x| x.0).expect("intern: fördröjd variabel saknas")].1
+            dmap[dmap.binary_search_by_key(&g, |x| x.0).expect("internal: delayed variable missing")].1
         } else {
-            kf + node.rows.binary_search(&g).expect("intern: rad saknas i fronten")
+            kf + node.rows.binary_search(&g).expect("internal: row missing in the front")
         }
     };
 
-    // frontmatrisen: undre triangeln, och hela det fullt summerade blocket
+    // the front matrix: lower triangle, and the whole fully summed block
     let mut f = vec![0.0; m * m];
     let a = ctx.a;
     for c in 0..k {
@@ -230,13 +230,13 @@ fn factor_node(ctx: &Ctx, t: usize, threads: usize, root: bool) -> Result<NodeOu
     let mut kind = Vec::new();
     let npiv = eliminate(&mut f, m, kf, &mut fs, ctx, root, threads, &mut d, &mut e, &mut kind)?;
 
-    // packa faktorn
+    // pack the factor
     let mut l11 = Vec::with_capacity(npiv * npiv.saturating_sub(1) / 2);
     for i in 0..npiv {
         let start_len = l11.len();
         l11.extend_from_slice(&f[i * m..i * m + i]);
         if kind[i] == 0 {
-            // kopplingen i ett 2×2-block hör till D
+            // the coupling in a 2×2 block belongs to D
             l11[start_len + i - 1] = 0.0;
         }
     }
@@ -258,7 +258,7 @@ enum Pivot {
     Two(usize, usize),
 }
 
-/// Byter plats p och q (< kf) symmetriskt.
+/// Swaps p and q (< kf) symmetrically.
 fn swap(f: &mut [f64], m: usize, kf: usize, fs: &mut [usize], p: usize, q: usize) {
     if p == q {
         return;
@@ -272,7 +272,7 @@ fn swap(f: &mut [f64], m: usize, kf: usize, fs: &mut [usize], p: usize, q: usize
     fs.swap(p, q);
 }
 
-/// max |A(i, j)| för i ∈ [p, m), i ∉ {j, x}.
+/// max |A(i, j)| for i ∈ [p, m), i ∉ {j, x}.
 #[inline]
 fn colmax(f: &[f64], m: usize, p: usize, j: usize, x: usize) -> f64 {
     let mut g = 0.0f64;
@@ -284,7 +284,7 @@ fn colmax(f: &[f64], m: usize, p: usize, j: usize, x: usize) -> f64 {
     g
 }
 
-/// Tröskelpivot bland kandidaterna [p, end).
+/// Threshold pivot among the candidates [p, end).
 fn choose(f: &[f64], m: usize, p: usize, end: usize, fs: &[usize], ctx: &Ctx) -> Option<Pivot> {
     let thr = ctx.thr;
     for j in p..end {
@@ -294,7 +294,7 @@ fn choose(f: &[f64], m: usize, p: usize, end: usize, fs: &[usize], ctx: &Ctx) ->
         if ajj.abs() > ZERO_TOL * sj && ajj.abs() >= thr * gj {
             return Some(Pivot::One(j));
         }
-        // 2×2 med den största kopplingen bland kandidaterna
+        // 2×2 with the largest coupling among the candidates
         let mut r = usize::MAX;
         let mut best = 0.0;
         for i in p..end {
@@ -322,9 +322,9 @@ fn choose(f: &[f64], m: usize, p: usize, end: usize, fs: &[usize], ctx: &Ctx) ->
     None
 }
 
-/// Bunch–Kaufman på resten [p, kf) när inga senare rader finns (roten).
+/// Bunch–Kaufman on the rest [p, kf) when there are no later rows (the root).
 fn choose_forced(f: &[f64], m: usize, p: usize, kf: usize, fs: &[usize], ctx: &Ctx) -> Result<Pivot, usize> {
-    // största talet i den återstående kvadraten
+    // largest entry in the remaining square
     let (mut bi, mut bj, mut big) = (p, p, -1.0f64);
     for j in p..kf {
         for i in j..kf {
@@ -371,7 +371,7 @@ fn choose_forced(f: &[f64], m: usize, p: usize, kf: usize, fs: &[usize], ctx: &C
     Ok(Pivot::Two(j, r))
 }
 
-/// Eliminerar en 1×1-pivot i p och uppdaterar kolumnerna (p, bend) för alla rader > p.
+/// Eliminates a 1×1 pivot at p and updates the columns (p, bend) for all rows > p.
 fn elim1(f: &mut [f64], m: usize, p: usize, bend: usize) -> f64 {
     let dp = f[p * m + p];
     let w: Vec<f64> = (p + 1..bend).map(|c| f[c * m + p]).collect();
@@ -388,7 +388,7 @@ fn elim1(f: &mut [f64], m: usize, p: usize, bend: usize) -> f64 {
     dp
 }
 
-/// Eliminerar en 2×2-pivot i (p, p+1).
+/// Eliminates a 2×2 pivot at (p, p+1).
 fn elim2(f: &mut [f64], m: usize, p: usize, bend: usize) -> (f64, f64, f64) {
     let (a, b, c) = (f[p * m + p], f[(p + 1) * m + p], f[(p + 1) * m + p + 1]);
     let det = a * c - b * b;
@@ -410,8 +410,8 @@ fn elim2(f: &mut [f64], m: usize, p: usize, bend: usize) -> (f64, f64, f64) {
     (a, b, c)
 }
 
-/// Blockad eliminering av de fullt summerade variablerna [0, kf). Returnerar
-/// antal eliminerade pivoter; resten är fördröjda (utom i roten).
+/// Blocked elimination of the fully summed variables [0, kf). Returns
+/// the number of eliminated pivots; the rest are delayed (except at the root).
 #[allow(clippy::too_many_arguments)]
 fn eliminate(
     f: &mut [f64],
@@ -455,7 +455,7 @@ fn eliminate(
         let npb = p - p0;
         if npb > 0 && b1 < m {
             trailing_update(f, m, p0, npb, b1, &d[p0..p], &e[p0..p], &kind[p0..p], threads);
-            // spegla det återstående fullt summerade blocket (undre → övre)
+            // mirror the remaining fully summed block (lower → upper)
             for i in b1..kf {
                 for j in p..i {
                     f[j * m + i] = f[i * m + j];
@@ -472,7 +472,7 @@ fn eliminate(
         }
     }
     if p < kf && root {
-        // roten: vanlig Bunch–Kaufman på resten (inga senare rader)
+        // root: ordinary Bunch–Kaufman on the rest (no later rows)
         while p < kf {
             match choose_forced(f, m, p, kf, fs, ctx)? {
                 Pivot::One(j) => {
@@ -494,12 +494,12 @@ fn eliminate(
                 }
             }
         }
-        // resten av roten saknar senare rader; ingen uppdatering behövs
+        // the rest of the root has no later rows; no update needed
     }
     Ok(p)
 }
 
-/// F[x][y] −= (L·D)[x]·L[y]ᵀ för b1 ≤ y ≤ x < m, med pivoterna [p0, p0+npb).
+/// F[x][y] −= (L·D)[x]·L[y]ᵀ for b1 ≤ y ≤ x < m, with the pivots [p0, p0+npb).
 #[allow(clippy::too_many_arguments)]
 fn trailing_update(f: &mut [f64], m: usize, p0: usize, npb: usize, b1: usize, d: &[f64], e: &[f64], kind: &[u8], threads: usize) {
     let rows = m - b1;
@@ -532,7 +532,7 @@ fn trailing_update(f: &mut [f64], m: usize, p0: usize, npb: usize, b1: usize, d:
 }
 
 impl IndefFactor {
-    /// Löser A x = b på plats (intern numrering).
+    /// Solves A x = b in place (internal numbering).
     pub fn solve(&self, x: &mut [f64]) {
         for fr in &self.fronts {
             let k = fr.piv.len();
@@ -590,13 +590,13 @@ impl IndefFactor {
         }
     }
 
-    /// Antal lagrade tal i L.
+    /// Number of stored entries in L.
     pub fn factor_size(&self) -> usize {
         self.fronts.iter().map(|f| f.l11.len() + f.l21.len()).sum()
     }
 }
 
-/// y = A x för den symmetriska matrisen i undre triangeln `a`.
+/// y = A x for the symmetric matrix in the lower triangle `a`.
 pub fn sym_matvec(a: &Lower, x: &[f64], y: &mut [f64]) {
     y.iter_mut().for_each(|v| *v = 0.0);
     for c in 0..a.colptr.len() - 1 {

@@ -1,12 +1,12 @@
-//! Yttre laster vid NLGEOM: följande tryck (*DLOAD Pn) på den deformerade
-//! ytan, och lastens bidrag till tangenten (laststyvhet).
+//! External loads with NLGEOM: follower pressure (*DLOAD Pn) on the deformed
+//! surface, and the load's contribution to the tangent (load stiffness).
 //!
-//! Trycket verkar vinkelrätt mot den aktuella ytan och på dess aktuella area,
-//! så de ekvivalenta nodkrafterna räknas med elementets vanliga
-//! `distributed_load` men med deformerade nodkoordinater. Volymkrafter (BX,
-//! GRAV, ...) och balklaster (PX, PY, PZ) är "döda" laster och räknas i
-//! referensläget (massan bevaras). Laststyvheten −∂f/∂u räknas med centrala
-//! differenser per belastat element och symmetriseras (för symmetrisk lösare).
+//! The pressure acts normal to the current surface and on its current area,
+//! so the equivalent nodal forces are computed with the element's usual
+//! `distributed_load` but with deformed nodal coordinates. Body forces (BX,
+//! GRAV, ...) and beam loads (PX, PY, PZ) are "dead" loads and are computed in
+//! the reference configuration (mass is conserved). The load stiffness −∂f/∂u is computed with central
+//! differences per loaded element and symmetrized (for a symmetric solver).
 
 use crate::elements::ElemCtx;
 use crate::fem::assembly::Prepared;
@@ -14,13 +14,13 @@ use crate::fem::dof::{NodeVec, SLOTS};
 use crate::fem::model::DistLoad;
 use crate::model::{FemError, Result};
 
-/// Följer lasten med ytan? (Pn för kontinuumelement.)
+/// Does the load follow the surface? (Pn for continuum elements.)
 pub fn is_follower(kind: &str) -> bool {
     kind.len() > 1 && kind.starts_with('P') && kind[1..].chars().all(|c| c.is_ascii_digit())
 }
 
-/// Följer lasten med ytan? Pn på kontinuumelement och P på skal och membran
-/// (område nlgeom_struct).
+/// Does the load follow the surface? Pn on continuum elements and P on shells and membranes
+/// (area nlgeom_struct).
 fn follows(p: &Prepared, l: &DistLoad) -> bool {
     use crate::elements::Family;
     is_follower(&l.kind) || (l.kind == "P" && matches!(p.model.elements[l.elem].etype.family(), Family::Shell | Family::Membrane))
@@ -40,7 +40,7 @@ fn elem_load(p: &Prepared, l: &DistLoad, u: &[NodeVec], time: f64) -> Result<Vec
     let e = l.elem;
     let m = p.model;
     let ue = p.gather(e, u);
-    // användarlast PnNU (DLOAD, user/loads.rs) i referensläget
+    // user load PnNU (DLOAD, user/loads.rs) in the reference configuration
     if let Some(fe) = crate::user::loads::dload(p, l, time).map_err(|err| FemError(format!("{}: {err}", m.elem_name(e))))? {
         return Ok(fe);
     }
@@ -54,10 +54,10 @@ fn elem_load(p: &Prepared, l: &DistLoad, u: &[NodeVec], time: f64) -> Result<Vec
     r.map_err(|err| FemError(format!("{}: {err}", m.elem_name(e))))
 }
 
-/// Laststyvhet för ett belastat element: (element, −∂f/∂u symmetriserad).
+/// Load stiffness for a loaded element: (element, −∂f/∂u symmetrized).
 pub type LoadStiffness = Vec<(usize, Vec<f64>)>;
 
-/// Nodlaster vid förskjutningen `u` och (om `stiffness`) laststyvheten.
+/// Nodal loads at displacement `u` and (if `stiffness`) the load stiffness.
 pub fn external(
     p: &Prepared,
     cloads: &[(usize, usize, f64)],

@@ -1,8 +1,8 @@
-//! Område gaps1: *BEAM GENERAL SECTION, SECTION=NONLINEAR GENERAL har inget
-//! material, så kärnan ser inte att modellen är olinjär. Som för
-//! användarelement (`user_element.rs`) registreras en interaktion utan bidrag
-//! som säger att modellen inte är linjär, så att *STATIC använder Newton.
-//! Bara olinjära samband (ELASTIC eller elastiskt-plastiskt) gör det.
+//! Area gaps1: *BEAM GENERAL SECTION, SECTION=NONLINEAR GENERAL has no
+//! material, so the core does not see that the model is nonlinear. As for
+//! user elements (`user_element.rs`), an interaction without contribution is registered
+//! that says the model is not linear, so that *STATIC uses Newton.
+//! Only nonlinear relations (ELASTIC or elastic-plastic) do this.
 
 use super::{Interaction, InteractionFactory};
 use crate::fem::model::{FeModel, RawKeyword};

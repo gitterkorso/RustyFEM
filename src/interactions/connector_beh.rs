@@ -1,28 +1,28 @@
-//! Kopplingselementens beteenden (inkluderas med `#[path]` från `connector.rs`):
-//! *CONNECTOR ELASTICITY (linjär, matris, NONLINEAR, RIGID), *CONNECTOR DAMPING,
+//! Connector element behaviors (included with `#[path]` from `connector.rs`):
+//! *CONNECTOR ELASTICITY (linear, matrix, NONLINEAR, RIGID), *CONNECTOR DAMPING,
 //! *CONNECTOR PLASTICITY + *CONNECTOR HARDENING, *CONNECTOR DAMAGE INITIATION/
-//! EVOLUTION, *CONNECTOR STOP, *CONNECTOR LOCK och *CONNECTOR FRICTION.
+//! EVOLUTION, *CONNECTOR STOP, *CONNECTOR LOCK and *CONNECTOR FRICTION.
 //!
-//! Alla beteenden är okopplade per komponent (utom elasticitetsmatrisen) och
-//! endimensionella, med följande semantik:
-//! - NONLINEAR: tabell (kraft, förskjutning), konstant utanför tabellen
-//!   (EXTRAPOLATION=CONSTANT), elastisk (samma kurva vid avlastning).
-//! - Plasticitet: F = k (u − u_p), flytvillkor |F − α| ≤ R(ū_p). Isotrop
-//!   hårdnande R tabulerat (kraft, plastisk rörelse; konstant efter sista
-//!   punkten) eller EXPONENTIAL LAW R = F₀ + Q∞ (1 − e^(−b ū_p)); kinematiskt
+//! All behaviors are uncoupled per component (except the elasticity matrix) and
+//! one-dimensional, with the following semantics:
+//! - NONLINEAR: table (force, displacement), constant outside the table
+//!   (EXTRAPOLATION=CONSTANT), elastic (same curve on unloading).
+//! - Plasticity: F = k (u − u_p), yield condition |F − α| ≤ R(ū_p). Isotropic
+//!   hardening R tabulated (force, plastic motion; constant after the last
+//!   point) or EXPONENTIAL LAW R = F₀ + Q∞ (1 − e^(−b ū_p)); kinematic
 //!   (TYPE=KINEMATIC, DEFINITION=PARAMETERS: F₀, C, γ) dα = C du_p − γ α dū_p.
-//!   Implicit returalgoritm (Simo & Hughes kap. 1) med konsistent tangent.
-//! - Skada: initiering när kraften (CRITERION=FORCE, standard), rörelsen
-//!   (MOTION) eller den plastiska rörelsen (PLASTIC MOTION) når gränserna;
-//!   TYPE=MOTION, SOFTENING=LINEAR: d = u_f (u − u₀)/(u (u_f − u₀)) med u
-//!   räknad i den riktning där skadan initierades (rörelse åt andra hållet
-//!   ger ingen ny skada), u_f = u₀ + Δu_f, oåterkalleligt; kraften blir
+//!   Implicit return mapping (Simo & Hughes ch. 1) with consistent tangent.
+//! - Damage: initiation when the force (CRITERION=FORCE, default), the motion
+//!   (MOTION) or the plastic motion (PLASTIC MOTION) reaches the limits;
+//!   TYPE=MOTION, SOFTENING=LINEAR: d = u_f (u − u₀)/(u (u_f − u₀)) with u
+//!   measured in the direction in which the damage was initiated (motion in the other direction
+//!   gives no new damage), u_f = u₀ + Δu_f, irreversible; the force becomes
 //!   (1 − d)·F.
-//! - Stopp och lås gäller lägen (CP = läget i referensläget + CU), straff.
-//! - Friktion: F_f = μ N med N = den inre kontaktkraften på dataraden,
-//!   klistring med STICK STIFFNESS (standard: elastisk glidning 1e-4 · längden).
-//! - RIGID: elastisk styvhet 1e6.
-//! - Dämpning: viskös F = c v i *DYNAMIC, v = Δu/Δt över inkrementet.
+//! - Stops and locks apply to positions (CP = position in the reference configuration + CU), penalty.
+//! - Friction: F_f = μ N with N = the internal contact force on the data line,
+//!   sticking with STICK STIFFNESS (default: elastic slip 1e-4 · the length).
+//! - RIGID: elastic stiffness 1e6.
+//! - Damping: viscous F = c v in *DYNAMIC, v = Δu/Δt over the increment.
 
 use crate::interactions::constraints::sub_options;
 use crate::fem::model::{parse_f64, FeModel, RawKeyword};
@@ -33,15 +33,15 @@ pub enum Elastic {
     #[default]
     None,
     Linear(f64),
-    /// (förskjutning, kraft), sorterad efter förskjutning.
+    /// (displacement, force), sorted by displacement.
     Table(Vec<(f64, f64)>),
 }
 
 impl Elastic {
-    /// (kraft, iterationsstyvhet) vid förskjutningen u; `u_prev` är
-    /// föregående utvärdering. För den styckvis linjära kurvan pendlar Newton
-    /// med tangenten mellan segmenten; sekanten från föregående iteration
-    /// konvergerar och blir exakt när två iterationer ligger i samma segment.
+    /// (force, iteration stiffness) at the displacement u; `u_prev` is
+    /// the previous evaluation. For the piecewise linear curve, Newton with the tangent
+    /// oscillates between segments; the secant from the previous iteration
+    /// converges and becomes exact when two iterations lie in the same segment.
     pub fn eval(&self, u: f64, u_prev: f64) -> (f64, f64) {
         match self {
             Elastic::None => (0.0, 0.0),
@@ -66,7 +66,7 @@ impl Elastic {
         }
     }
 
-    /// Representativ styvhet (för straffkoefficienten).
+    /// Representative stiffness (for the penalty coefficient).
     pub fn scale(&self) -> f64 {
         match self {
             Elastic::None => 0.0,
@@ -76,7 +76,7 @@ impl Elastic {
     }
 }
 
-/// Styckvis linjär interpolation, konstant utanför: (värde, lutning).
+/// Piecewise linear interpolation, constant outside: (value, slope).
 fn interp(t: &[(f64, f64)], x: f64) -> (f64, f64) {
     if t.is_empty() {
         return (0.0, 0.0);
@@ -95,7 +95,7 @@ fn interp(t: &[(f64, f64)], x: f64) -> (f64, f64) {
 
 #[derive(Debug, Clone)]
 pub enum Iso {
-    /// (plastisk rörelse, flytkraft)
+    /// (plastic motion, yield force)
     Table(Vec<(f64, f64)>),
     Exp { f0: f64, q: f64, b: f64 },
 }
@@ -112,7 +112,7 @@ impl Iso {
 #[derive(Debug, Clone)]
 pub struct Plastic {
     pub iso: Iso,
-    /// Kinematiskt hårdnande (C, γ).
+    /// Kinematic hardening (C, γ).
     pub kin: Option<(f64, f64)>,
 }
 
@@ -128,7 +128,7 @@ pub struct Damage {
     pub criterion: Criterion,
     pub lo: Option<f64>,
     pub hi: Option<f64>,
-    /// Δu_f (TYPE=MOTION, SOFTENING=LINEAR); None = bara initiering.
+    /// Δu_f (TYPE=MOTION, SOFTENING=LINEAR); None = initiation only.
     pub du_f: Option<f64>,
     pub d_max: f64,
 }
@@ -144,7 +144,7 @@ pub struct Friction {
 pub struct Lock {
     pub lo: Option<f64>,
     pub hi: Option<f64>,
-    /// Komponenterna (0..6) som låses.
+    /// The components (0..6) that are locked.
     pub comps: Vec<usize>,
 }
 
@@ -162,9 +162,9 @@ pub struct CompBeh {
 #[derive(Debug, Clone, Default)]
 pub struct Behavior {
     pub comps: [CompBeh; 6],
-    /// Elasticitetsmatris över de tillgängliga komponenterna (6×6, radvis).
+    /// Elasticity matrix over the available components (6×6, row-major).
     pub matrix: Option<[[f64; 6]; 6]>,
-    /// Komponenter som är stela (*CONNECTOR ELASTICITY, RIGID).
+    /// Components that are rigid (*CONNECTOR ELASTICITY, RIGID).
     pub rigid: [bool; 6],
 }
 
@@ -174,7 +174,7 @@ impl Behavior {
     }
 }
 
-/// Styvheten för *CONNECTOR ELASTICITY, RIGID.
+/// The stiffness for *CONNECTOR ELASTICITY, RIGID.
 pub const RIGID_STIFFNESS: f64 = 1e6;
 
 const NAMES: &[&str] = &[
@@ -193,7 +193,7 @@ const NAMES: &[&str] = &[
     "CONNECTOR CONSTITUTIVE REFERENCE",
 ];
 
-/// Fält på första dataraden (tomma fält = None).
+/// Fields on the first data line (empty fields = None).
 fn opt_fields(kw: &RawKeyword) -> Result<Vec<Option<f64>>> {
     let Some(d) = kw.data.first() else { return Ok(Vec::new()) };
     d.fields
@@ -203,7 +203,7 @@ fn opt_fields(kw: &RawKeyword) -> Result<Vec<Option<f64>>> {
             if s.is_empty() {
                 Ok(None)
             } else {
-                parse_f64(s).map(Some).ok_or(()).or_else(|_| kw.err(format!("'{s}' är inget tal")))
+                parse_f64(s).map(Some).ok_or(()).or_else(|_| kw.err(format!("'{s}' is not a number")))
             }
         })
         .collect()
@@ -214,7 +214,7 @@ fn table(kw: &RawKeyword, swap: bool) -> Result<Vec<(f64, f64)>> {
     for d in &kw.data {
         let v = kw.floats(d)?;
         if v.len() < 2 {
-            return kw.err_at(d.line, "skriv två värden per rad");
+            return kw.err_at(d.line, "enter two values per line");
         }
         t.push(if swap { (v[1], v[0]) } else { (v[0], v[1]) });
     }
@@ -227,19 +227,19 @@ fn component(kw: &RawKeyword, dim: usize) -> Result<usize> {
         Some(c @ 1..=6) => {
             let c = c as usize - 1;
             if dim == 2 && !matches!(c, 0 | 1 | 5) {
-                return kw.err("i 2D finns komponenterna 1, 2 och 6");
+                return kw.err("in 2D the components are 1, 2 and 6");
             }
             Ok(c)
         }
-        _ => kw.err("COMPONENT=1..6 krävs"),
+        _ => kw.err("COMPONENT=1..6 is required"),
     }
 }
 
-/// Läser beteendet *CONNECTOR BEHAVIOR, NAME=`name`. `avail` = tillgängliga komponenter.
+/// Reads the behavior *CONNECTOR BEHAVIOR, NAME=`name`. `avail` = available components.
 pub fn parse(m: &FeModel, kw: &RawKeyword, name: &str, avail: &[usize]) -> Result<Behavior> {
     let up = name.trim().to_uppercase();
     let Some(b) = m.extra.iter().find(|k| k.name == "CONNECTOR BEHAVIOR" && k.param_upper("NAME").as_deref() == Some(up.as_str())) else {
-        return kw.err(format!("*CONNECTOR BEHAVIOR, NAME={name} finns inte"));
+        return kw.err(format!("*CONNECTOR BEHAVIOR, NAME={name} does not exist"));
     };
     let dim = m.dim();
     let mut beh = Behavior::default();
@@ -250,16 +250,16 @@ pub fn parse(m: &FeModel, kw: &RawKeyword, name: &str, avail: &[usize]) -> Resul
     let mut pending: Option<Friction> = None;
     for s in subs {
         if s.has("DEPENDENCIES") || s.has("FREQUENCY DEPENDENCE") {
-            return s.err("DEPENDENCIES stöds inte ännu för kopplingsbeteenden");
+            return s.err("DEPENDENCIES is not supported yet for connector behaviors");
         }
         match s.name.as_str() {
             "CONNECTOR ELASTICITY" => {
                 if s.has("RIGID") {
-                    let comps: Vec<usize> = s.data.iter().flat_map(|d| d.fields.iter()).filter(|f| !f.trim().is_empty()).map(|f| crate::inp::parse_label(f.trim()).map(|c| c as usize)).collect::<Option<Vec<_>>>().ok_or(()).or_else(|_| s.err("komponentnummer förväntades"))?;
+                    let comps: Vec<usize> = s.data.iter().flat_map(|d| d.fields.iter()).filter(|f| !f.trim().is_empty()).map(|f| crate::inp::parse_label(f.trim()).map(|c| c as usize)).collect::<Option<Vec<_>>>().ok_or(()).or_else(|_| s.err("component number expected"))?;
                     let list: Vec<usize> = if let Ok(c) = component(s, dim) { vec![c] } else if comps.is_empty() { avail.to_vec() } else { comps.into_iter().map(|c| c - 1).collect() };
                     for c in list {
                         if c >= 6 || !avail.contains(&c) {
-                            return s.err(format!("komponent {} är inte tillgänglig för kopplingstypen", c + 1));
+                            return s.err(format!("component {} is not available for the connection type", c + 1));
                         }
                         beh.rigid[c] = true;
                     }
@@ -267,18 +267,18 @@ pub fn parse(m: &FeModel, kw: &RawKeyword, name: &str, avail: &[usize]) -> Resul
                 }
                 if !s.has("COMPONENT") {
                     if s.has("NONLINEAR") {
-                        return s.err("NONLINEAR kräver COMPONENT=");
+                        return s.err("NONLINEAR requires COMPONENT=");
                     }
-                    // matrisform: D11, D12, D22, D13, D23, D33, ... över de tillgängliga komponenterna
+                    // matrix form: D11, D12, D22, D13, D23, D33, ... over the available components
                     let v: Vec<f64> = s.records().iter().map(|d| s.floats(d)).collect::<Result<Vec<_>>>()?.concat();
-                    // 21 värden: hela 6×6-matrisen över komponenterna 1–6 (som
-                    // formatet kräver), annars bara de tillgängliga komponenterna
+                    // 21 values: the full 6×6 matrix over components 1–6 (as
+                    // the format requires), otherwise only the available components
                     let full: Vec<usize> = (0..6).collect();
                     let avail0 = avail;
                     let avail: &[usize] = if v.len() >= 21 { &full } else { avail };
                     let n = avail.len();
                     if v.len() < n * (n + 1) / 2 {
-                        return s.err(format!("elasticitetsmatrisen kräver {} värden för {n} tillgängliga komponenter", n * (n + 1) / 2));
+                        return s.err(format!("the elasticity matrix requires {} values for {n} available components", n * (n + 1) / 2));
                     }
                     let mut mat = [[0.0; 6]; 6];
                     let mut q = 0;
@@ -289,7 +289,7 @@ pub fn parse(m: &FeModel, kw: &RawKeyword, name: &str, avail: &[usize]) -> Resul
                             q += 1;
                         }
                     }
-                    // komponenter som inte är tillgängliga ignoreras
+                    // components that are not available are ignored
                     for c in 0..6 {
                         if !avail0.contains(&c) {
                             for d in 0..6 {
@@ -303,23 +303,23 @@ pub fn parse(m: &FeModel, kw: &RawKeyword, name: &str, avail: &[usize]) -> Resul
                 }
                 let c = component(s, dim)?;
                 if !avail.contains(&c) {
-                    return s.err(format!("komponent {} är inte tillgänglig för kopplingstypen", c + 1));
+                    return s.err(format!("component {} is not available for the connection type", c + 1));
                 }
                 if s.has("NONLINEAR") {
-                    // dataraderna: kraft, förskjutning
+                    // the data lines: force, displacement
                     beh.comps[c].elastic = Elastic::Table(table(s, true)?);
                 } else {
                     if s.data.len() > 1 {
-                        return s.err("temperaturberoende elasticitet stöds inte ännu (en rad med styvheten)");
+                        return s.err("temperature-dependent elasticity is not supported yet (one line with the stiffness)");
                     }
                     let v = s.first_floats()?;
-                    let Some(&k) = v.first() else { return s.err("styvhet saknas") };
+                    let Some(&k) = v.first() else { return s.err("stiffness missing") };
                     beh.comps[c].elastic = Elastic::Linear(k);
                 }
             }
             "CONNECTOR DAMPING" => {
                 if s.has("NONLINEAR") || s.param_upper("TYPE").is_some_and(|t| t != "VISCOUS") {
-                    return s.err("bara linjär viskös dämpning stöds (COMPONENT=, en rad med c)");
+                    return s.err("only linear viscous damping is supported (COMPONENT=, one line with c)");
                 }
                 let c = component(s, dim)?;
                 let v = s.first_floats()?;
@@ -328,13 +328,13 @@ pub fn parse(m: &FeModel, kw: &RawKeyword, name: &str, avail: &[usize]) -> Resul
             "CONNECTOR PLASTICITY" => {
                 let c = component(s, dim)?;
                 if !avail.contains(&c) {
-                    return s.err(format!("komponent {} är inte tillgänglig för kopplingstypen", c + 1));
+                    return s.err(format!("component {} is not available for the connection type", c + 1));
                 }
                 beh.comps[c].plastic = Some(Plastic { iso: Iso::Table(Vec::new()), kin: None });
                 last_plastic = Some(c);
             }
             "CONNECTOR HARDENING" => {
-                let Some(c) = last_plastic else { return s.err("*CONNECTOR HARDENING måste följa *CONNECTOR PLASTICITY") };
+                let Some(c) = last_plastic else { return s.err("*CONNECTOR HARDENING must follow *CONNECTOR PLASTICITY") };
                 let p = beh.comps[c].plastic.as_mut().unwrap();
                 let ty = s.param_upper("TYPE").unwrap_or_else(|| "ISOTROPIC".into());
                 let def = s.param_upper("DEFINITION");
@@ -344,26 +344,26 @@ pub fn parse(m: &FeModel, kw: &RawKeyword, name: &str, avail: &[usize]) -> Resul
                         "EXPONENTIAL LAW" => {
                             let v = s.first_floats()?;
                             if v.len() < 3 {
-                                return s.err("EXPONENTIAL LAW kräver F0, Q∞, b");
+                                return s.err("EXPONENTIAL LAW requires F0, Q∞, b");
                             }
                             p.iso = Iso::Exp { f0: v[0], q: v[1], b: v[2] };
                         }
-                        other => return s.err(format!("DEFINITION={other} stöds inte (TABULAR, EXPONENTIAL LAW)")),
+                        other => return s.err(format!("DEFINITION={other} is not supported (TABULAR, EXPONENTIAL LAW)")),
                     },
                     "KINEMATIC" => {
                         if def.as_deref() != Some("PARAMETERS") {
-                            return s.err("kinematiskt hårdnande kräver DEFINITION=PARAMETERS (F0, C, γ)");
+                            return s.err("kinematic hardening requires DEFINITION=PARAMETERS (F0, C, γ)");
                         }
                         let v = s.first_floats()?;
                         if v.len() < 2 {
-                            return s.err("skriv F0, C[, γ]");
+                            return s.err("enter F0, C[, γ]");
                         }
                         p.kin = Some((v[1], v.get(2).copied().unwrap_or(0.0)));
                         if matches!(&p.iso, Iso::Table(t) if t.is_empty()) {
                             p.iso = Iso::Table(vec![(0.0, v[0])]);
                         }
                     }
-                    other => return s.err(format!("TYPE={other} stöds inte (ISOTROPIC, KINEMATIC)")),
+                    other => return s.err(format!("TYPE={other} is not supported (ISOTROPIC, KINEMATIC)")),
                 }
             }
             "CONNECTOR DAMAGE INITIATION" => {
@@ -372,7 +372,7 @@ pub fn parse(m: &FeModel, kw: &RawKeyword, name: &str, avail: &[usize]) -> Resul
                     "FORCE" => Criterion::Force,
                     "MOTION" => Criterion::Motion,
                     "PLASTIC MOTION" => Criterion::PlasticMotion,
-                    other => return s.err(format!("CRITERION={other} stöds inte (FORCE, MOTION, PLASTIC MOTION)")),
+                    other => return s.err(format!("CRITERION={other} is not supported (FORCE, MOTION, PLASTIC MOTION)")),
                 };
                 let f = opt_fields(s)?;
                 let d_max = s.param("MAXIMUM DEGRADATION").and_then(parse_f64).unwrap_or(1.0);
@@ -380,25 +380,25 @@ pub fn parse(m: &FeModel, kw: &RawKeyword, name: &str, avail: &[usize]) -> Resul
                 last_damage = Some(c);
             }
             "CONNECTOR DAMAGE EVOLUTION" => {
-                let Some(c) = last_damage else { return s.err("*CONNECTOR DAMAGE EVOLUTION måste följa *CONNECTOR DAMAGE INITIATION") };
+                let Some(c) = last_damage else { return s.err("*CONNECTOR DAMAGE EVOLUTION must follow *CONNECTOR DAMAGE INITIATION") };
                 let ty = s.param_upper("TYPE").unwrap_or_else(|| "MOTION".into());
                 let soft = s.param_upper("SOFTENING").unwrap_or_else(|| "LINEAR".into());
                 if ty != "MOTION" || soft != "LINEAR" {
-                    return s.err(format!("TYPE={ty}, SOFTENING={soft} stöds inte ännu (TYPE=MOTION, SOFTENING=LINEAR)"));
+                    return s.err(format!("TYPE={ty}, SOFTENING={soft} is not supported yet (TYPE=MOTION, SOFTENING=LINEAR)"));
                 }
                 if s.has("AFFECTED COMPONENTS") {
-                    return s.err("AFFECTED COMPONENTS stöds inte ännu");
+                    return s.err("AFFECTED COMPONENTS is not supported yet");
                 }
                 let v = s.first_floats()?;
-                let Some(&du) = v.first().filter(|x| **x > 0.0) else { return s.err("Δu_f > 0 krävs") };
+                let Some(&du) = v.first().filter(|x| **x > 0.0) else { return s.err("Δu_f > 0 is required") };
                 beh.comps[c].damage.as_mut().unwrap().du_f = Some(du);
             }
             "CONNECTOR FRICTION" => {
                 if s.has("PREDEFINED") {
-                    return s.err("PREDEFINED friktion stöds inte ännu (använd COMPONENT= och den inre kontaktkraften)");
+                    return s.err("PREDEFINED friction is not supported yet (use COMPONENT= and the internal contact force)");
                 }
                 if s.has("CONTACT FORCE") {
-                    return s.err("CONTACT FORCE= (härledda komponenter) stöds inte ännu; ange den inre kontaktkraften på dataraden");
+                    return s.err("CONTACT FORCE= (derived components) is not supported yet; give the internal contact force on the data line");
                 }
                 let f0 = s.first_floats()?.first().copied().unwrap_or(0.0);
                 let stick = s.param("STICK STIFFNESS").and_then(parse_f64);
@@ -406,40 +406,40 @@ pub fn parse(m: &FeModel, kw: &RawKeyword, name: &str, avail: &[usize]) -> Resul
                 if s.has("COMPONENT") {
                     let c = component(s, dim)?;
                     if !avail.contains(&c) {
-                        return s.err(format!("komponent {} är inte tillgänglig för kopplingstypen", c + 1));
+                        return s.err(format!("component {} is not available for the connection type", c + 1));
                     }
                     beh.comps[c].friction = Some(fr);
                     last_friction = Some(c);
                 } else {
-                    // utan COMPONENT= anges riktningen med *CONNECTOR POTENTIAL (en komponent)
+                    // without COMPONENT= the direction is given with *CONNECTOR POTENTIAL (one component)
                     pending = Some(fr);
                     last_friction = None;
                 }
             }
             "CONNECTOR POTENTIAL" => {
-                let Some(fr) = pending.take() else { return s.err("*CONNECTOR POTENTIAL stöds bara efter *CONNECTOR FRICTION utan COMPONENT=") };
+                let Some(fr) = pending.take() else { return s.err("*CONNECTOR POTENTIAL is only supported after *CONNECTOR FRICTION without COMPONENT=") };
                 if s.data.len() != 1 {
-                    return s.err("bara en komponent i *CONNECTOR POTENTIAL stöds (riktningen för friktionen)");
+                    return s.err("only one component in *CONNECTOR POTENTIAL is supported (the friction direction)");
                 }
                 let f = &s.data[0].fields;
                 let Some(c) = f.first().and_then(|x| crate::inp::parse_label(x.trim())).filter(|c| (1..=6).contains(c)) else {
-                    return s.err("komponentnummer saknas");
+                    return s.err("component number missing");
                 };
                 let c = c as usize - 1;
                 if let Some(w) = f.get(1).and_then(|x| parse_f64(x.trim())) {
                     if (w.abs() - 1.0).abs() > 1e-12 {
-                        return s.err("bara skalfaktorn 1 stöds i *CONNECTOR POTENTIAL");
+                        return s.err("only scale factor 1 is supported in *CONNECTOR POTENTIAL");
                     }
                 }
                 if !avail.contains(&c) {
-                    return s.err(format!("komponent {} är inte tillgänglig för kopplingstypen", c + 1));
+                    return s.err(format!("component {} is not available for the connection type", c + 1));
                 }
                 beh.comps[c].friction = Some(fr);
                 last_friction = Some(c);
             }
             "FRICTION" => {
                 if s.data.len() > 1 {
-                    return s.err("tabulerad friktion stöds inte ännu för kopplingselement");
+                    return s.err("tabular friction is not supported yet for connector elements");
                 }
                 let mu = s.first_floats()?.first().copied().unwrap_or(0.0);
                 if let Some(p) = pending.as_mut() {
@@ -447,14 +447,14 @@ pub fn parse(m: &FeModel, kw: &RawKeyword, name: &str, avail: &[usize]) -> Resul
                 } else if let Some(c) = last_friction {
                     beh.comps[c].friction.as_mut().unwrap().mu = mu;
                 } else {
-                    return s.err("*FRICTION i *CONNECTOR BEHAVIOR måste följa *CONNECTOR FRICTION");
+                    return s.err("*FRICTION in *CONNECTOR BEHAVIOR must follow *CONNECTOR FRICTION");
                 }
             }
-            "CONNECTOR DERIVED COMPONENT" => return s.err("*CONNECTOR DERIVED COMPONENT stöds inte ännu"),
+            "CONNECTOR DERIVED COMPONENT" => return s.err("*CONNECTOR DERIVED COMPONENT is not supported yet"),
             "CONNECTOR STOP" => {
                 let c = component(s, dim)?;
                 if !avail.contains(&c) {
-                    return s.err(format!("komponent {} är inte tillgänglig för kopplingstypen", c + 1));
+                    return s.err(format!("component {} is not available for the connection type", c + 1));
                 }
                 let f = opt_fields(s)?;
                 beh.comps[c].stop = Some((f.first().copied().flatten(), f.get(1).copied().flatten()));
@@ -463,13 +463,13 @@ pub fn parse(m: &FeModel, kw: &RawKeyword, name: &str, avail: &[usize]) -> Resul
                 let c = component(s, dim)?;
                 let f = opt_fields(s)?;
                 if f.len() > 2 && f[2..].iter().any(|x| x.is_some()) {
-                    return s.err("bara lägesgränser stöds för *CONNECTOR LOCK (inte krafter)");
+                    return s.err("only position limits are supported for *CONNECTOR LOCK (not forces)");
                 }
                 let comps = match s.param_upper("LOCK").as_deref().unwrap_or("ALL") {
                     "ALL" => avail.to_vec(),
                     x => match crate::inp::parse_label(x) {
                         Some(k @ 1..=6) => vec![k as usize - 1],
-                        _ => return s.err(format!("LOCK={x}: ALL eller ett komponentnummer")),
+                        _ => return s.err(format!("LOCK={x}: ALL or a component number")),
                     },
                 };
                 beh.comps[c].lock = Some(Lock { lo: f.first().copied().flatten(), hi: f.get(1).copied().flatten(), comps });
@@ -477,71 +477,71 @@ pub fn parse(m: &FeModel, kw: &RawKeyword, name: &str, avail: &[usize]) -> Resul
             "CONNECTOR CONSTITUTIVE REFERENCE" => {
                 let f = opt_fields(s)?;
                 if f.iter().any(|x| x.is_some_and(|v| v != 0.0)) {
-                    return s.err("referenslängder skilda från referensläget stöds inte ännu");
+                    return s.err("reference lengths different from the reference configuration are not supported yet");
                 }
             }
             _ => {}
         }
     }
-    // RIGID: en elastisk styvhet 1e6 (oberoende av
-    // modellens övriga styvheter)
+    // RIGID: an elastic stiffness 1e6 (independent of
+    // the model's other stiffnesses)
     for c in 0..6 {
         if beh.rigid[c] {
             beh.comps[c].elastic = Elastic::Linear(RIGID_STIFFNESS);
         }
     }
     if pending.is_some() {
-        return b.err("*CONNECTOR FRICTION utan COMPONENT= kräver *CONNECTOR POTENTIAL");
+        return b.err("*CONNECTOR FRICTION without COMPONENT= requires *CONNECTOR POTENTIAL");
     }
     for (c, cb) in beh.comps.iter().enumerate() {
         if let Some(p) = &cb.plastic {
             if matches!(&p.iso, Iso::Table(t) if t.is_empty()) {
-                return b.err(format!("*CONNECTOR PLASTICITY, COMPONENT={} saknar *CONNECTOR HARDENING", c + 1));
+                return b.err(format!("*CONNECTOR PLASTICITY, COMPONENT={} has no *CONNECTOR HARDENING", c + 1));
             }
             if !matches!(cb.elastic, Elastic::Linear(_)) {
-                return b.err(format!("plasticitet i komponent {} kräver linjär *CONNECTOR ELASTICITY", c + 1));
+                return b.err(format!("plasticity in component {} requires linear *CONNECTOR ELASTICITY", c + 1));
             }
         }
         if let Some(d) = &cb.damage {
             if d.du_f.is_some() && cb.plastic.is_some() {
-                return b.err(format!("skadeutveckling med plasticitet (komponent {}) stöds inte ännu", c + 1));
+                return b.err(format!("damage evolution with plasticity (component {}) is not supported yet", c + 1));
             }
             if d.du_f.is_some() && !matches!(cb.elastic, Elastic::Linear(_)) {
-                return b.err(format!("skadeutveckling i komponent {} kräver linjär *CONNECTOR ELASTICITY", c + 1));
+                return b.err(format!("damage evolution in component {} requires linear *CONNECTOR ELASTICITY", c + 1));
             }
         }
         if let Some(f) = &cb.friction {
             if f.mu < 0.0 {
-                return b.err("negativ friktionskoefficient");
+                return b.err("negative friction coefficient");
             }
         }
     }
     Ok(beh)
 }
 
-/// Tillstånd per komponent.
+/// State per component.
 #[derive(Debug, Clone, Copy, Default)]
 pub struct CompState {
-    /// Plastisk rörelse, ackumulerad plastisk rörelse, mothållskraft.
+    /// Plastic motion, accumulated plastic motion, back force.
     pub up: f64,
     pub ub: f64,
     pub alpha: f64,
-    /// Skada och initieringsrörelse (0 = ej initierad).
+    /// Damage and initiation motion (0 = not initiated).
     pub d: f64,
     pub u0: f64,
-    /// Riktningen (±1) där skadan initierades; utvecklingen följer rörelsen i den riktningen.
+    /// The direction (±1) in which the damage was initiated; the evolution follows the motion in that direction.
     pub dsign: f64,
-    /// Friktionskraft (klistring/glidning) och total glidning.
+    /// Friction force (sticking/slipping) and total slip.
     pub ff: f64,
     pub slip: f64,
-    /// Låst och låst värde (CU).
+    /// Locked and locked value (CU).
     pub locked: bool,
     pub lock_value: f64,
-    /// Kraften från föreskriven rörelse (för avvecklingen när den tas bort).
+    /// The force from prescribed motion (for ramping it down when it is removed).
     pub fm: f64,
 }
 
-/// Elastoplastisk kraft: (kraft, tangent, nytt tillstånd).
+/// Elastoplastic force: (force, tangent, new state).
 pub fn plastic(k: f64, p: &Plastic, u: f64, old: &CompState) -> (f64, f64, CompState) {
     let mut st = *old;
     let f_tr = k * (u - old.up);
@@ -563,7 +563,7 @@ pub fn plastic(k: f64, p: &Plastic, u: f64, old: &CompState) -> (f64, f64, CompS
     let mut dl = 0.0;
     let mut lo = 0.0;
     let mut hi = xi.abs() / k.max(1e-300) * 2.0 + 1e-300;
-    // säkerställ att hi ger r < 0
+    // make sure hi gives r < 0
     for _ in 0..200 {
         if resid(hi).0 < 0.0 {
             break;
@@ -596,8 +596,8 @@ pub fn plastic(k: f64, p: &Plastic, u: f64, old: &CompState) -> (f64, f64, CompS
     (f, kt, st)
 }
 
-/// Skada: (faktor 1 − d, d(1 − d)/du · F_eff-delen) uppdaterar tillståndet.
-/// `f_eff` = oskadad kraft, `u` = rörelsen, `k` = elastisk styvhet.
+/// Damage: (factor 1 − d, d(1 − d)/du · F_eff part); updates the state.
+/// `f_eff` = undamaged force, `u` = the motion, `k` = elastic stiffness.
 pub fn damage(dm: &Damage, k: f64, u: f64, f_eff: f64, st: &mut CompState) -> (f64, f64) {
     let v = match dm.criterion {
         Criterion::Force => f_eff,
@@ -609,7 +609,7 @@ pub fn damage(dm: &Damage, k: f64, u: f64, f_eff: f64, st: &mut CompState) -> (f
         if !hit {
             return (1.0, 0.0);
         }
-        // initieringsrörelsen på den sida som nås
+        // the initiation motion on the side that is reached
         let lim = if dm.hi.is_some_and(|h| v >= h) { dm.hi.unwrap() } else { dm.lo.unwrap() };
         st.dsign = if dm.hi.is_some_and(|h| v >= h) { 1.0 } else { -1.0 };
         st.u0 = match dm.criterion {
@@ -619,7 +619,7 @@ pub fn damage(dm: &Damage, k: f64, u: f64, f_eff: f64, st: &mut CompState) -> (f
         .max(1e-300);
     }
     let Some(du_f) = dm.du_f else { return (1.0, 0.0) };
-    // rörelsen i initieringsriktningen (skadan växer inte vid rörelse åt andra hållet)
+    // the motion in the initiation direction (the damage does not grow for motion in the other direction)
     let au = u * st.dsign;
     let u0 = st.u0;
     let uf = u0 + du_f;
@@ -629,7 +629,7 @@ pub fn damage(dm: &Damage, k: f64, u: f64, f_eff: f64, st: &mut CompState) -> (f
     let dn = (uf * (au - u0) / (au * (uf - u0))).min(dm.d_max);
     if dn > st.d {
         st.d = dn;
-        // dd/du (med tecken)
+        // dd/du (signed)
         let dd = if dn < dm.d_max { uf * u0 / (au * au * (uf - u0)) * st.dsign } else { 0.0 };
         return (1.0 - dn, -dd);
     }

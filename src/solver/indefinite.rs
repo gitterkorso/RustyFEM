@@ -1,16 +1,16 @@
-//! Direkta lösare för indefinita och osymmetriska system.
+//! Direct solvers for indefinite and unsymmetric systems.
 //!
-//! - `indefinite`: multifrontal LDLᵀ med 1×1/2×2-pivotering och fördröjda
-//!   pivoter (`sparse::indef`). Klarar symmetriska matriser som inte är
-//!   positivt definita (Lagrangemultiplikatorer, kontakt, instabilitet,
-//!   skiftade egenvärdesproblem) och räknar trögheten. Har matrisen negativa
-//!   pivoter skrivs en varning om negativa egenvärden.
-//! - `unsymmetric`: multifrontal LU med tröskelpivotering (`sparse::lu`) för
-//!   osymmetriska tangenter (friktion, följelaster). Väljs automatiskt för
-//!   steg med `*STEP, UNSYMM=YES`.
+//! - `indefinite`: multifrontal LDLᵀ with 1×1/2×2 pivoting and delayed
+//!   pivots (`sparse::indef`). Handles symmetric matrices that are not
+//!   positive definite (Lagrange multipliers, contact, instability,
+//!   shifted eigenvalue problems) and computes the inertia. If the matrix has negative
+//!   pivots, a warning about negative eigenvalues is printed.
+//! - `unsymmetric`: multifrontal LU with threshold pivoting (`sparse::lu`) for
+//!   unsymmetric tangents (friction, follower loads). Selected automatically for
+//!   steps with `*STEP, UNSYMM=YES`.
 //!
-//! Båda använder samma ordning (nested dissection) som `direct` och gör upp
-//! till två steg iterativ förbättring om residualen är stor.
+//! Both use the same ordering (nested dissection) as `direct` and perform up
+//! to two steps of iterative refinement if the residual is large.
 
 use super::api::{Graph, Inertia, LinearSolver, SystemMatrix};
 use crate::model::Result;
@@ -34,7 +34,7 @@ fn analyse(g: &Graph) -> Symbolic {
     let t0 = std::time::Instant::now();
     let sym = sparse::analyse(&g.coords, &g.adj, &g.ndof);
     if timing() {
-        eprintln!("analys: {:.3} s  flops: {:.2e}  största front: {:?}", t0.elapsed().as_secs_f64(), sym.work(), sym.largest_front());
+        eprintln!("analysis: {:.3} s  flops: {:.2e}  largest front: {:?}", t0.elapsed().as_secs_f64(), sym.work(), sym.largest_front());
     }
     sym
 }
@@ -43,7 +43,7 @@ fn norm(v: &[f64]) -> f64 {
     v.iter().map(|x| x * x).sum::<f64>().sqrt()
 }
 
-/// Upp till två steg iterativ förbättring x ← x + A⁻¹(b − A x).
+/// Up to two steps of iterative refinement x ← x + A⁻¹(b − A x).
 fn refine(b: &[f64], x: &mut [f64], matvec: impl Fn(&[f64], &mut [f64]), solve: impl Fn(&mut [f64])) {
     let bn = norm(b);
     if bn == 0.0 {
@@ -63,10 +63,10 @@ fn refine(b: &[f64], x: &mut [f64], matvec: impl Fn(&[f64], &mut [f64]), solve: 
     }
 }
 
-/// Varning om att systemmatrisen har N negativa egenvärden.
+/// Warning that the system matrix has N negative eigenvalues.
 pub fn warn_negative(inertia: &Inertia) {
     if inertia.neg > 0 && !crate::settings::with(|s| s.quiet) {
-        eprintln!("varning: systemmatrisen har {} negativa egenvärden (indefinit)", inertia.neg);
+        eprintln!("warning: the system matrix has {} negative eigenvalues (indefinite)", inertia.neg);
     }
 }
 
@@ -74,13 +74,13 @@ struct IndefMatrix {
     sym: Symbolic,
     k: Lower,
     fac: Option<IndefFactor>,
-    /// Ingen varning om negativa egenvärden (anroparen redovisar trögheten själv).
+    /// No warning about negative eigenvalues (the caller reports the inertia itself).
     quiet: bool,
 }
 
-/// Indefinit matris utan varning om negativa egenvärden vid varje
-/// faktorisering. Används av NLGEOM/Riks (`steps/nlgeom_solver.rs`), som
-/// redovisar antalet negativa egenvärden per inkrement i stället.
+/// Indefinite matrix without the negative-eigenvalue warning at every
+/// factorization. Used by NLGEOM/Riks (`steps/nlgeom_solver.rs`), which
+/// reports the number of negative eigenvalues per increment instead.
 pub fn prepare_quiet(g: &Graph) -> Result<Box<dyn SystemMatrix>> {
     let sym = analyse(g);
     let k = sym.pattern(&g.adj, &g.ndof);
@@ -119,7 +119,7 @@ impl SystemMatrix for IndefMatrix {
         let f = indef::factor(&self.sym, &self.k)?;
         if timing() {
             eprintln!(
-                "indefinit faktorisering: {:.3} s  tröghet {:?}  fördröjda pivoter {}  2×2-block {}",
+                "indefinite factorization: {:.3} s  inertia {:?}  delayed pivots {}  2×2 blocks {}",
                 t0.elapsed().as_secs_f64(),
                 f.inertia,
                 f.delayed,
@@ -133,7 +133,7 @@ impl SystemMatrix for IndefMatrix {
         Ok(())
     }
     fn solve(&self, b: &mut [f64]) {
-        let f = self.fac.as_ref().expect("intern: solve före factor");
+        let f = self.fac.as_ref().expect("internal: solve before factor");
         let rhs = b.to_vec();
         f.solve(b);
         refine(&rhs, b, |x, y| indef::sym_matvec(&self.k, x, y), |r| f.solve(r));
@@ -172,7 +172,7 @@ impl SystemMatrix for LuMatrix {
         self.k.zero();
         self.fac = None;
     }
-    /// Symmetriskt bidrag: (r, c) och (c, r).
+    /// Symmetric contribution: (r, c) and (c, r).
     #[inline]
     fn add(&mut self, r: usize, c: usize, v: f64) {
         self.k.lower.add(r, c, v);
@@ -191,13 +191,13 @@ impl SystemMatrix for LuMatrix {
         let t0 = std::time::Instant::now();
         let f = lu::factor(&self.sym, &self.k)?;
         if timing() {
-            eprintln!("LU-faktorisering: {:.3} s  fördröjda pivoter {}", t0.elapsed().as_secs_f64(), f.delayed);
+            eprintln!("LU factorization: {:.3} s  delayed pivots {}", t0.elapsed().as_secs_f64(), f.delayed);
         }
         self.fac = Some(f);
         Ok(())
     }
     fn solve(&self, b: &mut [f64]) {
-        let f = self.fac.as_ref().expect("intern: solve före factor");
+        let f = self.fac.as_ref().expect("internal: solve before factor");
         let rhs = b.to_vec();
         f.solve(b);
         refine(&rhs, b, |x, y| self.k.matvec(x, y), |r| f.solve(r));

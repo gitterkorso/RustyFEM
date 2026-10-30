@@ -1,17 +1,17 @@
-//! Gemensam geometri för villkor och kontakt: ytor (elementytor och noder),
-//! formfunktioner på ytor, projektion av en punkt på en yta och
-//! integrationspunkter på ytor.
+//! Shared geometry for constraints and contact: surfaces (element faces and
+//! nodes), shape functions on surfaces, projection of a point onto a surface
+//! and integration points on surfaces.
 //!
-//! En yta (`Facet`) är en elementkant (2D) eller elementsida (3D) med noder i
-//! .inp-formatets ordning (`ElementType::faces`). Normalen riktas alltid ut från
-//! elementet (bort från elementets tyngdpunkt), oberoende av nodordningen.
+//! A facet (`Facet`) is an element edge (2D) or element face (3D) with nodes in
+//! .inp format order (`ElementType::faces`). The normal always points out of
+//! the element (away from the element centroid), regardless of node order.
 
 use crate::elements::common::{cross, dot, norm, scale, sub};
 use crate::fem::dof::{self, Dof, NodeVec, U1, U2, U3, UR1, UR2, UR3};
 use crate::fem::model::{FeModel, RawKeyword, Surface};
 use crate::model::{fail, Result};
 
-/// Aktiva slots per nod från elementen (före interaktionerna).
+/// Active slots per node from the elements (before the interactions).
 pub fn element_active(m: &FeModel) -> Vec<u16> {
     let mut a = vec![0u16; m.nodes.len()];
     for e in &m.elements {
@@ -30,7 +30,7 @@ pub fn has(active: &[u16], n: usize, d: Dof) -> bool {
     active[n] & (1 << dof::slot_of(d)) != 0
 }
 
-/// Translationer och rotationer i modellens dimension.
+/// Translations and rotations in the model dimension.
 pub fn trans_dofs(dim: usize) -> &'static [Dof] {
     if dim == 2 { &[U1, U2] } else { &[U1, U2, U3] }
 }
@@ -39,46 +39,46 @@ pub fn rot_dofs(dim: usize) -> &'static [Dof] {
     if dim == 2 { &[UR3] } else { &[UR1, UR2, UR3] }
 }
 
-/// En elementyta.
+/// An element face.
 #[derive(Debug, Clone)]
 pub struct Facet {
     pub elem: usize,
     pub nodes: Vec<usize>,
-    /// Elementets tyngdpunkt (för normalens riktning).
+    /// Element centroid (for the normal direction).
     pub inside: [f64; 3],
     pub dim: usize,
-    /// Tjocklek för plana element (ytan per längdenhet), annars 1.
+    /// Thickness for planar elements (area per unit length), otherwise 1.
     pub thick: f64,
 }
 
-/// Ytbeteckning "S3" → index 2.
+/// Face label "S3" → index 2.
 fn face_index(name: &str) -> Option<usize> {
     name.strip_prefix('S').and_then(|n| n.parse::<usize>().ok()).filter(|&i| i >= 1).map(|i| i - 1)
 }
 
-/// Elementytorna i en *SURFACE (TYPE=ELEMENT).
+/// The element faces of a *SURFACE (TYPE=ELEMENT).
 pub fn facets(m: &FeModel, s: &Surface, what: &str) -> Result<Vec<Facet>> {
     let mut out = Vec::new();
     for (e, f) in &s.faces {
         let el = &m.elements[*e];
         let faces = el.etype.faces();
-        // SPOS/SNEG: ytelementets (stelt element, skal) enda yta med normalen
-        // från nodordningen (+1) eller motsatt (−1)
+        // SPOS/SNEG: the single face of a surface element (rigid element, shell)
+        // with the normal from the node order (+1) or opposite (−1)
         let side = match f.as_str() {
             "SPOS" if faces.len() == 1 => 1.0,
             "SNEG" if faces.len() == 1 => -1.0,
             _ => 0.0,
         };
         let Some(i) = face_index(f).or((side != 0.0).then_some(0)).filter(|&i| i < faces.len()) else {
-            return fail(format!("{what}: ytan {f} finns inte för {} ({})", m.elem_name(*e), s.source));
+            return fail(format!("{what}: face {f} does not exist for {} ({})", m.elem_name(*e), s.source));
         };
         let nodes: Vec<usize> = faces[i].iter().map(|&k| el.nodes[k]).collect();
         let xs: Vec<[f64; 3]> = el.nodes.iter().map(|&n| m.nodes[n]).collect();
         let mut c = crate::elements::common::centroid(&xs);
         let dim = el.etype.dim();
         if side != 0.0 {
-            // punkten "inuti" läggs på den negativa sidan så att normalen blir
-            // ±n: högerhandsregeln i 3D, (nod 1 → nod 2) vriden 90° moturs i 2D
+            // the "inside" point is placed on the negative side so that the normal
+            // becomes ±n: right-hand rule in 3D, (node 1 → node 2) rotated 90° CCW in 2D
             let xf: Vec<[f64; 3]> = nodes.iter().map(|&n| m.nodes[n]).collect();
             let fc = crate::elements::common::centroid(&xf);
             let (n, size) = if dim == 2 {
@@ -100,28 +100,28 @@ pub fn facets(m: &FeModel, s: &Surface, what: &str) -> Result<Vec<Facet>> {
     Ok(out)
 }
 
-/// Yta med namn (versaler, ev. med instansprefix).
+/// Surface by name (upper case, possibly with instance prefix).
 pub fn surface<'a>(m: &'a FeModel, kw: &RawKeyword, name: &str) -> Result<&'a Surface> {
     let up = name.trim().to_uppercase();
     match m.surfaces.get(&up) {
         Some(s) => Ok(s),
-        None => kw.err(format!("ytan '{}' finns inte", name.trim())),
+        None => kw.err(format!("surface '{}' does not exist", name.trim())),
     }
 }
 
-/// Noder i en yta (elementytornas noder eller nodytans noder), sorterade.
+/// Nodes of a surface (the element faces' nodes or the node surface's nodes), sorted.
 pub fn surface_nodes(m: &FeModel, s: &Surface) -> Result<Vec<usize>> {
     let mut v: Vec<usize> = if s.kind == "NODE" {
         s.nodes.iter().map(|p| p.0).collect()
     } else {
-        facets(m, s, "yta")?.into_iter().flat_map(|f| f.nodes).collect()
+        facets(m, s, "surface")?.into_iter().flat_map(|f| f.nodes).collect()
     };
     v.sort_unstable();
     v.dedup();
     Ok(v)
 }
 
-/// Nodset eller yta (för *COUPLING SURFACE= och *TIE med nodytor).
+/// Node set or surface (for *COUPLING SURFACE= and *TIE with node surfaces).
 pub fn nodes_of(m: &FeModel, kw: &RawKeyword, name: &str) -> Result<Vec<usize>> {
     let up = name.trim().to_uppercase();
     if let Some(s) = m.surfaces.get(&up) {
@@ -130,10 +130,10 @@ pub fn nodes_of(m: &FeModel, kw: &RawKeyword, name: &str) -> Result<Vec<usize>> 
     if let Some(s) = m.nsets.get(&up) {
         return Ok(s.clone());
     }
-    kw.err(format!("'{}' är varken en yta eller ett nodset", name.trim()))
+    kw.err(format!("'{}' is neither a surface nor a node set", name.trim()))
 }
 
-/// En nodreferens: nummer (i modellens enda instans eller ASSEMBLY), "INST.nummer" eller nodset.
+/// A node reference: number (in the model's only instance or ASSEMBLY), "INST.number" or node set.
 pub fn node_ref(m: &FeModel, kw: &RawKeyword, token: &str) -> Result<Vec<usize>> {
     let t = token.trim();
     let up = t.to_uppercase();
@@ -150,7 +150,7 @@ pub fn node_ref(m: &FeModel, kw: &RawKeyword, token: &str) -> Result<Vec<usize>>
                 return Ok(vec![n]);
             }
         }
-        return kw.err(format!("nod {t} finns inte"));
+        return kw.err(format!("node {t} does not exist"));
     }
     if let Some((a, b)) = up.rsplit_once('.') {
         if let (Some(l), Some(i)) = (crate::inp::parse_label(b), m.instance_index(a)) {
@@ -162,10 +162,10 @@ pub fn node_ref(m: &FeModel, kw: &RawKeyword, token: &str) -> Result<Vec<usize>>
     if let Some(s) = m.nsets.get(&up) {
         return Ok(s.clone());
     }
-    kw.err(format!("nodsetet '{t}' finns inte"))
+    kw.err(format!("node set '{t}' does not exist"))
 }
 
-/// Elementreferens: nummer, "INST.nummer" eller elementset.
+/// Element reference: number, "INST.number" or element set.
 pub fn elem_ref(m: &FeModel, kw: &RawKeyword, token: &str) -> Result<Vec<usize>> {
     let t = token.trim();
     let up = t.to_uppercase();
@@ -186,12 +186,12 @@ pub fn elem_ref(m: &FeModel, kw: &RawKeyword, token: &str) -> Result<Vec<usize>>
             }
         }
     }
-    kw.err(format!("elementsetet '{t}' finns inte"))
+    kw.err(format!("element set '{t}' does not exist"))
 }
 
-/// Formfunktioner och derivator på en yta med `nn` noder i dimension `dim`
-/// (2D: kanter med 2 eller 3 noder; 3D: trianglar 3/6, fyrhörningar 4/8).
-/// Returnerar (N, dN/dξ, dN/dη).
+/// Shape functions and derivatives on a facet with `nn` nodes in dimension `dim`
+/// (2D: edges with 2 or 3 nodes; 3D: triangles 3/6, quadrilaterals 4/8).
+/// Returns (N, dN/dξ, dN/dη).
 pub fn shape(dim: usize, nn: usize, xi: [f64; 2]) -> (Vec<f64>, Vec<f64>, Vec<f64>) {
     let (r, s) = (xi[0], xi[1]);
     match (dim, nn) {
@@ -231,7 +231,7 @@ pub fn shape(dim: usize, nn: usize, xi: [f64; 2]) -> (Vec<f64>, Vec<f64>, Vec<f6
                 dr[i] = 0.25 * a * (1.0 + b * s) * (2.0 * a * r + b * s);
                 ds[i] = 0.25 * b * (1.0 + a * r) * (a * r + 2.0 * b * s);
             }
-            // mittnoder 5–8 på kanterna s=-1, r=1, s=1, r=-1
+            // midside nodes 5–8 on the edges s=-1, r=1, s=1, r=-1
             n[4] = 0.5 * (1.0 - r * r) * (1.0 - s);
             dr[4] = -r * (1.0 - s);
             ds[4] = -0.5 * (1.0 - r * r);
@@ -250,13 +250,14 @@ pub fn shape(dim: usize, nn: usize, xi: [f64; 2]) -> (Vec<f64>, Vec<f64>, Vec<f6
     }
 }
 
-/// Är ytan en triangel (parameterområde 0 ≤ ξ, η, ξ+η ≤ 1)?
+/// Is the facet a triangle (parameter domain 0 ≤ ξ, η, ξ+η ≤ 1)?
 pub fn is_tri(dim: usize, nn: usize) -> bool {
     dim == 3 && (nn == 3 || nn == 6)
 }
 
-/// Punkt, tangenter, normal (utåt, enhetsvektor) och ytelement (längd/area per
-/// parameterenhet) i punkten ξ på ytan med nodkoordinaterna `x`.
+/// Point, tangents, normal (outward, unit vector) and surface element
+/// (length/area per parameter unit) at the point ξ on the facet with nodal
+/// coordinates `x`.
 pub struct FacetPoint {
     pub n: Vec<f64>,
     pub x: [f64; 3],
@@ -286,14 +287,14 @@ pub fn eval(f: &Facet, x: &[[f64; 3]], xi: [f64; 2]) -> FacetPoint {
         let a = norm(c);
         (scale(c, 1.0 / a), a)
     };
-    // utåt: bort från elementets inre
+    // outward: away from the element interior
     if dot(normal, sub(p, f.inside)) < 0.0 {
         normal = scale(normal, -1.0);
     }
     FacetPoint { n, x: p, t1, t2, normal, jac }
 }
 
-/// Nodkoordinater för ytan: referens + förskjutning (om `u` ges).
+/// Nodal coordinates of the facet: reference + displacement (if `u` is given).
 pub fn coords(m: &FeModel, f: &Facet, u: Option<&[NodeVec]>) -> Vec<[f64; 3]> {
     f.nodes
         .iter()
@@ -307,7 +308,7 @@ pub fn coords(m: &FeModel, f: &Facet, u: Option<&[NodeVec]>) -> Vec<[f64; 3]> {
         .collect()
 }
 
-/// Närmaste punkt på ytan till `p`: (ξ, avstånd, ξ inne i ytan med toleransen `tol`).
+/// Closest point on the facet to `p`: (ξ, distance, ξ inside the facet within the tolerance `tol`).
 pub fn project(f: &Facet, x: &[[f64; 3]], p: [f64; 3]) -> ([f64; 2], f64, bool) {
     let tri = is_tri(f.dim, x.len());
     let mut xi = if tri { [1.0 / 3.0, 1.0 / 3.0] } else { [0.0, 0.0] };
@@ -323,7 +324,7 @@ pub fn project(f: &Facet, x: &[[f64; 3]], p: [f64; 3]) -> ([f64; 2], f64, bool) 
                 break;
             }
         } else {
-            // Gauss–Newton på 2×2-systemet
+            // Gauss–Newton on the 2×2 system
             let a11 = dot(fp.t1, fp.t1);
             let a12 = dot(fp.t1, fp.t2);
             let a22 = dot(fp.t2, fp.t2);
@@ -341,7 +342,7 @@ pub fn project(f: &Facet, x: &[[f64; 3]], p: [f64; 3]) -> ([f64; 2], f64, bool) 
                 break;
             }
         }
-        // håll iterationen nära ytan
+        // keep the iteration close to the facet
         for v in xi.iter_mut() {
             *v = v.clamp(-2.0, 2.0);
         }
@@ -356,7 +357,7 @@ pub fn project(f: &Facet, x: &[[f64; 3]], p: [f64; 3]) -> ([f64; 2], f64, bool) 
         }
     };
     let ok = inside(xi, 1e-6);
-    // utanför: klipp till ytans rand för avståndet
+    // outside: clip to the facet boundary for the distance
     let mut xc = xi;
     if !ok {
         if f.dim == 2 || !tri {
@@ -376,7 +377,7 @@ pub fn project(f: &Facet, x: &[[f64; 3]], p: [f64; 3]) -> ([f64; 2], f64, bool) 
     (if ok { xi } else { xc }, norm(sub(p, fp.x)), ok)
 }
 
-/// Integrationspunkter (ξ, vikt) på en yta med `nn` noder.
+/// Integration points (ξ, weight) on a facet with `nn` nodes.
 pub fn gauss(dim: usize, nn: usize, order: usize) -> Vec<([f64; 2], f64)> {
     let g1: Vec<(f64, f64)> = match order {
         1 => vec![(0.0, 2.0)],
@@ -400,7 +401,7 @@ pub fn gauss(dim: usize, nn: usize, order: usize) -> Vec<([f64; 2], f64)> {
         return g1.iter().map(|&(r, w)| ([r, 0.0], w)).collect();
     }
     if is_tri(dim, nn) {
-        // kollapsad kvadrat (Duffy) med samma ordning
+        // collapsed square (Duffy) with the same order
         let mut v = Vec::new();
         for &(a, wa) in &g1 {
             for &(b, wb) in &g1 {
@@ -420,7 +421,7 @@ pub fn gauss(dim: usize, nn: usize, order: usize) -> Vec<([f64; 2], f64)> {
     v
 }
 
-/// ∫ Nₖ dA för ytans noder (referensgeometri).
+/// ∫ Nₖ dA for the facet nodes (reference geometry).
 pub fn nodal_areas(f: &Facet, x: &[[f64; 3]]) -> Vec<f64> {
     let mut a = vec![0.0; x.len()];
     for (xi, w) in gauss(f.dim, x.len(), 3) {
@@ -432,15 +433,16 @@ pub fn nodal_areas(f: &Facet, x: &[[f64; 3]]) -> Vec<f64> {
     a
 }
 
-/// 3×3-matris gånger vektor.
+/// 3×3 matrix times vector.
 pub fn mv(a: &[[f64; 3]; 3], v: [f64; 3]) -> [f64; 3] {
     [0, 1, 2].map(|i| a[i][0] * v[0] + a[i][1] * v[1] + a[i][2] * v[2])
 }
 
-/// Integrationspunkter på slavytan för mortarintegraler mot en annan yta.
-/// I 2D delas kanten vid projektionerna av punkterna `breaks` (masterytans
-/// noder), så att styckvis polynomiska integrander integreras exakt
-/// (segmentering). I 3D delas ytan i `n_sub` × `n_sub` delceller.
+/// Integration points on the slave facet for mortar integrals against another
+/// surface. In 2D the edge is split at the projections of the points `breaks`
+/// (the master surface nodes), so that piecewise polynomial integrands are
+/// integrated exactly (segmentation). In 3D the facet is split into
+/// `n_sub` × `n_sub` subcells.
 pub fn mortar_points(f: &Facet, x: &[[f64; 3]], breaks: &[[f64; 3]], n_sub: usize) -> Vec<([f64; 2], f64)> {
     let g = gauss(2, 2, 3);
     if f.dim == 2 {
@@ -486,9 +488,9 @@ pub fn mortar_points(f: &Facet, x: &[[f64; 3]], breaks: &[[f64; 3]], n_sub: usiz
     v
 }
 
-/// Koefficienter för elementvis dual (biortogonal) bas på en yta:
-/// Φ_A = Σ_B a_AB N_B med ∫ Φ_A N_B dA = δ_AB ∫ N_A dA (Wohlmuth 2000).
-/// Returnerar (a radvis, ∫N_A dA).
+/// Coefficients of the element-wise dual (biorthogonal) basis on a facet:
+/// Φ_A = Σ_B a_AB N_B with ∫ Φ_A N_B dA = δ_AB ∫ N_A dA (Wohlmuth 2000).
+/// Returns (a row-major, ∫N_A dA).
 pub fn dual_basis(f: &Facet, x: &[[f64; 3]]) -> (Vec<f64>, Vec<f64>) {
     let nn = x.len();
     let mut d = vec![0.0; nn * nn];
@@ -502,7 +504,7 @@ pub fn dual_basis(f: &Facet, x: &[[f64; 3]]) -> (Vec<f64>, Vec<f64>) {
             }
         }
     }
-    // A = diag(m) D⁻¹ (D symmetrisk)
+    // A = diag(m) D⁻¹ (D symmetric)
     let dinv = invert(&d, nn);
     let mut a = vec![0.0; nn * nn];
     for i in 0..nn {
@@ -513,7 +515,7 @@ pub fn dual_basis(f: &Facet, x: &[[f64; 3]]) -> (Vec<f64>, Vec<f64>) {
     (a, m)
 }
 
-/// Invers av en liten tät matris (Gauss–Jordan med pivotering).
+/// Inverse of a small dense matrix (Gauss–Jordan with pivoting).
 pub fn invert(a: &[f64], n: usize) -> Vec<f64> {
     let mut m = a.to_vec();
     let mut inv = vec![0.0; n * n];

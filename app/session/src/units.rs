@@ -1,18 +1,18 @@
-//! Enhetssystem för visning. Motorn är enhetslös (konsekventa
-//! enheter); valet här ändrar bara etiketterna i UI:t och räknar aldrig om
-//! några värden.
+//! Unit systems for display. The engine is unitless (consistent
+//! units); the choice here only changes the labels in the UI and never converts
+//! any values.
 
 use rustyfem::fem::model::FeModel;
 use serde::{Deserialize, Serialize};
 use specta::Type;
 
-/// Etiketten som projektfiler före enhetsvalet alltid sparade.
+/// The label that project files always saved before the unit choice existed.
 pub const LEGACY_LABEL: &str = "SI (m, N, Pa)";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Type)]
 #[serde(rename_all = "snake_case")]
 pub enum UnitSystem {
-    /// Inget angivet: värdena visas utan enheter.
+    /// Nothing specified: values are shown without units.
     None,
     /// m, N, kg, s, Pa.
     Si,
@@ -22,7 +22,7 @@ pub enum UnitSystem {
     Us,
 }
 
-/// Enhetssymboler för de storheter som UI:t visar. Tom sträng = ingen enhet.
+/// Unit symbols for the quantities the UI shows. Empty string = no unit.
 #[derive(Debug, Clone, Serialize, Type)]
 pub struct UnitSymbols {
     pub length: String,
@@ -40,7 +40,7 @@ pub struct UnitSymbols {
 impl UnitSystem {
     pub const ALL: [UnitSystem; 4] = [UnitSystem::None, UnitSystem::Si, UnitSystem::SiMm, UnitSystem::Us];
 
-    /// Nyckel i projektfilen.
+    /// Key in the project file.
     pub fn key(self) -> &'static str {
         match self {
             UnitSystem::None => "none",
@@ -52,14 +52,14 @@ impl UnitSystem {
 
     pub fn label(self) -> &'static str {
         match self {
-            UnitSystem::None => "Ej angivet",
+            UnitSystem::None => "Not specified",
             UnitSystem::Si => "SI (m, N, kg, s, Pa)",
             UnitSystem::SiMm => "SI-mm (mm, N, t, s, MPa)",
             UnitSystem::Us => "US (in, lbf, s, psi)",
         }
     }
 
-    /// Läser nyckeln i projektfilen (okänd nyckel ger `None`).
+    /// Reads the key in the project file (an unknown key gives `None`).
     pub fn parse(s: &str) -> UnitSystem {
         UnitSystem::ALL.into_iter().find(|u| u.key() == s.trim()).unwrap_or(UnitSystem::None)
     }
@@ -86,8 +86,8 @@ impl UnitSystem {
         }
     }
 
-    /// Enheten för ett resultatfält (komponenten behövs inte: alla komponenter
-    /// i ett fält har samma storhet). Okända och dimensionslösa fält ger "".
+    /// The unit of a result field (the component is not needed: all components
+    /// of a field have the same quantity). Unknown and dimensionless fields give "".
     pub fn field_unit(self, field: &str) -> String {
         let s = self.symbols();
         match field {
@@ -100,8 +100,8 @@ impl UnitSystem {
         }
     }
 
-    /// Gissar enhetssystemet för en `.inp` ur materialens elasticitetsmoduler
-    /// (stål: 2,1e11 Pa, 2,1e5 MPa, 3e7 psi). Inget material ger `None`.
+    /// Guesses the unit system for an `.inp` from the materials' Young's moduli
+    /// (steel: 2.1e11 Pa, 2.1e5 MPa, 3e7 psi). No material gives `None`.
     pub fn guess(m: &FeModel) -> UnitSystem {
         let e_max = m
             .materials

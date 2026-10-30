@@ -1,11 +1,11 @@
-//! Förberedd analys, frihetsgradsnumrering och assemblering.
+//! Prepared analysis, DOF numbering and assembly.
 //!
-//! - `Prepared`: modellen med byggda materialmodeller och interaktioner.
-//! - `DofMap`: aktiva och låsta frihetsgrader per nod och deras ekvationsnummer
-//!   (ordningen väljs av den linjära lösaren).
-//! - `internal`: inre krafter (och tangent) från alla element, parallellt.
-//! - `external`: nodlaster från *CLOAD och *DLOAD.
-//! - `frame`: utdata (U, RF, S, ...) för en frame.
+//! - `Prepared`: the model with built material models and interactions.
+//! - `DofMap`: active and constrained DOFs per node and their equation numbers
+//!   (the ordering is chosen by the linear solver).
+//! - `internal`: internal forces (and tangent) from all elements, in parallel.
+//! - `external`: nodal loads from *CLOAD and *DLOAD.
+//! - `frame`: output (U, RF, S, ...) for a frame.
 
 use crate::elements::{ElemCtx, IpField};
 use crate::fem::dof::{self, Dof, NodeVec, SLOTS, SLOT_DOF};
@@ -22,28 +22,28 @@ use std::sync::Arc;
 
 pub const NONE: usize = usize::MAX;
 
-/// Modellen redo för analys.
+/// The model ready for analysis.
 pub struct Prepared<'m> {
     pub model: &'m FeModel,
-    /// Materialmodell per materialdefinition (bara de som används av tvärsnitt).
+    /// Material model per material definition (only those used by sections).
     pub materials: Vec<Option<Arc<dyn MaterialModel>>>,
     pub interactions: Vec<Box<dyn Interaction>>,
-    /// Aktiva slots per nod (från element och interaktioner).
+    /// Active slots per node (from elements and interactions).
     pub active: Vec<u16>,
-    /// Elementets frihetsgrader som (nod, slot), nodvis.
+    /// The element's DOFs as (node, slot), node by node.
     pub edofs: Vec<Vec<(usize, usize)>>,
-    /// Fördefinierat temperaturfält som funktion av total tid (om det finns).
+    /// Predefined temperature field as a function of total time (if any).
     pub temperature: Option<crate::materials::thermal::TemperatureField>,
-    /// Materialorientering per tvärsnitt (ORIENTATION= på tvärsnittet).
+    /// Material orientation per section (ORIENTATION= on the section).
     pub orientations: Vec<Option<crate::materials::anisotropic::Orientation>>,
-    /// Borttagna/återaktiverade element och elementborttagning (`steps/model_change.rs`).
+    /// Removed/reactivated elements and element deletion (`steps/model_change.rs`).
     pub activity: crate::steps::model_change::Activity,
 }
 
 impl<'m> Prepared<'m> {
     pub fn new(model: &'m FeModel) -> Result<Self> {
         if model.elements.is_empty() {
-            return fail("modellen har inga element");
+            return fail("the model has no elements");
         }
         let mut used = vec![false; model.materials.len()];
         for s in &model.sections {
@@ -61,11 +61,11 @@ impl<'m> Prepared<'m> {
         for e in &model.elements {
             let mut v = Vec::with_capacity(e.etype.n_dofs());
             if e.nodes.len() != e.etype.n_nodes() {
-                return fail(format!("element {} har {} noder, {} ska ha {}", e.label, e.nodes.len(), e.etype.name(), e.etype.n_nodes()));
+                return fail(format!("element {} has {} nodes, {} should have {}", e.label, e.nodes.len(), e.etype.name(), e.etype.n_nodes()));
             }
             for (k, &n) in e.nodes.iter().enumerate() {
                 for &d in e.etype.node_dofs(k) {
-                    let s = dof::slot(d).ok_or_else(|| FemError(format!("{}: frihetsgrad {d} stöds inte", e.etype.name())))?;
+                    let s = dof::slot(d).ok_or_else(|| FemError(format!("{}: degree of freedom {d} is not supported", e.etype.name())))?;
                     active[n] |= 1 << s;
                     v.push((n, s));
                 }
@@ -82,7 +82,7 @@ impl<'m> Prepared<'m> {
         Ok(Prepared { model, materials, interactions, active, edofs, temperature, orientations, activity: Default::default() })
     }
 
-    /// Kontext för element `e`.
+    /// Context for element `e`.
     pub fn ctx(&self, e: usize, nlgeom: bool, time: f64, dt: f64) -> ElemCtx<'_> {
         let el = &self.model.elements[e];
         let section = el.section.map(|s| &self.model.sections[s]);
@@ -91,8 +91,8 @@ impl<'m> Prepared<'m> {
             Some(tf) => (tf.at(&el.nodes, time), tf.at(&el.nodes, time - dt)),
             None => (Vec::new(), Vec::new()),
         };
-        // område struct_nonlin: skal och balkar får temperaturgradienterna genom
-        // tjockleken efter nodtemperaturerna (2·nn värden, se elements/shell_section.rs)
+        // struct_nonlin area: shells and beams get the temperature gradients through
+        // the thickness from the nodal temperatures (2·nn values, see elements/shell_section.rs)
         if let Some(tf) = self.temperature.as_ref().filter(|tf| tf.has_gradients()) {
             if matches!(el.etype.family(), crate::elements::Family::Shell | crate::elements::Family::Beam) {
                 temp.extend(tf.gradient_at(&el.nodes, time));
@@ -100,7 +100,7 @@ impl<'m> Prepared<'m> {
             }
         }
         let x: Vec<[f64; 3]> = el.nodes.iter().map(|&n| self.model.nodes[n]).collect();
-        // användarrutiner och fältvariabler: elementet som utvärderas (user/context.rs)
+        // user routines and field variables: the element being evaluated (user/context.rs)
         crate::user::context::set_element(e, el.label, &el.nodes, &x, time, dt);
         ElemCtx {
             index: e,
@@ -118,23 +118,23 @@ impl<'m> Prepared<'m> {
         }
     }
 
-    /// Alla material och interaktioner är linjära.
+    /// All materials and interactions are linear.
     pub fn is_linear(&self) -> bool {
         self.materials.iter().flatten().all(|m| m.is_linear()) && self.interactions.iter().all(|i| i.is_linear())
     }
 
-    /// Elementets värden ur en nodvektor.
+    /// The element's values from a nodal vector.
     pub fn gather(&self, e: usize, u: &[NodeVec]) -> Vec<f64> {
         self.edofs[e].iter().map(|&(n, s)| u[n][s]).collect()
     }
 
-    /// Starttillstånd för alla element.
+    /// Initial state for all elements.
     pub fn init_states(&self) -> Result<Vec<Vec<f64>>> {
         (0..self.model.elements.len())
             .map(|e| {
                 let ctx = self.ctx(e, false, 0.0, 0.0);
                 let et = self.model.elements[e].etype;
-                // element utan material (t.ex. *BEAM GENERAL SECTION) har inget tillstånd
+                // elements without material (e.g. *BEAM GENERAL SECTION) have no state
                 if ctx.material.is_none() {
                     return Ok(Vec::new());
                 }
@@ -144,23 +144,23 @@ impl<'m> Prepared<'m> {
     }
 }
 
-/// Numrering av frihetsgrader.
+/// DOF numbering.
 pub struct DofMap {
-    /// Ekvationsnummer per nod och slot (`NONE` = låst eller inaktiv).
+    /// Equation number per node and slot (`NONE` = constrained or inactive).
     pub eq: Vec<[usize; SLOTS]>,
     pub active: Vec<u16>,
     pub constrained: Vec<u16>,
-    /// (nod, slot) för varje ekvation.
+    /// (node, slot) for each equation.
     pub owner: Vec<(usize, usize)>,
     pub n_eq: usize,
-    /// Beroende frihetsgrader från linjära villkor (tom om villkor saknas).
+    /// Dependent DOFs from linear constraints (empty if there are no constraints).
     pub mpc: MpcMap,
 }
 
 impl DofMap {
-    /// Ekvationer och koefficienter som (nod, slot) bidrar till: en ekvation
-    /// med koefficient 1 för en fri frihetsgrad, masterekvationerna för en
-    /// slav och inget för en låst.
+    /// Equations and coefficients that (node, slot) contributes to: one equation
+    /// with coefficient 1 for a free DOF, the master equations for a
+    /// slave and nothing for a constrained one.
     #[inline]
     pub fn for_each_eq(&self, n: usize, s: usize, mut f: impl FnMut(usize, f64)) {
         match self.mpc.slave(n, s) {
@@ -181,8 +181,8 @@ impl DofMap {
         }
     }
 
-    /// Adderar `v` till K[(na, sa), (nb, sb)] med villkoren inräknade (bara
-    /// undre triangeln skrivs; anropa för hela den symmetriska matrisen).
+    /// Adds `v` to K[(na, sa), (nb, sb)] with the constraints included (only
+    /// the lower triangle is written; call for the whole symmetric matrix).
     pub fn add_entry(&self, k: &mut dyn SystemMatrix, na: usize, sa: usize, nb: usize, sb: usize, v: f64) {
         if self.mpc.is_empty() {
             let (a, b) = (self.eq[na][sa], self.eq[nb][sb]);
@@ -202,8 +202,8 @@ impl DofMap {
 }
 
 impl DofMap {
-    /// Adderar `v` till K[(na, sa), (nb, sb)] i en osymmetrisk matris
-    /// (`SystemMatrix::add_unsym`) med villkoren inräknade.
+    /// Adds `v` to K[(na, sa), (nb, sb)] in an unsymmetric matrix
+    /// (`SystemMatrix::add_unsym`) with the constraints included.
     pub fn add_entry_unsym(&self, k: &mut dyn SystemMatrix, na: usize, sa: usize, nb: usize, sb: usize, v: f64) {
         self.for_each_eq(na, sa, |a, ca| self.for_each_eq(nb, sb, |b, cb| k.add_unsym(a, b, ca * cb * v)));
     }
@@ -228,8 +228,8 @@ impl TangentSink for MatrixSink<'_> {
     }
 }
 
-/// Bygger numreringen och en tom systemmatris. `constrained` är låsta (nod, slot);
-/// låsningar av inaktiva frihetsgrader ignoreras.
+/// Builds the numbering and an empty system matrix. `constrained` are the constrained (node, slot);
+/// constraints on inactive DOFs are ignored.
 pub fn dofmap(p: &Prepared, constrained: &BTreeSet<(usize, usize)>, solver: &dyn LinearSolver) -> Result<(DofMap, Box<dyn SystemMatrix>)> {
     let nn = p.model.nodes.len();
     let mut cmask = vec![0u16; nn];
@@ -255,7 +255,7 @@ pub fn dofmap(p: &Prepared, constrained: &BTreeSet<(usize, usize)>, solver: &dyn
     let mut adj: Vec<Vec<usize>> = vec![Vec::new(); blocks.len()];
     let mut link = |nodes: &[usize]| {
         let mut ids: Vec<usize> = nodes.iter().map(|&n| cid[n]).filter(|&c| c != NONE).collect();
-        // noder med slavar kopplas via sina masters
+        // nodes with slaves are coupled via their masters
         for n in nodes {
             if let Some(ms) = mpc.masters.get(n) {
                 ids.extend(ms.iter().map(|&m| cid[m]).filter(|&c| c != NONE));
@@ -303,14 +303,14 @@ pub fn dofmap(p: &Prepared, constrained: &BTreeSet<(usize, usize)>, solver: &dyn
     Ok((DofMap { eq, active: p.active.clone(), constrained: cmask, owner, n_eq, mpc }, mat))
 }
 
-/// Resultat av en utvärdering av inre krafter.
+/// Result of an evaluation of internal forces.
 pub struct Internal {
     pub fint: Vec<NodeVec>,
     pub state_new: Vec<Vec<f64>>,
 }
 
-/// Inre krafter för förskjutningen `u` (total) med `du` sedan inkrementets
-/// början. Om `k` ges assembleras tangenten (matrisen nollställs först).
+/// Internal forces for the displacement `u` (total) with `du` since the start of the
+/// increment. If `k` is given the tangent is assembled (the matrix is zeroed first).
 #[allow(clippy::too_many_arguments)]
 pub fn internal(
     p: &Prepared,
@@ -342,7 +342,7 @@ pub fn internal(
             let ue = p.gather(e, u);
             let due = p.gather(e, du);
             let mut sn = Vec::new();
-            // *MODEL CHANGE och elementborttagning (steps/model_change.rs)
+            // *MODEL CHANGE and element deletion (steps/model_change.rs)
             if let Some(r) = crate::steps::model_change::internal_force(p, e, &ctx, &ue, &due, &state_old[e], &mut sn, tangent) {
                 let r = r.map_err(|err| FemError(format!("{}: {err}", m.elem_name(e))))?;
                 return Ok((r.fint, r.k, sn));
@@ -361,13 +361,13 @@ pub fn internal(
                 fint[n][s] += fe[a];
             }
             if let (Some(k), Some(ke)) = (k.as_deref_mut(), ke.as_ref().filter(|_| !dm.mpc.is_empty())) {
-                // villkor: K_red = Tᵀ K T
+                // constraints: K_red = Tᵀ K T
                 let nd = dl.len();
                 let sym = k.is_symmetric();
                 for a in 0..nd {
                     for b in 0..nd {
-                        // osymmetrisk elementmatris (icke-associativ plasticitet):
-                        // symmetrisk del till symmetriska lösare, hela till osymmetriska
+                        // unsymmetric element matrix (non-associative plasticity):
+                        // symmetric part to symmetric solvers, the whole matrix to unsymmetric ones
                         let v = if sym { 0.5 * (ke[a * nd + b] + ke[b * nd + a]) } else { ke[a * nd + b] };
                         if v != 0.0 {
                             if sym {
@@ -393,13 +393,13 @@ pub fn internal(
                             continue;
                         }
                         if !sym {
-                            // osymmetrisk lösare (*STEP, UNSYMM=YES): hela elementmatrisen
+                            // unsymmetric solver (*STEP, UNSYMM=YES): the whole element matrix
                             let v = ke[a * nd + b];
                             if v != 0.0 {
                                 k.add_unsym(ia, ib, v);
                             }
                         } else if ia >= ib {
-                            // symmetrisk del (lika med ke för symmetriska elementmatriser)
+                            // symmetric part (equal to ke for symmetric element matrices)
                             let v = 0.5 * (ke[a * nd + b] + ke[b * nd + a]);
                             if v != 0.0 {
                                 k.add(ia, ib, v);
@@ -426,7 +426,7 @@ pub fn internal(
     Ok(Internal { fint, state_new })
 }
 
-/// Nodlaster från punktlaster (nod, slot, värde) och fördelade laster.
+/// Nodal loads from point loads (node, slot, value) and distributed loads.
 pub fn external(p: &Prepared, cloads: &[(usize, usize, f64)], dloads: &[DistLoad], u: &[NodeVec], nlgeom: bool, time: f64) -> Result<Vec<NodeVec>> {
     let m = p.model;
     let mut f = vec![[0.0; SLOTS]; m.nodes.len()];
@@ -438,7 +438,7 @@ pub fn external(p: &Prepared, cloads: &[(usize, usize, f64)], dloads: &[DistLoad
         if crate::steps::model_change::load_off(p, e) {
             continue;
         }
-        // användarlast PnNU (DLOAD, user/loads.rs)
+        // user load PnNU (DLOAD, user/loads.rs)
         if let Some(fe) = crate::user::loads::dload(p, l, time).map_err(|err| FemError(format!("{}: {err}", m.elem_name(e))))? {
             for (a, &(n, s)) in p.edofs[e].iter().enumerate() {
                 f[n][s] += fe[a];
@@ -455,7 +455,7 @@ pub fn external(p: &Prepared, cloads: &[(usize, usize, f64)], dloads: &[DistLoad
     Ok(f)
 }
 
-/// Utdata per element för förskjutningen `u` och tillståndet `state`.
+/// Output per element for the displacement `u` and the state `state`.
 pub fn element_output(p: &Prepared, u: &[NodeVec], state: &[Vec<f64>], nlgeom: bool, time: f64) -> Result<Vec<Vec<IpField>>> {
     let m = p.model;
     let res = par::map(m.elements.len(), par::threads(), |e| {
@@ -471,7 +471,7 @@ pub fn element_output(p: &Prepared, u: &[NodeVec], state: &[Vec<f64>], nlgeom: b
     res.into_iter().collect()
 }
 
-/// Bygger en frame: U, RF (= Fint − Fext i låsta frihetsgrader) och elementutdata.
+/// Builds a frame: U, RF (= Fint − Fext at constrained DOFs) and element output.
 #[allow(clippy::too_many_arguments)]
 pub fn frame(
     p: &Prepared,
@@ -495,7 +495,7 @@ pub fn frame(
         }
     }
     let mut elem = element_output(p, u, state, nlgeom, time)?;
-    // elementutdata från interaktioner (kopplingselement: CTF, CU, ...)
+    // element output from interactions (connector elements: CTF, CU, ...)
     for it in &p.interactions {
         for (e, f) in it.elem_output() {
             if let Some(v) = elem.get_mut(e) {
@@ -516,7 +516,7 @@ pub fn frame(
     })
 }
 
-/// Nodutdata från interaktioner (CPRESS, COPEN, ...), sammanslagna per fält.
+/// Nodal output from interactions (CPRESS, COPEN, ...), merged per field.
 pub fn interaction_output(p: &Prepared) -> Vec<(String, Vec<String>, Vec<Vec<f64>>)> {
     let mut out: Vec<(String, Vec<String>, Vec<Vec<f64>>)> = Vec::new();
     for it in &p.interactions {
@@ -536,7 +536,7 @@ pub fn interaction_output(p: &Prepared) -> Vec<(String, Vec<String>, Vec<Vec<f64
     out
 }
 
-/// Klartext för en mekanism vid ekvation `q`.
+/// Plain-text description of a mechanism at equation `q`.
 pub fn mechanism_message(p: &Prepared, dm: &DofMap, q: usize) -> FemError {
     let m = p.model;
     let (n, s) = dm.owner[q];
@@ -545,15 +545,15 @@ pub fn mechanism_message(p: &Prepared, dm: &DofMap, q: usize) -> FemError {
         matches!(e.etype.family(), crate::elements::Family::Continuum2D | crate::elements::Family::Continuum3D) && e.nodes.contains(&n)
     });
     let hint = if (3..6).contains(&s) && on_solid {
-        " – en balk som fäster i en enda nod på en platta/ett block kan rotera fritt där; låt balken följa en kant över flera noder eller lås rotationen med support"
+        " – a beam attached to a single node of a plate/block can rotate freely there; let the beam follow an edge over several nodes or fix the rotation with support"
     } else {
-        " – lägg till stöd (fix/pin/support, *BOUNDARY) eller kontrollera att alla delar hänger ihop"
+        " – add supports (fix/pin/support, *BOUNDARY) or check that all parts are connected"
     };
     let inst = &m.instances[m.node_inst[n] as usize];
     let name = if inst == crate::fem::model::FLAT_INSTANCE { m.node_label[n].to_string() } else { m.node_name(n) };
     let legacy = ["ux", "uy", "uz", "rx", "ry", "rz", "warp", "nt11"];
     FemError(format!(
-        "modellen är instabil (mekanism): nod {} vid ({}, {}, {}) kan röra sig fritt i {} ({}){}",
+        "the model is unstable (mechanism): node {} at ({}, {}, {}) can move freely in {} ({}){}",
         name,
         x[0],
         x[1],

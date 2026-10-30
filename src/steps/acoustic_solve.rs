@@ -1,20 +1,20 @@
-//! Linjär algebra för de akustiska stegen: gles allmän (osymmetrisk) matris,
-//! faktorisering med en valfri linjär lösare (normalt `unsymmetric`), tät
-//! reell Schurform och subspace-iteration med skift-invert för det
-//! osymmetriska egenvärdesproblemet K x = λ M x.
+//! Linear algebra for the acoustic steps: sparse general (unsymmetric) matrix,
+//! factorization with an optional linear solver (normally `unsymmetric`), dense
+//! real Schur form and subspace iteration with shift-invert for the
+//! unsymmetric eigenvalue problem K x = λ M x.
 //!
-//! Det kopplade akustisk–strukturella problemet är osymmetriskt
-//! (Zienkiewicz–Newton) men har reella egenvärden. Subspace-iterationen
-//! X ← (K − σM)⁻¹ M X med ortonormering och Rayleigh–Ritz-projektion
-//! (K_r = Yᵀ K Y, M_r = Yᵀ M Y, egenvärden för M_r⁻¹ K_r ur den reella
-//! Schurformen) konvergerar mot egenparen närmast skiftet; för symmetriska
-//! problem är den samma metod som `solver::eigen::subspace`.
+//! The coupled acoustic–structural problem is unsymmetric
+//! (Zienkiewicz–Newton) but has real eigenvalues. The subspace iteration
+//! X ← (K − σM)⁻¹ M X with orthonormalization and Rayleigh–Ritz projection
+//! (K_r = Yᵀ K Y, M_r = Yᵀ M Y, eigenvalues of M_r⁻¹ K_r from the real
+//! Schur form) converges to the eigenpairs closest to the shift; for symmetric
+//! problems it is the same method as `solver::eigen::subspace`.
 
 use crate::model::{fail, Result};
 use crate::solver::{Graph, LinearSolver, SystemMatrix};
 
-/// Gles allmän matris: rader med (kolumn, värde), sorterade och sammanslagna
-/// efter `finish`.
+/// Sparse general matrix: rows of (column, value), sorted and merged
+/// after `finish`.
 #[derive(Debug, Clone, Default)]
 pub struct Gen {
     pub n: usize,
@@ -33,7 +33,7 @@ impl Gen {
         }
     }
 
-    /// Sorterar och slår ihop dubbletter.
+    /// Sorts and merges duplicates.
     pub fn finish(&mut self) {
         for row in self.rows.iter_mut() {
             row.sort_unstable_by_key(|p| p.0);
@@ -48,12 +48,12 @@ impl Gen {
         }
     }
 
-    /// y = A x (x får vara längre än kolumnantalet som används).
+    /// y = A x (x may be longer than the number of columns used).
     pub fn mul(&self, x: &[f64]) -> Vec<f64> {
         self.rows.iter().map(|r| r.iter().map(|&(c, v)| v * x[c as usize]).sum()).collect()
     }
 
-    /// Delmatrisen med rader och kolumner < m.
+    /// The submatrix with rows and columns < m.
     pub fn leading(&self, m: usize) -> Gen {
         let mut g = Gen::new(m);
         for (r, row) in self.rows.iter().enumerate().take(m) {
@@ -62,7 +62,7 @@ impl Gen {
         g
     }
 
-    /// Σ sᵢ Aᵢ (delmatriserna < n).
+    /// Σ sᵢ Aᵢ (the submatrices < n).
     pub fn combine(terms: &[(&Gen, f64)], n: usize) -> Gen {
         let mut g = Gen::new(n);
         for (a, s) in terms {
@@ -86,7 +86,7 @@ impl Gen {
     }
 }
 
-/// En faktoriserad matris i egen numrering.
+/// A factorized matrix in its own numbering.
 pub struct GenFactor {
     mat: Box<dyn SystemMatrix>,
     perm: Vec<usize>,
@@ -105,9 +105,9 @@ impl GenFactor {
     }
 }
 
-/// Faktoriserar den allmänna matrisen `a` (alla poster, även osymmetriska)
-/// med lösaren `solver`. `blocks` (koordinat, ekvationer) delar in
-/// ekvationerna för lösarens ordning. `Ok(Err(ekv))` om matrisen är singulär.
+/// Factorizes the general matrix `a` (all entries, including unsymmetric ones)
+/// with the solver `solver`. `blocks` (coordinate, equations) partitions
+/// the equations for the solver ordering. `Ok(Err(eq))` if the matrix is singular.
 pub fn factor_gen(a: &Gen, blocks: &[([f64; 3], Vec<usize>)], solver: &dyn LinearSolver) -> Result<std::result::Result<GenFactor, usize>> {
     let n = a.n;
     let mut block_of = vec![usize::MAX; n];
@@ -117,7 +117,7 @@ pub fn factor_gen(a: &Gen, blocks: &[([f64; 3], Vec<usize>)], solver: &dyn Linea
         }
     }
     if block_of.contains(&usize::MAX) {
-        return fail("factor_gen: en ekvation saknar block");
+        return fail("factor_gen: an equation has no block");
     }
     let mut adj: Vec<Vec<usize>> = vec![Vec::new(); blocks.len()];
     for (r, row) in a.rows.iter().enumerate() {
@@ -163,11 +163,11 @@ pub fn factor_gen(a: &Gen, blocks: &[([f64; 3], Vec<usize>)], solver: &dyn Linea
 }
 
 // ---------------------------------------------------------------------------
-// Täta rutiner
+// Dense routines
 // ---------------------------------------------------------------------------
 
-/// Löser A X = B (A n×n radvis, B n×m radvis) med Gausselimination och
-/// partiell pivotering. `None` om A är singulär.
+/// Solves A X = B (A n×n row-wise, B n×m row-wise) with Gaussian elimination and
+/// partial pivoting. `None` if A is singular.
 pub fn dense_solve(a: &[f64], b: &[f64], n: usize, m: usize) -> Option<Vec<f64>> {
     let mut a = a.to_vec();
     let mut x = b.to_vec();
@@ -211,16 +211,16 @@ pub fn dense_solve(a: &[f64], b: &[f64], n: usize, m: usize) -> Option<Vec<f64>>
     Some(x)
 }
 
-/// Reell Schurform A = Q T Qᵀ (T övertriangulär; 2×2-block som inte
-/// konvergerar, dvs. komplexa par, tvingas till triangulär form). Ger (T, Q)
-/// radvisa n×n.
+/// Real Schur form A = Q T Qᵀ (T upper triangular; 2×2 blocks that do not
+/// converge, i.e. complex pairs, are forced to triangular form). Returns (T, Q)
+/// row-wise n×n.
 pub fn real_schur(a: &[f64], n: usize) -> (Vec<f64>, Vec<f64>) {
     let mut h = a.to_vec();
     let mut q = vec![0.0; n * n];
     for i in 0..n {
         q[i * n + i] = 1.0;
     }
-    // Hessenbergform med Householder-speglingar
+    // Hessenberg form with Householder reflections
     for k in 0..n.saturating_sub(2) {
         let alpha: f64 = (k + 1..n).map(|i| h[i * n + k] * h[i * n + k]).sum::<f64>().sqrt();
         if alpha == 0.0 {
@@ -257,14 +257,14 @@ pub fn real_schur(a: &[f64], n: usize) -> (Vec<f64>, Vec<f64>) {
             h[i * n + k] = 0.0;
         }
     }
-    // skiftad QR-iteration med Givensrotationer
+    // shifted QR iteration with Givens rotations
     let norm = h.iter().fold(0.0f64, |s, v| s.max(v.abs())).max(1e-300);
     let eps = f64::EPSILON;
     let mut hi = n;
     let mut iter = 0usize;
     while hi > 1 {
         let k = hi - 1;
-        // sök deflation nerifrån
+        // search for deflation from below
         let mut lo = k;
         while lo > 0 {
             let s = h[lo * n + lo].abs() + h[(lo - 1) * n + lo - 1].abs();
@@ -281,13 +281,13 @@ pub fn real_schur(a: &[f64], n: usize) -> (Vec<f64>, Vec<f64>) {
         }
         iter += 1;
         if iter > 60 {
-            // komplext par eller ingen konvergens: tvinga deflation
+            // complex pair or no convergence: force deflation
             h[k * n + k - 1] = 0.0;
             hi -= 1;
             iter = 0;
             continue;
         }
-        // Wilkinsonskift (reell del vid komplexa egenvärden), exceptionellt skift ibland
+        // Wilkinson shift (real part for complex eigenvalues), occasionally an exceptional shift
         let (a11, a12, a21, a22) = (h[(k - 1) * n + k - 1], h[(k - 1) * n + k], h[k * n + k - 1], h[k * n + k]);
         let tr = 0.5 * (a11 + a22);
         let det = a11 * a22 - a12 * a21;
@@ -333,7 +333,7 @@ pub fn real_schur(a: &[f64], n: usize) -> (Vec<f64>, Vec<f64>) {
             h[i * n + i] += mu;
         }
     }
-    // rader ovanför fönstret har roterats med; nollställ under diagonalen
+    // rows above the window have been rotated along; zero below the diagonal
     for r in 1..n {
         for c in 0..r {
             h[r * n + c] = 0.0;
@@ -342,14 +342,14 @@ pub fn real_schur(a: &[f64], n: usize) -> (Vec<f64>, Vec<f64>) {
     (h, q)
 }
 
-/// Egenvärden och egenvektorer (kolumnvis i `v[i*n + j]`) för en tät
-/// osymmetrisk matris med reella egenvärden.
+/// Eigenvalues and eigenvectors (column-wise in `v[i*n + j]`) of a dense
+/// unsymmetric matrix with real eigenvalues.
 pub fn dense_eig(a: &[f64], n: usize) -> (Vec<f64>, Vec<f64>) {
     let (l, v, _) = dense_eig_schur(a, n);
     (l, v)
 }
 
-/// Som `dense_eig` men ger också Schurvektorerna Q.
+/// Like `dense_eig` but also returns the Schur vectors Q.
 pub fn dense_eig_schur(a: &[f64], n: usize) -> (Vec<f64>, Vec<f64>, Vec<f64>) {
     let (t, q) = real_schur(a, n);
     let norm = t.iter().fold(0.0f64, |s, v| s.max(v.abs())).max(1e-300);
@@ -367,7 +367,7 @@ pub fn dense_eig_schur(a: &[f64], n: usize) -> (Vec<f64>, Vec<f64>, Vec<f64>) {
             }
             w[i] = -s / d;
         }
-        // x = Q w, normerad
+        // x = Q w, normalized
         let mut x: Vec<f64> = (0..n).map(|r| (0..=j).map(|k| q[r * n + k] * w[k]).sum()).collect();
         let nx = x.iter().map(|y| y * y).sum::<f64>().sqrt().max(1e-300);
         x.iter_mut().for_each(|y| *y /= nx);
@@ -379,7 +379,7 @@ pub fn dense_eig_schur(a: &[f64], n: usize) -> (Vec<f64>, Vec<f64>, Vec<f64>) {
 }
 
 // ---------------------------------------------------------------------------
-// Subspace-iteration för K x = λ M x
+// Subspace iteration for K x = λ M x
 // ---------------------------------------------------------------------------
 
 pub struct UnsymEigen {
@@ -392,8 +392,8 @@ fn dot(a: &[f64], b: &[f64]) -> f64 {
     a.iter().zip(b).map(|(x, y)| x * y).sum()
 }
 
-/// Ortonormerar kolumnerna (Gram–Schmidt två gånger); linjärt beroende
-/// vektorer ersätts med slumpvektorer.
+/// Orthonormalizes the columns (Gram–Schmidt twice); linearly dependent
+/// vectors are replaced with random vectors.
 fn orthonormalize(y: &mut [Vec<f64>], seed: &mut u64) {
     let rnd = |seed: &mut u64| {
         *seed ^= *seed << 13;
@@ -428,8 +428,8 @@ fn orthonormalize(y: &mut [Vec<f64>], seed: &mut u64) {
     }
 }
 
-/// De `nev` egenparen närmast skiftet σ för K x = λ M x, där `op` löser
-/// (K − σM) x = b. `start` ger startvektorer (valfritt).
+/// The `nev` eigenpairs closest to the shift σ for K x = λ M x, where `op` solves
+/// (K − σM) x = b. `start` gives starting vectors (optional).
 pub fn subspace_unsym(k: &Gen, m: &Gen, sigma: f64, op: &dyn Fn(&mut [f64]), nev: usize, tol: f64, max_iter: usize) -> Result<UnsymEigen> {
     let n = k.n;
     if n == 0 || nev == 0 {
@@ -450,7 +450,7 @@ pub fn subspace_unsym(k: &Gen, m: &Gen, sigma: f64, op: &dyn Fn(&mut [f64]), nev
                 .collect()
         })
         .collect();
-    // M-tyngda startvektorer: diagonalen i M (frihetsgrader utan massa bidrar inte)
+    // M-weighted starting vectors: the diagonal of M (degrees of freedom without mass do not contribute)
     let md = m.diag();
     for v in x.iter_mut() {
         for (a, d) in v.iter_mut().zip(&md) {
@@ -483,17 +483,17 @@ pub fn subspace_unsym(k: &Gen, m: &Gen, sigma: f64, op: &dyn Fn(&mut [f64]), nev
             }
         }
         let Some(c) = dense_solve(&mr, &kr, q, q) else {
-            return fail("akustisk egenvärdesextraktion: den projicerade massmatrisen är singulär");
+            return fail("acoustic eigenvalue extraction: the projected mass matrix is singular");
         };
         let (lam, v, qs) = dense_eig_schur(&c, q);
         let mut order: Vec<usize> = (0..q).collect();
         order.sort_by(|&a, &b| (lam[a] - sigma).abs().partial_cmp(&(lam[b] - sigma).abs()).unwrap_or(std::cmp::Ordering::Equal));
         let lam_s: Vec<f64> = order.iter().map(|&i| lam[i]).collect();
-        // egenvektorer (för kontroll och resultat) och Schurvektorer (nästa bas;
-        // de förblir oberoende även vid multipla egenvärden)
+        // eigenvectors (for checking and results) and Schur vectors (next basis;
+        // they stay independent even for multiple eigenvalues)
         let ritz: Vec<Vec<f64>> = order.iter().take(nev).map(|&j| (0..n).map(|r| (0..q).map(|i| y[i][r] * v[i * q + j]).sum()).collect()).collect();
         x = (0..q).map(|j| (0..n).map(|r| (0..q).map(|i| y[i][r] * qs[i * q + j]).sum()).collect()).collect();
-        // konvergens: egenvärdena och residualerna för de sökta paren
+        // convergence: the eigenvalues and residuals of the requested pairs
         let scale = lam_s.iter().take(nev).fold(0.0f64, |s, l| s.max(l.abs())).max(1e-300);
         let conv_val = prev.len() == lam_s.len() && (0..nev).all(|i| (lam_s[i] - prev[i]).abs() <= tol * lam_s[i].abs() + 1e-12 * scale);
         let mut conv = conv_val;
@@ -512,7 +512,7 @@ pub fn subspace_unsym(k: &Gen, m: &Gen, sigma: f64, op: &dyn Fn(&mut [f64]), nev
         prev = lam_s.clone();
         if conv || it == max_iter {
             if !conv {
-                return fail(format!("akustisk egenvärdesextraktion konvergerade inte på {max_iter} iterationer"));
+                return fail(format!("acoustic eigenvalue extraction did not converge in {max_iter} iterations"));
             }
             let mut pairs: Vec<(f64, Vec<f64>)> = lam_s.into_iter().zip(ritz).take(nev).collect();
             pairs.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal));
@@ -520,7 +520,7 @@ pub fn subspace_unsym(k: &Gen, m: &Gen, sigma: f64, op: &dyn Fn(&mut [f64]), nev
             return Ok(UnsymEigen { lambda, vectors, iterations: it });
         }
     }
-    fail("akustisk egenvärdesextraktion: inga iterationer")
+    fail("acoustic eigenvalue extraction: no iterations")
 }
 
 #[cfg(test)]
@@ -529,7 +529,7 @@ mod tests {
 
     #[test]
     fn schur_eig_nonsymmetric() {
-        // A = V D V⁻¹ med reella egenvärden 1, 2, 2, 5 (dubbelt egenvärde)
+        // A = V D V⁻¹ with real eigenvalues 1, 2, 2, 5 (double eigenvalue)
         let n = 4;
         let vm = [1.0, 0.2, 0.0, 0.3, 0.1, 1.0, 0.4, 0.0, 0.0, 0.3, 1.0, 0.2, 0.5, 0.0, 0.1, 1.0];
         let d = [1.0, 2.0, 2.0, 5.0];
@@ -539,7 +539,7 @@ mod tests {
                 vd[r * n + c] *= d[c];
             }
         }
-        // A Vᵀ... A = (V D) V⁻¹: lös Vᵀ Aᵀ = (V D)ᵀ
+        // A Vᵀ... A = (V D) V⁻¹: solve Vᵀ Aᵀ = (V D)ᵀ
         let vt: Vec<f64> = (0..n * n).map(|i| vm[(i % n) * n + i / n]).collect();
         let vdt: Vec<f64> = (0..n * n).map(|i| vd[(i % n) * n + i / n]).collect();
         let at = dense_solve(&vt, &vdt, n, n).unwrap();
@@ -553,7 +553,7 @@ mod tests {
         for j in 0..n {
             for r in 0..n {
                 let av: f64 = (0..n).map(|c| a[r * n + c] * v[c * n + j]).sum();
-                assert!((av - lam[j] * v[r * n + j]).abs() < 1e-8, "egenpar {j}: {av} vs {}", lam[j] * v[r * n + j]);
+                assert!((av - lam[j] * v[r * n + j]).abs() < 1e-8, "eigenpair {j}: {av} vs {}", lam[j] * v[r * n + j]);
             }
         }
     }

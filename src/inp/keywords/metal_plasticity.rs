@@ -1,7 +1,7 @@
-//! Underalternativ till *PLASTIC för metallplasticitet: Hills anisotropa
-//! flytvillkor (*POTENTIAL) och hastighetsberoende flytspänning
-//! (*RATE DEPENDENT). Beteendena sparas i materialet och tolkas av
-//! `materials/plasticity_hill.rs` och `materials/plasticity_rate.rs`.
+//! Suboptions of *PLASTIC for metal plasticity: Hill's anisotropic
+//! yield criterion (*POTENTIAL) and rate-dependent yield stress
+//! (*RATE DEPENDENT). The behaviors are stored in the material and parsed by
+//! `materials/plasticity_hill.rs` and `materials/plasticity_rate.rs`.
 
 use crate::inp::keywords::material::behavior;
 use crate::inp::{Keyword, Kind};

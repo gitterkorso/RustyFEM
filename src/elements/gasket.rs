@@ -1,25 +1,25 @@
-//! Packningselement: GK3D8, GK3D6, GKPE4, GKAX4 (med membran och
-//! tvärskjuvning), länkarna GK2D2, GKAX2, GK3D2 och varianterna med bara
-//! tjockleksbeteende (GK3D8N, GK3D6N, GKPE4N, GKAX4N, GK2D2N, GKAX2N, GK3D2N).
+//! Gasket elements: GK3D8, GK3D6, GKPE4, GKAX4 (with membrane and
+//! transverse shear), the links GK2D2, GKAX2, GK3D2 and the variants with only
+//! thickness-direction behavior (GK3D8N, GK3D6N, GKPE4N, GKAX4N, GK2D2N, GKAX2N, GK3D2N).
 //!
-//! Konventioner:
-//! - Undersidans noder först, sedan översidans i samma ordning (GK3D8: 1–4
-//!   och 5–8, GK3D6: 1–3 och 4–6, GKPE4/GKAX4: 1–2 och 3–4, länkar: 1 och 2).
-//! - Integrationspunkterna ligger i mittytans noder (nodvis integrering med
-//!   vikten ∫Nₐ dA; axisymmetri ∫Nₐ 2πr ds; länkar area 1).
-//! - Tjockleksriktningen n är mittytans normal (3D), mittlinjens normal
-//!   z × t (2D) eller nod 1 → nod 2 (länkar). Stängningen är
-//!   c = −(u_över − u_under)·n och E11 = c (inte delad med tjockleken).
-//! - Lokala riktningar: 3D e₂ = global x projicerad på mittytan, e₃ = n × e₂;
-//!   2D e₂ = z × n. Tvärskjuvningen γ₁₂ = (u_över − u_under)·e₂ (E12),
+//! Conventions:
+//! - The bottom face nodes first, then the top face nodes in the same order (GK3D8: 1–4
+//!   and 5–8, GK3D6: 1–3 and 4–6, GKPE4/GKAX4: 1–2 and 3–4, links: 1 and 2).
+//! - The integration points lie at the midsurface nodes (nodal integration with
+//!   the weight ∫Nₐ dA; axisymmetry ∫Nₐ 2πr ds; links area 1).
+//! - The thickness direction n is the midsurface normal (3D), the midline normal
+//!   z × t (2D) or node 1 → node 2 (links). The closure is
+//!   c = −(u_top − u_bottom)·n and E11 = c (not divided by the thickness).
+//! - Local directions: 3D e₂ = global x projected onto the midsurface, e₃ = n × e₂;
+//!   2D e₂ = z × n. The transverse shear γ₁₂ = (u_top − u_bottom)·e₂ (E12),
 //!   S12 = G·γ₁₂.
-//! - Membrantöjningen (E22, E33, E23) räknas i elementets mitt ur mittytans
-//!   förskjutning ½(u_under + u_över); membrantjockleken är den initiala
-//!   tjockleken (första fältet på *GASKET SECTION, standard 1). GKAX4: E33 =
-//!   ringtöjningen u_r/r i mitten.
+//! - The membrane strain (E22, E33, E23) is computed at the element center from the midsurface
+//!   displacement ½(u_bottom + u_top); the membrane thickness is the initial
+//!   thickness (first field on *GASKET SECTION, default 1). GKAX4: E33 =
+//!   the hoop strain u_r/r at the center.
 //!
-//! Utdata: S (S11 = tryck) och E (E11 = stängning) med sex komponenter i 3D
-//! och fyra (11, 22, 33, 12) i 2D.
+//! Output: S (S11 = pressure) and E (E11 = closure) with six components in 3D
+//! and four (11, 22, 33, 12) in 2D.
 
 use super::api::{ElemCtx, ElemResponse, ElementType, Family, IpField};
 use crate::fem::dof::{Dof, U1, U2, U3};
@@ -40,7 +40,7 @@ enum Kind {
 pub struct Gasket {
     name: &'static str,
     kind: Kind,
-    /// Bara tjockleksbeteende (N-varianterna).
+    /// Thickness-direction behavior only (the N variants).
     thickness_only: bool,
 }
 
@@ -78,12 +78,12 @@ fn cross(a: [f64; 3], b: [f64; 3]) -> [f64; 3] {
 fn unit(a: [f64; 3]) -> Result<[f64; 3]> {
     let n = dot(a, a).sqrt();
     if n <= 0.0 {
-        return fail("packningens tjockleksriktning kan inte beräknas (noderna sammanfaller)");
+        return fail("the gasket thickness direction cannot be computed (the nodes coincide)");
     }
     Ok([a[0] / n, a[1] / n, a[2] / n])
 }
 
-/// Mittytans formfunktioner och derivator i den naturliga punkten p.
+/// Midsurface shape functions and derivatives at the natural point p.
 fn surf_shape(kind: Kind, p: [f64; 2]) -> (Vec<f64>, Vec<[f64; 2]>) {
     let (x, y) = (p[0], p[1]);
     match kind {
@@ -99,7 +99,7 @@ fn surf_shape(kind: Kind, p: [f64; 2]) -> (Vec<f64>, Vec<[f64; 2]>) {
     }
 }
 
-/// Mittytans noder i naturliga koordinater och elementets mittpunkt.
+/// The midsurface nodes in natural coordinates and the element center.
 fn surf_nodes(kind: Kind) -> (Vec<[f64; 2]>, [f64; 2]) {
     match kind {
         Kind::Hex8 => (vec![[-1.0, -1.0], [1.0, -1.0], [1.0, 1.0], [-1.0, 1.0]], [0.0, 0.0]),
@@ -109,7 +109,7 @@ fn surf_nodes(kind: Kind) -> (Vec<[f64; 2]>, [f64; 2]) {
     }
 }
 
-/// Gaussregel på mittytan (för vikterna ∫Nₐ dA).
+/// Gauss rule on the midsurface (for the weights ∫Nₐ dA).
 fn surf_rule(kind: Kind) -> Vec<([f64; 2], f64)> {
     let g = 1.0 / 3f64.sqrt();
     match kind {
@@ -120,7 +120,7 @@ fn surf_rule(kind: Kind) -> Vec<([f64; 2], f64)> {
     }
 }
 
-/// Geometri i en integrationspunkt (mittytans nod).
+/// Geometry at an integration point (midsurface node).
 struct Point {
     w: f64,
     n: [f64; 3],
@@ -128,8 +128,8 @@ struct Point {
     e3: [f64; 3],
 }
 
-/// Elementets geometri: punkterna, membranets B-matris (rader ε₂₂, ε₃₃, ε₂₃
-/// mot mittytans nodförskjutningar, 3 komponenter per mittnod) och total area.
+/// The element geometry: the points, the membrane B matrix (rows ε₂₂, ε₃₃, ε₂₃
+/// against the midsurface nodal displacements, 3 components per midsurface node) and the total area.
 struct Geometry {
     pts: Vec<Point>,
     bm: [Vec<f64>; 3],
@@ -174,7 +174,7 @@ impl Gasket {
             None => 1.0,
         };
         let z = [0.0, 0.0, 1.0];
-        // tangenter i en naturlig punkt
+        // tangents at a natural point
         let tangents = |p: [f64; 2]| -> ([f64; 3], [f64; 3], Vec<f64>, Vec<[f64; 2]>) {
             let (n, d) = surf_shape(self.kind, p);
             let mut t1 = [0.0; 3];
@@ -207,7 +207,7 @@ impl Gasket {
             Ok((n, e2, cross(n, e2)))
         };
         let width = 1.0;
-        // vikter ∫Nₐ dA
+        // weights ∫Nₐ dA
         let mut w = vec![0.0; h];
         if self.link() {
             w[0] = if self.axi() { 2.0 * std::f64::consts::PI * mid[0][0] } else { 1.0 };
@@ -231,15 +231,15 @@ impl Gasket {
             let (n, e2, e3) = frame(t1, t2)?;
             pts.push(Point { w: w[a], n, e2, e3 });
         }
-        // membran i mitten
+        // membrane at the center
         let mut bm = [vec![0.0; 3 * h], vec![0.0; 3 * h], vec![0.0; 3 * h]];
         let area: f64 = w.iter().sum();
         if !self.link() {
             let (t1, t2, nc, d) = tangents(centre);
             let (_n, e2, e3) = frame(t1, t2)?;
-            // derivator med avseende på båglängd längs e₂ och e₃
+            // derivatives with respect to arc length along e₂ and e₃
             let (g2, g3): (Vec<f64>, Vec<f64>) = if self.dim() == 3 {
-                // [t1 t2] = Jacobian i (e2, e3)-planet
+                // [t1 t2] = Jacobian in the (e2, e3) plane
                 let (a11, a12, a21, a22) = (dot(t1, e2), dot(t1, e3), dot(t2, e2), dot(t2, e3));
                 let det = a11 * a22 - a12 * a21;
                 let g2 = (0..h).map(|a| (a22 * d[a][0] - a12 * d[a][1]) / det).collect();
@@ -270,14 +270,14 @@ impl Gasket {
         self.dim()
     }
 
-    /// Töjningsmatris (6 rader) för integrationspunkt a mot elementets frihetsgrader.
+    /// Strain matrix (6 rows) for integration point a against the element's degrees of freedom.
     fn bmatrix(&self, geo: &Geometry, a: usize) -> Vec<[f64; 6]> {
         let h = self.half();
         let nd = self.ndof_node();
         let mut b = vec![[0.0; 6]; 2 * h * nd];
         let p = &geo.pts[a];
         for i in 0..nd {
-            // över (a + h) minus under (a)
+            // top (a + h) minus bottom (a)
             b[(a + h) * nd + i][0] = -p.n[i];
             b[a * nd + i][0] = p.n[i];
             if !self.thickness_only && !self.link() {
@@ -306,7 +306,7 @@ impl Gasket {
     fn evaluate(&self, ctx: &ElemCtx, u: &[f64], so: &[f64], sn: &mut Vec<f64>, tangent: bool) -> Result<(Vec<f64>, Option<Vec<f64>>, Vec<[f64; 6]>, Vec<[f64; 6]>)> {
         let mat = ctx.material(self.name)?;
         if mat.name() != crate::materials::gasket::NAME {
-            return fail(format!("{}: packningselement kräver *GASKET SECTION med BEHAVIOR=", self.name));
+            return fail(format!("{}: gasket elements require *GASKET SECTION with BEHAVIOR=", self.name));
         }
         let geo = self.geometry(ctx)?;
         let n = u.len();
@@ -398,13 +398,13 @@ impl ElementType for Gasket {
     }
     fn internal_force(&self, ctx: &ElemCtx, u: &[f64], _du: &[f64], so: &[f64], sn: &mut Vec<f64>, tangent: bool) -> Result<ElemResponse> {
         if ctx.nlgeom {
-            return fail(format!("{}: NLGEOM stöds inte ännu för packningselement", self.name));
+            return fail(format!("{}: NLGEOM is not supported yet for gasket elements", self.name));
         }
         let (fint, k, _, _) = self.evaluate(ctx, u, so, sn, tangent)?;
         Ok(ElemResponse { fint, k })
     }
     fn output(&self, ctx: &ElemCtx, u: &[f64], state: &[f64]) -> Result<Vec<IpField>> {
-        // spänningen ur det godkända tillståndet, töjningen ur förskjutningen
+        // the stress from the accepted state, the strain from the displacement
         let geo = self.geometry(ctx)?;
         let three = Gasket::dim(self) == 3;
         let (sl, el): (&[&str], &[&str]) =

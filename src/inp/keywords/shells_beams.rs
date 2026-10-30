@@ -1,8 +1,8 @@
-//! Nyckelord för skal, membran och Timoshenkobalkar: *MEMBRANE SECTION,
-//! *SHELL GENERAL SECTION och *TRANSVERSE SHEAR STIFFNESS.
+//! Keywords for shells, membranes and Timoshenko beams: *MEMBRANE SECTION,
+//! *SHELL GENERAL SECTION and *TRANSVERSE SHEAR STIFFNESS.
 //!
-//! *TRANSVERSE SHEAR STIFFNESS gäller närmast föregående tvärsnitt och läggs
-//! som en intern parameter på dess `raw` (läses av balk- och skalelementen).
+//! *TRANSVERSE SHEAR STIFFNESS applies to the nearest preceding section and is added
+//! as an internal parameter on its `raw` (read by the beam and shell elements).
 
 use crate::elements::beam_timoshenko::section::TSS_PARAM;
 use crate::fem::model::{RawKeyword, SectionDef, SectionKind};
@@ -19,26 +19,26 @@ fn push(ctx: &mut InpCtx, kw: &RawKeyword, kind: SectionKind) -> Result<()> {
     let elset = required(kw, "ELSET")?.to_uppercase();
     let material = kw.param("MATERIAL").map(|m| m.trim().to_uppercase()).unwrap_or_default();
     if kw.has("ORIENTATION") {
-        return kw.err("ORIENTATION= stöds inte ännu");
+        return kw.err("ORIENTATION= is not supported yet");
     }
     ctx.mesh().sections.push(SectionDef { elset, material, material_index: None, kind, raw: kw.clone() });
     Ok(())
 }
 
-/// *MEMBRANE SECTION: tjocklek på första dataraden (standard 1).
+/// *MEMBRANE SECTION: thickness on the first data line (default 1).
 fn membrane(ctx: &mut InpCtx, kw: &RawKeyword) -> Result<()> {
     if kw.param("MATERIAL").is_none() {
-        return kw.err("MATERIAL= saknas");
+        return kw.err("MATERIAL= is missing");
     }
     push(ctx, kw, SectionKind::Other)
 }
 
-/// *SHELL GENERAL SECTION: homogen (MATERIAL=, tjocklek på första dataraden)
-/// eller given styvhetsmatris (datarader med den undre triangeln av 6×6-matrisen
-/// [N11, N22, N12, M11, M22, M12]). Tolkas av skalelementen.
+/// *SHELL GENERAL SECTION: homogeneous (MATERIAL=, thickness on the first data line)
+/// or a given stiffness matrix (data lines with the lower triangle of the 6×6 matrix
+/// [N11, N22, N12, M11, M22, M12]). Parsed by the shell elements.
 fn shell_general(ctx: &mut InpCtx, kw: &RawKeyword) -> Result<()> {
     if kw.has("COMPOSITE") || kw.has("USER") {
-        return kw.err("COMPOSITE och USER stöds inte ännu");
+        return kw.err("COMPOSITE and USER are not supported yet");
     }
     if kw.param("MATERIAL").is_some() {
         let v = kw.first_floats()?;
@@ -51,11 +51,11 @@ fn shell_general(ctx: &mut InpCtx, kw: &RawKeyword) -> Result<()> {
 fn transverse_shear(ctx: &mut InpCtx, kw: &RawKeyword) -> Result<()> {
     let v = kw.first_floats()?;
     if v.is_empty() {
-        return kw.err("skjuvstyvheterna saknas på dataraden");
+        return kw.err("the shear stiffnesses are missing on the data line");
     }
     let text = v.iter().map(|x| format!("{x:e}")).collect::<Vec<_>>().join(",");
     let Some(sec) = ctx.mesh().sections.last_mut() else {
-        return kw.err("*TRANSVERSE SHEAR STIFFNESS måste följa ett *BEAM SECTION eller *SHELL SECTION");
+        return kw.err("*TRANSVERSE SHEAR STIFFNESS must follow a *BEAM SECTION or *SHELL SECTION");
     };
     sec.raw.params.push((TSS_PARAM.to_string(), text));
     Ok(())

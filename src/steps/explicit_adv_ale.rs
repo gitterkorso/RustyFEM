@@ -1,28 +1,28 @@
-//! Område explicit_adv: ALE-nät (`*ADAPTIVE MESH`) för Lagrange-element
-//! (C3D8R, C3D8) i explicit analys.
+//! Area explicit_adv: ALE mesh (`*ADAPTIVE MESH`) for Lagrangian elements
+//! (C3D8R, C3D8) in explicit analysis.
 //!
-//! Var FREQUENCY:e inkrement (standard 10) flyttas domänens inre noder med
-//! `MESH SWEEPS` (standard 5) utjämningssvep: volymviktad utjämning
-//! x ← Σ Vₑ cₑ / Σ Vₑ (cₑ = elementets tyngdpunkt, standard) och
-//! Laplace-utjämning x ← medelvärdet av kantgrannarna, blandade med vikterna
-//! på *ADAPTIVE MESH CONTROLS dataraden (volymetrisk, Laplace,
-//! ekvipotential; ekvipotential räknas som Laplace). Första gången görs i
-//! stället `INITIAL MESH SWEEPS` svep (standard 5). Noder på domänens rand
-//! och noder med randvillkor följer materialet (Lagrange).
+//! Every FREQUENCY-th increment (default 10) the domain's interior nodes are moved with
+//! `MESH SWEEPS` (default 5) smoothing sweeps: volume-weighted smoothing
+//! x ← Σ Vₑ cₑ / Σ Vₑ (cₑ = element centroid, default) and
+//! Laplacian smoothing x ← the mean of the edge neighbours, blended with the weights
+//! on the *ADAPTIVE MESH CONTROLS data line (volumetric, Laplacian,
+//! equipotential; equipotential is treated as Laplacian). The first time,
+//! `INITIAL MESH SWEEPS` sweeps (default 5) are done instead. Nodes on the domain boundary
+//! and nodes with boundary conditions follow the material (Lagrangian).
 //!
-//! Elementtillståndet (spänning och materialtillstånd, en punkt) advekteras
-//! från det Lagrangeska till det utjämnade nätet med ytornas svepta volymer
-//! (givarelementets värden, volymviktat) och massan följer flödet;
-//! rörelsemängden advekteras med elementmittprojektion (MOMENTUM
-//! ADVECTION=ELEMENT CENTER PROJECTION, standard; HALF INDEX SHIFT räknas på
-//! samma sätt). Nodmassorna räknas om från elementmassorna med elementens
-//! ursprungliga fördelning.
+//! The element state (stress and material state, one point) is advected
+//! from the Lagrangian to the smoothed mesh with the swept volumes of the faces
+//! (donor element values, volume-weighted) and the mass follows the flow;
+//! the momentum is advected with element center projection (MOMENTUM
+//! ADVECTION=ELEMENT CENTER PROJECTION, default; HALF INDEX SHIFT is computed the
+//! same way). The nodal masses are recomputed from the element masses with the elements'
+//! original distribution.
 //!
-//! Begränsningar: materialet uppdateras inkrementellt (hypoelastiskt), så
-//! material som läser den totala deformationsgradienten (*EOS, hyperelastiska)
-//! stöds inte i ALE-domänen; randnoderna utjämnas inte längs ytan;
-//! hourglass-tillståndet advekteras inte; *ADAPTIVE MESH CONSTRAINT och
-//! Euler-ränder stöds inte.
+//! Limitations: the material is updated incrementally (hypoelastic), so
+//! materials that read the total deformation gradient (*EOS, hyperelastic)
+//! are not supported in the ALE domain; boundary nodes are not smoothed along the surface;
+//! the hourglass state is not advected; *ADAPTIVE MESH CONSTRAINT and
+//! Eulerian boundaries are not supported.
 
 use super::{Eval, Sink};
 use crate::elements::MassKind;
@@ -35,20 +35,20 @@ use std::collections::{BTreeSet, HashMap};
 struct AElem {
     e: usize,
     nodes: [usize; 8],
-    /// Massa (ändras med advektionen).
+    /// Mass (changes with the advection).
     mass: f64,
-    /// Nodvis andel av elementets massa (diagonal massa i början).
+    /// Nodal share of the element's mass (diagonal mass at the start).
     frac: [f64; 8],
     nbr: [Option<(usize, usize)>; 6],
 }
 
 pub struct Ale {
     elems: Vec<AElem>,
-    /// Inre noder som utjämnas.
+    /// Interior nodes that are smoothed.
     free: Vec<usize>,
-    /// Alla domänens noder.
+    /// All nodes of the domain.
     nodes: Vec<usize>,
-    /// Element runt varje nod och kantgrannar.
+    /// Elements around each node and edge neighbours.
     node_elems: HashMap<usize, Vec<usize>>,
     node_nbrs: HashMap<usize, Vec<usize>>,
     freq: usize,
@@ -58,7 +58,7 @@ pub struct Ale {
     inc: usize,
     first: bool,
     pending: Vec<(usize, [f64; 3], [f64; 3])>,
-    /// Nätets sammanlagda omflyttning per nod (för hourglass-styvheten).
+    /// Total mesh relocation per node (for the hourglass stiffness).
     reloc: HashMap<usize, [f64; 3]>,
 }
 
@@ -70,10 +70,10 @@ fn volume(x: &[[f64; 3]; 8]) -> f64 {
     crate::steps::explicit::dt::geometry(crate::elements::Family::Continuum3D, "C3D8R", &x.to_vec()).map_or(0.0, |g| g.vol)
 }
 
-/// Svept volym (positiv utåt) när ytan (utåtriktad nodordning) går från `a` till `b`.
+/// Swept volume (positive outward) when the face (outward node ordering) moves from `a` to `b`.
 fn swept(a: &[[f64; 3]; 4], b: &[[f64; 3]; 4]) -> f64 {
     let x = [a[0], a[3], a[2], a[1], b[0], b[3], b[2], b[1]];
-    // tetraederuppdelning som i explicit_adv_euler.rs
+    // tetrahedral decomposition as in explicit_adv_euler.rs
     let c: [f64; 3] = std::array::from_fn(|k| x.iter().map(|p| p[k]).sum::<f64>() / 8.0);
     let mut v = 0.0;
     for f in crate::elements::continuum3d::HEX8_FACES {
@@ -93,15 +93,15 @@ impl Ale {
     pub fn build(p: &Prepared, step: &StepDef, _nlgeom: bool) -> Result<Option<Ale>> {
         let m = p.model;
         let Some(am) = step.extra.iter().rev().find(|k| k.name == "ADAPTIVE MESH") else { return Ok(None) };
-        let Some(set) = am.param("ELSET").map(|s| s.trim().to_uppercase()) else { return am.err("ELSET= saknas") };
-        let Some(els) = m.elsets.get(&set) else { return am.err(format!("elementsetet '{set}' finns inte")) };
+        let Some(set) = am.param("ELSET").map(|s| s.trim().to_uppercase()) else { return am.err("ELSET= is missing") };
+        let Some(els) = m.elsets.get(&set) else { return am.err(format!("element set '{set}' does not exist")) };
         let freq = am.param("FREQUENCY").and_then(parse_f64).map_or(10, |f| f.max(1.0) as usize);
         let sweeps = am.param("MESH SWEEPS").and_then(parse_f64).map_or(5, |f| f.max(0.0) as usize);
         let mut initial_sweeps = am.param("INITIAL MESH SWEEPS").and_then(parse_f64).map(|f| f.max(0.0) as usize);
         let mut weights = [1.0, 0.0];
         if let Some(cn) = am.param_upper("CONTROLS") {
             let Some(c) = m.extra.iter().find(|k| k.name == "ADAPTIVE MESH CONTROLS" && k.param_upper("NAME").as_deref() == Some(cn.as_str())) else {
-                return am.err(format!("*ADAPTIVE MESH CONTROLS, NAME={cn} saknas"));
+                return am.err(format!("*ADAPTIVE MESH CONTROLS, NAME={cn} is missing"));
             };
             let v = c.first_floats().unwrap_or_default();
             if !v.is_empty() {
@@ -114,7 +114,7 @@ impl Ale {
             }
             for p in ["CURVATURE REFINEMENT", "MESHING PREDICTOR"] {
                 if c.has(p) && p == "MESHING PREDICTOR" && c.param_upper(p).as_deref() == Some("PREVIOUS") {
-                    return c.err("MESHING PREDICTOR=PREVIOUS stöds inte ännu");
+                    return c.err("MESHING PREDICTOR=PREVIOUS is not supported yet");
                 }
             }
         }
@@ -122,12 +122,12 @@ impl Ale {
         for &e in els {
             let el = &m.elements[e];
             if !matches!(el.etype.name(), "C3D8R" | "C3D8") {
-                return am.err(format!("*ADAPTIVE MESH: {} stöds inte ännu (C3D8R, C3D8)", el.etype.name()));
+                return am.err(format!("*ADAPTIVE MESH: {} is not supported yet (C3D8R, C3D8)", el.etype.name()));
             }
             let ctx = p.ctx(e, false, 0.0, 0.0);
             if let Some(mat) = ctx.material {
                 if mat.name().starts_with("*EOS") || mat.hyperelastic().is_some() {
-                    return am.err(format!("*ADAPTIVE MESH: materialet {} stöds inte i ALE-domänen (inkrementell spänningsuppdatering krävs)", mat.name()));
+                    return am.err(format!("*ADAPTIVE MESH: material {} is not supported in the ALE domain (incremental stress update required)", mat.name()));
                 }
             }
             let x: [[f64; 3]; 8] = std::array::from_fn(|k| m.nodes[el.nodes[k]]);
@@ -161,7 +161,7 @@ impl Ale {
                 }
             }
         }
-        // randnoder (yttre ytor) följer materialet
+        // boundary nodes (exterior faces) follow the material
         let mut boundary: BTreeSet<usize> = BTreeSet::new();
         for key in faces.keys() {
             boundary.extend(key.iter().copied());
@@ -187,7 +187,7 @@ impl Ale {
         }
         let mut nodes: Vec<usize> = node_elems.keys().copied().collect();
         nodes.sort_unstable();
-        // noder som också hör till element utanför domänen följer materialet
+        // nodes that also belong to elements outside the domain follow the material
         let mut outside: BTreeSet<usize> = BTreeSet::new();
         let inset: BTreeSet<usize> = elems.iter().map(|x| x.e).collect();
         for (e, el) in m.elements.iter().enumerate() {
@@ -197,12 +197,12 @@ impl Ale {
         }
         let free: Vec<usize> = nodes.iter().copied().filter(|n| !boundary.contains(n) && !outside.contains(n)).collect();
         if free.is_empty() {
-            return fail(format!("*ADAPTIVE MESH, ELSET={set}: domänen har inga inre noder att utjämna"));
+            return fail(format!("*ADAPTIVE MESH, ELSET={set}: the domain has no interior nodes to smooth"));
         }
         Ok(Some(Ale { elems, free, nodes, node_elems, node_nbrs, freq, sweeps, initial_sweeps: initial_sweeps.unwrap_or(5), weights, inc: 0, first: true, pending: Vec::new(), reloc: HashMap::new() }))
     }
 
-    /// Nodmassorna för de inre noderna från elementmassorna.
+    /// Nodal masses for the interior nodes from the element masses.
     pub fn patch_mass(&self, mass: &mut super::LumpedMass) {
         if self.inc == 0 && self.reloc.is_empty() {
             return;
@@ -220,8 +220,8 @@ impl Ale {
         }
     }
 
-    /// Elementets förskjutningar utan nätets omflyttningar (`None` om inget
-    /// av elementets noder har flyttats).
+    /// The element's displacements without the mesh relocations (`None` if none
+    /// of the element's nodes has moved).
     pub fn hourglass_u(&self, nodes: &[usize], ue: &[f64]) -> Option<Vec<f64>> {
         if self.reloc.is_empty() || nodes.len() * 3 != ue.len() || !nodes.iter().any(|n| self.reloc.contains_key(n)) {
             return None;
@@ -239,8 +239,8 @@ impl Ale {
 
     pub fn forces(&mut self, p: &Prepared, ev: &Eval, out: &mut Sink) -> Result<()> {
         self.pending.clear();
-        // stegets början: bara den första utjämningen (materialet i vila, massan
-        // följer elementens nya volymer)
+        // start of the step: only the first smoothing (material at rest, the mass
+        // follows the elements' new volumes)
         let initial = ev.dt <= 0.0;
         if initial {
             if !self.first || ev.time > 0.0 {
@@ -254,7 +254,7 @@ impl Ale {
         }
         let m = p.model;
         let pos = |n: usize, u: &[NodeVec]| -> [f64; 3] { std::array::from_fn(|c| m.nodes[n][c] + u[n][c]) };
-        // utjämning: nya lägen för de inre noderna
+        // smoothing: new positions for the interior nodes
         let mut x: HashMap<usize, [f64; 3]> = self.nodes.iter().map(|&n| (n, pos(n, ev.u))).collect();
         let xlag = x.clone();
         let fixed = |n: usize| ev.fixed.get(n).is_some_and(|&f| f & 0b111 != 0);
@@ -296,7 +296,7 @@ impl Ale {
             x = nx;
         }
         if initial {
-            // massan per element med den ursprungliga densiteten och den nya volymen
+            // mass per element with the original density and the new volume
             for el in self.elems.iter_mut() {
                 let x0: [[f64; 3]; 8] = std::array::from_fn(|k| xlag[&el.nodes[k]]);
                 let x1: [[f64; 3]; 8] = std::array::from_fn(|k| x[&el.nodes[k]]);
@@ -332,7 +332,7 @@ impl Ale {
             self.inc = self.inc.max(1);
             return Ok(());
         }
-        // advektion av elementtillståndet från det Lagrangeska nätet till det nya
+        // advection of the element state from the Lagrangian mesh to the new one
         let ne = self.elems.len();
         let vlag: Vec<f64> = self.elems.iter().map(|el| volume(&std::array::from_fn(|k| xlag[&el.nodes[k]])).max(1e-300)).collect();
         let vbar: Vec<[f64; 3]> = self.elems.iter().map(|el| std::array::from_fn(|c| el.nodes.iter().map(|&n| ev.v[n][c]).sum::<f64>() / 8.0)).collect();
@@ -352,7 +352,7 @@ impl Ale {
                 let a: [[f64; 3]; 4] = std::array::from_fn(|i| xlag[&el.nodes[fnodes[i]]]);
                 let b: [[f64; 3]; 4] = std::array::from_fn(|i| x[&el.nodes[fnodes[i]]]);
                 let s = swept(&a, &b);
-                // ytan går utåt från k till det nya nätet: k växer och tar emot material
+                // the face moves outward from k into the new mesh: k grows and receives material
                 let (d, r) = if s < 0.0 { (k, k2) } else { (k2, k) };
                 let frac = (s.abs() / vlag[d]).min(0.5);
                 if frac <= 0.0 {
@@ -381,8 +381,8 @@ impl Ale {
         for k in 0..ne {
             let el = &mut self.elems[k];
             el.mass = mas[k].max(0.0);
-            // element utan flöde behåller tillståndet exakt; NLGEOM-tillståndets
-            // markörer (`kinematics::push_ext`, två sista värdena) advekteras inte
+            // elements without flow keep the state exactly; the NLGEOM state's
+            // markers (`kinematics::push_ext`, last two values) are not advected
             if vol[k] > 0.0 && touched[k] {
                 let n = sv[k].len();
                 let keep = if crate::kinematics::ext(&st0[k]).is_some() { 2 } else { 0 };
@@ -396,7 +396,7 @@ impl Ale {
                 }
             }
         }
-        // nodmassor och hastigheter (elementmittprojektion)
+        // nodal masses and velocities (element center projection)
         let mut num: HashMap<usize, [f64; 4]> = HashMap::new();
         let mut mn: HashMap<usize, f64> = HashMap::new();
         for (k, el) in self.elems.iter().enumerate() {
@@ -432,7 +432,7 @@ impl Ale {
         Ok(())
     }
 
-    /// Nya lägen och hastigheter efter utjämningen (utom låsta frihetsgrader).
+    /// New positions and velocities after the smoothing (except locked DOFs).
     pub fn after_forces(&mut self, u: &mut [NodeVec], vh: &mut [NodeVec], fixed: &[u16]) {
         for &(n, un, v) in &self.pending {
             for c in 0..3 {

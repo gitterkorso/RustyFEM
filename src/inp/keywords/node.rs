@@ -9,17 +9,17 @@ pub static KEYWORDS: &[Keyword] = &[Keyword { name: "NODE", kind: Kind::Model, h
 fn node(ctx: &mut InpCtx, kw: &RawKeyword) -> Result<()> {
     if let Some(sys) = kw.param_upper("SYSTEM") {
         if sys != "R" {
-            return kw.err(format!("SYSTEM={sys} (cylindriska/sfäriska koordinater) stöds inte ännu"));
+            return kw.err(format!("SYSTEM={sys} (cylindrical/spherical coordinates) is not supported yet"));
         }
     }
     if ctx.instance.is_some() {
-        return kw.err("noder inne i *INSTANCE stöds inte – definiera dem i en *PART");
+        return kw.err("nodes inside *INSTANCE are not supported – define them in a *PART");
     }
     let inst = ctx.mesh_instance();
     let mut ids = Vec::with_capacity(kw.data.len());
     for d in &kw.data {
         let Some(label) = d.fields.first().and_then(|f| parse_label(f)) else {
-            return kw.err_at(d.line, "nodnummer saknas");
+            return kw.err_at(d.line, "node label is missing");
         };
         let v = kw.floats(&crate::fem::model::DataLine { fields: d.fields[1..].to_vec(), line: d.line, continued: false })?;
         let x = [v.first().copied().unwrap_or(0.0), v.get(1).copied().unwrap_or(0.0), v.get(2).copied().unwrap_or(0.0)];

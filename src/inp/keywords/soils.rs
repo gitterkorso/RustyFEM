@@ -1,16 +1,16 @@
-//! Nyckelord för kopplad porvattentryck–förskjutning (geoteknik).
+//! Keywords for coupled pore pressure–displacement (geotechnics).
 //!
-//! - *SOILS (stationär eller CONSOLIDATION) och *GEOSTATIC: procedurer, se
+//! - *SOILS (steady-state or CONSOLIDATION) and *GEOSTATIC: procedures, see
 //!   `steps/soils.rs`.
-//! - *PERMEABILITY, *POROUS BULK MODULI: materialbeteenden (`materials/porous.rs`).
-//! - *CFLOW: koncentrerat porvätskeflöde (utflöde positivt), lagras som
-//!   punktlast på frihetsgrad 8 med omvänt tecken så att stegens arvsregler gäller.
-//! - *DFLOW/*DSFLOW: föreskrivet utflöde per ytenhet, typerna `DFLOW:Sn`.
-//! - *FLOW/*SFLOW: utflöde c·(u_w − u_w∞), typerna `FLOW:Qn` (storlek c,
-//!   u_w∞ som extra värde).
-//! - *INITIAL CONDITIONS, TYPE=PORE PRESSURE, RATIO och STRESS (även
-//!   GEOSTATIC) skickas hit från `temperature.rs`; nod- och elementreferenser
-//!   löses upp till index (markören `steps::soils::RESOLVED`).
+//! - *PERMEABILITY, *POROUS BULK MODULI: material behaviors (`materials/porous.rs`).
+//! - *CFLOW: concentrated pore fluid flow (outflow positive), stored as a
+//!   point load on degree of freedom 8 with reversed sign so that the steps' inheritance rules apply.
+//! - *DFLOW/*DSFLOW: prescribed outflow per unit area, the types `DFLOW:Sn`.
+//! - *FLOW/*SFLOW: outflow c·(u_w − u_w∞), the types `FLOW:Qn` (magnitude c,
+//!   u_w∞ as an extra value).
+//! - *INITIAL CONDITIONS, TYPE=PORE PRESSURE, RATIO and STRESS (also
+//!   GEOSTATIC) are forwarded here from `temperature.rs`; node and element references
+//!   are resolved to indices (the marker `steps::soils::RESOLVED`).
 
 use crate::fem::dof::POR;
 use crate::fem::model::{parse_f64, CloadBlock, DataLine, DistLoad, DloadBlock, RawKeyword};
@@ -32,7 +32,7 @@ pub static KEYWORDS: &[Keyword] = &[
 ];
 
 fn num(kw: &RawKeyword, line: usize, s: &str) -> Result<f64> {
-    parse_f64(s).ok_or_else(|| FemError(format!("{} rad {line} (*{}): '{s}' är inget tal", kw.file, kw.name)))
+    parse_f64(s).ok_or_else(|| FemError(format!("{} line {line} (*{}): '{s}' is not a number", kw.file, kw.name)))
 }
 
 fn op_new(kw: &RawKeyword) -> bool {
@@ -42,7 +42,7 @@ fn op_new(kw: &RawKeyword) -> bool {
 fn no_amplitude(kw: &RawKeyword) -> Result<()> {
     for p in ["AMPLITUDE", "USER"] {
         if kw.has(p) {
-            return kw.err(format!("{p}= stöds inte ännu för *{}", kw.name));
+            return kw.err(format!("{p}= is not supported yet for *{}", kw.name));
         }
     }
     Ok(())
@@ -56,8 +56,8 @@ fn geostatic(ctx: &mut InpCtx, kw: &RawKeyword) -> Result<()> {
     procedure(ctx, kw)
 }
 
-/// *PERMEABILITY får förekomma flera gånger (TYPE=SATURATION, VELOCITY);
-/// tolkas i `materials/porous.rs`.
+/// *PERMEABILITY may appear several times (TYPE=SATURATION, VELOCITY);
+/// parsed in `materials/porous.rs`.
 fn permeability(ctx: &mut InpCtx, kw: &RawKeyword) -> Result<()> {
     let m = ctx.material_mut(kw)?;
     m.behaviors.push(kw.clone());
@@ -69,13 +69,13 @@ fn cflow(ctx: &mut InpCtx, kw: &RawKeyword) -> Result<()> {
     let mut block = CloadBlock { op_new: op_new(kw), amplitude: None, follower: false, items: Vec::new(), source: kw.location() };
     for d in &kw.data {
         if d.fields.len() < 2 {
-            return kw.err_at(d.line, "skriv 'nod/nset, , flöde'");
+            return kw.err_at(d.line, "write 'node/nset, , flow'");
         }
         let nodes = ctx.node_ref(kw, d.line, &d.fields[0], None)?;
-        // andra fältet är tomt (porvätska); flödet står sist
+        // the second field is empty (pore fluid); the flow comes last
         let v = num(kw, d.line, d.fields.last().map(|s| s.as_str()).unwrap_or("0"))?;
         for n in nodes {
-            // utflöde positivt i .inp-formatet → yttre inflöde −q
+            // outflow positive in the .inp format → external inflow −q
             block.items.push((n, POR, -v));
         }
     }
@@ -96,12 +96,12 @@ fn dflow(ctx: &mut InpCtx, kw: &RawKeyword) -> Result<()> {
     let mut block = dblock(kw);
     for d in &kw.data {
         if d.fields.len() < 3 {
-            return kw.err_at(d.line, "skriv 'element/elset, Sn, utflöde'");
+            return kw.err_at(d.line, "write 'element/elset, Sn, outflow'");
         }
         let elems = ctx.elem_ref(kw, d.line, &d.fields[0], None)?;
         let label = d.fields[1].trim().to_uppercase();
         let Some(f) = face_no(&label, 'S') else {
-            return kw.err_at(d.line, format!("flödestypen {label} stöds inte (S1, S2, ...)"));
+            return kw.err_at(d.line, format!("flow type {label} is not supported (S1, S2, ...)"));
         };
         let q = num(kw, d.line, &d.fields[2])?;
         for e in elems {
@@ -117,12 +117,12 @@ fn flow(ctx: &mut InpCtx, kw: &RawKeyword) -> Result<()> {
     let mut block = dblock(kw);
     for d in &kw.data {
         if d.fields.len() < 4 {
-            return kw.err_at(d.line, "skriv 'element/elset, Qn, sänktryck, läckagekoefficient'");
+            return kw.err_at(d.line, "write 'element/elset, Qn, sink pressure, seepage coefficient'");
         }
         let elems = ctx.elem_ref(kw, d.line, &d.fields[0], None)?;
         let label = d.fields[1].trim().to_uppercase();
         let Some(f) = face_no(&label, 'Q') else {
-            return kw.err_at(d.line, format!("flödestypen {label} stöds inte (Q1, Q2, ...; QnD/QnNU stöds inte ännu)"));
+            return kw.err_at(d.line, format!("flow type {label} is not supported (Q1, Q2, ...; QnD/QnNU are not supported yet)"));
         };
         let sink = num(kw, d.line, &d.fields[2])?;
         let c = num(kw, d.line, &d.fields[3])?;
@@ -134,21 +134,21 @@ fn flow(ctx: &mut InpCtx, kw: &RawKeyword) -> Result<()> {
     Ok(())
 }
 
-/// Elementytor (element, ytnummer) för en *SURFACE.
+/// Element faces (element, face number) for a *SURFACE.
 fn surface_faces(ctx: &InpCtx, kw: &RawKeyword, line: usize, name: &str) -> Result<Vec<(usize, usize)>> {
     let up = name.trim().to_uppercase();
     let mesh = ctx.mesh_ref();
     let Some(s) = mesh.surfaces.get(&up) else {
-        return kw.err_at(line, format!("ytan '{}' finns inte", name.trim()));
+        return kw.err_at(line, format!("surface '{}' does not exist", name.trim()));
     };
     if s.kind != "ELEMENT" {
-        return kw.err_at(line, format!("ytan '{}' är inte en elementyta", name.trim()));
+        return kw.err_at(line, format!("surface '{}' is not an element-based surface", name.trim()));
     }
     let mut out = Vec::new();
     for (e, f) in &s.faces {
         match face_no(f, 'S') {
             Some(n) => out.push((*e, n)),
-            None => return kw.err_at(line, format!("ytbeteckningen {f} stöds inte för porvätskeflöden (S1, S2, ...)")),
+            None => return kw.err_at(line, format!("face identifier {f} is not supported for pore fluid flows (S1, S2, ...)")),
         }
     }
     Ok(out)
@@ -159,7 +159,7 @@ fn dsflow(ctx: &mut InpCtx, kw: &RawKeyword) -> Result<()> {
     let mut block = dblock(kw);
     for d in &kw.data {
         if d.fields.len() < 3 {
-            return kw.err_at(d.line, "skriv 'yta, S, utflöde'");
+            return kw.err_at(d.line, "write 'surface, S, outflow'");
         }
         let q = num(kw, d.line, &d.fields[2])?;
         for (e, f) in surface_faces(ctx, kw, d.line, &d.fields[0])? {
@@ -175,11 +175,11 @@ fn sflow(ctx: &mut InpCtx, kw: &RawKeyword) -> Result<()> {
     let mut block = dblock(kw);
     for d in &kw.data {
         if d.fields.len() < 4 {
-            return kw.err_at(d.line, "skriv 'yta, Q, sänktryck, läckagekoefficient'");
+            return kw.err_at(d.line, "write 'surface, Q, sink pressure, seepage coefficient'");
         }
         let label = d.fields[1].trim().to_uppercase();
         if label != "Q" {
-            return kw.err_at(d.line, format!("flödestypen {label} stöds inte (Q)"));
+            return kw.err_at(d.line, format!("flow type {label} is not supported (Q)"));
         }
         let sink = num(kw, d.line, &d.fields[2])?;
         let c = num(kw, d.line, &d.fields[3])?;
@@ -191,22 +191,22 @@ fn sflow(ctx: &mut InpCtx, kw: &RawKeyword) -> Result<()> {
     Ok(())
 }
 
-/// *INITIAL CONDITIONS, TYPE=PORE PRESSURE / RATIO (nodvärden, eventuellt
-/// linjära i höjden) och TYPE=STRESS (per element, GEOSTATIC: linjär i höjden
-/// med sidotryckskoefficienter). Sparas med upplösta index i `FeModel::extra`.
+/// *INITIAL CONDITIONS, TYPE=PORE PRESSURE / RATIO (nodal values, possibly
+/// linear in height) and TYPE=STRESS (per element, GEOSTATIC: linear in height
+/// with lateral pressure coefficients). Stored with resolved indices in `FeModel::extra`.
 pub fn initial_conditions(ctx: &mut InpCtx, kw: &RawKeyword) -> Result<()> {
     let ty = kw.param_upper("TYPE").unwrap_or_default();
     for p in ["FILE", "USER", "INPUT", "SECTION POINTS", "REBAR", "UNBALANCED STRESS"] {
         if kw.has(p) {
-            return kw.err(format!("parametern {p} stöds inte ännu för TYPE={ty}"));
+            return kw.err(format!("parameter {p} is not supported yet for TYPE={ty}"));
         }
     }
     if ty == "SATURATION" {
-        // helt mättad jord: mättnadsgraden 1 är standard, andra värden stöds inte
+        // fully saturated soil: saturation 1 is the default, other values are not supported
         for d in kw.records() {
             let v: Vec<f64> = d.fields[1..].iter().map(|f| num(kw, d.line, f)).collect::<Result<_>>()?;
             if v.first().is_some_and(|&s| (s - 1.0).abs() > 1e-12) {
-                return kw.err_at(d.line, "delvis mättad jord (mättnadsgrad < 1) stöds inte ännu");
+                return kw.err_at(d.line, "partially saturated soil (saturation < 1) is not supported yet");
             }
         }
         return Ok(());

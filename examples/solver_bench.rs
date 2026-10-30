@@ -1,13 +1,13 @@
-//! Benchmark av de linjära lösarna på genererade modeller.
+//! Benchmark of the linear solvers on generated models.
 //!
 //! cargo run --release --example solver_bench [-- n1 n2 ...]
 //!
-//! 1. C3D8-kub med n×n×n element (fast underkant, laster på ovansidan): hela
-//!    analysen (`steps::run`) med varje lösare; tid och största relativa
-//!    avvikelse i U mot `direct`.
-//! 2. Indefinit: 7-punkts Laplace på (2n)³ noder skiftad med σ så att ungefär
-//!    10 % av egenvärdena blir negativa; tid för `sparse::indef` och tröghet
-//!    jämförd med den analytiska.
+//! 1. C3D8 cube with n×n×n elements (fixed bottom, loads on the top face): the whole
+//!    analysis (`steps::run`) with each solver; time and largest relative
+//!    deviation in U from `direct`.
+//! 2. Indefinite: 7-point Laplacian on (2n)³ nodes shifted by σ so that about
+//!    10 % of the eigenvalues become negative; time for `sparse::indef` and inertia
+//!    compared with the analytical one.
 
 use rustyfem::sparse::{self, indef};
 use rustyfem::steps::{self, RunOptions};
@@ -16,7 +16,7 @@ use std::time::Instant;
 
 fn cube(n: usize) -> String {
     let id = |i: usize, j: usize, k: usize| 1 + i + j * (n + 1) + k * (n + 1) * (n + 1);
-    let mut s = String::from("*HEADING\nkub\n*NODE\n");
+    let mut s = String::from("*HEADING\ncube\n*NODE\n");
     for k in 0..=n {
         for j in 0..=n {
             for i in 0..=n {
@@ -55,8 +55,8 @@ fn cube(n: usize) -> String {
 fn main() {
     let args: Vec<usize> = std::env::args().skip(1).filter_map(|a| a.parse().ok()).collect();
     let sizes = if args.is_empty() { vec![10, 20, 30] } else { args };
-    println!("trådar: {}", std::thread::available_parallelism().map(|t| t.get()).unwrap_or(1));
-    println!("\n| modell | ekvationer | lösare | tid analys [s] | max rel. avvikelse U mot direct |");
+    println!("threads: {}", std::thread::available_parallelism().map(|t| t.get()).unwrap_or(1));
+    println!("\n| model | equations | solver | analysis time [s] | max rel. deviation U vs direct |");
     println!("|---|---:|---|---:|---:|");
     for &n in &sizes {
         let text = cube(n);
@@ -67,7 +67,7 @@ fn main() {
                 continue;
             }
             let t0 = Instant::now();
-            let (out, st) = steps::run(&m.model, &RunOptions { solver: Some(s.into()), ..Default::default() }).expect("analys");
+            let (out, st) = steps::run(&m.model, &RunOptions { solver: Some(s.into()), ..Default::default() }).expect("analysis");
             let dt = t0.elapsed().as_secs_f64();
             let u: Vec<f64> = st.u.iter().flat_map(|u| u[..3].to_vec()).collect();
             let err = match &reference {
@@ -84,7 +84,7 @@ fn main() {
         }
     }
 
-    println!("\n| Laplace (indefinit) | ekvationer | σ | faktorisering [s] | negativa pivoter | analytiskt | fördröjda | 2×2 |");
+    println!("\n| Laplace (indefinite) | equations | σ | factorization [s] | negative pivots | analytical | delayed | 2×2 |");
     println!("|---|---:|---:|---:|---:|---:|---:|---:|");
     for &n in &sizes {
         let g = 2 * n;
@@ -121,7 +121,7 @@ fn main() {
         }
         let ndof = vec![1usize; nn];
         let sym = sparse::analyse(&coords, &adj, &ndof);
-        // egenvärden 6 − 2Σcos(k_a π/(g+1)); σ vid ungefär 10 %-kvantilen
+        // eigenvalues 6 − 2Σcos(k_a π/(g+1)); σ at about the 10 % quantile
         let c: Vec<f64> = (1..=g).map(|k| 2.0 * (k as f64 * std::f64::consts::PI / (g + 1) as f64).cos()).collect();
         let mut lam = Vec::with_capacity(nn);
         for a in &c {
@@ -132,7 +132,7 @@ fn main() {
             }
         }
         lam.sort_by(|a, b| a.partial_cmp(b).unwrap());
-        // mitt emellan två skilda egenvärden (egenvärdena har stor multiplicitet)
+        // midway between two distinct eigenvalues (the eigenvalues have high multiplicity)
         let mut q = nn / 10;
         while lam[q + 1] - lam[q] < 1e-9 {
             q += 1;
@@ -151,7 +151,7 @@ fn main() {
             }
         }
         let t0 = Instant::now();
-        let f = indef::factor(&sym, &k).expect("indefinit faktorisering");
+        let f = indef::factor(&sym, &k).expect("indefinite factorization");
         let dt = t0.elapsed().as_secs_f64();
         println!("| {g}³ | {nn} | {sigma:.4} | {dt:.2} | {} | {below} | {} | {} |", f.inertia.neg, f.delayed, f.two_by_two);
     }

@@ -1,45 +1,46 @@
-//! Stela kroppar: *RIGID BODY, REF NODE=, ELSET=, PIN NSET=, TIE NSET=.
+//! Rigid bodies: *RIGID BODY, REF NODE=, ELSET=, PIN NSET=, TIE NSET=.
 //!
-//! Alla noder i kroppen följer referensnoden R som en stel kropp:
-//! u = u_R + (R(θ_R) − I)(X − X_R) för translationerna och θ = θ_R för
-//! rotationerna. Noderna är
-//! - noderna i ELSET= (stela element R3D4/R3D3/R2D2/RAX2 eller deformerbara
-//!   element som görs stela): translationer och, om noden har dem, rotationer,
-//! - PIN NSET=: bara translationer (rotationerna är fria),
-//! - TIE NSET=: translationer och rotationer.
+//! All nodes of the body follow the reference node R as a rigid body:
+//! u = u_R + (R(θ_R) − I)(X − X_R) for the translations and θ = θ_R for the
+//! rotations. The nodes are
+//! - the nodes of ELSET= (rigid elements R3D4/R3D3/R2D2/RAX2 or deformable
+//!   elements made rigid): translations and, if the node has them, rotations,
+//! - PIN NSET=: translations only (the rotations are free),
+//! - TIE NSET=: translations and rotations.
 //!
-//! Referensnoden får translationer och rotationer (UR3 i 2D, UR1–UR3 i 3D).
-//! Axisymmetriska kroppar (RAX2) behandlas som plana stela kroppar med UR3,
-//! (kontrollerat: utan randvillkor på UR3 kan kroppen
-//! vrida sig i rz-planet).
+//! The reference node gets translations and rotations (UR3 in 2D, UR1–UR3 in 3D).
+//! Axisymmetric bodies (RAX2) are treated as planar rigid bodies with UR3
+//! (verified: without a boundary condition on UR3 the body can
+//! rotate in the rz plane).
 //!
-//! Villkoren elimineras exakt av kärnan (`fem/mpc.rs`, master–slav):
-//! - utan NLGEOM linjäriserat, u = u_R + θ_R × r₀ (r₀ = X − X_R), dvs.
-//!   NLGEOM=NO (kontrollerat i tests/cases/rigid_user),
-//! - vid NLGEOM linjäriseras villkoret om i varje iteration
-//!   (`linear_constraints_at`): δu = δu_R + δw × a med a = R(θ_R) r₀ och
-//!   δw = rumsligt spinn (samma uppdatering R ← exp([δw]) R som NLGEOM-steget
-//!   använder), och rhs väljs så att slavens läge blir exakt
-//!   u = u_R + a − r₀. Tangenten saknar termen ∂T/∂u · f (villkorskrafternas
-//!   geometriska styvhet), så konvergensen är linjär när kroppen roterar under
-//!   stor last; jämviktsläget påverkas inte.
+//! The constraints are eliminated exactly by the core (`fem/mpc.rs`, master–slave):
+//! - without NLGEOM linearized, u = u_R + θ_R × r₀ (r₀ = X − X_R), i.e.
+//!   NLGEOM=NO (verified in tests/cases/rigid_user),
+//! - with NLGEOM the constraint is relinearized in every iteration
+//!   (`linear_constraints_at`): δu = δu_R + δw × a with a = R(θ_R) r₀ and
+//!   δw = spatial spin (the same update R ← exp([δw]) R that the NLGEOM step
+//!   uses), and rhs is chosen so that the slave position is exact:
+//!   u = u_R + a − r₀. The tangent lacks the term ∂T/∂u · f (geometric
+//!   stiffness of the constraint forces), so convergence is linear when the
+//!   body rotates under large load; the equilibrium state is not affected.
 //!
-//! Övrigt:
-//! - ANALYTICAL SURFACE=: en analytisk yta (`interactions/analytical.rs`) som
-//!   följer referensnoden; utan andra noder ger kroppen inga villkor.
-//! - Inne i en *PART syftar REF NODE, ELSET, PIN/TIE NSET och ANALYTICAL
-//!   SURFACE på partens noder och set; kroppen skapas en gång per instans
-//!   (`_INSTANCE` från *INSTANCE, se `inp/keywords/assembly.rs`).
-//! - POSITION=CENTER OF MASS: referensnoden flyttas till masscentrum före
-//!   analysen (`reposition`, anropas när filen är läst) av elementens
-//!   fördelade massa (ρ · ∫Nᵢ dV för deformerbara element med densitet, ρ · t ·
-//!   ∫Nᵢ dA för stela element med DENSITY= och tjocklek/area på dataraden).
-//!   Punktmassor (*MASS) ingår inte.
-//! - DENSITY= (stela element) ger nodmassor (`Interaction::mass`); den
-//!   gäller bara explicit analys och påverkar inte implicit
-//!   *DYNAMIC (men masscentrum för POSITION=CENTER OF MASS).
-//! - Ändliga rotationer även i *DYNAMIC med NLGEOM (`steps/dynamic.rs`
-//!   linjäriserar villkoren om i varje iteration).
+//! Other:
+//! - ANALYTICAL SURFACE=: an analytical surface (`interactions/analytical.rs`)
+//!   that follows the reference node; without other nodes the body gives no
+//!   constraints.
+//! - Inside a *PART, REF NODE, ELSET, PIN/TIE NSET and ANALYTICAL SURFACE
+//!   refer to the part's nodes and sets; the body is created once per instance
+//!   (`_INSTANCE` from *INSTANCE, see `inp/keywords/assembly.rs`).
+//! - POSITION=CENTER OF MASS: the reference node is moved to the center of mass
+//!   before the analysis (`reposition`, called once the file has been read) of
+//!   the elements' distributed mass (ρ · ∫Nᵢ dV for deformable elements with a
+//!   density, ρ · t · ∫Nᵢ dA for rigid elements with DENSITY= and
+//!   thickness/area on the data line). Point masses (*MASS) are not included.
+//! - DENSITY= (rigid elements) gives nodal masses (`Interaction::mass`); it
+//!   only applies to explicit analysis and does not affect implicit
+//!   *DYNAMIC (but does affect the center of mass for POSITION=CENTER OF MASS).
+//! - Finite rotations also in *DYNAMIC with NLGEOM (`steps/dynamic.rs`
+//!   relinearizes the constraints in every iteration).
 
 use super::analytical::scoped;
 use super::geom;
@@ -52,15 +53,15 @@ use crate::model::Result;
 
 pub static FACTORIES: &[InteractionFactory] = &[InteractionFactory { keywords: &["RIGID BODY"], build }];
 
-/// En nod i den stela kroppen.
+/// A node of the rigid body.
 #[derive(Debug, Clone)]
 struct Member {
     node: usize,
-    /// Läge relativt referensnoden i referensläget.
+    /// Position relative to the reference node in the reference configuration.
     r0: [f64; 3],
-    /// Translationer som följer kroppen (i modellens dimension och aktiva för noden).
+    /// Translations that follow the body (in the model dimension and active for the node).
     trans: Vec<Dof>,
-    /// Rotationer som följer kroppen.
+    /// Rotations that follow the body.
     rot: Vec<Dof>,
 }
 
@@ -69,21 +70,21 @@ pub struct RigidBody {
     refn: usize,
     members: Vec<Member>,
     dim: usize,
-    /// Massa från stela element med DENSITY= (nod, massa), för *DYNAMIC, EXPLICIT.
+    /// Mass from rigid elements with DENSITY= (node, mass), for *DYNAMIC, EXPLICIT.
     masses: Vec<(usize, f64)>,
 }
 
 fn single_node(m: &FeModel, kw: &RawKeyword, key: &str) -> Result<usize> {
     let r = crate::inp::required(kw, key)?;
-    // inne i en part syftar namnen på instansens noder och set
+    // inside a part the names refer to the instance's nodes and sets
     let v = geom::node_ref(m, kw, &scoped(kw, r))?;
     if v.len() != 1 {
-        return kw.err(format!("{key}={r} ska vara en enda nod"));
+        return kw.err(format!("{key}={r} must be a single node"));
     }
     Ok(v[0])
 }
 
-/// Elementen i ELSET= (med instansprefix inne i en part).
+/// The elements of ELSET= (with instance prefix inside a part).
 fn body_elements(m: &FeModel, kw: &RawKeyword) -> Result<Vec<usize>> {
     match kw.param("ELSET") {
         Some(es) => geom::elem_ref(m, kw, &scoped(kw, es)),
@@ -93,7 +94,7 @@ fn body_elements(m: &FeModel, kw: &RawKeyword) -> Result<Vec<usize>> {
 
 fn build(m: &FeModel, kw: &RawKeyword) -> Result<Vec<Box<dyn Interaction>>> {
     if kw.has("_PART") && !kw.has("_INSTANCE") {
-        // parten används inte i någon instans
+        // the part is not used in any instance
         return Ok(Vec::new());
     }
     let refn = single_node(m, kw, "REF NODE")?;
@@ -101,13 +102,13 @@ fn build(m: &FeModel, kw: &RawKeyword) -> Result<Vec<Box<dyn Interaction>>> {
     let active = geom::element_active(m);
     let trans = geom::trans_dofs(dim);
     let rots = geom::rot_dofs(dim);
-    // (nod, med rotationer)
+    // (node, with rotations)
     let mut nodes: Vec<(usize, bool)> = Vec::new();
     let elems = body_elements(m, kw)?;
     if let Some(inst) = kw.param("_INSTANCE").and_then(|i| m.instance_index(&i.to_uppercase())) {
-        // en stel kropp i en part ska omfatta partens alla element
+        // a rigid body in a part must include all elements of the part
         if m.elements.iter().enumerate().any(|(e, el)| el.inst == inst && elems.binary_search(&e).is_err() && !elems.contains(&e)) {
-            return kw.err("en *RIGID BODY i en part ska omfatta alla partens element (ELSET=); definiera kroppen på modellnivå om bara en del av parten är stel");
+            return kw.err("a *RIGID BODY in a part must include all elements of the part (ELSET=); define the body at model level if only some of the part is rigid");
         }
     }
     for &e in &elems {
@@ -123,10 +124,10 @@ fn build(m: &FeModel, kw: &RawKeyword) -> Result<Vec<Box<dyn Interaction>>> {
     }
     if nodes.is_empty() {
         if kw.has("ANALYTICAL SURFACE") {
-            // bara en analytisk yta: kontakten (interactions/analytical.rs) aktiverar referensnoden
+            // only an analytical surface: the contact (interactions/analytical.rs) activates the reference node
             return Ok(Vec::new());
         }
-        return kw.err("kroppen saknar noder (ange ELSET=, PIN NSET=, TIE NSET= eller ANALYTICAL SURFACE=)");
+        return kw.err("the body has no nodes (give ELSET=, PIN NSET=, TIE NSET= or ANALYTICAL SURFACE=)");
     }
     let masses = rigid_element_masses(m, kw, &elems)?;
     nodes.sort_unstable_by(|a, b| a.0.cmp(&b.0).then(b.1.cmp(&a.1)));
@@ -143,14 +144,14 @@ fn build(m: &FeModel, kw: &RawKeyword) -> Result<Vec<Box<dyn Interaction>>> {
     Ok(vec![Box::new(RigidBody { name: format!("*RIGID BODY ({})", kw.location()), refn, members, dim, masses })])
 }
 
-/// Nodmassor från stela element i kroppen med DENSITY= och tjocklek
-/// (R3D4/R3D3/RAX2) eller tvärsnittsarea (R2D2) på dataraden: ρ · t · ∫Nᵢ dA
-/// (RAX2 med 2π r).
+/// Nodal masses from rigid elements of the body with DENSITY= and thickness
+/// (R3D4/R3D3/RAX2) or cross-sectional area (R2D2) on the data line: ρ · t · ∫Nᵢ dA
+/// (RAX2 with 2π r).
 fn rigid_element_masses(m: &FeModel, kw: &RawKeyword, elems: &[usize]) -> Result<Vec<(usize, f64)>> {
     let Some(rho) = kw.param("DENSITY") else { return Ok(Vec::new()) };
-    let Some(rho) = crate::fem::model::parse_f64(rho) else { return kw.err("DENSITY= ska vara ett tal") };
+    let Some(rho) = crate::fem::model::parse_f64(rho) else { return kw.err("DENSITY= must be a number") };
     if kw.has("NODAL THICKNESS") {
-        return kw.err("NODAL THICKNESS stöds inte ännu");
+        return kw.err("NODAL THICKNESS is not supported yet");
     }
     let t = kw.first_floats()?.first().copied().unwrap_or(0.0);
     let mut out: std::collections::BTreeMap<usize, f64> = std::collections::BTreeMap::new();
@@ -173,8 +174,8 @@ fn rigid_element_masses(m: &FeModel, kw: &RawKeyword, elems: &[usize]) -> Result
     Ok(out.into_iter().collect())
 }
 
-/// Nodmassor (translation) för masscentrum: deformerbara element med densitet
-/// (ρ · ∫Nᵢ dV) och stela element med DENSITY=.
+/// Nodal masses (translation) for the center of mass: deformable elements with
+/// a density (ρ · ∫Nᵢ dV) and rigid elements with DENSITY=.
 fn body_masses(m: &FeModel, kw: &RawKeyword) -> Result<Vec<(usize, f64)>> {
     let elems = body_elements(m, kw)?;
     let mut out: std::collections::BTreeMap<usize, f64> = rigid_element_masses(m, kw, &elems)?.into_iter().collect();
@@ -212,13 +213,13 @@ fn body_masses(m: &FeModel, kw: &RawKeyword) -> Result<Vec<(usize, f64)>> {
     Ok(out.into_iter().collect())
 }
 
-/// POSITION=CENTER OF MASS: flyttar referensnoderna till kropparnas
-/// masscentrum (anropas när .inp-filen är läst, före analysen).
+/// POSITION=CENTER OF MASS: moves the reference nodes to the bodies' centers
+/// of mass (called once the .inp file has been read, before the analysis).
 pub fn reposition(m: &mut FeModel) -> Result<()> {
     let kws: Vec<RawKeyword> = m.extra.iter().filter(|k| k.name == "RIGID BODY" && k.param_upper("POSITION").is_some_and(|p| p != "INPUT")).cloned().collect();
     for kw in kws {
         if kw.param_upper("POSITION").as_deref() != Some("CENTER OF MASS") {
-            return kw.err("POSITION ska vara INPUT eller CENTER OF MASS");
+            return kw.err("POSITION must be INPUT or CENTER OF MASS");
         }
         if kw.has("_PART") && !kw.has("_INSTANCE") {
             continue;
@@ -227,7 +228,7 @@ pub fn reposition(m: &mut FeModel) -> Result<()> {
         let ms = body_masses(m, &kw)?;
         let tot: f64 = ms.iter().map(|p| p.1).sum();
         if tot <= 0.0 {
-            // ingen massa: referensnoden flyttas inte
+            // no mass: the reference node is not moved
             continue;
         }
         let mut c = [0.0; 3];
@@ -248,19 +249,19 @@ impl RigidBody {
         v
     }
 
-    /// Villkoren linjäriserade kring referensnodens rotation (rotationsvektor
-    /// `theta`, total). `exact`: rhs så att slavens läge blir exakt (NLGEOM),
-    /// annars de rena linjära villkoren u = u_R + θ_R × r₀ (rhs = 0).
+    /// The constraints linearized about the reference node rotation (rotation
+    /// vector `theta`, total). `exact`: rhs so that the slave position is exact
+    /// (NLGEOM), otherwise the plain linear constraints u = u_R + θ_R × r₀ (rhs = 0).
     fn constraints(&self, theta: [f64; 3], u: Option<&[NodeVec]>) -> Vec<LinearConstraint> {
         let r = self.refn;
         let rot = tensor::exp_so3(theta);
         let mut out = Vec::new();
         for mb in &self.members {
-            // a = R r₀ (aktuellt läge relativt referensnoden)
+            // a = R r₀ (current position relative to the reference node)
             let a = if u.is_some() { tensor::mv(&rot, mb.r0) } else { mb.r0 };
             for &d in &mb.trans {
                 let i = (d - 1) as usize;
-                // u_i − u_R,i − (δw × a)_i-termer = rhs
+                // u_i − u_R,i − (δw × a)_i terms = rhs
                 let mut t = vec![(mb.node, d, 1.0), (r, d, -1.0)];
                 if self.dim == 3 {
                     // (w × a)_i = w_j a_k − w_k a_j
@@ -274,7 +275,7 @@ impl RigidBody {
                     t.push((r, UR3, -a[0]));
                 }
                 let rhs = match u {
-                    // exakt läge: u_i = u_R,i + a_i − r₀,i
+                    // exact position: u_i = u_R,i + a_i − r₀,i
                     Some(u) => {
                         let mut v = a[i] - mb.r0[i];
                         for &(n, dd, c) in &t[2..] {
@@ -328,7 +329,7 @@ impl Interaction for RigidBody {
         true
     }
 
-    /// Stela elements massa (DENSITY=) i deras noder (translationer).
+    /// Mass of rigid elements (DENSITY=) at their nodes (translations).
     fn mass(&self) -> Vec<(usize, Dof, usize, Dof, f64)> {
         let mut v = Vec::new();
         for &(n, mm) in &self.masses {
@@ -339,12 +340,13 @@ impl Interaction for RigidBody {
         v
     }
 
-    /// Villkorskrafternas geometriska styvhet vid NLGEOM (termen ∂Tᵀ/∂q · f som
-    /// master–slav-elimineringen saknar): med slavkraften f (elementens inre
-    /// kraft i noden, som redan är assemblerad när interaktionerna anropas) och
-    /// a = R r₀ ger andra variationen f · (δw₁ × (δw₂ × a)) den symmetriserade
-    /// matrisen ½(a fᵀ + f aᵀ) − (f · a) I på referensnodens rotationer.
-    /// Påverkar bara konvergensen, inte jämviktsläget.
+    /// Geometric stiffness of the constraint forces with NLGEOM (the term
+    /// ∂Tᵀ/∂q · f that the master–slave elimination lacks): with the slave force
+    /// f (the elements' internal force at the node, already assembled when the
+    /// interactions are called) and a = R r₀, the second variation
+    /// f · (δw₁ × (δw₂ × a)) gives the symmetrized matrix ½(a fᵀ + f aᵀ) − (f · a) I
+    /// on the reference node rotations. Only affects convergence, not the
+    /// equilibrium state.
     fn contribute(&self, ctx: &InteractionCtx, u: &[NodeVec], fint: &mut [NodeVec], k: Option<&mut dyn TangentSink>) -> Result<()> {
         let Some(k) = k else { return Ok(()) };
         if !ctx.nlgeom {

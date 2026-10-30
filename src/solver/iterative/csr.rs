@@ -1,8 +1,8 @@
-//! Gles radlagrad matris (CSR) och de enkla förkonditionerarna Jacobi och IC(0).
+//! Sparse compressed-row matrix (CSR) and the simple preconditioners Jacobi and IC(0).
 
 use crate::sparse::Lower;
 
-/// Gles matris i radformat (båda trianglarna för symmetriska matriser).
+/// Sparse matrix in row format (both triangles for symmetric matrices).
 #[derive(Clone, Debug, Default)]
 pub struct Csr {
     pub nrows: usize,
@@ -12,11 +12,11 @@ pub struct Csr {
     pub val: Vec<f64>,
 }
 
-/// Under så här många rader görs matris–vektorprodukten på en tråd.
+/// Below this many rows the matrix–vector product runs on one thread.
 const PAR_ROWS: usize = 20_000;
 
 impl Csr {
-    /// Full symmetrisk matris från undre triangeln i kolumnformat.
+    /// Full symmetric matrix from the lower triangle in column format.
     pub fn from_lower(a: &Lower) -> Csr {
         let n = a.colptr.len() - 1;
         let mut cnt = vec![0usize; n + 1];
@@ -36,7 +36,7 @@ impl Csr {
         let mut pos = cnt.clone();
         let mut idx = vec![0usize; nnz];
         let mut val = vec![0.0; nnz];
-        // kolumnvis genomgång ger stigande kolumnindex i varje rad
+        // column-wise traversal gives ascending column indices in each row
         for c in 0..n {
             for p in a.colptr[c]..a.colptr[c + 1] {
                 let r = a.rowidx[p];
@@ -45,7 +45,7 @@ impl Csr {
                 pos[r] += 1;
             }
         }
-        // den övre triangeln: rad c får kolumnerna r > c, men de måste sorteras in
+        // the upper triangle: row c gets the columns r > c, but they must be sorted in
         let mut m = Csr { nrows: n, ncols: n, ptr: cnt, idx, val };
         for c in 0..n {
             for p in a.colptr[c]..a.colptr[c + 1] {
@@ -57,7 +57,7 @@ impl Csr {
                 }
             }
         }
-        // varje rad: först kolumner ≤ rad (stigande), sedan > rad (stigande) – redan sorterat
+        // each row: first columns ≤ row (ascending), then > row (ascending) – already sorted
         m
     }
 
@@ -74,7 +74,7 @@ impl Csr {
         s
     }
 
-    /// y = A x (parallellt för stora matriser).
+    /// y = A x (in parallel for large matrices).
     pub fn matvec(&self, x: &[f64], y: &mut [f64]) {
         let n = self.nrows;
         let t = crate::par::threads().min(n / PAR_ROWS).max(1);
@@ -130,7 +130,7 @@ impl Csr {
         Csr { nrows: self.ncols, ncols: self.nrows, ptr: cnt, idx, val }
     }
 
-    /// C = A·B (Gustavson), med sorterade kolumnindex.
+    /// C = A·B (Gustavson), with sorted column indices.
     pub fn mul(&self, b: &Csr) -> Csr {
         assert_eq!(self.ncols, b.nrows);
         let n = self.nrows;
@@ -189,7 +189,7 @@ impl Csr {
     }
 }
 
-/// Förkonditionerare z = M⁻¹ r.
+/// Preconditioner z = M⁻¹ r.
 pub trait Precond: Send + Sync {
     fn apply(&self, r: &[f64], z: &mut [f64]);
     fn name(&self) -> String;
@@ -216,11 +216,11 @@ impl Precond for Jacobi {
     }
 }
 
-/// Ofullständig Cholesky utan utfyllnad, A ≈ L·D·Lᵀ på A:s mönster.
-/// Vid sammanbrott (icke-positiv pivot) görs om med diagonalskift
+/// Incomplete Cholesky without fill-in, A ≈ L·D·Lᵀ on the pattern of A.
+/// On breakdown (non-positive pivot) it is redone with a diagonal shift
 /// A + α·diag(A) (Manteuffel 1980), α = 10⁻³, 4·10⁻³, ...
 pub struct Ic0 {
-    /// Strikt undre L radvis.
+    /// Strictly lower L, row-wise.
     ptr: Vec<usize>,
     idx: Vec<usize>,
     val: Vec<f64>,
@@ -316,14 +316,14 @@ impl Precond for Ic0 {
     }
     fn name(&self) -> String {
         if self.shift > 0.0 {
-            format!("IC(0), skift {:.1e}", self.shift)
+            format!("IC(0), shift {:.1e}", self.shift)
         } else {
             "IC(0)".into()
         }
     }
 }
 
-/// Resultat av en PCG-lösning.
+/// Result of a PCG solve.
 #[derive(Debug, Clone, Copy)]
 pub struct PcgReport {
     pub iterations: usize,
@@ -336,8 +336,8 @@ fn dotv(a: &[f64], b: &[f64]) -> f64 {
     a.iter().zip(b).map(|(x, y)| x * y).sum()
 }
 
-/// Förkonditionerad konjugerad gradient för A x = b, start x = 0.
-/// Avbryter när ‖b − A x‖ ≤ tol·‖b‖.
+/// Preconditioned conjugate gradient for A x = b, starting from x = 0.
+/// Stops when ‖b − A x‖ ≤ tol·‖b‖.
 pub fn pcg(a: &Csr, b: &[f64], x: &mut [f64], m: &dyn Precond, tol: f64, maxit: usize) -> PcgReport {
     let n = b.len();
     x.iter_mut().for_each(|v| *v = 0.0);
@@ -356,7 +356,7 @@ pub fn pcg(a: &Csr, b: &[f64], x: &mut [f64], m: &dyn Precond, tol: f64, maxit: 
         a.matvec(&p, &mut q);
         let pq = dotv(&p, &q);
         if !(pq > 0.0) {
-            // inte positivt definit (eller sammanbrott)
+            // not positive definite (or breakdown)
             return PcgReport { iterations: it, rel_residual: rel, converged: false };
         }
         let alpha = rz / pq;

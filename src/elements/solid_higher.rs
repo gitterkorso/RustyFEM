@@ -1,30 +1,30 @@
-//! Högre ordningens, reducerat integrerade och övriga kontinuumelement.
+//! Higher-order, reduced-integration and other continuum elements.
 //!
-//! En gemensam motor (`Solid`) för alla isoparametriska kontinuumelement
-//! utöver de i `continuum2d.rs`/`continuum3d.rs`:
+//! A common engine (`Solid`) for all isoparametric continuum elements
+//! beyond those in `continuum2d.rs`/`continuum3d.rs`:
 //!
-//! | Element | Form | Integrering | Teknik |
+//! | Element | Shape | Integration | Technique |
 //! |---|---|---|---|
-//! | C3D4 | tetraeder, 4 noder | 1 punkt | – |
-//! | C3D10 | tetraeder, 10 noder | 4 punkter | – |
-//! | C3D6 | kil, 6 noder | 2 punkter (1 × 2) | – |
-//! | C3D15 | kil, 15 noder | 9 punkter (3 × 3) | – |
-//! | C3D20 | hexaeder, 20 noder | 3×3×3 | – |
-//! | C3D20R | hexaeder, 20 noder | 2×2×2 | – |
-//! | C3D8R | hexaeder, 8 noder | 1 punkt | hourglass-stabilisering |
-//! | C3D8I | hexaeder, 8 noder | 2×2×2 | inkompatibla moder |
-//! | CPS6/CPE6 | triangel, 6 noder | 3 punkter | – |
-//! | CPS8/CPE8 | fyrhörning, 8 noder | 3×3 | – |
-//! | CPS8R/CPE8R | fyrhörning, 8 noder | 2×2 | – |
-//! | CPS4R/CPE4R | fyrhörning, 4 noder | 1 punkt | hourglass-stabilisering |
-//! | CPS4I/CPE4I | fyrhörning, 4 noder | 2×2 | inkompatibla moder |
+//! | C3D4 | tetrahedron, 4 nodes | 1 point | – |
+//! | C3D10 | tetrahedron, 10 nodes | 4 points | – |
+//! | C3D6 | wedge, 6 nodes | 2 points (1 × 2) | – |
+//! | C3D15 | wedge, 15 nodes | 9 points (3 × 3) | – |
+//! | C3D20 | hexahedron, 20 nodes | 3×3×3 | – |
+//! | C3D20R | hexahedron, 20 nodes | 2×2×2 | – |
+//! | C3D8R | hexahedron, 8 nodes | 1 point | hourglass stabilization |
+//! | C3D8I | hexahedron, 8 nodes | 2×2×2 | incompatible modes |
+//! | CPS6/CPE6 | triangle, 6 nodes | 3 points | – |
+//! | CPS8/CPE8 | quadrilateral, 8 nodes | 3×3 | – |
+//! | CPS8R/CPE8R | quadrilateral, 8 nodes | 2×2 | – |
+//! | CPS4R/CPE4R | quadrilateral, 4 nodes | 1 point | hourglass stabilization |
+//! | CPS4I/CPE4I | quadrilateral, 4 nodes | 2×2 | incompatible modes |
 //!
-//! Axisymmetriska element (CAX*) använder samma motor och finns i `axisym.rs`.
-//! Teknikerna (hourglass och inkompatibla moder) finns i
-//! `solid_higher_tech.rs`, formfunktioner och regler i `solid_higher_shapes.rs`.
+//! Axisymmetric elements (CAX*) use the same engine and are in `axisym.rs`.
+//! The techniques (hourglass and incompatible modes) are in
+//! `solid_higher_tech.rs`, shape functions and rules in `solid_higher_shapes.rs`.
 //!
-//! Integrationspunkterna numreras med första naturliga koordinaten
-//! snabbast och ytorna har .inp-formatets numrering (*DLOAD Pn).
+//! The integration points are numbered with the first natural coordinate
+//! fastest and the faces have the .inp format numbering (*DLOAD Pn).
 
 #[path = "solid_higher_shapes.rs"]
 pub mod shapes;
@@ -43,16 +43,16 @@ use crate::materials::StressMode;
 use crate::model::{fail, Result};
 use shapes::{gauss_tensor, tet_rule, tri_rule, wedge_rule, Rule, Shape};
 
-/// Integrationsregel för styvheten.
+/// Integration rule for the stiffness.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RuleKind {
-    /// n×n(×n) gausspunkter (fyrhörningar och hexaedrar).
+    /// n×n(×n) Gauss points (quadrilaterals and hexahedra).
     Gauss(usize),
-    /// Triangelregel med n punkter.
+    /// Triangle rule with n points.
     Tri(usize),
-    /// Tetraederregel med n punkter.
+    /// Tetrahedron rule with n points.
     Tet(usize),
-    /// Kil: triangelregel × gaussregel i ζ.
+    /// Wedge: triangle rule × Gauss rule in ζ.
     Wedge(usize, usize),
 }
 
@@ -75,19 +75,19 @@ impl RuleKind {
     }
 }
 
-/// Elementteknik utöver ren isoparametrisk förskjutningsformulering.
+/// Element technique beyond the pure isoparametric displacement formulation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Tech {
     Full,
-    /// Selektivt reducerad integrering (B-bar) av volymtöjningen.
+    /// Selectively reduced integration (B-bar) of the volumetric strain.
     Bbar,
-    /// En integrationspunkt med hourglass-stabilisering.
+    /// One integration point with hourglass stabilization.
     Hourglass,
-    /// Inkompatibla moder (förstärkt töjning, kondenseras på elementnivå).
+    /// Incompatible modes (enhanced strain, condensed at the element level).
     Incompatible,
 }
 
-/// Generiskt isoparametriskt kontinuumelement.
+/// Generic isoparametric continuum element.
 pub struct Solid {
     pub name: &'static str,
     pub shape: Shape,
@@ -130,10 +130,10 @@ pub static TYPES: &[&dyn ElementType] = &[
     &CPS6, &CPS8, &CPS8R,
 ];
 
-/// Integrationspunkt i naturliga koordinater `p` med gaussvikten `gw`.
+/// Integration point at natural coordinates `p` with the Gauss weight `gw`.
 ///
-/// Vikten blir det(J)·gw gånger tjockleken `t` (plana element) eller 2πr
-/// (axisymmetri, r = interpolerad radie).
+/// The weight becomes det(J)·gw times the thickness `t` (plane elements) or 2πr
+/// (axisymmetry, r = interpolated radius).
 pub fn ip_at(shape: Shape, mode: StressMode, x: &[[f64; 3]], p: [f64; 3], gw: f64, t: f64) -> Result<Ip> {
     let (n, dn) = shapes::shape(shape, p);
     let dim = shape.pdim();
@@ -180,17 +180,17 @@ pub fn ip_at(shape: Shape, mode: StressMode, x: &[[f64; 3]], p: [f64; 3], gw: f6
     Ok(Ip { n, dndx, w: det * gw * factor })
 }
 
-/// Integrationspunkter för en regel.
+/// Integration points for a rule.
 pub fn ips_for(shape: Shape, mode: StressMode, x: &[[f64; 3]], rule: &Rule, t: f64) -> Result<Vec<Ip>> {
     rule.iter().map(|&(p, w)| ip_at(shape, mode, x, p, w, t)).collect()
 }
 
-/// Radie i en integrationspunkt (axisymmetri).
+/// Radius at an integration point (axisymmetry).
 pub fn radius(ip: &Ip, x: &[[f64; 3]]) -> f64 {
     ip.n.iter().zip(x).map(|(ni, xi)| ni * xi[0]).sum()
 }
 
-/// B-matris för valfritt spänningstillstånd, inklusive axisymmetri.
+/// B matrix for any stress state, including axisymmetry.
 pub fn bmat_any(mode: StressMode, ip: &Ip, x: &[[f64; 3]]) -> Vec<f64> {
     match mode {
         StressMode::Axisymmetric => super::axisym::bmat_axi(&ip.n, &ip.dndx, radius(ip, x)),
@@ -198,8 +198,8 @@ pub fn bmat_any(mode: StressMode, ip: &Ip, x: &[[f64; 3]]) -> Vec<f64> {
     }
 }
 
-/// Medelvärdesbildar volymtöjningen (B-bar) över integrationspunkterna.
-/// Plan töjning: ε11+ε22; 3D: ε11+ε22+ε33; axisymmetri: se nedan.
+/// Averages the volumetric strain (B-bar) over the integration points.
+/// Plane strain: ε11+ε22; 3D: ε11+ε22+ε33; axisymmetry: see below.
 pub fn apply_bbar(mode: StressMode, ips: &[Ip], bs: &mut [Vec<f64>]) {
     if bs.is_empty() {
         return;
@@ -210,9 +210,9 @@ pub fn apply_bbar(mode: StressMode, ips: &[Ip], bs: &mut [Vec<f64>]) {
     let vol = |b: &[f64], c: usize| (0..nv).map(|r| b[r * nd + c]).sum::<f64>();
     let wsum: f64 = ips.iter().map(|ip| ip.w).sum();
     if mode == StressMode::Axisymmetric {
-        // Axisymmetri (CAX4): både
-        // den plana volymtöjningen εrr+εzz och ringtöjningen εθθ ersätts med sina
-        // volymmedelvärden; εrr−εzz och γrz behålls i punkterna.
+        // Axisymmetry (CAX4): both
+        // the planar volumetric strain εrr+εzz and the hoop strain εθθ are replaced by their
+        // volume averages; εrr−εzz and γrz are kept at the points.
         let mean = |f: &dyn Fn(&[f64], usize) -> f64, c: usize| ips.iter().zip(bs.iter()).map(|(ip, b)| ip.w * f(b, c)).sum::<f64>() / wsum;
         let pl = |b: &[f64], c: usize| b[c] + b[nd + c];
         let hoop = |b: &[f64], c: usize| b[2 * nd + c];
@@ -239,7 +239,7 @@ pub fn apply_bbar(mode: StressMode, ips: &[Ip], bs: &mut [Vec<f64>]) {
     }
 }
 
-/// Volymkraft för *DLOAD BX/BY/BZ/GRAV (och BR/BZ för axisymmetri).
+/// Body force for *DLOAD BX/BY/BZ/GRAV (and BR/BZ for axisymmetry).
 fn body_vector(mode: StressMode, load: &DistLoad, density: f64, elem: &str) -> Result<Option<[f64; 3]>> {
     if mode == StressMode::Axisymmetric {
         match load.kind.as_str() {
@@ -251,13 +251,13 @@ fn body_vector(mode: StressMode, load: &DistLoad, density: f64, elem: &str) -> R
     common::body_load_vector(&load.kind, load.magnitude, &load.extra, density, elem)
 }
 
-/// Centrifugallast *DLOAD CENTRIF: storleken är ω², densiteten tas från
-/// materialet och volymkraften är ρω²·r⊥ där r⊥ är avståndet från
-/// rotationsaxeln (punkt och riktning i datafälten 4–9). För axisymmetriska
-/// element är axeln symmetriaxeln (r⊥ = r).
+/// Centrifugal load *DLOAD CENTRIF: the magnitude is ω², the density is taken from
+/// the material and the body force is ρω²·r⊥ where r⊥ is the distance from
+/// the rotation axis (point and direction in data fields 4–9). For axisymmetric
+/// elements the axis is the symmetry axis (r⊥ = r).
 fn centrifugal_load(el: &Solid, ctx: &ElemCtx, load: &DistLoad) -> Result<Vec<f64>> {
     if ctx.density == 0.0 {
-        return fail(format!("CENTRIF-lasten på {} kräver *DENSITY i materialet", el.name));
+        return fail(format!("the CENTRIF load on {} requires *DENSITY in the material", el.name));
     }
     let e = &load.extra;
     let (a, n) = if el.mode == StressMode::Axisymmetric {
@@ -271,7 +271,7 @@ fn centrifugal_load(el: &Solid, ctx: &ElemCtx, load: &DistLoad) -> Result<Vec<f6
         }
         let l = common::norm(n);
         if l == 0.0 {
-            return fail(format!("CENTRIF-lasten på {} saknar axelriktning", el.name));
+            return fail(format!("the CENTRIF load on {} has no axis direction", el.name));
         }
         (a, common::scale(n, 1.0 / l))
     };
@@ -292,15 +292,15 @@ fn centrifugal_load(el: &Solid, ctx: &ElemCtx, load: &DistLoad) -> Result<Vec<f6
     Ok(f)
 }
 
-/// Ekvivalenta nodkrafter för normaltryck `p` (positivt in i materialet) på
-/// ytan `face` (index i `shape.faces()`). Ytan integreras med sin egen
-/// interpolation, så kvadratiska ytor får konsistenta nodkrafter.
+/// Equivalent nodal forces for the normal pressure `p` (positive into the material) on
+/// the face `face` (index in `shape.faces()`). The face is integrated with its own
+/// interpolation, so quadratic faces get consistent nodal forces.
 pub fn face_pressure(shape: Shape, mode: StressMode, x: &[[f64; 3]], face: usize, p: f64, t: f64) -> Vec<f64> {
     let fl = shape.faces()[face];
     let fs = shape.face_shape(fl.len());
     let xf: Vec<[f64; 3]> = fl.iter().map(|&i| x[i]).collect();
     let ndim = common::ndim(mode);
-    // normal·dA per punkt (före tecken)
+    // normal·dA per point (before sign)
     let mut pts: Vec<(Vec<f64>, [f64; 3])> = Vec::new();
     let mut total = [0.0; 3];
     for (q, w) in shapes::face_rule(fs) {
@@ -375,7 +375,7 @@ impl Solid {
         common::ndim(self.mode)
     }
 
-    /// Tjocklek för plana element (1 annars).
+    /// Thickness for plane elements (1 otherwise).
     pub fn thickness(&self, ctx: &ElemCtx) -> Result<f64> {
         match self.mode {
             StressMode::PlaneStress | StressMode::PlaneStrain => Ok(ctx.section(self.name)?.solid_thickness()),
@@ -383,13 +383,13 @@ impl Solid {
         }
     }
 
-    /// Integrationspunkter för styvhet och spänningar.
+    /// Integration points for stiffness and stresses.
     pub fn ips(&self, ctx: &ElemCtx) -> Result<Vec<Ip>> {
         let t = self.thickness(ctx)?;
         ips_for(self.shape, self.mode, &ctx.x, &self.rule.points(self.pdim()), t)
     }
 
-    /// Integrationspunkter för massa och volymkrafter (noggrann regel).
+    /// Integration points for mass and body forces (accurate rule).
     pub fn ips_exact(&self, ctx: &ElemCtx) -> Result<Vec<Ip>> {
         let t = self.thickness(ctx)?;
         let rule = match self.shape {
@@ -401,7 +401,7 @@ impl Solid {
         ips_for(self.shape, self.mode, &ctx.x, &rule.points(self.pdim()), t)
     }
 
-    /// B-matriser (med B-bar om tekniken anger det).
+    /// B matrices (with B-bar if the technique specifies it).
     pub fn bmats(&self, x: &[[f64; 3]], ips: &[Ip]) -> Vec<Vec<f64>> {
         let mut bs: Vec<Vec<f64>> = ips.iter().map(|ip| bmat_any(self.mode, ip, x)).collect();
         if self.tech == Tech::Bbar {
@@ -466,7 +466,7 @@ impl ElementType for Solid {
     fn internal_force(&self, ctx: &ElemCtx, u: &[f64], du: &[f64], so: &[f64], sn: &mut Vec<f64>, tangent: bool) -> Result<ElemResponse> {
         let mat = ctx.material(self.name)?;
         if ctx.nlgeom {
-            // område skum: CAX4 med hyperelastiskt material som CAX4H (hybrid.rs)
+            // area foam: CAX4 with a hyperelastic material like CAX4H (hybrid.rs)
             if let Some(r) = super::hybrid::cax4_hyper(self, ctx, mat, u, so, sn, tangent)? {
                 return Ok(r);
             }
@@ -491,7 +491,7 @@ impl ElementType for Solid {
         if let Some(num) = load.kind.strip_prefix('P').and_then(|s| s.parse::<usize>().ok()) {
             let nf = self.shape.faces().len();
             if num == 0 || num > nf {
-                return fail(format!("{} har bara ytorna P1–P{nf}, inte {}", self.name, load.kind));
+                return fail(format!("{} has only the faces P1–P{nf}, not {}", self.name, load.kind));
             }
             let t = self.thickness(ctx)?;
             return Ok(face_pressure(self.shape, self.mode, &ctx.x, num - 1, load.magnitude, t));
@@ -502,7 +502,7 @@ impl ElementType for Solid {
         if let Some(b) = body_vector(self.mode, load, ctx.density, self.name)? {
             return Ok(common::body_force(&tech::load_ips(self, ctx)?, b, self.ndim()));
         }
-        not_implemented(&format!("lasttypen {}", load.kind), self.name)
+        not_implemented(&format!("load type {}", load.kind), self.name)
     }
 
     fn geometric_stiffness(&self, ctx: &ElemCtx, _u: &[f64], state: &[f64]) -> Result<Vec<f64>> {
@@ -530,7 +530,7 @@ impl ElementType for Solid {
     }
 }
 
-/// Alla element som använder motorn (för tester och verktyg).
+/// All elements that use the engine (for tests and tools).
 pub fn solids() -> Vec<&'static Solid> {
     use super::axisym::*;
     vec![
@@ -539,12 +539,12 @@ pub fn solids() -> Vec<&'static Solid> {
     ]
 }
 
-/// Integrationspunkternas lägen (Σ Nᵢ xᵢ) för elementtypen `name`, eller
-/// `None` om typen inte hör till motorn.
+/// The positions of the integration points (Σ Nᵢ xᵢ) for the element type `name`, or
+/// `None` if the type does not belong to the engine.
 pub fn ip_positions(name: &str, ctx: &ElemCtx) -> Option<Vec<[f64; 3]>> {
     let el = solids().into_iter().find(|s| s.name == name)?;
     if el.tech == Tech::Hourglass && el.mode == StressMode::Axisymmetric {
-        // CAX4R:s punkt redovisas i areans tyngdpunkt
+        // CAX4R's point is reported at the area centroid
         let ips = ips_for(el.shape, StressMode::PlaneStrain, &ctx.x, &RuleKind::Gauss(2).points(2), 1.0).ok()?;
         let a: f64 = ips.iter().map(|ip| ip.w).sum();
         let p = [0, 1, 2].map(|c| ips.iter().map(|ip| ip.w * ip.n.iter().zip(&ctx.x).map(|(ni, xi)| ni * xi[c]).sum::<f64>()).sum::<f64>() / a);

@@ -1,34 +1,34 @@
-//! *STATIC, STABILIZE: automatisk stabilisering av instabila kvasistatiska
-//! problem, med eller utan NLGEOM och med kontakt.
+//! *STATIC, STABILIZE: automatic stabilization of unstable quasi-static
+//! problems, with or without NLGEOM and with contact.
 //!
-//! Viskösa krafter F_v = c M* v läggs till jämvikten, P − I − F_v = 0, där M*
-//! är en diagonal (lumpad) massmatris med densiteten 1, v = Δu/Δt
-//! nodhastigheten i inkrementet (Δt = inkrementets tid) och c dämpfaktorn.
-//! Tangenten får c M*/Δt. De viskösa krafterna verkar i alla noder, även i
-//! föreskrivna frihetsgrader (de ingår då i RF), och skrivs som
-//! nodfältet VF = −c M* v. Den dissiperade energin ALLSD (history) integreras
-//! med trapetsregeln, ½ (F_v,början + F_v,slut)·Δu, där F_v vid inkrementets
-//! början räknas med den aktuella dämpfaktorn och förra inkrementets
-//! hastighet.
+//! Viscous forces F_v = c M* v are added to the equilibrium, P − I − F_v = 0, where M*
+//! is a diagonal (lumped) mass matrix with density 1, v = Δu/Δt
+//! the nodal velocity in the increment (Δt = the increment's time) and c the damping factor.
+//! The tangent gets c M*/Δt. The viscous forces act at all nodes, including in
+//! prescribed DOFs (they are then included in RF), and are written as
+//! the nodal field VF = −c M* v. The dissipated energy ALLSD (history) is integrated
+//! with the trapezoidal rule, ½ (F_v,start + F_v,end)·Δu, where F_v at the start of the
+//! increment is computed with the current damping factor and the previous increment's
+//! velocity.
 //!
-//! Dämpfaktorn:
-//! - `STABILIZE, FACTOR=c`: c gäller från första inkrementet.
-//! - `STABILIZE=f` (dissiperad energifraktion, standard 2e-4): efter första
-//!   inkrementet c = f T (Δu₁ᵀ ΔI₁)/(Δu₁ᵀ M* Δu₁) (T = stegtiden), där Δu₁ och
-//!   ΔI₁ är första inkrementets förskjutnings- och inre kraftökning över alla
-//!   frihetsgrader – för linjärt svar Rayleighkvoten Δu₁ᵀKΔu₁/Δu₁ᵀM*Δu₁.
-//!   Första inkrementet dämpas själv med samma kvot från
-//!   ett odämpat provinkrement; konvergerar det inte (stelkroppsrörelse) med
-//!   c₁ = f T · medel(Kᵢᵢ)/medel(M*ᵢᵢ) över de fria frihetsgraderna.
-//! - Adaptiv stabilisering (standard för `STABILIZE` utan värde, eller med
-//!   `ALLSDTOL=` > 0): dämpfaktorn minskas när ALLSD överstiger ALLSDTOL ·
-//!   den inre energin och ökas efter inkrement som halverats (en global
-//!   faktor, inte elementvisa faktorer).
-//!   `ALLSDTOL=0` ger konstant dämpfaktor.
-//! - `CONTINUE=YES`: dämpfaktorn från föregående steg med stabilisering.
+//! The damping factor:
+//! - `STABILIZE, FACTOR=c`: c applies from the first increment.
+//! - `STABILIZE=f` (dissipated energy fraction, default 2e-4): after the first
+//!   increment c = f T (Δu₁ᵀ ΔI₁)/(Δu₁ᵀ M* Δu₁) (T = the step time), where Δu₁ and
+//!   ΔI₁ are the first increment's displacement and internal force increase over all
+//!   DOFs – for linear response the Rayleigh quotient Δu₁ᵀKΔu₁/Δu₁ᵀM*Δu₁.
+//!   The first increment is itself damped with the same quotient from
+//!   an undamped trial increment; if that does not converge (rigid-body motion) with
+//!   c₁ = f T · mean(Kᵢᵢ)/mean(M*ᵢᵢ) over the free DOFs.
+//! - Adaptive stabilization (default for `STABILIZE` without a value, or with
+//!   `ALLSDTOL=` > 0): the damping factor is reduced when ALLSD exceeds ALLSDTOL ·
+//!   the internal energy and increased after increments that were halved (one global
+//!   factor, not element-wise factors).
+//!   `ALLSDTOL=0` gives a constant damping factor.
+//! - `CONTINUE=YES`: the damping factor from the preceding step with stabilization.
 //!
-//! Inkrementeringen och konvergenskontrollen är desamma som för NLGEOM
-//! (`nlgeom::iterate`), även utan NLGEOM.
+//! The incrementation and convergence check are the same as for NLGEOM
+//! (`nlgeom::iterate`), also without NLGEOM.
 
 use super::api::{StepCtx, StepType};
 use super::newton::{Controls, NonlinearSystem, Residual};
@@ -48,30 +48,30 @@ pub struct StaticStabilize;
 
 pub static STEP_TYPES: &[&dyn StepType] = &[&StaticStabilize];
 
-/// Standardvärde för den dissiperade energifraktionen.
+/// Default value for the dissipated energy fraction.
 pub const DEFAULT_FRACTION: f64 = 2e-4;
-/// Standardtolerans för adaptiv stabilisering.
+/// Default tolerance for adaptive stabilization.
 pub const DEFAULT_ALLSDTOL: f64 = 0.05;
 
-/// Stabiliseringens indata.
+/// Stabilization input.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Settings {
-    /// Dissiperad energifraktion (om FACTOR saknas).
+    /// Dissipated energy fraction (if FACTOR is missing).
     pub fraction: f64,
-    /// Direkt angiven dämpfaktor.
+    /// Directly given damping factor.
     pub factor: Option<f64>,
-    /// Tolerans för adaptiv stabilisering (0 = konstant dämpfaktor).
+    /// Tolerance for adaptive stabilization (0 = constant damping factor).
     pub allsdtol: f64,
-    /// Dämpfaktorn från föregående steg (CONTINUE=YES).
+    /// The damping factor from the preceding step (CONTINUE=YES).
     pub cont: bool,
 }
 
 impl Settings {
-    /// Läser STABILIZE, FACTOR, ALLSDTOL och CONTINUE på procedurnyckelordet.
+    /// Reads STABILIZE, FACTOR, ALLSDTOL and CONTINUE on the procedure keyword.
     pub fn parse(kw: &RawKeyword) -> Result<Option<Settings>> {
         if !kw.has("STABILIZE") {
             if kw.has("ALLSDTOL") || kw.has("FACTOR") {
-                return kw.err("ALLSDTOL= och FACTOR= kräver STABILIZE");
+                return kw.err("ALLSDTOL= and FACTOR= require STABILIZE");
             }
             return Ok(None);
         }
@@ -79,7 +79,7 @@ impl Settings {
             match kw.param(k).map(str::trim).filter(|s| !s.is_empty()) {
                 Some(v) => match parse_f64(v) {
                     Some(x) if x >= 0.0 => Ok(Some(x)),
-                    _ => kw.err(format!("ogiltigt {k}={v}")),
+                    _ => kw.err(format!("invalid {k}={v}")),
                 },
                 None => Ok(None),
             }
@@ -87,12 +87,12 @@ impl Settings {
         let given = num("STABILIZE")?;
         let factor = num("FACTOR")?;
         if factor.is_some_and(|f| f <= 0.0) {
-            return kw.err("FACTOR= ska vara positiv");
+            return kw.err("FACTOR= must be positive");
         }
         let fraction = given.filter(|&f| f > 0.0).unwrap_or(DEFAULT_FRACTION);
         let tol_given = kw.has("ALLSDTOL");
         let tol = num("ALLSDTOL")?;
-        // adaptiv som standard med standardfraktionen, annars bara med ALLSDTOL
+        // adaptive by default with the default fraction, otherwise only with ALLSDTOL
         let allsdtol = match tol {
             Some(t) => t,
             None if tol_given => DEFAULT_ALLSDTOL,
@@ -104,23 +104,23 @@ impl Settings {
     }
 }
 
-/// Senaste dämpfaktorn per modell (för CONTINUE=YES).
+/// The latest damping factor per model (for CONTINUE=YES).
 static LAST_FACTOR: Mutex<Vec<(usize, f64)>> = Mutex::new(Vec::new());
 
 fn model_key(p: &Prepared) -> usize {
     p.model as *const _ as usize
 }
 
-/// Det som stabiliseringen behöver av jämviktssystemet (med eller utan NLGEOM).
+/// What the stabilization needs from the equilibrium system (with or without NLGEOM).
 pub trait Base: NonlinearSystem {
     fn prep(&self) -> &Prepared<'_>;
     fn dm(&self) -> &DofMap;
     fn u(&self) -> &[NodeVec];
     fn u_committed(&self) -> &[NodeVec];
     fn fint_mut(&mut self) -> &mut Vec<NodeVec>;
-    /// Adderar `v` till tangentens diagonal för (nod, slot), villkoren inräknade.
+    /// Adds `v` to the tangent diagonal for (node, slot), constraints included.
     fn add_diag(&mut self, n: usize, s: usize, v: f64);
-    /// Inkrementets tid (t1 − t0)·period.
+    /// The increment's time (t1 − t0)·period.
     fn dt(&self) -> f64;
     fn make_frame(&self, value: f64, description: String) -> Result<FrameData>;
     fn store_state(&self, state: &mut SolutionState);
@@ -194,7 +194,7 @@ impl Base for NlSystem<'_, '_> {
     }
 }
 
-/// Diagonal massa M* med densiteten 1 per nod och slot (lumpad).
+/// Diagonal mass M* with density 1 per node and slot (lumped).
 pub fn unit_mass(p: &Prepared) -> Result<Vec<NodeVec>> {
     let m = p.model;
     let mut out = vec![[0.0; SLOTS]; m.nodes.len()];
@@ -209,7 +209,7 @@ pub fn unit_mass(p: &Prepared) -> Result<Vec<NodeVec>> {
         ctx.density = 1.0;
         let me = match el.etype.mass(&ctx, MassKind::Lumped) {
             Ok(me) => me,
-            // element utan massa (fjädrar, kopplingar): ingen dämpning
+            // elements without mass (springs, connectors): no damping
             Err(_) => continue,
         };
         let dl = &p.edofs[e];
@@ -225,21 +225,21 @@ pub fn unit_mass(p: &Prepared) -> Result<Vec<NodeVec>> {
     Ok(out)
 }
 
-/// Jämviktssystemet med viskösa krafter c M* Δu/Δt.
+/// The equilibrium system with viscous forces c M* Δu/Δt.
 pub struct Stabilized<S: Base> {
     pub base: S,
-    /// Dämpfaktorn som används nu.
+    /// The damping factor currently used.
     pub c: f64,
     pub mass: Vec<NodeVec>,
-    /// Viskösa krafter c M* v vid senaste utvärderingen (före kondensering).
+    /// Viscous forces c M* v at the latest evaluation (before condensation).
     fv: Vec<NodeVec>,
-    /// M* v från förra godkända inkrementet (för trapetsregeln).
+    /// M* v from the previous accepted increment (for the trapezoidal rule).
     mv_prev: Vec<NodeVec>,
-    /// Dissiperad energi och inre arbete (för adaptiv stabilisering).
+    /// Dissipated energy and internal work (for adaptive stabilization).
     pub allsd: f64,
     pub allie: f64,
     fint_prev: Vec<NodeVec>,
-    /// Energifraktion f·T för c efter första inkrementet (None = FACTOR).
+    /// Energy fraction f·T for c after the first increment (None = FACTOR).
     energy: Option<(f64, f64)>,
     pub incs: usize,
     adaptive: f64,
@@ -259,7 +259,7 @@ impl<S: Base> Stabilized<S> {
         }
     }
 
-    /// (Δuᵀ ΔI, Δuᵀ M* Δu) för inkrementet som just itererats.
+    /// (Δuᵀ ΔI, Δuᵀ M* Δu) for the increment just iterated.
     fn energy_quotient(&mut self) -> (f64, f64) {
         let fe = self.fint_elastic();
         let (u, uc) = (self.base.u(), self.base.u_committed());
@@ -277,7 +277,7 @@ impl<S: Base> Stabilized<S> {
         (num, den)
     }
 
-    /// Inre krafter utan de viskösa (senaste utvärderingen).
+    /// Internal forces without the viscous ones (latest evaluation).
     fn fint_elastic(&mut self) -> Vec<NodeVec> {
         let mut fv = self.fv.clone();
         self.base.dm().mpc.condense(&mut fv);
@@ -297,7 +297,7 @@ impl<S: Base> NonlinearSystem for Stabilized<S> {
         false
     }
     fn begin_increment(&mut self, t0: f64, t1: f64) -> Result<()> {
-        // adaptiv: ett nytt försök från samma tid = halvering → mer dämpning
+        // adaptive: a new attempt from the same time = halving → more damping
         if self.adaptive > 0.0 && self.last_t0 == Some(t0) && self.incs > 0 {
             self.c = (self.c * 2.0).min(self.c_initial * 1e4);
         }
@@ -347,7 +347,7 @@ impl<S: Base> NonlinearSystem for Stabilized<S> {
         let fe = self.fint_elastic();
         let (u, uc) = (self.base.u().to_vec(), self.base.u_committed().to_vec());
         let dm_active = self.base.dm().active.clone();
-        // ALLSD med trapetsregeln och inre arbete
+        // ALLSD with the trapezoidal rule, and internal work
         let mut dsd = 0.0;
         let mut dwi = 0.0;
         let mut num = 0.0;
@@ -381,7 +381,7 @@ impl<S: Base> NonlinearSystem for Stabilized<S> {
             }
         }
         if self.adaptive > 0.0 && self.allie > 0.0 && self.allsd > self.adaptive * self.allie {
-            // för mycket dissipation: minska dämpningen
+            // too much dissipation: reduce the damping
             let f = (self.adaptive * self.allie / self.allsd).clamp(0.1, 1.0);
             self.c *= f;
         }
@@ -392,7 +392,7 @@ impl<S: Base> NonlinearSystem for Stabilized<S> {
     }
 }
 
-/// c₁ = f T · medel(Kᵢᵢ)/medel(M*ᵢᵢ) över de fria frihetsgraderna i läget vid stegets början.
+/// c₁ = f T · mean(Kᵢᵢ)/mean(M*ᵢᵢ) over the free DOFs in the configuration at the start of the step.
 fn initial_factor<S: Base>(sys: &S, mass: &[NodeVec], ft: f64, nlgeom: bool, state: &SolutionState) -> Result<f64> {
     let p = sys.prep();
     let m = p.model;
@@ -432,7 +432,7 @@ fn initial_factor<S: Base>(sys: &S, mass: &[NodeVec], ft: f64, nlgeom: bool, sta
     Ok(ft * sk / sm)
 }
 
-/// Inkrementering som `nlgeom::drive` men för vilket system som helst.
+/// Incrementation like `nlgeom::drive` but for any system.
 fn drive<S: NonlinearSystem>(sys: &mut S, ctrl: &Controls, on_increment: &mut dyn FnMut(&mut S, f64, usize) -> Result<()>) -> Result<(usize, usize)> {
     let mut t = 0.0f64;
     let mut dt = ctrl.initial.min(1.0);
@@ -443,7 +443,7 @@ fn drive<S: NonlinearSystem>(sys: &mut S, ctrl: &Controls, on_increment: &mut dy
     let mut iters = 0;
     while t < 1.0 - 1e-12 {
         if incs >= ctrl.max_increments {
-            return fail(format!("steget nådde största antal inkrement ({}) vid stegtid {:.4} – öka INC= på *STEP", ctrl.max_increments, t * ctrl.period));
+            return fail(format!("the step reached the maximum number of increments ({}) at step time {:.4} – increase INC= on *STEP", ctrl.max_increments, t * ctrl.period));
         }
         if !ctrl.fixed && t + dt > 1.0 - 1e-12 {
             dt = 1.0 - t;
@@ -456,13 +456,13 @@ fn drive<S: NonlinearSystem>(sys: &mut S, ctrl: &Controls, on_increment: &mut dy
                 Some(o) => break o,
                 None => {
                     if ctrl.fixed {
-                        return fail(format!("inkrementet vid stegtid {:.4} konvergerade inte (DIRECT, fasta inkrement)", (t + dt) * ctrl.period));
+                        return fail(format!("the increment at step time {:.4} did not converge (DIRECT, fixed increments)", (t + dt) * ctrl.period));
                     }
                     cutbacks += 1;
                     dt *= ctrl.cutback;
                     if cutbacks > ctrl.max_cutbacks || dt < ctrl.min {
                         return fail(format!(
-                            "ingen konvergens vid stegtid {:.4}: inkrementet blev mindre än minimum ({:.3e}) eller för många halveringar",
+                            "no convergence at step time {:.4}: the increment became smaller than the minimum ({:.3e}) or too many cutbacks",
                             t * ctrl.period,
                             ctrl.min * ctrl.period
                         ));
@@ -492,7 +492,7 @@ fn drive<S: NonlinearSystem>(sys: &mut S, ctrl: &Controls, on_increment: &mut dy
     Ok((incs, iters))
 }
 
-/// Nodfältet VF = −c M* v.
+/// The nodal field VF = −c M* v.
 fn vf_field<S: Base>(sys: &Stabilized<S>) -> (String, Vec<String>, Vec<Vec<f64>>) {
     let p = sys.base.prep();
     let dim = p.model.dim().clamp(1, 3);
@@ -533,13 +533,13 @@ fn run_with<S: Base>(ctx: &mut StepCtx, base: S, settings: &Settings, ctrl: &Con
         last_t0: None,
         c_initial: c,
     };
-    // inre krafter vid stegets början (för ΔI och arbetet)
+    // internal forces at the start of the step (for ΔI and the work)
     sys.base.begin_increment(0.0, 0.0)?;
     sys.base.evaluate(false)?;
     sys.fint_prev = sys.base.fint_mut().clone();
-    // energifraktion: dämpfaktorn i första inkrementet ur ett odämpat
-    // provinkrement, c₁ = f T Δuᵀ ΔI/Δuᵀ M* Δu (dokumenterade c₁ om det inte
-    // konvergerar, t.ex. vid stelkroppsrörelse)
+    // energy fraction: the damping factor in the first increment from an undamped
+    // trial increment, c₁ = f T Δuᵀ ΔI/Δuᵀ M* Δu (the documented c₁ if it does not
+    // converge, e.g. for rigid-body motion)
     if let Some((ft, _)) = sys.energy {
         let c_doc = sys.c;
         sys.c = 0.0;
@@ -571,11 +571,11 @@ fn run_with<S: Base>(ctx: &mut StepCtx, base: S, settings: &Settings, ctrl: &Con
     }
     let mut hist: Vec<(f64, f64)> = vec![(0.0, 0.0)];
     if verbose && settings.factor.is_none() {
-        eprintln!("  stabilisering: dämpfaktor i första inkrementet {c:.5e}");
+        eprintln!("  stabilization: damping factor in the first increment {c:.5e}");
     }
     let (incs, iters) = drive(&mut sys, ctrl, &mut |s, t, inc| {
         if verbose {
-            eprintln!("  inkrement {inc}: stegtid {:.6}, dämpfaktor {:.5e}, ALLSD {:.5e}", t * period, s.c, s.allsd);
+            eprintln!("  increment {inc}: step time {:.6}, damping factor {:.5e}, ALLSD {:.5e}", t * period, s.c, s.allsd);
         }
         hist.push((t * period, s.allsd));
         if all || t >= 1.0 - 1e-12 {
@@ -586,7 +586,7 @@ fn run_with<S: Base>(ctx: &mut StepCtx, base: S, settings: &Settings, ctrl: &Con
         Ok(())
     })?;
     if verbose {
-        eprintln!("  stabilisering: dämpfaktor {:.5e}, ALLSD {:.5e}", sys.c, sys.allsd);
+        eprintln!("  stabilization: damping factor {:.5e}, ALLSD {:.5e}", sys.c, sys.allsd);
     }
     {
         let key = model_key(prep);
@@ -604,7 +604,7 @@ fn run_with<S: Base>(ctx: &mut StepCtx, base: S, settings: &Settings, ctrl: &Con
     Ok(())
 }
 
-/// Stegets *CONTROLS (från steget där de anges tills RESET) som i `static_linear.rs`.
+/// The step's *CONTROLS (from the step where they are given until RESET) as in `static_linear.rs`.
 fn controls(ctx: &StepCtx) -> Result<Controls> {
     let mut ctrl = Controls::from_procedure(ctx.step.procedure.as_ref(), ctx.step.max_increments)?;
     for s in ctx.prep.model.steps.iter().take(ctx.index + 1) {
@@ -624,9 +624,9 @@ impl StepType for StaticStabilize {
     }
 
     fn run(&self, ctx: &mut StepCtx) -> Result<()> {
-        let kw = ctx.step.procedure.as_ref().ok_or_else(|| FemError("*STATIC saknas".into()))?;
+        let kw = ctx.step.procedure.as_ref().ok_or_else(|| FemError("*STATIC is missing".into()))?;
         let Some(settings) = Settings::parse(kw)? else {
-            return fail("STABILIZE saknas");
+            return fail("STABILIZE is missing");
         };
         let ctrl = controls(ctx)?;
         if ctx.nlgeom {

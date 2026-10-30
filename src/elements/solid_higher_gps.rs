@@ -1,26 +1,26 @@
-//! Generaliserad plan töjning: CPEG3, CPEG4, CPEG4R, CPEG4I, CPEG6, CPEG8, CPEG8R.
+//! Generalized plane strain: CPEG3, CPEG4, CPEG4R, CPEG4I, CPEG6, CPEG8, CPEG8R.
 //!
-//! Modellen ligger mellan två begränsningsplan (avstånd t = tvärsnittets
-//! tjocklek) som kan röra sig som stela kroppar relativt varandra:
-//! förlängningen Δl och rotationerna Δφx, Δφy är frihetsgraderna 3, 4 och 5
-//! i en gemensam referensnod (*SOLID SECTION, REF NODE=n). Referensnodens läge
-//! (x₀, y₀) är punkten som planen roterar kring.
+//! The model lies between two bounding planes (distance t = the section
+//! thickness) that can move as rigid bodies relative to each other:
+//! the elongation Δl and the rotations Δφx, Δφy are degrees of freedom 3, 4 and 5
+//! of a common reference node (*SOLID SECTION, REF NODE=n). The position of the reference node
+//! (x₀, y₀) is the point about which the planes rotate.
 //!
-//! Töjningen ut ur planet är ε33 = (Δl + Δφx (y − y₀) − Δφy (x − x₀)) / t i
-//! varje integrationspunkt. CPEG4 (B-bar) använder volymmedelvärdet, dvs.
-//! värdet i areatyngdpunkten, så att ε33 är konstant i elementet
-//! (ett ensamt CPEG4 ger singulära rotationsfrihetsgrader och samma E33 i alla
-//! punkter, och reaktionsmomenten blir RM1 = F (ȳ − y₀), RM2 = −F (x̄ − x₀)).
-//! I planet är elementen som motsvarande CPE-element i `solid_higher.rs`
-//! (B-bar av ε11+ε22 för CPEG4, hourglass-styvhet för CPEG4R). CPEG4I har,
-//! till skillnad från CPE4I, även volymmoden ξη i ε11+ε22 (som CAX4I).
-//! Referensnodens massa är planets stela rörelse ut ur
-//! planet (se `mass`).
+//! The out-of-plane strain is ε33 = (Δl + Δφx (y − y₀) − Δφy (x − x₀)) / t at
+//! each integration point. CPEG4 (B-bar) uses the volume average, i.e.
+//! the value at the area centroid, so that ε33 is constant in the element
+//! (a single CPEG4 gives singular rotational degrees of freedom and the same E33 at all
+//! points, and the reaction moments become RM1 = F (ȳ − y₀), RM2 = −F (x̄ − x₀)).
+//! In the plane the elements are like the corresponding CPE elements in `solid_higher.rs`
+//! (B-bar of ε11+ε22 for CPEG4, hourglass stiffness for CPEG4R). CPEG4I has,
+//! unlike CPE4I, also the volumetric mode ξη in ε11+ε22 (like CAX4I).
+//! The mass of the reference node is the rigid out-of-plane motion of the
+//! plane (see `mass`).
 //!
-//! Formuleringen är linjär (se även tests/cases/solids/cpeg6_skiva.inp).
+//! The formulation is linear (see also tests/cases/solids/cpeg6_skiva.inp).
 //!
-//! Elementraden i .inp har bara elementets egna noder; referensnoden läggs
-//! sist i nodlistan av `FeModel::finalize` (via `section_nodes`).
+//! The element line in the .inp has only the element's own nodes; the reference node is appended
+//! last in the node list by `FeModel::finalize` (via `section_nodes`).
 
 #[path = "solid_higher_gps_nlgeom.rs"]
 mod nlgeom;
@@ -34,8 +34,8 @@ use crate::fem::model::{DistLoad, SectionDef};
 use crate::materials::StressMode;
 use crate::model::{fail, Result};
 
-/// Element för generaliserad plan töjning: ett plant töjningselement i
-/// motorn plus referensnodens tre frihetsgrader.
+/// Element for generalized plane strain: a plane strain element in
+/// the engine plus the three degrees of freedom of the reference node.
 pub struct Gps {
     pub base: Solid,
 }
@@ -57,21 +57,21 @@ pub static TYPES: &[&dyn ElementType] = &[&CPEG3, &CPEG4, &CPEG4I, &CPEG4R, &CPE
 const REF_DOFS: &[Dof] = &[U3, UR1, UR2];
 
 impl Gps {
-    /// Antal noder i planet (utan referensnoden).
+    /// Number of in-plane nodes (without the reference node).
     fn nn(&self) -> usize {
         self.base.shape.n_nodes()
     }
 
-    /// Antal frihetsgrader i planet.
+    /// Number of in-plane degrees of freedom.
     fn nin(&self) -> usize {
         2 * self.nn()
     }
 
-    /// Kontext med bara elementets egna noder (för motorns funktioner).
+    /// Context with only the element's own nodes (for the engine functions).
     fn sub<'a>(&self, ctx: &ElemCtx<'a>) -> Result<ElemCtx<'a>> {
         if ctx.x.len() != self.nn() + 1 {
             return fail(format!(
-                "element {} ({}) saknar referensnod (*SOLID SECTION, REF NODE=)",
+                "element {} ({}) has no reference node (*SOLID SECTION, REF NODE=)",
                 ctx.label, self.base.name
             ));
         }
@@ -80,9 +80,9 @@ impl Gps {
         Ok(c)
     }
 
-    /// ∂ε33/∂(Δl, Δφx, Δφy) i punkterna `ips`: [1, y − y₀, −(x − x₀)] / t med
-    /// punktens läge. Med B-bar (CPEG4) ersätts raden med sitt volymmedelvärde,
-    /// dvs. värdet i areatyngdpunkten (ε33 blir konstant i elementet).
+    /// ∂ε33/∂(Δl, Δφx, Δφy) at the points `ips`: [1, y − y₀, −(x − x₀)] / t with
+    /// the point position. With B-bar (CPEG4) the row is replaced by its volume average,
+    /// i.e. the value at the area centroid (ε33 becomes constant in the element).
     fn eps33_rows(&self, ctx: &ElemCtx, sub: &ElemCtx, ips: &[Ip]) -> Result<Vec<[f64; 3]>> {
         let t = self.base.thickness(sub)?;
         let x0 = ctx.x[self.nn()];
@@ -99,7 +99,7 @@ impl Gps {
         Ok(rows)
     }
 
-    /// B-matriser med referensnodens kolumner (inte inkompatibla moder).
+    /// B matrices with the reference node columns (not incompatible modes).
     fn bmats(&self, ctx: &ElemCtx, sub: &ElemCtx) -> Result<(Vec<Ip>, Vec<Vec<f64>>)> {
         let (ips, mut bs) = match self.base.tech {
             Tech::Hourglass => tech::uniform_strain(&self.base, sub)?,
@@ -114,8 +114,8 @@ impl Gps {
         Ok((ips, bs))
     }
 
-    /// Lägger en matris för frihetsgraderna i planet i elementets matris
-    /// (referensnodens frihetsgrader sist).
+    /// Places a matrix for the in-plane degrees of freedom into the element matrix
+    /// (reference node degrees of freedom last).
     fn embed(&self, k: &[f64]) -> Vec<f64> {
         let m = self.nin();
         let n = m + 3;
@@ -152,9 +152,9 @@ impl ElementType for Gps {
         match section.raw.param("REF NODE") {
             Some(v) => match v.trim().parse::<i64>() {
                 Ok(l) => Ok(vec![l]),
-                Err(_) => fail(format!("REF NODE={v}: ange referensnoden med nodnummer (nodset stöds inte ännu)")),
+                Err(_) => fail(format!("REF NODE={v}: give the reference node by node number (node sets are not supported yet)")),
             },
-            None => fail(format!("{} kräver REF NODE= (referensnod för generaliserad plan töjning)", self.base.name)),
+            None => fail(format!("{} requires REF NODE= (reference node for generalized plane strain)", self.base.name)),
         }
     }
     fn node_dofs(&self, k: usize) -> &'static [Dof] {
@@ -194,7 +194,7 @@ impl ElementType for Gps {
         let sub = self.sub(ctx)?;
         let mat = ctx.material(self.base.name)?;
         if ctx.nlgeom {
-            // område accuracy2: NLGEOM i solid_higher_gps_nlgeom.rs
+            // area accuracy2: NLGEOM in solid_higher_gps_nlgeom.rs
             return nlgeom::response(self, ctx, &sub, mat, u, du, so, sn, tangent);
         }
         if self.base.tech == Tech::Incompatible {
@@ -214,10 +214,10 @@ impl ElementType for Gps {
         Ok(r)
     }
 
-    /// Massa: elementets massa i planet plus referensnodens block
-    /// ∫ρ g gᵀ dV med g = [1, y − y₀, −(x − x₀)] (begränsningsplanets stela
-    /// rörelse ut ur planet), samma för konsistent och diagonal massa och utan
-    /// koppling till frihetsgraderna i planet.
+    /// Mass: the element's in-plane mass plus the reference node block
+    /// ∫ρ g gᵀ dV with g = [1, y − y₀, −(x − x₀)] (the rigid out-of-plane motion
+    /// of the bounding plane), the same for consistent and diagonal mass and without
+    /// coupling to the in-plane degrees of freedom.
     fn mass(&self, ctx: &ElemCtx, kind: MassKind) -> Result<Vec<f64>> {
         let sub = self.sub(ctx)?;
         let mut m = self.embed(&self.base.mass(&sub, kind)?);
@@ -271,7 +271,7 @@ impl ElementType for Gps {
     }
 }
 
-/// Alla element för generaliserad plan töjning (för tester).
+/// All generalized plane strain elements (for tests).
 pub fn all() -> Vec<&'static Gps> {
     vec![&CPEG3, &CPEG4, &CPEG4R, &CPEG4I, &CPEG6, &CPEG8, &CPEG8R]
 }

@@ -1,9 +1,9 @@
 # -*- coding: utf-8 -*-
-# Skriver THIRD_PARTY_LICENSES.md: alla Rust-crates och npm-paket som följer
-# med appen (normala beroenden, inte bygg- eller utvecklingsberoenden), med
-# licens och licenstexterna från paketen själva.
+# Writes THIRD_PARTY_LICENSES.md: all Rust crates and npm packages shipped
+# with the app (normal dependencies, not build or dev dependencies), with
+# their license and the license texts from the packages themselves.
 #
-# Körs från repots rot efter `npm ci` i web/:
+# Run from the repository root after `npm ci` in web/:
 #   python scripts/third_party_licenses.py
 import json
 import os
@@ -45,7 +45,7 @@ def rust_packages():
     for p in meta["packages"]:
         if (p["name"], p["version"]) not in wanted or p["name"] in OWN:
             continue
-        lic = p.get("license") or ("se " + p["license_file"] if p.get("license_file") else "okänd")
+        lic = p.get("license") or ("see " + p["license_file"] if p.get("license_file") else "unknown")
         out.append((p["name"], p["version"], lic, p.get("repository") or "",
                     license_texts(os.path.dirname(p["manifest_path"]))))
     return sorted(out)
@@ -62,7 +62,7 @@ def npm_packages():
         while not os.path.isdir(os.path.join(d, "node_modules", name)):
             parent = os.path.dirname(d)
             if parent == d:
-                sys.exit(f"{name} saknas i node_modules – kör `npm ci` i web/ först")
+                sys.exit(f"{name} is missing from node_modules – run `npm ci` in web/ first")
             d = parent
         pkg_dir = os.path.join(d, "node_modules", name)
         with open(os.path.join(pkg_dir, "package.json"), encoding="utf-8") as f:
@@ -72,7 +72,7 @@ def npm_packages():
             return
         repo = j.get("repository")
         repo = repo.get("url", "") if isinstance(repo, dict) else (repo or "")
-        seen[key] = (j["name"], j["version"], j.get("license", "okänd"), repo, license_texts(pkg_dir))
+        seen[key] = (j["name"], j["version"], j.get("license", "unknown"), repo, license_texts(pkg_dir))
         for dep in j.get("dependencies", {}):
             walk(dep, pkg_dir)
 
@@ -86,7 +86,7 @@ def section(title, packages):
     for name, version, lic, repo, texts in packages:
         lines.append(f"### {name} {version}")
         lines.append("")
-        lines.append(f"Licens: {lic}" + (f"  \nKällkod: {repo}" if repo else ""))
+        lines.append(f"License: {lic}" + (f"  \nSource code: {repo}" if repo else ""))
         lines.append("")
         for fname, text in texts:
             lines += [f"<details><summary>{fname}</summary>", "", "```text", text, "```", "", "</details>", ""]
@@ -97,23 +97,23 @@ def main():
     rust = rust_packages()
     npm = npm_packages()
     lines = [
-        "# Tredjepartslicenser",
+        "# Third-party licenses",
         "",
-        "RustyFEM-appen innehåller programvara från tredje part enligt nedan.",
-        "Filen genereras med `python scripts/third_party_licenses.py`; ändra den inte för hand.",
+        "The RustyFEM app contains third-party software as listed below.",
+        "This file is generated with `python scripts/third_party_licenses.py`; do not edit it by hand.",
         "",
-        "Crates under MPL-2.0 (cssparser, selectors m.fl.) används oförändrade; deras",
-        "källkod finns på crates.io och i respektive arkiv.",
+        "Crates under MPL-2.0 (cssparser, selectors and others) are used unmodified; their",
+        "source code is available on crates.io and in the respective repositories.",
         "",
     ]
     lines += section(f"Rust ({len(rust)} crates)", rust)
-    lines += section(f"JavaScript ({len(npm)} paket)", npm)
+    lines += section(f"JavaScript ({len(npm)} packages)", npm)
     with open(OUT, "w", encoding="utf-8", newline="\n") as f:
         f.write("\n".join(lines) + "\n")
     missing = [f"{n} {v}" for n, v, _, _, t in rust + npm if not t]
-    print(f"skrev {OUT}: {len(rust)} crates, {len(npm)} npm-paket")
+    print(f"wrote {OUT}: {len(rust)} crates, {len(npm)} npm packages")
     if missing:
-        print(f"{len(missing)} paket utan licensfil i paketet (bara licensnamnet anges):")
+        print(f"{len(missing)} packages without a license file in the package (only the license name is given):")
         print("  " + ", ".join(missing))
 
 

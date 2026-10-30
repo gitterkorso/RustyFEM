@@ -1,21 +1,21 @@
-//! Nodnormaler (område normals): medelvärdesbildade skalnormaler
-//! och balknormaler (n2) samt `*NORMAL`.
+//! Nodal normals (area normals): averaged shell normals
+//! and beam normals (n2) and `*NORMAL`.
 //!
-//! En normal räknas per element och nod ur elementets egen geometri
-//! (skal: ytans normal i noden, balkar: n2 = t × n1 i noden). Där flera element
-//! möts används medelvärdet av deras normaler om alla parvis skiljer mindre än
-//! 20°; annars behåller varje element sin egen normal (veck). Exempel
-//! med S4R5: en knäck på 18° och 15° ger en gemensam normal
-//! (fem frihetsgrader i noden), 22° och en solfjäder med 12° mellan
-//! grannarna (24° mellan de yttre) ger elementens egna normaler (sex
-//! frihetsgrader). En normal från `*NORMAL` (element, nod) gäller bara det
-//! elementet i den noden och går före medelvärdet.
+//! A normal is computed per element and node from the element's own geometry
+//! (shells: the surface normal at the node, beams: n2 = t × n1 at the node). Where several elements
+//! meet, the mean of their normals is used if all differ pairwise by less than
+//! 20°; otherwise each element keeps its own normal (crease). Example
+//! with S4R5: a kink of 18° and 15° gives a common normal
+//! (five degrees of freedom at the node), 22° and a fan with 12° between
+//! neighbors (24° between the outer ones) gives the elements' own normals (six
+//! degrees of freedom). A normal from `*NORMAL` (element, node) applies only to that
+//! element at that node and takes precedence over the mean.
 //!
-//! Normalerna räknas när filen är läst (`apply`, anropas från `inp::dispatch`)
-//! och lagras i ett register per modell; tvärsnitten för berörda element får
-//! parametern `_NORMALS` med registrets nummer, så att modellen kan klonas.
-//! Element som inte får en annan normal än sin egen lagras inte, så deras
-//! matriser är oförändrade. Elementen hämtar normalerna med `of(ctx)`.
+//! The normals are computed when the file has been read (`apply`, called from `inp::dispatch`)
+//! and stored in a registry per model; the sections of the affected elements get
+//! the parameter `_NORMALS` with the registry number, so that the model can be cloned.
+//! Elements that get no normal other than their own are not stored, so their
+//! matrices are unchanged. The elements fetch the normals with `of(ctx)`.
 
 use super::api::{ElemCtx, ElementType};
 use super::common::{cross, dot, norm, scale, sub};
@@ -26,10 +26,10 @@ use std::sync::{Arc, Mutex, OnceLock};
 
 pub static TYPES: &[&dyn ElementType] = &[];
 
-/// Parametern på tvärsnittet som pekar ut registrets tabell.
+/// The parameter on the section that points to the registry table.
 pub const PARAM: &str = "_NORMALS";
 
-/// Gränsvinkeln för medelvärdesbildning (standard 20°).
+/// The limit angle for averaging (default 20°).
 pub const AVERAGE_ANGLE_DEG: f64 = 20.0;
 
 type Table = HashMap<usize, Vec<[f64; 3]>>;
@@ -39,30 +39,30 @@ fn registry() -> &'static Mutex<Vec<Arc<Table>>> {
     R.get_or_init(|| Mutex::new(Vec::new()))
 }
 
-/// Grupp av element vars normaler medelvärdesbildas med varandra.
+/// Group of elements whose normals are averaged with each other.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Group {
-    /// Skal vars formulering använder nodnormaler.
+    /// Shells whose formulation uses nodal normals.
     Shell,
-    /// Balkar i rummet (normalen = n2).
+    /// Beams in space (the normal = n2).
     Beam,
 }
 
-/// Elementtyper som använder nodnormaler: S8R (med
-/// medelvärdesbildade normaler), samt
-/// (område beams3) B23/B33 som blir krökta (`beam_eb_curved.rs`) och B31 som
-/// blir vridna (`beam_twist.rs`).
-/// För S9R5/S8R5 och S4R5 påverkar nodnormalerna även membranets
-/// timglasstyvhet och tvärskjuvningen, och balkarnas B31/B32 ger med
-/// medelvärdesbildade n2 en vridning av tvärsnittet längs elementet och B23/B33
-/// en krökt balk; de behåller tills vidare sina egna normaler (`own` kan redan
-/// räkna dem).
+/// Element types that use nodal normals: S8R (with
+/// averaged normals), and
+/// (area beams3) B23/B33 that become curved (`beam_eb_curved.rs`) and B31 that
+/// become twisted (`beam_twist.rs`).
+/// For S9R5/S8R5 and S4R5 the nodal normals also affect the membrane
+/// hourglass stiffness and the transverse shear, and for the beams B31/B32 an
+/// averaged n2 gives a twist of the section along the element and for B23/B33
+/// a curved beam; for now they keep their own normals (`own` can already
+/// compute them).
 pub fn group(name: &str) -> Option<Group> {
     match name {
         "S8R" => Some(Group::Shell),
-        // område beams3: kubiska balkar blir krökta (elements/beam_eb_curved.rs)
+        // area beams3: cubic beams become curved (elements/beam_eb_curved.rs)
         "B23" | "B33" => Some(Group::Beam),
-        // område beams3: vridna B31 (elements/beam_twist.rs)
+        // area beams3: twisted B31 (elements/beam_twist.rs)
         "B31" => Some(Group::Beam),
         _ => None,
     }
@@ -72,20 +72,20 @@ fn unit(v: [f64; 3]) -> [f64; 3] {
     scale(v, 1.0 / norm(v))
 }
 
-/// Normalerna för ett element ur registret (`None` = elementets egna).
+/// The normals of an element from the registry (`None` = the element's own).
 pub fn of(ctx: &ElemCtx) -> Option<Vec<[f64; 3]>> {
     let id: usize = ctx.section?.raw.param(PARAM)?.parse().ok()?;
     let t = registry().lock().ok()?.get(id)?.clone();
     t.get(&ctx.index).cloned()
 }
 
-/// Skalets normaler i noderna 0..n ur 8-noders serendipitygeometri (S8R).
+/// The shell normals at nodes 0..n from 8-node serendipity geometry (S8R).
 fn shell8(x: &[[f64; 3]]) -> Vec<[f64; 3]> {
     super::shell2::s8r::nodal_normals(x).to_vec()
 }
 
-/// Normalerna i hörn- och mittnoder för 9-nodersgeometri (S9R5, S8R5 med
-/// mittpunkten ur serendipityytan).
+/// The normals at corner and midside nodes for 9-node geometry (S9R5, S8R5 with
+/// the center point from the serendipity surface).
 fn shell9(x: &[[f64; 3]], internal: bool) -> Vec<[f64; 3]> {
     let mut x: Vec<[f64; 3]> = x.to_vec();
     if internal {
@@ -104,13 +104,13 @@ fn shell9(x: &[[f64; 3]], internal: bool) -> Vec<[f64; 3]> {
         .collect()
 }
 
-/// Sexnodig triangel (STRI65): normalen ur den kvadratiska geometrin i noderna.
+/// Six-node triangle (STRI65): the normal from the quadratic geometry at the nodes.
 fn shell6(x: &[[f64; 3]]) -> Vec<[f64; 3]> {
     let nat = [[0.0, 0.0], [1.0, 0.0], [0.0, 1.0], [0.5, 0.0], [0.5, 0.5], [0.0, 0.5]];
     nat.iter()
         .map(|&[r, s]| {
             let l = 1.0 - r - s;
-            // dN/dr, dN/ds för noderna 1..6 (hörn 1 = (0,0), 2 = (1,0), 3 = (0,1))
+            // dN/dr, dN/ds for nodes 1..6 (corner 1 = (0,0), 2 = (1,0), 3 = (0,1))
             let dr = [-(4.0 * l - 1.0), 4.0 * r - 1.0, 0.0, 4.0 * (l - r), 4.0 * s, -4.0 * s];
             let ds = [-(4.0 * l - 1.0), 0.0, 4.0 * s - 1.0, -4.0 * r, 4.0 * r, 4.0 * (l - s)];
             let a = [0, 1, 2].map(|c| (0..6).map(|i| dr[i] * x[i][c]).sum::<f64>());
@@ -120,7 +120,7 @@ fn shell6(x: &[[f64; 3]]) -> Vec<[f64; 3]> {
         .collect()
 }
 
-/// Balkens tangent i noderna (2 eller 3 noder längs balken).
+/// The beam tangent at the nodes (2 or 3 nodes along the beam).
 pub fn beam_tangents(x: &[[f64; 3]]) -> Vec<[f64; 3]> {
     let nn = x.len();
     let xis: &[f64] = if nn == 2 { &[-1.0, 1.0] } else { &[-1.0, 0.0, 1.0] };
@@ -132,7 +132,7 @@ pub fn beam_tangents(x: &[[f64; 3]]) -> Vec<[f64; 3]> {
         .collect()
 }
 
-/// Elementets egna normaler i dess (yttre) noder.
+/// The element's own normals at its (outer) nodes.
 fn own(m: &FeModel, e: usize) -> Option<(Group, Vec<[f64; 3]>)> {
     let el = &m.elements[e];
     let name = el.etype.name();
@@ -159,7 +159,7 @@ fn own(m: &FeModel, e: usize) -> Option<(Group, Vec<[f64; 3]>)> {
     Some((g, v))
 }
 
-/// Normaler från `*NORMAL` (sparade av `inp/keywords/normals.rs`): (element, nod) → riktning.
+/// Normals from `*NORMAL` (stored by `inp/keywords/normals.rs`): (element, node) → direction.
 fn explicit(m: &FeModel) -> Result<HashMap<(usize, usize), [f64; 3]>> {
     let mut out = HashMap::new();
     for kw in m.extra.iter().filter(|k| k.name == "NORMAL") {
@@ -171,15 +171,15 @@ fn explicit(m: &FeModel) -> Result<HashMap<(usize, usize), [f64; 3]>> {
                 None => f[0].clone(),
             };
             let Some(inst) = m.instance_index(&inst_name) else {
-                return kw.err_at(d.line, format!("instansen '{inst_name}' finns inte"));
+                return kw.err_at(d.line, format!("the instance '{inst_name}' does not exist"));
             };
-            let el: i64 = f[1].parse().map_err(|_| FemError("*NORMAL: ogiltigt elementnummer".into()))?;
-            let nd: i64 = f[2].parse().map_err(|_| FemError("*NORMAL: ogiltigt nodnummer".into()))?;
+            let el: i64 = f[1].parse().map_err(|_| FemError("*NORMAL: invalid element number".into()))?;
+            let nd: i64 = f[2].parse().map_err(|_| FemError("*NORMAL: invalid node number".into()))?;
             let (Some(e), Some(n)) = (m.element(inst, el), m.node(inst, nd)) else {
-                return kw.err_at(d.line, format!("*NORMAL: elementet {el} eller noden {nd} finns inte"));
+                return kw.err_at(d.line, format!("*NORMAL: the element {el} or the node {nd} does not exist"));
             };
             if !m.elements[e].nodes.contains(&n) {
-                return kw.err_at(d.line, format!("*NORMAL: noden {nd} hör inte till element {el}"));
+                return kw.err_at(d.line, format!("*NORMAL: the node {nd} does not belong to element {el}"));
             }
             let v: Vec<f64> = f[3..].iter().map(|s| s.parse().unwrap_or(0.0)).collect();
             let mut nv = [v.first().copied().unwrap_or(0.0), v.get(1).copied().unwrap_or(0.0), v.get(2).copied().unwrap_or(0.0)];
@@ -187,7 +187,7 @@ fn explicit(m: &FeModel) -> Result<HashMap<(usize, usize), [f64; 3]>> {
                 nv = p.direction(nv);
             }
             if !(norm(nv) > 0.0) {
-                return kw.err_at(d.line, "*NORMAL: normalen har längden 0");
+                return kw.err_at(d.line, "*NORMAL: the normal has zero length");
             }
             out.insert((e, n), unit(nv));
         }
@@ -195,13 +195,13 @@ fn explicit(m: &FeModel) -> Result<HashMap<(usize, usize), [f64; 3]>> {
     Ok(out)
 }
 
-/// Medelvärdesbildade normaler per element och nod: element → normaler i
-/// elementets yttre noder, bara för element där någon normal skiljer från
-/// elementets egen.
+/// Averaged normals per element and node: element → normals at
+/// the element's outer nodes, only for elements where some normal differs from
+/// the element's own.
 pub fn compute(m: &FeModel) -> Result<Table> {
     let exp = explicit(m)?;
     let mut owns: HashMap<usize, (Group, Vec<[f64; 3]>)> = HashMap::new();
-    let mut at_node: HashMap<usize, Vec<(usize, usize)>> = HashMap::new(); // nod → (element, lokal nod)
+    let mut at_node: HashMap<usize, Vec<(usize, usize)>> = HashMap::new(); // node → (element, local node)
     for e in 0..m.elements.len() {
         if let Some(o) = own(m, e) {
             for (k, &n) in m.elements[e].nodes.iter().take(o.1.len()).enumerate() {
@@ -219,8 +219,8 @@ pub fn compute(m: &FeModel) -> Result<Table> {
             let result = if let Some(x) = exp.get(&(e, n)) {
                 *x
             } else {
-                // gruppen: element (samma grupp, utan egen *NORMAL i noden) inom
-                // 20° (element med *NORMAL räknas inte med, se
+                // the group: elements (same group, without their own *NORMAL at the node) within
+                // 20° (elements with *NORMAL are not counted, see
                 // tests/cases/normals/s8r_vikt_10_normal)
                 let peers: Vec<(usize, [f64; 3])> = list
                     .iter()
@@ -231,7 +231,7 @@ pub fn compute(m: &FeModel) -> Result<Table> {
                 let mut grp = within(mine);
                 grp.sort_unstable();
                 grp.dedup();
-                // medelvärde bara om gruppen är sluten (alla parvis inom 20°)
+                // mean only if the group is closed (all pairwise within 20°)
                 let closed = peers.iter().filter(|(f, _)| grp.contains(f)).all(|(_, b)| {
                     let mut g2 = within(*b);
                     g2.sort_unstable();
@@ -258,11 +258,11 @@ pub fn compute(m: &FeModel) -> Result<Table> {
     Ok(fin)
 }
 
-/// Räknar normalerna och märker tvärsnitten (anropas när filen är läst).
+/// Computes the normals and marks the sections (called when the file has been read).
 pub fn apply(m: &mut FeModel) -> Result<()> {
     if !m.elements.iter().any(|e| group(e.etype.name()).is_some()) {
         if m.extra.iter().any(|k| k.name == "NORMAL") {
-            m.warnings.push("*NORMAL ignoreras: modellen har inga element som använder nodnormaler".into());
+            m.warnings.push("*NORMAL ignored: the model has no elements that use nodal normals".into());
         }
         return Ok(());
     }
@@ -278,7 +278,7 @@ pub fn apply(m: &mut FeModel) -> Result<()> {
         })
         .count();
     if ignored > 0 {
-        m.warnings.push(format!("*NORMAL: {ignored} normaler gäller element som inte använder nodnormaler (bara S8R) och ignoreras"));
+        m.warnings.push(format!("*NORMAL: {ignored} normals apply to elements that do not use nodal normals (only S8R) and are ignored"));
     }
     let t = compute(m)?;
     if t.is_empty() {
@@ -291,7 +291,7 @@ pub fn apply(m: &mut FeModel) -> Result<()> {
         s
     };
     let id = {
-        let mut r = registry().lock().map_err(|_| FemError("normalregistret är låst".into()))?;
+        let mut r = registry().lock().map_err(|_| FemError("the normal registry is locked".into()))?;
         r.push(Arc::new(t));
         r.len() - 1
     };

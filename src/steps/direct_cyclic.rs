@@ -1,28 +1,28 @@
-//! *DIRECT CYCLIC: det stabiliserade cykliska svaret direkt, utan att
-//! stega igenom många cykler.
+//! *DIRECT CYCLIC: the stabilized cyclic response directly, without
+//! stepping through many cycles.
 //!
-//! Förskjutningen över en cykel med perioden T skrivs som en Fourierserie
-//! u(t) = u₀ + Σₖ (uₖˢ sin kωt + uₖᶜ cos kωt), ω = 2π/T. Varje iteration går
-//! igenom cykeln i N lika inkrement: i tiden tᵢ räknas u(tᵢ) ur serien,
-//! materialet uppdateras från tillståndet i tᵢ₋₁ (tillståndet förs vidare från
-//! en iteration till nästa, så att cykeln blir periodisk) och residualen
-//! R(tᵢ) = P(tᵢ) − I(tᵢ) bildas. Residualens Fourierkoefficienter
+//! The displacement over a cycle with period T is written as a Fourier series
+//! u(t) = u₀ + Σₖ (uₖˢ sin kωt + uₖᶜ cos kωt), ω = 2π/T. Each iteration goes
+//! through the cycle in N equal increments: at time tᵢ, u(tᵢ) is computed from the series,
+//! the material is updated from the state at tᵢ₋₁ (the state is carried over from
+//! one iteration to the next, so that the cycle becomes periodic) and the residual
+//! R(tᵢ) = P(tᵢ) − I(tᵢ) is formed. The residual's Fourier coefficients
 //! R₀ = (1/N) Σ R(tᵢ), Rₖᶜ = (2/N) Σ R(tᵢ) cos kωtᵢ, Rₖˢ = (2/N) Σ R(tᵢ) sin kωtᵢ
-//! ger korrektionerna cₖ = K₀⁻¹ Rₖ med den elastiska styvheten K₀ (faktoriseras
-//! en gång) som läggs till koefficienterna.
+//! give the corrections cₖ = K₀⁻¹ Rₖ with the elastic stiffness K₀ (factorized
+//! once), which are added to the coefficients.
 //!
-//! Dataraden: inkrement Δt, cykeltid T, minsta och största
-//! inkrement (fast inkrementering används), antal Fourierterms i början
-//! (11), högsta antal (25), ökning (5), högsta antal iterationer (200).
-//! Antalet termer begränsas så att 2n + 1 ≤ N. Konvergens när
-//! största residualkoefficient ≤ 0,005 · tidsmedelkraften och största
-//! korrektion ≤ 0,005 · största förskjutningskoefficient i två iterationer i
-//! följd; annars ökas antalet termer med ökningen var tionde iteration när
-//! det är möjligt.
+//! The data line: increment Δt, cycle time T, minimum and maximum
+//! increment (fixed incrementation is used), initial number of Fourier terms
+//! (11), maximum number (25), increase (5), maximum number of iterations (200).
+//! The number of terms is limited so that 2n + 1 ≤ N. Convergence when
+//! the largest residual coefficient ≤ 0.005 · the time-average force and the largest
+//! correction ≤ 0.005 · the largest displacement coefficient in two consecutive
+//! iterations; otherwise the number of terms is increased by the increase every tenth iteration when
+//! possible.
 //!
-//! Utdata: den sista iterationens cykel, frame 0 i cykelns början och en
-//! frame per inkrement (U, RF, S, PEEQ, ...).
-//! Lågcykelutmattning (FATIGUE) och NLGEOM stöds inte.
+//! Output: the last iteration's cycle, frame 0 at the start of the cycle and one
+//! frame per increment (U, RF, S, PEEQ, ...).
+//! Low-cycle fatigue (FATIGUE) and NLGEOM are not supported.
 
 use super::api::{StepCtx, StepType};
 use super::dynamic::amplitude::LoadEval;
@@ -37,8 +37,8 @@ pub struct DirectCyclic;
 
 pub static STEP_TYPES: &[&dyn StepType] = &[&DirectCyclic];
 
-/// Fourierkoefficienter per frihetsgrad i den fria numreringen:
-/// c[0] = konstant, c[2k−1] = sin k, c[2k] = cos k.
+/// Fourier coefficients per DOF in the free numbering:
+/// c[0] = constant, c[2k−1] = sin k, c[2k] = cos k.
 struct Series {
     c: Vec<Vec<f64>>,
 }
@@ -72,22 +72,22 @@ impl StepType for DirectCyclic {
     fn run(&self, ctx: &mut StepCtx) -> Result<()> {
         let kw = ctx.step.procedure.as_ref().unwrap();
         if kw.has("FATIGUE") && kw.param_upper("FATIGUE").as_deref() != Some("NO") {
-            return kw.err("FATIGUE (lågcykelutmattning) stöds inte ännu");
+            return kw.err("FATIGUE (low-cycle fatigue) is not supported yet");
         }
         if ctx.nlgeom {
-            return kw.err("*DIRECT CYCLIC med NLGEOM=YES stöds inte");
+            return kw.err("*DIRECT CYCLIC with NLGEOM=YES is not supported");
         }
         let v = kw.first_floats()?;
         let get = |i: usize, d: f64| v.get(i).copied().filter(|&x| x > 0.0).unwrap_or(d);
         let period = get(1, 1.0);
-        let dt0 = v.first().copied().filter(|&x| x > 0.0).ok_or_else(|| FemError(format!("{}: tidsinkrement saknas", kw.location())))?;
+        let dt0 = v.first().copied().filter(|&x| x > 0.0).ok_or_else(|| FemError(format!("{}: time increment is missing", kw.location())))?;
         let (n_init, n_max, n_inc) = (get(4, 11.0).round() as usize, get(5, 25.0).round() as usize, get(6, 5.0).round() as usize);
         let max_iter = get(7, 200.0).round() as usize;
         let ninc = (period / dt0 - 1e-9).ceil().max(1.0) as usize;
         let dt = period / ninc as f64;
         let cap = (ninc.saturating_sub(1)) / 2;
         if cap == 0 {
-            return kw.err("för få inkrement per cykel (minst 3)");
+            return kw.err("too few increments per cycle (at least 3)");
         }
         let mut nterms = n_init.min(cap).max(1);
         let n_max = n_max.min(cap).max(nterms);
@@ -95,22 +95,22 @@ impl StepType for DirectCyclic {
         let model = prep.model;
         let nn = model.nodes.len();
         if prep.interactions.iter().any(|it| !it.linear_constraints().map(|c| c.is_empty()).unwrap_or(true)) {
-            return fail("*DIRECT CYCLIC med linjära villkor (*EQUATION, *TIE, MPC) stöds inte ännu");
+            return fail("*DIRECT CYCLIC with linear constraints (*EQUATION, *TIE, MPC) is not supported yet");
         }
         for (&(n, s), &(a, b)) in &ctx.loads.bc {
             if a != 0.0 || b != 0.0 || ctx.loads.amp_bc.contains_key(&(n, s)) {
-                return fail("*DIRECT CYCLIC: bara randvillkor med värdet noll stöds");
+                return fail("*DIRECT CYCLIC: only boundary conditions with value zero are supported");
             }
         }
         let (dm, _) = assembly::dofmap(prep, &ctx.loads.constrained(), ctx.solver)?;
         let all = AllDofs::new(prep, &dm);
         if all.n_int > 0 {
-            return fail("*DIRECT CYCLIC med element med inre frihetsgrader (B23/B33) stöds inte");
+            return fail("*DIRECT CYCLIC with elements with internal DOFs (B23/B33) is not supported");
         }
         let neq = dm.n_eq;
         let kmat = frequency::assemble_stiffness(prep, &dm, &all, ctx.state, false)?.leading(neq);
         let Some(fac) = frequency::factor_checked(&kmat, &all, prep, ctx.solver)? else {
-            return fail("*DIRECT CYCLIC: styvhetsmatrisen är singulär (saknas randvillkor?)");
+            return fail("*DIRECT CYCLIC: the stiffness matrix is singular (missing boundary conditions?)");
         };
         let time0 = ctx.state.time;
         let lev = LoadEval::new(model, ctx.loads, false, period, time0)?;
@@ -153,7 +153,7 @@ impl StepType for DirectCyclic {
             let start_state = state.clone();
             let mut u_prev = to_nodes(&ser.eval(nterms, w, 0.0), &base_u);
             let mut cyc = Vec::with_capacity(ninc + 1);
-            // frame 0: cykelns början (tillståndet från föregående iteration)
+            // frame 0: the start of the cycle (the state from the preceding iteration)
             let int0 = assembly::internal(prep, &dm, &u_prev, &z, &start_state, false, time0, 0.0, None)?;
             cyc.push((u_prev.clone(), int0.fint.clone(), start_state.clone()));
             let mut rc = vec![vec![0.0; neq]; 2 * nterms + 1];
@@ -183,7 +183,7 @@ impl StepType for DirectCyclic {
             }
             favg /= ninc as f64;
             last = Some(cyc);
-            // korrektioner
+            // corrections
             let rmax = rc.iter().flatten().fold(0.0f64, |m, x| m.max(x.abs()));
             let mut cmax = 0.0f64;
             for (k, r) in rc.iter().enumerate() {
@@ -196,20 +196,20 @@ impl StepType for DirectCyclic {
             }
             let umax = ser.c.iter().flatten().fold(0.0f64, |m, x| m.max(x.abs()));
             let tol = 5e-3;
-            // konvergens i två iterationer i följd (den sista
-            // iterationens cykel skrivs ut)
+            // convergence in two consecutive iterations (the last
+            // iteration's cycle is written out)
             let ok = it > 0 && rmax <= tol * favg.max(1e-300) && cmax <= tol * umax.max(1e-300);
             if ok && converged {
                 break;
             }
             converged = ok;
-            // fler termer om iterationen inte konvergerar
+            // more terms if the iteration does not converge
             if it > 0 && it % 10 == 9 && nterms < n_max {
                 nterms = (nterms + n_inc).min(n_max);
             }
         }
         if !converged && ctx.opts.verbose {
-            eprintln!("varning: *DIRECT CYCLIC konvergerade inte inom {max_iter} iterationer");
+            eprintln!("warning: *DIRECT CYCLIC did not converge within {max_iter} iterations");
         }
         let cyc = last.unwrap();
         let all_frames = ctx.opts.all_frames;

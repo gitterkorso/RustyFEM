@@ -1,6 +1,6 @@
-//! Nyckelord för explicit dynamik: massskalning (*FIXED MASS SCALING,
-//! *VARIABLE MASS SCALING, stegdata) och *SECTION CONTROLS (hourglass-kontroll,
-//! läses av `steps/explicit.rs` via tvärsnittets CONTROLS=).
+//! Keywords for explicit dynamics: mass scaling (*FIXED MASS SCALING,
+//! *VARIABLE MASS SCALING, step data) and *SECTION CONTROLS (hourglass control,
+//! read by `steps/explicit.rs` via the section's CONTROLS=).
 
 use crate::inp::{store_model, store_step, Keyword, Kind};
 

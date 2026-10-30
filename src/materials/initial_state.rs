@@ -1,23 +1,23 @@
-//! Begynnelsevillkor i integrationspunkterna: *INITIAL CONDITIONS,
-//! TYPE=STRESS (även GEOSTATIC) och TYPE=RATIO (portal).
+//! Initial conditions at the integration points: *INITIAL CONDITIONS,
+//! TYPE=STRESS (also GEOSTATIC) and TYPE=RATIO (void ratio).
 //!
-//! Nyckelorden läses av `inp/keywords/geomaterials.rs`, som löser upp
-//! element- och nodreferenserna och sparar dem i `FeModel::extra` med
-//! parametern `RESOLVED`:
-//! - TYPE=STRESS: rader [elementindex, σ1, ..., σn] (komponentordningen
-//!   för elementtypen), lika i alla integrationspunkter;
-//! - TYPE=STRESS, GEOSTATIC: rader [elementindex, σv1, y1, σv2, y2, k1, k2]:
-//!   vertikal spänning linjär i den vertikala koordinaten (y i 2D, z i 3D),
-//!   horisontella spänningar k·σv (k2 = k1 om den saknas);
-//! - TYPE=RATIO: rader [nodindex, e1, y1, e2, y2] (portal linjärt i nodens
-//!   vertikala koordinat, konstant om bara e1 anges), interpolerat till
-//!   integrationspunkterna med formfunktionerna.
+//! The keywords are read by `inp/keywords/geomaterials.rs`, which resolves
+//! the element and node references and stores them in `FeModel::extra` with
+//! the parameter `RESOLVED`:
+//! - TYPE=STRESS: lines [element index, σ1, ..., σn] (the component order
+//!   of the element type), equal at all integration points;
+//! - TYPE=STRESS, GEOSTATIC: lines [element index, σv1, y1, σv2, y2, k1, k2]:
+//!   vertical stress linear in the vertical coordinate (y in 2D, z in 3D),
+//!   horizontal stresses k·σv (k2 = k1 if absent);
+//! - TYPE=RATIO: lines [node index, e1, y1, e2, y2] (void ratio linear in the node's
+//!   vertical coordinate, constant if only e1 is given), interpolated to
+//!   the integration points with the shape functions.
 //!
-//! `apply` anropas av `steps::run` efter `Prepared::init_states`: spänningen
-//! skrivs i elementtillståndets spänningsdel och materialet får
-//! `MaterialModel::init_state_at`. GEOSTATIC-spänningen och portalet tas i
-//! elementets mittpunkt (nodmedelvärdet) och är lika i alla dess
-//! integrationspunkter.
+//! `apply` is called by `steps::run` after `Prepared::init_states`: the stress
+//! is written to the stress part of the element state and the material gets
+//! `MaterialModel::init_state_at`. The GEOSTATIC stress and the void ratio are taken at
+//! the element's center (the nodal average) and are equal at all its
+//! integration points.
 
 use super::{MaterialFactory, StressMode};
 use crate::elements::Family;
@@ -26,19 +26,19 @@ use crate::fem::model::FeModel;
 use crate::fem::state::SolutionState;
 use crate::model::{fail, FemError, Result};
 
-/// Modulen har inga egna materialfabriker.
+/// The module has no material factories of its own.
 pub static FACTORIES: &[MaterialFactory] = &[];
 
-/// Parameter som markerar ett upplöst *INITIAL CONDITIONS (STRESS/RATIO).
+/// Parameter that marks a resolved *INITIAL CONDITIONS (STRESS/RATIO).
 pub const RESOLVED: &str = "RUSTYFEM_GEO";
 
-/// Nyckel i `SolutionState::vectors` för begynnelsespänningens inre krafter
-/// F0 = ∫Bᵀσ0 dV. F0·(1 − t) läggs till de yttre krafterna under
-/// första steget (med AMPLITUDE=STEP på lasterna blir svaret
-/// σ = F_ext + F0(1 − t), med rampade laster som balanserar σ0 ingen
-/// deformation), så att en begynnelsespänning som inte är i jämvikt avvecklas
-/// linjärt; utdata i frame 0 har inte korrektionen. Tas bort efter första
-/// steget (`steps::run`).
+/// Key in `SolutionState::vectors` for the internal forces of the initial stress
+/// F0 = ∫Bᵀσ0 dV. F0·(1 − t) is added to the external forces during
+/// the first step (with AMPLITUDE=STEP on the loads the response is
+/// σ = F_ext + F0(1 − t); with ramped loads that balance σ0 there is no
+/// deformation), so that an initial stress that is not in equilibrium is relaxed
+/// linearly; output in frame 0 does not include the correction. Removed after the first
+/// step (`steps::run`).
 pub const UNBALANCE: &str = "INITIAL_STRESS_UNBALANCE";
 
 /// F_ext += F0 (1 − t).
@@ -50,22 +50,22 @@ pub fn add_unbalance(fext: &mut [crate::fem::dof::NodeVec], f0: &[crate::fem::do
     }
 }
 
-/// Upplöst spänningsdefinition för ett element.
+/// Resolved stress definition for one element.
 #[derive(Clone)]
 enum StressDef {
     Uniform(Vec<f64>),
     /// σv1, y1, σv2, y2, k1, k2
     Geostatic([f64; 6]),
-    /// *INITIAL CONDITIONS, TYPE=STRESS, USER: SIGINI (`user::routines`), elementsetets namn.
+    /// *INITIAL CONDITIONS, TYPE=STRESS, USER: SIGINI (`user::routines`), the element set name.
     User(String),
 }
 
-/// Finns det begynnelsevillkor av typ STRESS eller RATIO i modellen?
+/// Are there initial conditions of type STRESS or RATIO in the model?
 pub fn present(model: &FeModel) -> bool {
     model.extra.iter().any(|k| k.name == "INITIAL CONDITIONS" && k.has(RESOLVED))
 }
 
-/// Nodernas portal (NaN = inte givet).
+/// Void ratio of the nodes (NaN = not given).
 fn nodal_void_ratio(model: &FeModel, vertical: impl Fn(usize) -> usize) -> Result<Vec<f64>> {
     let mut e = vec![f64::NAN; model.nodes.len()];
     for kw in model.extra.iter().filter(|k| k.name == "INITIAL CONDITIONS" && k.has(RESOLVED) && k.param_upper("TYPE").as_deref() == Some("RATIO")) {
@@ -84,8 +84,8 @@ fn nodal_void_ratio(model: &FeModel, vertical: impl Fn(usize) -> usize) -> Resul
     Ok(e)
 }
 
-/// Sätter begynnelsespänning och portal i elementens tillstånd och sparar
-/// begynnelsespänningens inre krafter (`UNBALANCE`).
+/// Sets the initial stress and void ratio in the element states and stores
+/// the internal forces of the initial stress (`UNBALANCE`).
 pub fn apply(prep: &Prepared, state: &mut SolutionState) -> Result<()> {
     let model = prep.model;
     if !present(model) {
@@ -112,13 +112,13 @@ pub fn apply(prep: &Prepared, state: &mut SolutionState) -> Result<()> {
     Ok(())
 }
 
-/// Skriver begynnelsevillkoren i elementtillstånden. Returnerar om någon
-/// begynnelsespänning är satt.
+/// Writes the initial conditions to the element states. Returns whether any
+/// initial stress is set.
 fn set_states(prep: &Prepared, states: &mut [Vec<f64>]) -> Result<bool> {
     let model = prep.model;
     let mut any_stress = false;
     let ne = model.elements.len();
-    // vertikal riktning per element: y i 2D/axisymmetri, z i 3D
+    // vertical direction per element: y in 2D/axisymmetry, z in 3D
     let vdir = |e: usize| -> usize {
         match model.elements[e].etype.family() {
             Family::Continuum3D | Family::Shell | Family::Membrane => 2,
@@ -156,7 +156,7 @@ fn set_states(prep: &Prepared, states: &mut [Vec<f64>]) -> Result<bool> {
         if sdef[e].is_none() && !has_void {
             continue;
         }
-        // porvattentryckselementen sköter sina begynnelsevillkor själva (steps/soils.rs)
+        // the pore pressure elements handle their initial conditions themselves (steps/soils.rs)
         if crate::elements::soils::lookup(model.elements[e].etype.name()).is_some() {
             continue;
         }
@@ -170,7 +170,7 @@ fn set_states(prep: &Prepared, states: &mut [Vec<f64>]) -> Result<bool> {
         let nc = [6usize, 4, 3, 1].into_iter().find(|&nc| nip > 0 && len == nip * (nc + ns));
         let Some(nc) = nc else {
             return fail(format!(
-                "{}: *INITIAL CONDITIONS, TYPE=STRESS/RATIO stöds inte för elementtypen {}",
+                "{}: *INITIAL CONDITIONS, TYPE=STRESS/RATIO is not supported for element type {}",
                 model.elem_name(e),
                 et.name()
             ));
@@ -183,12 +183,12 @@ fn set_states(prep: &Prepared, states: &mut [Vec<f64>]) -> Result<bool> {
             _ => StressMode::Uniaxial,
         };
         let nodes = &model.elements[e].nodes;
-        // elementets medelvärde i alla integrationspunkter (för GEOSTATIC
-        // och portalet: lika värden i elementets punkter)
+        // the element's average at all integration points (for GEOSTATIC
+        // and the void ratio: equal values at the element's points)
         let at_ip = |_ip: usize, f: &dyn Fn(usize) -> f64| -> f64 { nodes.iter().map(|&n| f(n)).sum::<f64>() / nodes.len() as f64 };
         let vd = vdir(e);
         let stride = nc + ns;
-        // SIGINI: integrationspunkternas lägen (elementet rapporterar dem till user::context)
+        // SIGINI: the integration point positions (the element reports them to user::context)
         let ip_coords = match &sdef[e] {
             Some(StressDef::User(_)) => {
                 let z = vec![0.0; et.n_dofs()];
@@ -205,7 +205,7 @@ fn set_states(prep: &Prepared, states: &mut [Vec<f64>]) -> Result<bool> {
             match &sdef[e] {
                 Some(StressDef::Uniform(v)) => {
                     if v.len() > nc && v[nc..].iter().any(|&x| x != 0.0) {
-                        return fail(format!("{}: för många spänningskomponenter i *INITIAL CONDITIONS, TYPE=STRESS för {}", model.elem_name(e), et.name()));
+                        return fail(format!("{}: too many stress components in *INITIAL CONDITIONS, TYPE=STRESS for {}", model.elem_name(e), et.name()));
                     }
                     for (i, &x) in v.iter().take(nc).enumerate() {
                         s[i] = x;
@@ -234,7 +234,7 @@ fn set_states(prep: &Prepared, states: &mut [Vec<f64>]) -> Result<bool> {
                 }
                 Some(StressDef::User(name)) => {
                     let Some(routine) = crate::user::routines::find_sigini(name)? else {
-                        return crate::user::routines::missing("SIGINI", "elementsetet", name);
+                        return crate::user::routines::missing("SIGINI", "element set", name);
                     };
                     let coords = ip_coords.iter().find(|(k, _, _)| *k == ip + 1).map(|c| c.1).unwrap_or_else(|| crate::elements::common::centroid(&ctx.x));
                     let ndim = match fam {
@@ -259,7 +259,7 @@ fn set_states(prep: &Prepared, states: &mut [Vec<f64>]) -> Result<bool> {
             }
             let ev = if has_void {
                 if nodes.iter().any(|&n| void[n].is_nan()) {
-                    return fail(format!("{}: portalet (*INITIAL CONDITIONS, TYPE=RATIO) saknas i några av elementets noder", model.elem_name(e)));
+                    return fail(format!("{}: the void ratio (*INITIAL CONDITIONS, TYPE=RATIO) is missing at some of the element's nodes", model.elem_name(e)));
                 }
                 Some(at_ip(ip, &|n| void[n]))
             } else {

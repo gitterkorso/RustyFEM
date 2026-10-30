@@ -1,7 +1,7 @@
-//! *MATERIAL, *ELASTIC och *DENSITY.
+//! *MATERIAL, *ELASTIC and *DENSITY.
 //!
-//! Nya materialbeteenden registreras i egna filer med hanteraren `behavior`
-//! och `Kind::Behavior`, t.ex.
+//! New material behaviors are registered in their own files with the handler `behavior`
+//! and `Kind::Behavior`, e.g.
 //! `Keyword { name: "PLASTIC", kind: Kind::Behavior, handler: material::behavior }`.
 
 use crate::fem::model::{MaterialDef, RawKeyword};
@@ -17,20 +17,20 @@ pub static KEYWORDS: &[Keyword] = &[
 fn material(ctx: &mut InpCtx, kw: &RawKeyword) -> Result<()> {
     let name = required(kw, "NAME")?.to_uppercase();
     if ctx.model.material_index(&name).is_some() {
-        return kw.err(format!("materialet {name} är definierat två gånger"));
+        return kw.err(format!("material {name} is defined twice"));
     }
     ctx.model.materials.push(MaterialDef { name, behaviors: Vec::new(), density: 0.0 });
     ctx.material = Some(ctx.model.materials.len() - 1);
     Ok(())
 }
 
-/// Sparar ett materialbeteende i aktuellt material (tolkas av materialregistret).
+/// Stores a material behavior in the current material (parsed by the material registry).
 pub fn behavior(ctx: &mut InpCtx, kw: &RawKeyword) -> Result<()> {
     let m = ctx.material_mut(kw)?;
-    // område materials4: *PLASTIC, RATE= upprepas för varje töjningshastighet
+    // Area materials4: *PLASTIC, RATE= is repeated for each strain rate
     let rate_curve = kw.name == "PLASTIC" && kw.has("RATE");
     if m.behavior(&kw.name).is_some() && !rate_curve {
-        return kw.err(format!("materialet {} har redan *{}", m.name, kw.name));
+        return kw.err(format!("material {} already has *{}", m.name, kw.name));
     }
     m.behaviors.push(kw.clone());
     Ok(())
@@ -38,7 +38,7 @@ pub fn behavior(ctx: &mut InpCtx, kw: &RawKeyword) -> Result<()> {
 
 fn density(ctx: &mut InpCtx, kw: &RawKeyword) -> Result<()> {
     if kw.data.len() > 1 || kw.has("DEPENDENCIES") {
-        return kw.err("temperaturberoende densitet stöds inte ännu");
+        return kw.err("temperature-dependent density is not supported yet");
     }
     let v = kw.first_floats()?;
     let rho = v.first().copied().unwrap_or(0.0);

@@ -1,37 +1,37 @@
-//! Multifrontal LU för osymmetriska matriser med symmetriskt mönster
-//! (t.ex. friktion eller följelaster, där tangenten blir osymmetrisk men
-//! kopplingarna är desamma som för styvheten).
+//! Multifrontal LU for unsymmetric matrices with a symmetric pattern
+//! (e.g. friction or follower loads, where the tangent becomes unsymmetric but
+//! the couplings are the same as for the stiffness).
 //!
-//! - Samma ordning och träd som LDLᵀ (`sparse::analyse`). Fronterna lagras
-//!   fullt (båda trianglarna).
-//! - Pivotering: diagonalpivot med tröskeltest på kolumnen,
-//!   |a_jj| ≥ u·max_{i≠j} |a_ij| över hela fronten, u = 0,01. Variabler som
-//!   inte klarar testet fördröjs till föräldern (symmetrisk permutation, så att
-//!   rad och kolumn följs åt och mönstret förblir symmetriskt).
-//! - I roten faktoriseras det som återstår med vanlig partiell pivotering
-//!   (radbyten), vilket klarar alla reguljära matriser.
+//! - Same ordering and tree as LDLᵀ (`sparse::analyse`). The fronts are stored
+//!   in full (both triangles).
+//! - Pivoting: diagonal pivot with a threshold test on the column,
+//!   |a_jj| ≥ u·max_{i≠j} |a_ij| over the whole front, u = 0.01. Variables that
+//!   fail the test are delayed to the parent (symmetric permutation, so that
+//!   row and column move together and the pattern stays symmetric).
+//! - At the root, whatever remains is factorized with ordinary partial pivoting
+//!   (row swaps), which handles all regular matrices.
 //!
-//! Referenser: Duff & Reid (1984) "The multifrontal solution of unsymmetric
+//! References: Duff & Reid (1984) "The multifrontal solution of unsymmetric
 //! sets of linear equations", Amestoy & Puglisi (2002).
 
 use super::{dot, kern, Lower, Symbolic, PAR_FLOPS};
 use super::indef::ZERO_TOL;
 use crate::par;
 
-/// Standardtröskel.
+/// Default threshold.
 pub const THRESHOLD: f64 = 0.01;
 const KB: usize = 64;
 
-/// Full matris med symmetriskt mönster: undre triangeln (inkl. diagonal) i
-/// `lower`, den strikt övre triangeln transponerad i `upper_t` (samma mönster,
-/// A(c, r) för r > c lagras i kolumn c, rad r).
+/// Full matrix with a symmetric pattern: lower triangle (incl. diagonal) in
+/// `lower`, the strictly upper triangle transposed in `upper_t` (same pattern,
+/// A(c, r) for r > c is stored in column c, row r).
 pub struct Full {
     pub lower: Lower,
     pub upper_t: Lower,
 }
 
 impl Full {
-    /// Tomt mönster från ett mönster för undre triangeln.
+    /// Empty pattern from a lower-triangle pattern.
     pub fn from_pattern(l: Lower) -> Full {
         let u = Lower { colptr: l.colptr.clone(), rowidx: l.rowidx.clone(), val: vec![0.0; l.val.len()] };
         Full { lower: l, upper_t: u }
@@ -88,14 +88,14 @@ impl Full {
 }
 
 struct LuFront {
-    /// Pivotvariabler (kolumner) i elimineringsordning.
+    /// Pivot variables (columns) in elimination order.
     piv: Vec<usize>,
-    /// Radpermutation inom blocket (bara roten; annars tom = identitet).
+    /// Row permutation within the block (root only; otherwise empty = identity).
     rperm: Vec<usize>,
-    /// L11 (strikt undre, enhetsdiagonal) och U11 (övre inkl. diagonal), k×k radvis.
+    /// L11 (strictly lower, unit diagonal) and U11 (upper incl. diagonal), k×k row-wise.
     lu11: Vec<f64>,
     rows: Vec<usize>,
-    /// L21 rows×k och U12 k×rows, radvis.
+    /// L21 rows×k and U12 k×rows, row-wise.
     l21: Vec<f64>,
     u12: Vec<f64>,
 }
@@ -119,7 +119,7 @@ struct NodeOut {
     delayed: usize,
 }
 
-/// Numerisk LU-faktorisering. `Err(ekvation)` om matrisen är singulär.
+/// Numerical LU factorization. `Err(equation)` if the matrix is singular.
 pub fn factor(sym: &Symbolic, a: &Full) -> Result<LuFactor, usize> {
     factor_with(sym, a, THRESHOLD)
 }
@@ -172,9 +172,9 @@ fn factor_node(ctx: &Ctx, t: usize, threads: usize, root: bool) -> Result<NodeOu
         if g >= start && g < start + k {
             g - start
         } else if g < start {
-            dmap[dmap.binary_search_by_key(&g, |x| x.0).expect("intern: fördröjd variabel saknas")].1
+            dmap[dmap.binary_search_by_key(&g, |x| x.0).expect("internal: delayed variable missing")].1
         } else {
-            kf + node.rows.binary_search(&g).expect("intern: rad saknas i fronten")
+            kf + node.rows.binary_search(&g).expect("internal: row missing in the front")
         }
     };
 
@@ -223,7 +223,7 @@ fn factor_node(ctx: &Ctx, t: usize, threads: usize, root: bool) -> Result<NodeOu
     };
     out.push(piece(&f, fs[..npiv].to_vec()));
     if root && npiv < kf {
-        // roten: partiell pivotering med radbyten på resten (inga senare rader)
+        // root: partial pivoting with row swaps on the rest (no later rows)
         let r = kf - npiv;
         let mut s = vec![0.0; r * r];
         for i in 0..r {
@@ -241,8 +241,8 @@ fn factor_node(ctx: &Ctx, t: usize, threads: usize, root: bool) -> Result<NodeOu
     Ok(NodeOut { upd, idx: rows, fronts: out, delayed })
 }
 
-/// Tät LU med partiell pivotering på plats. Returnerar radpermutationen
-/// (rad i i faktorn = ursprunglig rad perm[i]).
+/// Dense LU with partial pivoting in place. Returns the row permutation
+/// (row i of the factor = original row perm[i]).
 fn dense_lu(s: &mut [f64], r: usize, vars: &[usize], scale: &[f64]) -> Result<Vec<usize>, usize> {
     let mut perm: Vec<usize> = (0..r).collect();
     for p in 0..r {
@@ -296,7 +296,7 @@ fn eliminate(f: &mut [f64], m: usize, kf: usize, fs: &mut [usize], ctx: &Ctx, th
         let p0 = p;
         let b1 = (p + width).min(kf);
         while p < b1 {
-            // första kandidaten som klarar tröskeltestet
+            // first candidate that passes the threshold test
             let mut pick = None;
             for j in p..b1 {
                 let ajj = f[j * m + j].abs();
@@ -324,7 +324,7 @@ fn eliminate(f: &mut [f64], m: usize, kf: usize, fs: &mut [usize], ctx: &Ctx, th
                 if li == 0.0 {
                     continue;
                 }
-                // kolumnerna i blocket för alla rader, hela raden för rader i blocket
+                // the block's columns for all rows, the whole row for rows in the block
                 let end = if i < b1 { m } else { b1 };
                 let row = &mut f[i * m + p + 1..i * m + end];
                 for (x, &uc) in row.iter_mut().zip(&urow) {
@@ -365,7 +365,7 @@ fn eliminate(f: &mut [f64], m: usize, kf: usize, fs: &mut [usize], ctx: &Ctx, th
 }
 
 impl LuFactor {
-    /// Löser A x = b på plats (intern numrering).
+    /// Solves A x = b in place (internal numbering).
     pub fn solve(&self, x: &mut [f64]) {
         for fr in &self.fronts {
             let k = fr.piv.len();

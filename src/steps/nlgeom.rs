@@ -1,23 +1,23 @@
-//! *STATIC med NLGEOM=YES: stora förskjutningar, rotationer och töjningar.
+//! *STATIC with NLGEOM=YES: large displacements, rotations and strains.
 //!
-//! - Elementen står för kinematiken (`crate::kinematics`): uppdaterad
-//!   Lagrange för kontinuum, logaritmisk töjning i stänger, Hermitebalkar
+//! - The elements provide the kinematics (`crate::kinematics`): updated
+//!   Lagrange for continua, logarithmic strain in trusses, Hermite beams
 //!   (B23/B33).
-//! - `NlSystem` är jämviktsproblemet R = F_ext(u, t) − F_int(u) med följande
-//!   tryck och laststyvhet, multiplikativ uppdatering av rumsliga rotationer
-//!   (B33) och linjär extrapolation av förra inkrementets lösning som
-//!   startvärde (standard, EXTRAPOLATION=LINEAR).
-//! - `drive` är en Newton–Raphson-driver med följande inkrementregler:
-//!   start med *STATIC:s initiala inkrement, ökning med 1,5
-//!   när två inkrement i följd konvergerat på färre än I_G = 4 iterationer,
-//!   halvering till en fjärdedel vid divergens, och sista inkrementet kapas så
-//!   att steget slutar exakt vid stegtiden. Konvergensen bedöms med
-//!   standardkriterierna (R = 5e-3, C = 1e-2 per fält); därefter itereras det godkända
-//!   inkrementet vidare tills residualen är försumbar (1e-9 · q̃) så att
-//!   resultatet inte bär med sig lösarens konvergensfel. Efteriterationerna
-//!   räknas inte i inkrementlogiken.
+//! - `NlSystem` is the equilibrium problem R = F_ext(u, t) − F_int(u) with follower
+//!   pressure and load stiffness, multiplicative update of spatial rotations
+//!   (B33) and linear extrapolation of the previous increment's solution as
+//!   initial guess (default, EXTRAPOLATION=LINEAR).
+//! - `drive` is a Newton–Raphson driver with the following increment rules:
+//!   start with *STATIC's initial increment, increase by 1.5
+//!   when two consecutive increments have converged in fewer than I_G = 4 iterations,
+//!   cutback to a quarter on divergence, and the last increment is cut so
+//!   that the step ends exactly at the step time. Convergence is judged with
+//!   the standard criteria (R = 5e-3, C = 1e-2 per field); after that the accepted
+//!   increment is iterated further until the residual is negligible (1e-9 · q̃) so that
+//!   the result does not carry the solver's convergence error. The extra iterations
+//!   are not counted in the increment logic.
 //!
-//! *STATIC, RIKS hanteras av `nlgeom_riks.rs` med samma system.
+//! *STATIC, RIKS is handled by `nlgeom_riks.rs` with the same system.
 
 use super::api::{StepCtx, StepType};
 use super::newton::{Controls, NonlinearSystem, Residual};
@@ -38,7 +38,7 @@ pub struct StaticNlgeom;
 
 pub static STEP_TYPES: &[&dyn StepType] = &[&StaticNlgeom];
 
-/// Jämviktssystemet vid NLGEOM.
+/// The equilibrium system for NLGEOM.
 pub struct NlSystem<'p, 'm> {
     pub p: &'p Prepared<'m>,
     pub loads: &'p StepLoads,
@@ -54,22 +54,22 @@ pub struct NlSystem<'p, 'm> {
     pub period: f64,
     pub t0: f64,
     pub t1: f64,
-    /// Noder med tre aktiva rotationer (rumsliga rotationer, multiplikativ uppdatering).
+    /// Nodes with three active rotations (spatial rotations, multiplicative update).
     rot3: Vec<bool>,
-    /// Förra godkända inkrementets ändring och längd (för extrapolation).
+    /// Change and length of the previous accepted increment (for extrapolation).
     pub du_prev: Vec<NodeVec>,
     pub dt_prev: f64,
     pub extrapolate: bool,
-    /// Lastskalning (Riks): yttre last = `load_scale(t1)`; `None` = stegets ramp.
+    /// Load scaling (Riks): external load = `load_scale(t1)`; `None` = the step's ramp.
     pub riks: Option<RiksLoads>,
-    /// Senaste faktoriseringen (antal negativa pivoter).
+    /// Latest factorization (number of negative pivots).
     pub info: std::sync::Arc<std::sync::Mutex<solver::FactorInfo>>,
-    /// Område gaps1: obalanskrafter F0 som avvecklas linjärt under steget
-    /// (`initial_state::UNBALANCE`, t.ex. *IMPORT från explicit analys).
+    /// Area gaps1: unbalanced forces F0 that are removed linearly during the step
+    /// (`initial_state::UNBALANCE`, e.g. *IMPORT from an explicit analysis).
     unbalance: Option<Vec<NodeVec>>,
 }
 
-/// Laster vid Riks: F = F₀ + λ (F_ref − F₀), där F₀ är lasten vid stegets början.
+/// Loads for Riks: F = F₀ + λ (F_ref − F₀), where F₀ is the load at the start of the step.
 #[derive(Debug, Clone)]
 pub struct RiksLoads {
     pub lambda: f64,
@@ -125,12 +125,12 @@ impl<'p, 'm> NlSystem<'p, 'm> {
         state.reaction = self.reactions();
     }
 
-    /// Punkt- och fördelade laster vid stegtid t (eller lastfaktor vid Riks).
+    /// Point and distributed loads at step time t (or load factor for Riks).
     pub fn loads_at(&self, t: f64) -> (Vec<(usize, usize, f64)>, Vec<DistLoad>) {
         match &self.riks {
             None => (self.loads.cloads_at(t), self.loads.dloads_at(t)),
             Some(r) => {
-                // F₀ + λ (F_ref − F₀): ramp med t = λ, utan klämning till [0, 1]
+                // F₀ + λ (F_ref − F₀): ramp with t = λ, without clamping to [0, 1]
                 let lam = r.lambda;
                 let cl = self.loads.cload.iter().map(|(&(n, s), &(a, b))| (n, s, a + (b - a) * lam)).collect();
                 let dl = self
@@ -148,7 +148,7 @@ impl<'p, 'm> NlSystem<'p, 'm> {
         }
     }
 
-    /// Referenslastvektorn F_ref − F₀ per ekvation (för Riks) vid aktuell geometri.
+    /// The reference load vector F_ref − F₀ per equation (for Riks) at the current geometry.
     pub fn load_pattern(&self) -> Result<Vec<f64>> {
         let cl: Vec<(usize, usize, f64)> = self.loads.cload.iter().map(|(&(n, s), &(a, b))| (n, s, b - a)).collect();
         let dl: Vec<DistLoad> = self
@@ -183,7 +183,7 @@ impl<'p, 'm> NlSystem<'p, 'm> {
         Ok(fr)
     }
 
-    /// Löser K x = a och K y = b med en enda faktorisering (Riks).
+    /// Solves K x = a and K y = b with a single factorization (Riks).
     pub fn solve_pair(&mut self, a: &[f64], b: &[f64]) -> Result<(Vec<f64>, Vec<f64>)> {
         if let Err(q) = self.mat.factor() {
             return Err(assembly::mechanism_message(self.p, &self.dm, q));
@@ -195,10 +195,10 @@ impl<'p, 'm> NlSystem<'p, 'm> {
         Ok((x, y))
     }
 
-    /// Prediktor för föreskrivna förskjutningar: K₀ c = r₀ − (∂f_int/∂u_bc) Δu_bc
-    /// med tangenten och de inre krafterna i inkrementets början (derivatan längs
-    /// randvillkorens ändring med en framåtdifferens, som `StaticSystem::predict`).
-    /// Misslyckas något behålls läget med bara randvillkoren påförda.
+    /// Predictor for prescribed displacements: K₀ c = r₀ − (∂f_int/∂u_bc) Δu_bc
+    /// with the tangent and internal forces at the start of the increment (the derivative along
+    /// the boundary condition change by a forward difference, like `StaticSystem::predict`).
+    /// If anything fails, the state with only the boundary conditions applied is kept.
     fn predict_bc(&mut self) -> Result<()> {
         let target = std::mem::replace(&mut self.u, self.u_committed.clone());
         let r0 = match self.evaluate(true) {
@@ -301,11 +301,11 @@ impl NonlinearSystem for NlSystem<'_, '_> {
                 }
             }
         }
-        // Utan extrapolation (stegets första inkrement): föreskrivna förskjutningar
-        // förs in med tangenten från inkrementets början. Annars
-        // utvärderas första iterationen i läget där bara randnoderna har flyttats,
-        // vilket t.ex. ger omvänd flytning i plastiska skal vid avlastning och
-        // divergens med fasta inkrement (DIRECT). Inte med kontakt (se StaticSystem).
+        // Without extrapolation (the step's first increment): prescribed displacements
+        // are introduced with the tangent from the start of the increment. Otherwise
+        // the first iteration is evaluated in the state where only the boundary nodes have moved,
+        // which e.g. gives reversed yielding in plastic shells on unloading and
+        // divergence with fixed increments (DIRECT). Not with contact (see StaticSystem).
         let contact = self.p.interactions.iter().any(|i| !i.is_linear());
         if moved && !extrapolated && !contact && self.dm.n_eq > 0 {
             self.predict_bc()?;
@@ -314,8 +314,8 @@ impl NonlinearSystem for NlSystem<'_, '_> {
     }
 
     fn evaluate(&mut self, tangent: bool) -> Result<Residual> {
-        // linjära villkor (tie, coupling, stela kroppar): slavarna sätts från sina
-        // masters; villkor som beror på läget linjäriseras om i aktuellt läge
+        // linear constraints (tie, coupling, rigid bodies): the slaves are set from their
+        // masters; configuration-dependent constraints are relinearized in the current configuration
         let dm = &mut self.dm;
         dm.mpc.update_at(self.p, &dm.constrained, &mut self.u)?;
         let du: Vec<NodeVec> = self.u.iter().zip(&self.u_committed).map(|(a, b)| std::array::from_fn(|s| a[s] - b[s])).collect();
@@ -335,15 +335,15 @@ impl NonlinearSystem for NlSystem<'_, '_> {
         if tangent {
             self.add_load_stiffness(&ks);
         }
-        // krafter i villkorens slavar förs över till deras masters
+        // forces in the constraints' slaves are transferred to their masters
         self.dm.mpc.condense(&mut self.fint);
         self.dm.mpc.condense(&mut self.fext);
         let mut r = vec![0.0; self.dm.n_eq];
         for (q, &(n, s)) in self.dm.owner.iter().enumerate() {
             r[q] = self.fext[n][s] - self.fint[n][s];
         }
-        // typisk kraft: medelbeloppet av alla elementens nodkrafter
-        // (inte bara de assemblerade nodkrafterna) och de yttre lasterna
+        // typical force: the mean magnitude of all element nodal forces
+        // (not only the assembled nodal forces) and the external loads
         let mut sum: BTreeMap<Field, (f64, usize)> = elem_flux;
         for n in 0..self.u.len() {
             for s in 0..SLOTS {
@@ -379,7 +379,7 @@ impl NonlinearSystem for NlSystem<'_, '_> {
                 self.u[n][s] += c[q];
             }
         }
-        // rumsliga rotationer: R ← exp([δw]) R, lagras som total rotationsvektor
+        // spatial rotations: R ← exp([δw]) R, stored as total rotation vector
         for (n, w) in spins {
             let old = [self.u[n][3], self.u[n][4], self.u[n][5]];
             let r = tensor::mul(&tensor::exp_so3(w), &tensor::exp_so3(old));
@@ -394,7 +394,7 @@ impl NonlinearSystem for NlSystem<'_, '_> {
     }
 
     fn commit(&mut self) -> Result<()> {
-        // kontakt m.fl.: godkänt inkrement (friktionstillstånd, kontaktstatus, utdata)
+        // contact etc.: accepted increment (friction state, contact status, output)
         for it in &self.p.interactions {
             it.commit();
         }
@@ -411,15 +411,15 @@ impl NonlinearSystem for NlSystem<'_, '_> {
     }
 }
 
-/// Inre krafter, nytt tillstånd och elementens kraftbelopp per fält.
+/// Internal forces, new state and the elements' force magnitudes per field.
 struct Internal {
     fint: Vec<NodeVec>,
     state_new: Vec<Vec<f64>>,
     flux: BTreeMap<Field, (f64, usize)>,
 }
 
-/// Som `assembly::internal` med NLGEOM, men samlar också summan av beloppen av
-/// varje elements nodkrafter (för den typiska kraften q̃).
+/// Like `assembly::internal` with NLGEOM, but also collects the sum of the magnitudes of
+/// each element's nodal forces (for the typical force q̃).
 #[allow(clippy::too_many_arguments)]
 fn internal(
     p: &Prepared,
@@ -446,7 +446,7 @@ fn internal(
         let ue = p.gather(e, u);
         let due = p.gather(e, du);
         let mut sn = Vec::new();
-        // *MODEL CHANGE och elementborttagning (steps/model_change.rs)
+        // *MODEL CHANGE and element deletion (steps/model_change.rs)
         if let Some(r) = crate::steps::model_change::internal_force(p, e, &ctx, &ue, &due, &state_old[e], &mut sn, tangent) {
             let r = r.map_err(|err| crate::model::FemError(format!("{}: {err}", m.elem_name(e))))?;
             return Ok((r.fint, r.k, sn));
@@ -469,7 +469,7 @@ fn internal(
             }
         }
         if let (Some(k), Some(ke)) = (k.as_deref_mut(), ke.as_ref().filter(|_| !dm.mpc.is_empty())) {
-            // villkor: K_red = Tᵀ K T
+            // constraints: K_red = Tᵀ K T
             let nd = dl.len();
             for a in 0..nd {
                 for b in 0..nd {
@@ -488,13 +488,13 @@ fn internal(
                 }
                 for b in 0..nd {
                     if map[b] != NONE && !sym {
-                        // osymmetrisk lösare (*STEP, UNSYMM=YES): hela elementmatrisen
+                        // unsymmetric solver (*STEP, UNSYMM=YES): the full element matrix
                         let v = ke[a * nd + b];
                         if v != 0.0 {
                             k.add_unsym(map[a], map[b], v);
                         }
                     } else if map[b] != NONE && map[a] >= map[b] {
-                        // symmetrisk del (osymmetriska materialtangenter)
+                        // symmetric part (unsymmetric material tangents)
                         let v = 0.5 * (ke[a * nd + b] + ke[b * nd + a]);
                         if v != 0.0 {
                             k.add(map[a], map[b], v);
@@ -506,7 +506,7 @@ fn internal(
         state_new.push(sn);
     }
     if !p.interactions.is_empty() {
-        // interaktioner via kärnans gränssnitt (bidraget räknas inte i q̃)
+        // interactions via the core interface (the contribution is not counted in q̃)
         let ictx = InteractionCtx { model: m, time, dt, nlgeom: true };
         for it in p.interactions.iter().filter(|it| !crate::steps::model_change::interaction_off(p, &it.name())) {
             match k.as_deref_mut() {
@@ -540,7 +540,7 @@ impl crate::interactions::TangentSink for Sink<'_> {
     }
 }
 
-/// Största belopp per fält.
+/// Largest magnitude per field.
 pub fn max_by_field<S: NonlinearSystem + ?Sized>(sys: &S, v: &[f64]) -> BTreeMap<Field, f64> {
     let mut m: BTreeMap<Field, f64> = BTreeMap::new();
     for (i, x) in v.iter().enumerate() {
@@ -550,14 +550,14 @@ pub fn max_by_field<S: NonlinearSystem + ?Sized>(sys: &S, v: &[f64]) -> BTreeMap
     m
 }
 
-/// Resultat av en inkrementiteration.
+/// Result of an increment iteration.
 pub struct IterOutcome {
     pub iterations: usize,
     pub flux: BTreeMap<Field, f64>,
 }
 
-/// Itererar ett inkrement till konvergenskriterierna och därefter till en
-/// försumbar residual. `None` om inkrementet ska halveras.
+/// Iterates an increment to the convergence criteria and then to a
+/// negligible residual. `None` if the increment should be halved.
 pub fn iterate<S: NonlinearSystem + ?Sized>(
     sys: &mut S,
     ctrl: &Controls,
@@ -595,15 +595,15 @@ pub fn iterate<S: NonlinearSystem + ?Sized>(
         for (f, &r) in &rmax {
             let q = qref.get(f).copied().unwrap_or(0.0);
             if q < 1e-5 * qall {
-                // fält med (nästan) noll flöde, t.ex. krafterna i en balk med rent
-                // moment: residualen jämförs med största fältets flöde (oberoende
-                // av R_n, eftersom den bara innehåller avrundningsfel)
+                // fields with (almost) zero flux, e.g. the forces in a beam under pure
+                // moment: the residual is compared with the largest field's flux (independent
+                // of R_n, since it only contains round-off errors)
                 if r > 1e-10 * qall {
                     tight = false;
                 }
-                // (eller om korrektionen är försumbar: avrundningsfel som
-                // förstärks av styva straffkoefficienter, t.ex. kopplingselementens
-                // låsta komponenter med NLGEOM)
+                // (or if the correction is negligible: round-off errors
+                // amplified by stiff penalty coefficients, e.g. the connector elements'
+                // locked components with NLGEOM)
                 let c_small = last_c.as_ref().is_some_and(|c| c.get(f).copied().unwrap_or(0.0) <= 1e-12 * inc.get(f).copied().unwrap_or(0.0).max(1e-300));
                 if r > 1e-8 * qall && !c_small {
                     converged = false;
@@ -620,8 +620,8 @@ pub fn iterate<S: NonlinearSystem + ?Sized>(
                 Some(c) => {
                     let cm = c.get(f).copied().unwrap_or(0.0);
                     let du = inc.get(f).copied().unwrap_or(0.0);
-                    // godta även om den uppskattade nästa korrektionen
-                    // (senaste korrektionen · residualkvoten) är liten
+                    // accept also if the estimated next correction
+                    // (latest correction · the residual ratio) is small
                     let est = prev_r.as_ref().and_then(|p| p.get(f)).filter(|&&rp| rp > 0.0).map(|&rp| cm * r / rp);
                     cm <= ctrl.c_tol * du || cm == 0.0 || est.is_some_and(|e| e <= ctrl.c_tol * du)
                 }
@@ -668,8 +668,8 @@ pub fn iterate<S: NonlinearSystem + ?Sized>(
     Ok(accepted.map(|(n, flux)| IterOutcome { iterations: n, flux }))
 }
 
-/// Automatisk inkrementering. `on_increment(sys, t)` anropas efter
-/// varje godkänt inkrement.
+/// Automatic incrementation. `on_increment(sys, t)` is called after
+/// each accepted increment.
 pub fn drive(
     sys: &mut NlSystem,
     ctrl: &Controls,
@@ -685,7 +685,7 @@ pub fn drive(
     while t < 1.0 - 1e-12 {
         if incs >= ctrl.max_increments {
             return fail(format!(
-                "steget nådde största antal inkrement ({}) vid stegtid {:.4} – öka INC= på *STEP",
+                "the step reached the maximum number of increments ({}) at step time {:.4} – increase INC= on *STEP",
                 ctrl.max_increments,
                 t * ctrl.period
             ));
@@ -701,13 +701,13 @@ pub fn drive(
                 Some(o) => break o,
                 None => {
                     if ctrl.fixed {
-                        return fail(format!("inkrementet vid stegtid {:.4} konvergerade inte (DIRECT, fasta inkrement)", (t + dt) * ctrl.period));
+                        return fail(format!("the increment at step time {:.4} did not converge (DIRECT, fixed increments)", (t + dt) * ctrl.period));
                     }
                     cutbacks += 1;
                     dt *= ctrl.cutback;
                     if cutbacks > ctrl.max_cutbacks || dt < ctrl.min {
                         return fail(format!(
-                            "ingen konvergens vid stegtid {:.4}: inkrementet blev mindre än minimum ({:.3e}) eller för många halveringar",
+                            "no convergence at step time {:.4}: the increment became smaller than the minimum ({:.3e}) or too many cutbacks",
                             t * ctrl.period,
                             ctrl.min * ctrl.period
                         ));
@@ -737,14 +737,14 @@ pub fn drive(
     Ok((incs, iters))
 }
 
-/// Stegets kontrollparametrar för NLGEOM.
+/// The step's control parameters for NLGEOM.
 pub fn controls(step: &StepDef) -> Result<Controls> {
     let mut c = Controls::from_procedure(step.procedure.as_ref(), step.max_increments)?;
     apply_controls(&mut c, &step.extra)?;
     Ok(c)
 }
 
-/// Talen på en datarad; tomma fält (standardvärde) blir 0.
+/// The numbers on a data line; empty fields (default value) become 0.
 fn control_values(kw: &crate::fem::model::RawKeyword, d: &crate::fem::model::DataLine) -> Result<Vec<f64>> {
     d.fields
         .iter()
@@ -753,16 +753,16 @@ fn control_values(kw: &crate::fem::model::RawKeyword, d: &crate::fem::model::Dat
             if f.is_empty() {
                 Ok(0.0)
             } else {
-                f.replace(['d', 'D'], "e").parse::<f64>().map_err(|_| crate::model::FemError(format!("{} rad {} (*CONTROLS): '{f}' är inget tal", kw.file, d.line)))
+                f.replace(['d', 'D'], "e").parse::<f64>().map_err(|_| crate::model::FemError(format!("{} line {} (*CONTROLS): '{f}' is not a number", kw.file, d.line)))
             }
         })
         .collect()
 }
 
-/// *CONTROLS i steget: PARAMETERS=FIELD ger R_n och C_n (samma för alla fält),
-/// PARAMETERS=TIME INCREMENTATION ger I_0, I_C, I_G och I_A (första raden) och
-/// D_C, D_A (andra raden, faktorerna för ökning/halvering används inte). RESET
-/// återställer standardvärdena.
+/// *CONTROLS in the step: PARAMETERS=FIELD gives R_n and C_n (the same for all fields),
+/// PARAMETERS=TIME INCREMENTATION gives I_0, I_C, I_G and I_A (first line) and
+/// D_C, D_A (second line; the factors for increase/cutback are not used). RESET
+/// restores the default values.
 pub fn apply_controls(c: &mut Controls, extra: &[crate::fem::model::RawKeyword]) -> Result<()> {
     let def = Controls::default();
     for kw in extra.iter().filter(|k| k.name == "CONTROLS") {
@@ -836,7 +836,7 @@ impl StepType for StaticNlgeom {
         }
         let (incs, iters) = drive(&mut sys, &ctrl, &mut |s, t, inc| {
             if verbose {
-                eprintln!("  inkrement {inc}: stegtid {:.6}", t * period);
+                eprintln!("  increment {inc}: step time {:.6}", t * period);
             }
             if all || t >= 1.0 - 1e-12 {
                 frames.push(s.frame(t * period, format!("Increment {inc}: Step Time = {:.4}", t * period))?);

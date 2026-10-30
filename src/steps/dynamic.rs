@@ -1,48 +1,48 @@
-//! Implicit direkt tidsintegration (*DYNAMIC) med Hilber–Hughes–Taylor (HHT-α).
+//! Implicit direct time integration (*DYNAMIC) with Hilber–Hughes–Taylor (HHT-α).
 //!
-//! Rörelseekvationen M ü + C u̇ + I(u) = P(t) integreras med Newmarks
-//! uppdateringar
+//! The equation of motion M ü + C u̇ + I(u) = P(t) is integrated with Newmark's
+//! updates
 //!
 //! ```text
 //! ü₁ = (u₁ − u₀ − Δt u̇₀)/(β Δt²) − (1/(2β) − 1) ü₀
 //! u̇₁ = u̇₀ + Δt [(1 − γ) ü₀ + γ ü₁]
 //! ```
 //!
-//! och HHT:s viktade jämvikt (Hilber, Hughes & Taylor 1977; Hughes, "The
-//! Finite Element Method", kap. 9):
+//! and HHT's weighted equilibrium (Hilber, Hughes & Taylor 1977; Hughes, "The
+//! Finite Element Method", ch. 9):
 //!
 //! ```text
 //! M ü₁ + (1 + α)(C u̇₁ + I₁ − P₁) − α (C u̇₀ + I₀ − P₀) = 0,  −1/3 ≤ α ≤ 0
 //! ```
 //!
-//! Ekvationen delas med (1 + α), så att den effektiva tangenten blir
-//! K + M/((1+α) β Δt²) + γ/(β Δt) C och kan assembleras med den vanliga
-//! tangenten från elementen. Newton–Raphson-drivern (`newton.rs`) löser varje
-//! inkrement; linjära modeller löses med en enda ekvationslösning per inkrement.
+//! The equation is divided by (1 + α), so that the effective tangent becomes
+//! K + M/((1+α) β Δt²) + γ/(β Δt) C and can be assembled with the usual
+//! tangent from the elements. The Newton–Raphson driver (`newton.rs`) solves each
+//! increment; linear models are solved with a single equation solve per increment.
 //!
-//! Parametrar:
-//! - `APPLICATION=TRANSIENT FIDELITY` (standard): α = −0,05, β = ¼(1−α)², γ = ½ − α,
-//!   begynnelseacceleration beräknas.
-//! - `APPLICATION=MODERATE DISSIPATION`: α = −0,41421, β = ¼(1−α)², γ = ½ − α.
-//! - `APPLICATION=QUASI-STATIC`: bakåt-Euler (TIME INTEGRATOR=BWE):
-//!   u̇₁ = (u₁ − u₀)/Δt, ü₁ = (u̇₁ − u̇₀)/Δt, jämvikt vid inkrementets
-//!   slut; standardamplituden är RAMP. `TIME INTEGRATOR=BWE/HHT-TF/HHT-MD`
-//!   skriver över tillämpningens integrator.
-//! - `ALPHA=`, `BETA=`, `GAMMA=` skriver över (β och γ följer α om de inte anges).
-//! - `INITIAL=YES/NO`: beräkna ü₀ = M⁻¹(P₀ − I₀ − C u̇₀) vid stegets början.
+//! Parameters:
+//! - `APPLICATION=TRANSIENT FIDELITY` (default): α = −0.05, β = ¼(1−α)², γ = ½ − α,
+//!   initial acceleration is computed.
+//! - `APPLICATION=MODERATE DISSIPATION`: α = −0.41421, β = ¼(1−α)², γ = ½ − α.
+//! - `APPLICATION=QUASI-STATIC`: backward Euler (TIME INTEGRATOR=BWE):
+//!   u̇₁ = (u₁ − u₀)/Δt, ü₁ = (u̇₁ − u̇₀)/Δt, equilibrium at the end of the
+//!   increment; the default amplitude is RAMP. `TIME INTEGRATOR=BWE/HHT-TF/HHT-MD`
+//!   overrides the application's integrator.
+//! - `ALPHA=`, `BETA=`, `GAMMA=` override (β and γ follow α unless given).
+//! - `INITIAL=YES/NO`: compute ü₀ = M⁻¹(P₀ − I₀ − C u̇₀) at the start of the step.
 //!
-//! Datarad: initialt tidsinkrement, stegtid, minsta, största inkrement.
-//! `DIRECT` ger fasta inkrement; annars automatisk inkrementering
-//! (halvstegsresidual, utdatatidpunkter, se `dynamic_incr.rs`).
+//! Data line: initial time increment, step time, minimum, maximum increment.
+//! `DIRECT` gives fixed increments; otherwise automatic incrementation
+//! (half-step residual, output time points, see `dynamic_incr.rs`).
 //!
-//! Dämpning: Rayleigh-dämpning per material (*DAMPING, ALPHA=αR, BETA=βR) ger
-//! elementets C = αR M + βR K (linjär styvhet).
+//! Damping: Rayleigh damping per material (*DAMPING, ALPHA=αR, BETA=βR) gives
+//! the element C = αR M + βR K (linear stiffness).
 //!
-//! Massmatrisen är diagonal (radsummerad) för
-//! första ordningens element (CPS4, CPE4, C3D8, T2D2, T3D2, ...).
+//! The mass matrix is diagonal (row-summed) for
+//! first-order elements (CPS4, CPE4, C3D8, T2D2, T3D2, ...).
 //!
-//! Begynnelsehastighet: *INITIAL CONDITIONS, TYPE=VELOCITY, eller hastigheten
-//! från ett föregående dynamiksteg (`SolutionState::vectors["V"]`).
+//! Initial velocity: *INITIAL CONDITIONS, TYPE=VELOCITY, or the velocity
+//! from a preceding dynamic step (`SolutionState::vectors["V"]`).
 
 #[path = "dynamic_amplitude.rs"]
 pub mod amplitude;
@@ -67,10 +67,10 @@ pub struct Implicit;
 pub static STEP_TYPES: &[&dyn StepType] = &[&Implicit];
 
 // ---------------------------------------------------------------------------
-// Gemensamma hjälpmedel för dynamiksteg (används även av explicit.rs och modal.rs)
+// Shared helpers for dynamic steps (also used by explicit.rs and modal.rs)
 // ---------------------------------------------------------------------------
 
-/// Gles symmetrisk matris över nodplatser (nod · 8 + slot), lagrad radvis.
+/// Sparse symmetric matrix over node slots (node · 8 + slot), stored by row.
 #[derive(Debug, Clone, Default)]
 pub struct NodeMatrix {
     pub rows: Vec<Vec<(usize, f64)>>,
@@ -98,7 +98,7 @@ impl NodeMatrix {
         y
     }
 
-    /// Diagonalen.
+    /// The diagonal.
     pub fn diag(&self) -> Vec<NodeVec> {
         let mut d = vec![[0.0; SLOTS]; self.rows.len() / SLOTS];
         for (g, row) in self.rows.iter().enumerate() {
@@ -107,14 +107,14 @@ impl NodeMatrix {
         d
     }
 
-    /// Matrisen är diagonal.
+    /// The matrix is diagonal.
     pub fn is_diagonal(&self) -> bool {
         self.rows.iter().enumerate().all(|(g, r)| r.iter().all(|p| p.0 == g))
     }
 
-    /// Adderar `c · A` till systemmatrisens undre triangel (fria frihetsgrader).
-    /// Med linjära villkor (tie, MPC) adderas Tᵀ A T, dvs. slavarnas massa förs
-    /// över till deras masters som för styvheten.
+    /// Adds `c · A` to the lower triangle of the system matrix (free DOFs).
+    /// With linear constraints (tie, MPC) Tᵀ A T is added, i.e. the slaves' mass is
+    /// transferred to their masters as for the stiffness.
     pub fn add_to(&self, dm: &DofMap, k: &mut dyn SystemMatrix, c: f64) {
         if c == 0.0 {
             return;
@@ -142,38 +142,38 @@ impl NodeMatrix {
     }
 }
 
-/// Sätter slavarnas hastighet eller acceleration från deras masters
-/// (u̇_s = Σ c u̇_m; villkorens högerled är konstanta i tiden).
+/// Sets the slaves' velocity or acceleration from their masters
+/// (u̇_s = Σ c u̇_m; the constraints' right-hand sides are constant in time).
 pub fn expand_rate(dm: &DofMap, x: &mut [NodeVec]) {
     for sl in &dm.mpc.slaves {
         x[sl.node][sl.slot] = sl.terms.iter().map(|&(n, s, c)| c * x[n][s]).sum();
     }
 }
 
-/// Rayleigh-dämpning (αR, βR) för materialet `mi` (*DAMPING).
+/// Rayleigh damping (αR, βR) for material `mi` (*DAMPING).
 pub fn rayleigh(model: &FeModel, mi: Option<usize>) -> Result<(f64, f64)> {
     let Some(m) = mi.map(|i| &model.materials[i]) else { return Ok((0.0, 0.0)) };
     let Some(kw) = m.behavior("DAMPING") else { return Ok((0.0, 0.0)) };
     if kw.has("STRUCTURAL") || kw.has("COMPOSITE") {
-        return kw.err("STRUCTURAL/COMPOSITE dämpning stöds inte i tidsintegration");
+        return kw.err("STRUCTURAL/COMPOSITE damping is not supported in time integration");
     }
     let num = |k: &str| -> Result<f64> {
         match kw.param(k) {
-            Some(v) => crate::fem::model::parse_f64(v).ok_or_else(|| FemError(format!("{}: {k}={v} är inget tal", kw.location()))),
+            Some(v) => crate::fem::model::parse_f64(v).ok_or_else(|| FemError(format!("{}: {k}={v} is not a number", kw.location()))),
             None => Ok(0.0),
         }
     };
     Ok((num("ALPHA")?, num("BETA")?))
 }
 
-/// Massmatris (och dämpningsmatris C = αR M + βR K) för hela modellen.
+/// Mass matrix (and damping matrix C = αR M + βR K) for the whole model.
 pub fn global_matrices(p: &Prepared, kind: MassKind) -> Result<(NodeMatrix, NodeMatrix)> {
     global_matrices_by(p, &|_| kind)
 }
 
-/// Massans typ per element i implicit dynamik (område struct_nonlin): B22/B32
-/// har konsistent massa som i *FREQUENCY, övriga element (även skalen, till
-/// skillnad från *FREQUENCY) diagonal massa.
+/// Mass type per element in implicit dynamics (area struct_nonlin): B22/B32
+/// have consistent mass as in *FREQUENCY, other elements (including shells, unlike
+/// *FREQUENCY) diagonal mass.
 pub fn implicit_mass_kind(et: &dyn crate::elements::ElementType) -> MassKind {
     match et.name() {
         "B22" | "B32" | "B22H" | "B32H" => MassKind::Consistent,
@@ -181,7 +181,7 @@ pub fn implicit_mass_kind(et: &dyn crate::elements::ElementType) -> MassKind {
     }
 }
 
-/// Som `global_matrices` med massans typ vald per elementtyp.
+/// Like `global_matrices` with the mass type chosen per element type.
 pub fn global_matrices_by(p: &Prepared, kind_of: &dyn Fn(&dyn crate::elements::ElementType) -> MassKind) -> Result<(NodeMatrix, NodeMatrix)> {
     let m = p.model;
     let ng = m.nodes.len() * SLOTS;
@@ -224,7 +224,7 @@ pub fn global_matrices_by(p: &Prepared, kind_of: &dyn Fn(&dyn crate::elements::E
     Ok((NodeMatrix::from_maps(mm), NodeMatrix::from_maps(cm)))
 }
 
-/// Begynnelsehastighet: från föregående dynamiksteg, annars *INITIAL CONDITIONS, TYPE=VELOCITY.
+/// Initial velocity: from a preceding dynamic step, otherwise *INITIAL CONDITIONS, TYPE=VELOCITY.
 pub fn initial_velocity(p: &Prepared, state: &SolutionState) -> Result<Vec<NodeVec>> {
     let nn = p.model.nodes.len();
     if let Some(v) = state.vectors.get("V") {
@@ -233,11 +233,11 @@ pub fn initial_velocity(p: &Prepared, state: &SolutionState) -> Result<Vec<NodeV
     let mut v = vec![[0.0; SLOTS]; nn];
     for kw in p.model.extra.iter().filter(|k| k.name == "INITIAL CONDITIONS" && k.param_upper("TYPE").as_deref() == Some("VELOCITY")) {
         for d in &kw.data {
-            let n: usize = d.fields[0].trim_start_matches('#').parse().map_err(|_| FemError(format!("{}: intern nodreferens", kw.location())))?;
+            let n: usize = d.fields[0].trim_start_matches('#').parse().map_err(|_| FemError(format!("{}: internal node reference", kw.location())))?;
             let vals = kw.floats(&DataLineRef(d).tail())?;
             let (dofv, val) = (vals[0], vals[1]);
             let Some(s) = dof::slot(dofv.round() as dof::Dof) else {
-                return kw.err_at(d.line, format!("'{dofv}' är ingen frihetsgrad"));
+                return kw.err_at(d.line, format!("'{dofv}' is not a degree of freedom"));
             };
             if p.active[n] & (1 << s) != 0 {
                 v[n][s] = val;
@@ -247,7 +247,7 @@ pub fn initial_velocity(p: &Prepared, state: &SolutionState) -> Result<Vec<NodeV
     Ok(v)
 }
 
-/// Hjälp: datarad utan första fältet.
+/// Helper: data line without the first field.
 struct DataLineRef<'a>(&'a crate::fem::model::DataLine);
 impl DataLineRef<'_> {
     fn tail(&self) -> crate::fem::model::DataLine {
@@ -255,16 +255,16 @@ impl DataLineRef<'_> {
     }
 }
 
-/// När fält-utdata skrivs (från *OUTPUT, FIELD i steget).
+/// When field output is written (from *OUTPUT, FIELD in the step).
 #[derive(Debug, Clone, Copy)]
 pub enum Schedule {
-    /// Var n:te inkrement.
+    /// Every n-th increment.
     Every(usize),
-    /// Vid jämnt fördelade tider (stegtid) med detta avstånd.
+    /// At evenly spaced times (step time) with this spacing.
     Interval(f64),
 }
 
-/// Läser utdatafrekvensen ur stegets *OUTPUT, FIELD (första förekomsten).
+/// Reads the output frequency from the step's *OUTPUT, FIELD (first occurrence).
 pub fn output_schedule(step: &StepDef, period: f64, default: Schedule) -> Result<Schedule> {
     for kw in step.output.iter().filter(|k| k.name == "OUTPUT" && (k.has("FIELD") || !k.has("HISTORY"))) {
         if !kw.has("FIELD") {
@@ -281,22 +281,22 @@ pub fn output_schedule(step: &StepDef, period: f64, default: Schedule) -> Result
             return Ok(Schedule::Interval(dt));
         }
         if kw.has("TIME POINTS") {
-            return kw.err("TIME POINTS stöds inte ännu");
+            return kw.err("TIME POINTS is not supported yet");
         }
         return Ok(default);
     }
     Ok(default)
 }
 
-/// Lägger till hastighet och acceleration (V, A) i en frame.
+/// Adds velocity and acceleration (V, A) to a frame.
 pub fn add_va(fr: &mut FrameData, dim: usize, v: &[NodeVec], a: &[NodeVec]) {
     let labels = |p: &str| (1..=dim).map(|i| format!("{p}{i}")).collect::<Vec<_>>();
     fr.node_extra.push(("V".into(), labels("V"), v.iter().map(|x| x[..dim].to_vec()).collect()));
     fr.node_extra.push(("A".into(), labels("A"), a.iter().map(|x| x[..dim].to_vec()).collect()));
 }
 
-/// Standardamplitud för dynamiksteg: AMPLITUDE= på *STEP, annars steg (lasten
-/// verkar fullt från stegets början – kontrollerat i
+/// Default amplitude for dynamic steps: AMPLITUDE= on *STEP, otherwise step (the load
+/// acts fully from the start of the step – verified in
 /// tests/cases/dynamics/t2d2_hht_steglast).
 pub fn default_ramp(step: &StepDef) -> bool {
     match step.header.param_upper("AMPLITUDE") {
@@ -307,7 +307,7 @@ pub fn default_ramp(step: &StepDef) -> bool {
 
 fn param_f64(kw: &RawKeyword, key: &str) -> Result<Option<f64>> {
     match kw.param(key) {
-        Some(v) => crate::fem::model::parse_f64(v).map(Some).ok_or_else(|| FemError(format!("{}: {key}={v} är inget tal", kw.location()))),
+        Some(v) => crate::fem::model::parse_f64(v).map(Some).ok_or_else(|| FemError(format!("{}: {key}={v} is not a number", kw.location()))),
         None => Ok(None),
     }
 }
@@ -316,14 +316,14 @@ fn param_f64(kw: &RawKeyword, key: &str) -> Result<Option<f64>> {
 // HHT-α
 // ---------------------------------------------------------------------------
 
-/// HHT-parametrar.
+/// HHT parameters.
 #[derive(Debug, Clone, Copy)]
 pub struct Hht {
     pub alpha: f64,
     pub beta: f64,
     pub gamma: f64,
     pub initial_accel: bool,
-    /// Bakåt-Euler (APPLICATION=QUASI-STATIC, TIME INTEGRATOR=BWE) i stället för HHT.
+    /// Backward Euler (APPLICATION=QUASI-STATIC, TIME INTEGRATOR=BWE) instead of HHT.
     pub bwe: bool,
 }
 
@@ -332,17 +332,17 @@ impl Hht {
         Self::from_keyword_app(kw, "TRANSIENT FIDELITY")
     }
 
-    /// Som `from_keyword` med `default_app` när APPLICATION= saknas.
+    /// Like `from_keyword` with `default_app` when APPLICATION= is missing.
     pub fn from_keyword_app(kw: &RawKeyword, default_app: &str) -> Result<Hht> {
         let app = kw.param_upper("APPLICATION").unwrap_or_else(|| default_app.into());
-        // (α, β, γ, begynnelseacceleration) per tillämpning. MODERATE DISSIPATION
-        // beräknar inte ü₀ (ü = 0 i frame 0) och har α = 1 − √2
-        // exakt, β = ¼(1−α)² = ½, γ = ½ − α (tests/cases/dynamics/cps4_hht_md_rayleigh).
+        // (α, β, γ, initial acceleration) per application. MODERATE DISSIPATION
+        // does not compute ü₀ (ü = 0 in frame 0) and has α = 1 − √2
+        // exactly, β = ¼(1−α)² = ½, γ = ½ − α (tests/cases/dynamics/cps4_hht_md_rayleigh).
         let (a0, b0, g0, init) = match app.as_str() {
             "TRANSIENT FIDELITY" => (-0.05, 0.275625, 0.55, true),
             "MODERATE DISSIPATION" => (1.0 - std::f64::consts::SQRT_2, 0.5, std::f64::consts::SQRT_2 - 0.5, false),
             "QUASI-STATIC" => (-1.0 / 3.0, 4.0 / 9.0, 5.0 / 6.0, false),
-            other => return kw.err(format!("APPLICATION={other} stöds inte")),
+            other => return kw.err(format!("APPLICATION={other} is not supported")),
         };
         let integrator = kw.param_upper("TIME INTEGRATOR");
         let (a0, b0, g0) = match integrator.as_deref() {
@@ -353,7 +353,7 @@ impl Hht {
         let bwe = match integrator.as_deref() {
             Some("BWE") => true,
             Some("HHT-TF") | Some("HHT-MD") => false,
-            Some(other) => return kw.err(format!("TIME INTEGRATOR={other} stöds inte")),
+            Some(other) => return kw.err(format!("TIME INTEGRATOR={other} is not supported")),
             None => app == "QUASI-STATIC",
         };
         if bwe {
@@ -362,7 +362,7 @@ impl Hht {
         let given = param_f64(kw, "ALPHA")?;
         let alpha = given.unwrap_or(a0);
         if !(-0.5..=0.0).contains(&alpha) {
-            return kw.err(format!("ALPHA={alpha} ska ligga i [−1/2, 0]"));
+            return kw.err(format!("ALPHA={alpha} must lie in [−1/2, 0]"));
         }
         let beta = param_f64(kw, "BETA")?.unwrap_or(if given.is_some() { 0.25 * (1.0 - alpha) * (1.0 - alpha) } else { b0 });
         let gamma = param_f64(kw, "GAMMA")?.unwrap_or(if given.is_some() { 0.5 - alpha } else { g0 });
@@ -371,7 +371,7 @@ impl Hht {
     }
 }
 
-/// Ett tidsinkrement med HHT-α som `NonlinearSystem`.
+/// One time increment with HHT-α as a `NonlinearSystem`.
 pub struct HhtSystem<'p, 'm> {
     pub p: &'p Prepared<'m>,
     pub nlgeom: bool,
@@ -381,50 +381,50 @@ pub struct HhtSystem<'p, 'm> {
     pub m: &'p NodeMatrix,
     pub c: &'p NodeMatrix,
     pub hht: Hht,
-    /// Total tid vid stegets början.
+    /// Total time at the start of the step.
     pub time0: f64,
-    /// Stegtid vid inkrementets början och inkrementets längd.
+    /// Step time at the start of the increment and the increment length.
     pub tn: f64,
     pub h: f64,
-    /// Inkrementets slut som andel av `h` (från drivern, normalt 1).
+    /// End of the increment as a fraction of `h` (from the driver, normally 1).
     f1: f64,
     pub u: Vec<NodeVec>,
     pub un: Vec<NodeVec>,
     pub vn: Vec<NodeVec>,
     pub an: Vec<NodeVec>,
-    /// I₀ − P₀ + C u̇₀ vid inkrementets början.
+    /// I₀ − P₀ + C u̇₀ at the start of the increment.
     pub rn: Vec<NodeVec>,
-    /// Hastighet och acceleration i föreskrivna frihetsgrader med amplitud vid inkrementets slut.
+    /// Velocity and acceleration in prescribed DOFs with amplitude at the end of the increment.
     pub bc_rates: Vec<(usize, usize, f64, f64)>,
-    /// `rn` vid det senast godkända inkrementets början (för reaktionerna).
+    /// `rn` at the start of the last accepted increment (for the reactions).
     pub rn_prev: Vec<NodeVec>,
     pub state_old: Vec<Vec<f64>>,
     pub state_new: Vec<Vec<f64>>,
-    // senaste utvärdering
+    // latest evaluation
     pub v1: Vec<NodeVec>,
     pub a1: Vec<NodeVec>,
     pub fint: Vec<NodeVec>,
     pub fext: Vec<NodeVec>,
     pub ma: Vec<NodeVec>,
     pub cv: Vec<NodeVec>,
-    /// Flux att använda när inkrementets flux är noll (stelkroppsrörelse utan
-    /// krafter): stegets tidsmedelvärde hittills, annars 10⁻² (standardvärdet
-    /// för tidsmedelkraftens startvärde i *CONTROLS).
+    /// Flux to use when the increment's flux is zero (rigid-body motion without
+    /// forces): the step's time average so far, otherwise 10⁻² (the default value
+    /// for the initial time-average force in *CONTROLS).
     pub q_floor: BTreeMap<Field, f64>,
-    /// Kontaktkrafter vid inkrementets slut (ingår inte i `fint`).
+    /// Contact forces at the end of the increment (not included in `fint`).
     pub fc: Vec<NodeVec>,
-    /// Index i `p.interactions` för kontaktinteraktionerna.
+    /// Indices in `p.interactions` of the contact interactions.
     pub contact: Vec<usize>,
-    /// P − I − C u̇ före kondenseringen av villkoren vid senaste utvärderingen
-    /// och vid inkrementets början (för villkorskrafterna i kopplingselement).
+    /// P − I − C u̇ before condensation of the constraints at the latest evaluation
+    /// and at the start of the increment (for the constraint forces in connector elements).
     pub rs_trial: Vec<NodeVec>,
     pub rs_old: Vec<NodeVec>,
-    /// Villkorskrafterna (som −residual i slavarna) vid senaste utvärderingen och inkrementets början.
+    /// The constraint forces (as −residual in the slaves) at the latest evaluation and the start of the increment.
     pub cf_trial: Vec<NodeVec>,
     pub cf_old: Vec<NodeVec>,
 }
 
-/// Tangentbidrag skalade med `f` (för kontaktens tangent i HHT).
+/// Tangent contributions scaled by `f` (for the contact tangent in HHT).
 struct ScaledSink<'a> {
     dm: &'a DofMap,
     k: &'a mut dyn SystemMatrix,
@@ -437,12 +437,12 @@ impl crate::interactions::TangentSink for ScaledSink<'_> {
     }
 }
 
-/// Kontaktinteraktionerna (de som skriver ut CPRESS).
+/// The contact interactions (those that output CPRESS).
 pub fn contact_interactions(p: &Prepared) -> Vec<usize> {
     (0..p.interactions.len()).filter(|&i| p.interactions[i].node_output().iter().any(|o| o.name == "CPRESS")).collect()
 }
 
-/// Ögonblicksbild för att kunna göra om ett inkrement.
+/// Snapshot used to redo an increment.
 #[derive(Clone)]
 pub struct Snapshot {
     un: Vec<NodeVec>,
@@ -498,7 +498,7 @@ impl<'p, 'm> HhtSystem<'p, 'm> {
         let mut a = vec![[0.0; SLOTS]; u.len()];
         let mut v = vec![[0.0; SLOTS]; u.len()];
         if bwe {
-            // bakåt-Euler: u̇₁ = Δu/Δt, ü₁ = (u̇₁ − u̇₀)/Δt
+            // backward Euler: u̇₁ = Δu/Δt, ü₁ = (u̇₁ − u̇₀)/Δt
             for n in 0..u.len() {
                 for s in 0..SLOTS {
                     v[n][s] = (u[n][s] - self.un[n][s]) / h;
@@ -526,14 +526,14 @@ impl<'p, 'm> HhtSystem<'p, 'm> {
         (a, v)
     }
 
-    /// Kontaktkrafterna i `fint` (från `assembly::internal`) dras ifrån och
-    /// returneras. Med `tangent = Some(f)` adderas dessutom f·K_kontakt till
-    /// systemmatrisen.
+    /// The contact forces in `fint` (from `assembly::internal`) are subtracted and
+    /// returned. With `tangent = Some(f)`, f·K_contact is also added to the
+    /// system matrix.
     ///
-    /// Kontaktkrafterna HHT-viktas inte: jämvikten är
-    /// M ü₁ + (1+α)(I₁ + C u̇₁ − P₁) − α(I₀ + C u̇₀ − P₀) + F_c,₁ = 0, som för
-    /// villkorskrafter (Lagrange-multiplikatorer) i implicit analys. Med
-    /// viktningen (1+α)F_c,₁ − αF_c,₀ blev stöten mellan två block helt fel
+    /// The contact forces are not HHT-weighted: the equilibrium is
+    /// M ü₁ + (1+α)(I₁ + C u̇₁ − P₁) − α(I₀ + C u̇₀ − P₀) + F_c,₁ = 0, as for
+    /// constraint forces (Lagrange multipliers) in implicit analysis. With
+    /// the weighting (1+α)F_c,₁ − αF_c,₀ the impact between two blocks was completely wrong
     /// (tests/cases/dyn_incr/cpe4_stot_*).
     fn split_contact(&mut self, u: &[NodeVec], t: f64, fint: &mut [NodeVec], tangent: Option<f64>) -> Result<Vec<NodeVec>> {
         let nn = u.len();
@@ -560,8 +560,8 @@ impl<'p, 'm> HhtSystem<'p, 'm> {
         Ok(fc)
     }
 
-    /// I − P + C u̇ vid stegtiden `t` för förskjutningen u (utan tangent),
-    /// kontaktkrafterna för sig: (fint utan kontakt, fext, C u̇, F_c).
+    /// I − P + C u̇ at step time `t` for the displacement u (without tangent),
+    /// with the contact forces separate: (fint without contact, fext, C u̇, F_c).
     #[allow(clippy::type_complexity)]
     pub fn static_residual_at(&mut self, t: f64, u: &[NodeVec], v: &[NodeVec]) -> Result<(Vec<NodeVec>, Vec<NodeVec>, Vec<NodeVec>, Vec<NodeVec>)> {
         let du: Vec<NodeVec> = u.iter().zip(&self.un).map(|(a, b)| std::array::from_fn(|s| a[s] - b[s])).collect();
@@ -570,7 +570,7 @@ impl<'p, 'm> HhtSystem<'p, 'm> {
         let (mut fint, mut fext) = (int.fint, fext);
         let mut fc = self.split_contact(u, t, &mut fint, None)?;
         let mut cv = self.c.mul(v);
-        // linjära villkor: krafter i slavar förs över till deras masters
+        // linear constraints: forces in slaves are transferred to their masters
         for f in [&mut fint, &mut fext, &mut cv, &mut fc] {
             self.dm.mpc.condense(f);
         }
@@ -606,9 +606,9 @@ impl NonlinearSystem for HhtSystem<'_, '_> {
     }
 
     fn evaluate(&mut self, tangent: bool) -> Result<Residual> {
-        // NLGEOM: villkor som beror på läget (stela kroppar med ändliga rotationer)
-        // linjäriseras om i varje iteration, som i steps/nlgeom.rs; slavarnas lägen
-        // blir exakta och deras accelerationer följer av Newmark på slavläget
+        // NLGEOM: constraints that depend on the configuration (rigid bodies with finite rotations)
+        // are relinearized in every iteration, as in steps/nlgeom.rs; the slave positions
+        // become exact and their accelerations follow from Newmark on the slave position
         if self.nlgeom {
             self.dm.mpc.update_at(self.p, &self.dm.constrained, &mut self.u)?;
         }
@@ -630,7 +630,7 @@ impl NonlinearSystem for HhtSystem<'_, '_> {
             }
         }
         let mut fint = int.fint;
-        // kontakt: tangenten ska vara K_c/(1+α) (residualen delas med 1+α)
+        // contact: the tangent must be K_c/(1+α) (the residual is divided by 1+α)
         let u = std::mem::take(&mut self.u);
         let fc = self.split_contact(&u, t, &mut fint, tangent.then_some(1.0 / (1.0 + alpha) - 1.0));
         self.u = u;
@@ -640,8 +640,8 @@ impl NonlinearSystem for HhtSystem<'_, '_> {
         self.fext = assembly::external(self.p, &self.lev.cloads_at(t), &self.lev.dloads_at(t), &self.u, self.nlgeom, self.time0 + t)?;
         self.ma = self.m.mul(&a);
         self.cv = self.c.mul(&v);
-        // villkorskrafter (kopplingselement) ur den okondenserade residualen;
-        // villkorskraften HHT-viktas som de inre krafterna
+        // constraint forces (connector elements) from the uncondensed residual;
+        // the constraint force is HHT-weighted like the internal forces
         // (tests/cases/contact3/conn_dyn_join)
         if !self.dm.mpc.is_empty() {
             let nn = self.u.len();
@@ -661,7 +661,7 @@ impl NonlinearSystem for HhtSystem<'_, '_> {
                 it.observe_residual(&neg, &zero, &self.dm.mpc.slaves);
             }
         }
-        // linjära villkor: krafter i slavar förs över till deras masters
+        // linear constraints: forces in slaves are transferred to their masters
         for f in [&mut self.fint, &mut self.fext, &mut self.ma, &mut self.cv, &mut self.fc] {
             self.dm.mpc.condense(f);
         }
@@ -690,7 +690,7 @@ impl NonlinearSystem for HhtSystem<'_, '_> {
             .map(|(f, (s, c))| {
                 let q = if c > 0 { s / c as f64 } else { 0.0 };
                 let floor = self.q_floor.get(&f).copied().unwrap_or(1e-2);
-                // noll flux (mindre än 10⁻⁵ av tidsmedelvärdet)
+                // zero flux (less than 10⁻⁵ of the time average)
                 (f, if q < 1e-5 * floor { floor } else { q })
             })
             .collect();
@@ -718,7 +718,7 @@ impl NonlinearSystem for HhtSystem<'_, '_> {
     }
 
     fn commit(&mut self) -> Result<()> {
-        // kontakt m.fl.: godkänt inkrement (friktionstillstånd, utdata)
+        // contact etc.: accepted increment (friction state, output)
         for it in &self.p.interactions {
             it.commit();
         }
@@ -728,7 +728,7 @@ impl NonlinearSystem for HhtSystem<'_, '_> {
         self.un.clone_from(&self.u);
         self.vn.clone_from(&self.v1);
         self.an.clone_from(&self.a1);
-        // I − P + C u̇ vid inkrementets slut blir nästa inkrements "gamla" term
+        // I − P + C u̇ at the end of the increment becomes the next increment's "old" term
         for n in 0..self.u.len() {
             for s in 0..SLOTS {
                 self.rn[n][s] = self.fext[n][s] - self.fint[n][s] - self.cv[n][s];
@@ -741,7 +741,7 @@ impl NonlinearSystem for HhtSystem<'_, '_> {
     }
 }
 
-/// Tidsstegningsdata från *DYNAMIC-raden.
+/// Time stepping data from the *DYNAMIC line.
 #[derive(Debug, Clone, Copy)]
 pub struct TimeControls {
     pub dt0: f64,
@@ -750,9 +750,9 @@ pub struct TimeControls {
     pub dt_max: f64,
     pub haftol: Option<f64>,
     pub fixed: bool,
-    /// INCREMENTATION=CONSERVATIVE (halvstegsresidualen styr inkrementen).
+    /// INCREMENTATION=CONSERVATIVE (the half-step residual controls the increments).
     pub conservative: bool,
-    /// Halvstegstolerans (None: ingen kontroll, NOHAF).
+    /// Half-step tolerance (None: no check, NOHAF).
     pub half_tol: Option<incr::HalfTol>,
 }
 
@@ -761,13 +761,13 @@ impl TimeControls {
         Self::from_keyword_app(kw, "TRANSIENT FIDELITY", false)
     }
 
-    /// Som `from_keyword` med tillämpningen `default_app` när APPLICATION=
-    /// saknas och `contact` om modellen har kontakt. Standardvärden:
-    /// största inkrement max(T/100, Δt₀)
-    /// för TRANSIENT FIDELITY, max(T/10, Δt₀) för MODERATE DISSIPATION och T
-    /// för QUASI-STATIC; minsta min(Δt₀, 10⁻⁵ T); halvstegstolerans HAFTOL
-    /// eller HALFINC SCALE FACTOR (standard 1000, med kontakt 10000) gånger
-    /// tidsmedelvärdet av kraften.
+    /// Like `from_keyword` with application `default_app` when APPLICATION=
+    /// is missing and `contact` if the model has contact. Defaults:
+    /// maximum increment max(T/100, Δt₀)
+    /// for TRANSIENT FIDELITY, max(T/10, Δt₀) for MODERATE DISSIPATION and T
+    /// for QUASI-STATIC; minimum min(Δt₀, 10⁻⁵ T); half-step tolerance HAFTOL
+    /// or HALFINC SCALE FACTOR (default 1000, with contact 10000) times
+    /// the time average of the force.
     pub fn from_keyword_app(kw: &RawKeyword, default_app: &str, contact: bool) -> Result<TimeControls> {
         let app = kw.param_upper("APPLICATION").unwrap_or_else(|| default_app.into());
         let v = kw.first_floats()?;
@@ -787,7 +787,7 @@ impl TimeControls {
         let conservative = match kw.param_upper("INCREMENTATION").as_deref() {
             Some("CONSERVATIVE") => true,
             Some("AGGRESSIVE") => false,
-            Some(other) => return kw.err(format!("INCREMENTATION={other} stöds inte")),
+            Some(other) => return kw.err(format!("INCREMENTATION={other} is not supported")),
             None => app == "TRANSIENT FIDELITY",
         } && !kw.has("NOHAF");
         let half_tol = if !conservative {
@@ -803,10 +803,10 @@ impl TimeControls {
     }
 }
 
-/// Karakteristisk elementlängd (för halvstegstoleransen för moment):
-/// medelvärdet över elementen av medelutsträckningen längs de koordinataxlar
-/// där elementet har utsträckning. För stänger och balkar blir det
-/// elementets längd, för rektangulära CPE4 (0,1 × 0,05) 0,075.
+/// Characteristic element length (for the half-step tolerance for moments):
+/// the mean over the elements of the mean extent along the coordinate axes
+/// in which the element has extent. For trusses and beams this becomes the
+/// element length, for rectangular CPE4 (0.1 × 0.05) 0.075.
 pub fn characteristic_length(model: &FeModel) -> f64 {
     let mut sum = 0.0;
     let mut n = 0usize;
@@ -837,9 +837,9 @@ pub fn characteristic_length(model: &FeModel) -> f64 {
 }
 
 impl HhtSystem<'_, '_> {
-    /// "Inre kraft" för reaktionerna: RF = M ü₁ + (1+α)(I₁ + C u̇₁ − P₁) − α(I₀ + C u̇₀ − P₀) + P₁,
-    /// dvs. HHT-viktad jämvikt.
-    /// `rn_prev` är I₀ − P₀ + C u̇₀ med omvänt tecken vid inkrementets början.
+    /// "Internal force" for the reactions: RF = M ü₁ + (1+α)(I₁ + C u̇₁ − P₁) − α(I₀ + C u̇₀ − P₀) + P₁,
+    /// i.e. HHT-weighted equilibrium.
+    /// `rn_prev` is I₀ − P₀ + C u̇₀ with reversed sign at the start of the increment.
     fn reaction_force(&self, rn_prev: &[NodeVec]) -> Vec<NodeVec> {
         let a = self.hht.alpha;
         (0..self.fint.len())
@@ -867,7 +867,7 @@ fn frame_of(sys: &HhtSystem, inc: usize) -> Result<FrameData> {
     Ok(fr)
 }
 
-/// Löser M x = r för de fria frihetsgraderna (diagonal massa: division).
+/// Solves M x = r for the free DOFs (diagonal mass: division).
 pub fn solve_mass(p: &Prepared, dm: &DofMap, mat: &mut dyn SystemMatrix, m: &NodeMatrix, r: &[NodeVec]) -> Result<Vec<NodeVec>> {
     let nn = r.len();
     let mut x = vec![[0.0; SLOTS]; nn];
@@ -884,11 +884,11 @@ pub fn solve_mass(p: &Prepared, dm: &DofMap, mat: &mut dyn SystemMatrix, m: &Nod
     }
     mat.zero();
     m.add_to(dm, mat, 1.0);
-    // område struct_nonlin: frihetsgrader helt utan massa (skalens rotation kring
-    // normalen med konsistent massa) får accelerationen noll
+    // area struct_nonlin: DOFs entirely without mass (shell rotation about
+    // the normal with consistent mass) get zero acceleration
     let mut d = m.diag();
-    // massa som villkoren för över från slavar (t.ex. stela kroppars noder till
-    // referensnoden) räknas också; annars blev referensnodens begynnelseacceleration noll
+    // mass that the constraints transfer from slaves (e.g. rigid-body nodes to
+    // the reference node) is also counted; otherwise the reference node's initial acceleration became zero
     for sl in &dm.mpc.slaves {
         let ds = d[sl.node][sl.slot].abs();
         if ds != 0.0 || !m.rows[sl.node * SLOTS + sl.slot].is_empty() {
@@ -905,7 +905,7 @@ pub fn solve_mass(p: &Prepared, dm: &DofMap, mat: &mut dyn SystemMatrix, m: &Nod
     }
     if let Err(q) = mat.factor() {
         let (n, s) = dm.owner[q];
-        return fail(format!("massmatrisen är singulär vid nod {} frihetsgrad {} – saknas densitet?", p.model.node_name(n), dof::name(SLOT_DOF[s])));
+        return fail(format!("the mass matrix is singular at node {} DOF {} – missing density?", p.model.node_name(n), dof::name(SLOT_DOF[s])));
     }
     let mut b: Vec<f64> = dm.owner.iter().map(|&(n, s)| if massless(n, s) { 0.0 } else { r[n][s] }).collect();
     mat.solve(&mut b);
@@ -933,17 +933,17 @@ impl StepType for Implicit {
     fn run(&self, ctx: &mut StepCtx) -> Result<()> {
         let kw = ctx.step.procedure.as_ref().unwrap();
         if ctx.step.perturbation {
-            return fail("*DYNAMIC kan inte vara ett perturbationssteg");
+            return fail("*DYNAMIC cannot be a perturbation step");
         }
-        // standardtillämpningen är MODERATE DISSIPATION när
-        // modellen har kontakt (kontrollerat i .dat, tests/cases/contact/kontakt_dynamik_*)
+        // the default application is MODERATE DISSIPATION when
+        // the model has contact (verified in .dat, tests/cases/contact/kontakt_dynamik_*)
         let contact = ctx.prep.model.extra.iter().any(|k| k.name == "CONTACT PAIR" || k.name == "CONTACT");
         let default_app = if contact { "MODERATE DISSIPATION" } else { "TRANSIENT FIDELITY" };
         let hht = Hht::from_keyword_app(kw, default_app)?;
         let tc = TimeControls::from_keyword_app(kw, default_app, contact)?;
         let prep = ctx.prep;
         let model = prep.model;
-        // QUASI-STATIC: standardamplituden är RAMP
+        // QUASI-STATIC: the default amplitude is RAMP
         let quasi = kw.param_upper("APPLICATION").as_deref() == Some("QUASI-STATIC");
         let ramp = match ctx.step.header.param_upper("AMPLITUDE") {
             Some(a) => a == "RAMP",
@@ -990,7 +990,7 @@ impl StepType for Implicit {
             cf_trial: vec![[0.0; SLOTS]; nn],
             cf_old: vec![[0.0; SLOTS]; nn],
         };
-        // föreskrivna värden vid stegets början
+        // prescribed values at the start of the step
         for (n, s, v) in lev.bc_at(0.0) {
             if sys.dm.constrained[n] & (1 << s) != 0 {
                 sys.un[n][s] = v;
@@ -1005,10 +1005,10 @@ impl StepType for Implicit {
         expand_rate(&sys.dm, &mut sys.vn);
         let v0 = sys.vn.clone();
         let u0 = sys.un.clone();
-        // lasterna vid stegets början utvärderas strax efter starten
-        // (t = 10⁻⁶ Δt₀): en steglast verkar då fullt redan i ü₀
-        // och i HHT-termen för t₀, medan en tabellerad amplitud som börjar i noll
-        // ger ü₀ ≈ 0 (tests/cases/dynamics/t2d2_hht_*).
+        // the loads at the start of the step are evaluated just after the start
+        // (t = 10⁻⁶ Δt₀): a step load then acts fully already in ü₀
+        // and in the HHT term for t₀, while a tabular amplitude starting at zero
+        // gives ü₀ ≈ 0 (tests/cases/dynamics/t2d2_hht_*).
         let te = 1e-6 * tc.dt0;
         let (fint0, fext0, cv0, fc0) = sys.static_residual_at(te, &u0, &v0)?;
         for n in 0..nn {
@@ -1044,7 +1044,7 @@ impl StepType for Implicit {
         if all {
             let mut f0 = frame_of(&sys, 0)?;
             if ctx.index > 0 {
-                // reaktionerna i frame 0 är föregående stegs
+                // the reactions in frame 0 are those of the preceding step
                 for n in 0..nn {
                     for s in 0..SLOTS {
                         if f0.constrained[n] & (1 << s) != 0 {
@@ -1076,21 +1076,21 @@ impl StepType for Implicit {
             linear,
             plan.points.clone(),
         );
-        // Newton-kontroller (*CONTROLS, PARAMETERS=FIELD); tidsmedelvärdet av
-        // flux förs över stegets godkända inkrement
+        // Newton controls (*CONTROLS, PARAMETERS=FIELD); the time average of
+        // flux is carried over the step's accepted increments
         let mut nctl = Controls { fixed: true, ..Default::default() };
         super::nlgeom::apply_controls(&mut nctl, &ctx.step.extra)?;
         let mut flux_sum: BTreeMap<Field, f64> = BTreeMap::new();
         let mut n_flux = 0usize;
         let mut inc = 0usize;
         let mut iterations = 0usize;
-        // residualen vid föregående inkrements början (halvstegsresidualen)
+        // the residual at the start of the preceding increment (the half-step residual)
         let mut prev_start: Option<Vec<NodeVec>> = None;
         let mut hh = inc_ctl.next(0.0);
         while sys.tn < tc.period - eps {
             crate::progress::emit(crate::progress::Event::Increment { fraction: sys.tn / tc.period, iterations: 0 })?;
             if inc >= ctx.step.max_increments {
-                return fail(format!("steget nådde största antal inkrement ({}) vid stegtid {:.4e} – öka INC= på *STEP", ctx.step.max_increments, sys.tn));
+                return fail(format!("the step reached the maximum number of increments ({}) at step time {:.4e} – increase INC= on *STEP", ctx.step.max_increments, sys.tn));
             }
             sys.h = hh;
             if n_flux > 0 {
@@ -1102,22 +1102,22 @@ impl StepType for Implicit {
             let res = newton::iterate_increment(&mut sys, &nctl, &flux_sum, n_flux)?;
             let Some((iters, flux)) = res else {
                 if verbose {
-                    eprintln!("  inkrement {} försök {}: Δt {hh:.4e} konvergerade inte", inc + 1, inc_ctl.attempt + 1);
+                    eprintln!("  increment {} attempt {}: Δt {hh:.4e} did not converge", inc + 1, inc_ctl.attempt + 1);
                 }
                 sys.restore(snap);
-                hh = inc_ctl.diverged().map_err(|e| FemError(format!("{} vid stegtid {:.4e}", e.0, sys.tn)))?;
+                hh = inc_ctl.diverged().map_err(|e| FemError(format!("{} at step time {:.4e}", e.0, sys.tn)))?;
                 continue;
             };
-            // tidsmedelvärde av flux inklusive detta försök (för HALFINC SCALE FACTOR)
+            // time average of flux including this attempt (for HALFINC SCALE FACTOR)
             let tavg: BTreeMap<Field, f64> = flux.iter().map(|(f, q)| (*f, (flux_sum.get(f).copied().unwrap_or(0.0) + q) / (n_flux + 1) as f64)).collect();
             let tol = inc_ctl.tolerance(&tavg);
             let rh = if mode == incr::Mode::Conservative { half_step_residual(&mut sys, &snap, prev_start.as_deref())? } else { BTreeMap::new() };
             if verbose {
                 let fx: Vec<String> = flux.iter().map(|(f, q)| format!("{f:?} {q:.4e}")).collect();
                 let rs: Vec<String> = rh.iter().map(|(f, r)| format!("{f:?} {r:.4e}")).collect();
-                eprintln!("  inkrement {} försök {}: Δt {hh:.4e}, {iters} iterationer, flux [{}], halvstegsresidual [{}]", inc + 1, inc_ctl.attempt + 1, fx.join(", "), rs.join(", "));
+                eprintln!("  increment {} attempt {}: Δt {hh:.4e}, {iters} iterations, flux [{}], half-step residual [{}]", inc + 1, inc_ctl.attempt + 1, fx.join(", "), rs.join(", "));
             }
-            if let incr::Verdict::Retry(h) = inc_ctl.check(&rh, &tol).map_err(|e| FemError(format!("{} vid stegtid {:.4e}", e.0, sys.tn)))? {
+            if let incr::Verdict::Retry(h) = inc_ctl.check(&rh, &tol).map_err(|e| FemError(format!("{} at step time {:.4e}", e.0, sys.tn)))? {
                 sys.restore(snap);
                 hh = h;
                 continue;
@@ -1129,7 +1129,7 @@ impl StepType for Implicit {
             n_flux += 1;
             iterations += iters;
             inc += 1;
-            // residualen vid detta inkrements början (för nästa halvstegsresidual)
+            // the residual at the start of this increment (for the next half-step residual)
             prev_start = Some(snap_rn);
             let grown = inc_ctl.accepted(sys.tn, rh, &tol, iters);
             let last = sys.tn >= tc.period - eps;
@@ -1137,7 +1137,7 @@ impl StepType for Implicit {
                 frames.push(frame_of(&sys, inc)?);
             }
             if verbose {
-                eprintln!("  inkrement {inc}: stegtid {:.6e}, Δt {:.4e}{}", sys.tn, hh, grown.map_or(String::new(), |g| format!(", Δt får öka till {g:.4e}")));
+                eprintln!("  increment {inc}: step time {:.6e}, Δt {:.4e}{}", sys.tn, hh, grown.map_or(String::new(), |g| format!(", Δt may grow to {g:.4e}")));
             }
             if !last {
                 hh = inc_ctl.next(sys.tn);
@@ -1165,18 +1165,18 @@ impl StepType for Implicit {
     }
 }
 
-/// Största residual mitt i det senaste inkrementet (jämviktsfel vid t + Δt/2),
-/// med förskjutningen interpolerad med Newmarks formler från inkrementets
-/// början och accelerationen som medelvärdet av ändpunkternas:
+/// Largest residual in the middle of the latest increment (equilibrium error at t + Δt/2),
+/// with the displacement interpolated with Newmark's formulas from the start of the
+/// increment and the acceleration as the mean of the end points:
 ///
 /// ```text
 /// R½ = M ü½ + (1+α)(I½ + C u̇½ − P₁) − α · ½[(I + C u̇ − P)ₜ + (I + C u̇ − P)ₜ₋Δt]
 /// ```
 ///
-/// HHT-termen för föregående halvsteg t − Δt/2 tas som medelvärdet av
-/// residualerna vid inkrementets början och vid föregående inkrements början
-/// (`prev_start`; vid första inkrementet bara början). Lasten tas vid
-/// inkrementets slut (tests/cases/dynamics/t2d2_hht_auto_haftol).
+/// The HHT term for the preceding half step t − Δt/2 is taken as the mean of
+/// the residuals at the start of the increment and at the start of the preceding increment
+/// (`prev_start`; at the first increment only the start). The load is taken at
+/// the end of the increment (tests/cases/dynamics/t2d2_hht_auto_haftol).
 fn half_step_residual(sys: &mut HhtSystem, snap: &Snapshot, prev_start: Option<&[NodeVec]>) -> Result<BTreeMap<Field, f64>> {
     let h = sys.h;
     let hh = 0.5 * h;
@@ -1192,7 +1192,7 @@ fn half_step_residual(sys: &mut HhtSystem, snap: &Snapshot, prev_start: Option<&
         }
     }
     let t_half = snap.tn + hh;
-    // utvärdera med tillståndet vid inkrementets början
+    // evaluate with the state at the start of the increment
     let state_end = std::mem::replace(&mut sys.state_old, snap.state.clone());
     let un_end = std::mem::replace(&mut sys.un, snap.un.clone());
     let tn_end = std::mem::replace(&mut sys.tn, snap.tn);

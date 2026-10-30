@@ -1,70 +1,70 @@
-//! Uppdelad hyperelasticitet: gränssnittet som element med egen behandling av
-//! volymdelen använder (F-bar-elementen CPE4/C3D8 vid NLGEOM, plan spänning
-//! CPS4/CPS3 och hybridelementen C3D8H, CPE4H, ...).
+//! Split hyperelasticity: the interface used by elements with their own treatment of
+//! the volumetric part (the F-bar elements CPE4/C3D8 with NLGEOM, plane stress
+//! CPS4/CPS3 and the hybrid elements C3D8H, CPE4H, ...).
 //!
-//! En isotrop hyperelastisk modell skrivs som
+//! An isotropic hyperelastic model is written as
 //!
 //!   U(F) = U_dev(b̄) + U_vol(J),   b̄ = J^(−2/3) F Fᵀ,
 //!
-//! så att Kirchhoffspänningen delas i τ = τ_dev(b̄) + J U_vol′(J) I
-//! (Simo & Taylor 1991; Holzapfel 2000, kap. 6). `HyperModel` ger de två
-//! delarna var för sig; hybridelementen ersätter J U_vol′ med det oberoende
-//! trycket, F-bar-elementen beräknar τ med F̄.
+//! so that the Kirchhoff stress splits into τ = τ_dev(b̄) + J U_vol′(J) I
+//! (Simo & Taylor 1991; Holzapfel 2000, ch. 6). `HyperModel` provides the two
+//! parts separately; the hybrid elements replace J U_vol′ with the independent
+//! pressure, the F-bar elements compute τ with F̄.
 //!
-//! Tangenter räknas med perturbation av F som i `hyperelastic.rs` (Miehe 1996):
-//! ΔF = ε/2 (e_k ⊗ e_l + e_l ⊗ e_k) F ger Jaumann-tangenten C^(τJ) kolumn för kolumn.
+//! Tangents are computed by perturbation of F as in `hyperelastic.rs` (Miehe 1996):
+//! ΔF = ε/2 (e_k ⊗ e_l + e_l ⊗ e_k) F gives the Jaumann tangent C^(τJ) column by column.
 
 use super::MaterialFactory;
 use crate::kinematics::tensor::{self as t, M3};
 use crate::model::{fail, Result};
 
-/// Inga egna fabriker här (Ogden och Arruda–Boyce ligger i `hyperelastic_ogden.rs`).
+/// No factories of its own here (Ogden and Arruda–Boyce are in `hyperelastic_ogden.rs`).
 pub static FACTORIES: &[MaterialFactory] = &[];
 
-/// Voigt-ordning (11, 22, 33, 12, 13, 23).
+/// Voigt order (11, 22, 33, 12, 13, 23).
 pub const PAIRS: [(usize, usize); 6] = [(0, 0), (1, 1), (2, 2), (0, 1), (0, 2), (1, 2)];
 
-/// Isotrop hyperelastisk modell uppdelad i deviatorisk och volymetrisk del.
+/// Isotropic hyperelastic model split into deviatoric and volumetric parts.
 pub trait HyperModel: Send + Sync {
-    /// Initial skjuvmodul μ0 (t.ex. 2(C10 + C01)).
+    /// Initial shear modulus μ0 (e.g. 2(C10 + C01)).
     fn mu0(&self) -> f64;
-    /// Initial kompressionsmodul K0 = U_vol″(1); `f64::INFINITY` om inkompressibelt (D1 = 0).
+    /// Initial bulk modulus K0 = U_vol″(1); `f64::INFINITY` if incompressible (D1 = 0).
     fn k0(&self) -> f64;
-    /// Deviatorisk Kirchhoffspänning τ_dev (spårfri, beror bara på b̄ = J^(−2/3) F Fᵀ).
+    /// Deviatoric Kirchhoff stress τ_dev (traceless, depends only on b̄ = J^(−2/3) F Fᵀ).
     fn tau_dev(&self, f: &M3) -> Result<M3>;
-    /// Volymdelen: (U_vol′(J), U_vol″(J)); (0, 0) om inkompressibelt.
+    /// The volumetric part: (U_vol′(J), U_vol″(J)); (0, 0) if incompressible.
     fn vol(&self, j: f64) -> (f64, f64);
-    /// Helt inkompressibelt (D1 = 0): kräver hybridelement.
+    /// Fully incompressible (D1 = 0): requires hybrid elements.
     fn incompressible(&self) -> bool {
         !self.k0().is_finite()
     }
-    /// Hela Kirchhoffspänningen för modeller som inte delas i deviatorisk och
-    /// volymetrisk del (*HYPERFOAM, `materials/hyperfoam.rs`). Standard: `None`,
-    /// dvs τ = τ_dev + J U_vol′ I.
+    /// The full Kirchhoff stress for models that are not split into deviatoric and
+    /// volumetric parts (*HYPERFOAM, `materials/hyperfoam.rs`). Default: `None`,
+    /// i.e. τ = τ_dev + J U_vol′ I.
     fn kirchhoff_full(&self, _f: &M3) -> Option<Result<M3>> {
         None
     }
-    /// Töjningsenergin per referensvolym uppdelad i (U_dev, U_vol); modeller
-    /// utan uppdelning ger (U, 0). Används av *MULLINS EFFECT och SENER.
-    /// Standard: `None` (okänd).
+    /// Strain energy per reference volume split into (U_dev, U_vol); models
+    /// without a split give (U, 0). Used by *MULLINS EFFECT and SENER.
+    /// Default: `None` (unknown).
     fn energy(&self, _f: &M3) -> Option<(f64, f64)> {
         None
     }
-    /// Antal historievariabler per integrationspunkt (*MULLINS EFFECT:
-    /// största energin, SENER, DMENER). De ligger direkt efter spänningen i
-    /// elementtillståndet, där `MaterialModel::n_state` säger. Standard: 0.
+    /// Number of history variables per integration point (*MULLINS EFFECT:
+    /// largest energy, SENER, DMENER). They lie directly after the stress in
+    /// the element state, where `MaterialModel::n_state` says. Default: 0.
     fn n_hist(&self) -> usize {
         0
     }
-    /// Kirchhoffspänningen med historia: `old` vid inkrementets början, `new`
-    /// (lika lång) skrivs med historien vid F. Standard: `kirchhoff`.
+    /// The Kirchhoff stress with history: `old` at the start of the increment, `new`
+    /// (same length) is written with the history at F. Default: `kirchhoff`.
     fn kirchhoff_hist(&self, f: &M3, _old: &[f64], _new: &mut [f64]) -> Result<M3> {
         if let Some(t) = self.kirchhoff_full(f) {
             return t;
         }
         let j = t::det(f);
         if !(j > 0.0) {
-            return fail("hyperelastiskt material: J ≤ 0 (elementet har vänts ut och in)");
+            return fail("hyperelastic material: J ≤ 0 (the element has been turned inside out)");
         }
         let mut tau = self.tau_dev(f)?;
         let (up, _) = self.vol(j);
@@ -73,14 +73,14 @@ pub trait HyperModel: Send + Sync {
         }
         Ok(tau)
     }
-    /// Deviatorisk Kirchhoffspänning med historia (hybridelement). Standard: `tau_dev`.
+    /// Deviatoric Kirchhoff stress with history (hybrid elements). Default: `tau_dev`.
     fn tau_dev_hist(&self, f: &M3, _old: &[f64], _new: &mut [f64]) -> Result<M3> {
         self.tau_dev(f)
     }
 }
 
-/// Kirchhoffspänningen med historia (se `HyperModel::kirchhoff_hist`); utan
-/// historia samma som `kirchhoff`. `old` får vara kortare än `n_hist` (start: nollor).
+/// The Kirchhoff stress with history (see `HyperModel::kirchhoff_hist`); without
+/// history the same as `kirchhoff`. `old` may be shorter than `n_hist` (start: zeros).
 pub fn kirchhoff_hist(h: &dyn HyperModel, f: &M3, old: &[f64], new: &mut [f64]) -> Result<M3> {
     let n = h.n_hist();
     if n == 0 {
@@ -96,14 +96,14 @@ pub fn kirchhoff_hist(h: &dyn HyperModel, f: &M3, old: &[f64], new: &mut [f64]) 
     h.kirchhoff_hist(f, old, &mut new[..n])
 }
 
-/// Hela Kirchhoffspänningen τ = τ_dev + J U_vol′(J) I.
+/// The full Kirchhoff stress τ = τ_dev + J U_vol′(J) I.
 pub fn kirchhoff(h: &dyn HyperModel, f: &M3) -> Result<M3> {
     if let Some(t) = h.kirchhoff_full(f) {
         return t;
     }
     let j = t::det(f);
     if !(j > 0.0) {
-        return fail("hyperelastiskt material: J ≤ 0 (elementet har vänts ut och in)");
+        return fail("hyperelastic material: J ≤ 0 (the element has been turned inside out)");
     }
     let mut tau = h.tau_dev(f)?;
     let (up, _) = h.vol(j);
@@ -113,13 +113,13 @@ pub fn kirchhoff(h: &dyn HyperModel, f: &M3) -> Result<M3> {
     Ok(tau)
 }
 
-/// Symmetrisk tensor → Voigt (tensorkomponenter).
+/// Symmetric tensor → Voigt (tensor components).
 pub fn voigt(a: &M3) -> [f64; 6] {
     [a[0][0], a[1][1], a[2][2], a[0][1], a[0][2], a[1][2]]
 }
 
-/// Jaumann-tangenten C^(τJ) (6×6, ingenjörsskjuvning i kolumnerna) för
-/// spänningsfunktionen `tau`: Δτ = C^(τJ) : ΔD + ΔW τ − τ ΔW.
+/// The Jaumann tangent C^(τJ) (6×6, engineering shear in the columns) for
+/// the stress function `tau`: Δτ = C^(τJ) : ΔD + ΔW τ − τ ΔW.
 pub fn jaumann_tangent(tau_fn: &dyn Fn(&M3) -> Result<M3>, f: &M3) -> Result<[[f64; 6]; 6]> {
     let scale = f.iter().flatten().fold(0.0f64, |m, x| m.max(x.abs())).max(1.0);
     let eps = 1e-7 * scale.min(10.0);
@@ -149,13 +149,13 @@ pub fn jaumann_tangent(tau_fn: &dyn Fn(&M3) -> Result<M3>, f: &M3) -> Result<[[f
     Ok(c)
 }
 
-/// Sträckningen λ3 = F33 för plan spänning: τ33(F med F33 = λ3) = 0.
-/// `f` har F13 = F23 = F31 = F32 = 0.
+/// The stretch λ3 = F33 for plane stress: τ33(F with F33 = λ3) = 0.
+/// `f` has F13 = F23 = F31 = F32 = 0.
 pub fn plane_stress_stretch(h: &dyn HyperModel, f: &M3) -> Result<f64> {
     let mut g = *f;
     let j2 = f[0][0] * f[1][1] - f[0][1] * f[1][0];
     if !(j2 > 0.0) {
-        return fail("hyperelastiskt material: J ≤ 0 (elementet har vänts ut och in)");
+        return fail("hyperelastic material: J ≤ 0 (the element has been turned inside out)");
     }
     let mut l3 = if g[2][2] > 0.0 { g[2][2] } else { 1.0 / j2 };
     let scale = h.mu0().max(1e-300);
@@ -165,7 +165,7 @@ pub fn plane_stress_stretch(h: &dyn HyperModel, f: &M3) -> Result<f64> {
         if tau[2][2].abs() <= 1e-13 * scale * (1.0 + tau.iter().flatten().fold(0.0f64, |m, x| m.max(x.abs())) / scale) {
             return Ok(l3);
         }
-        // dτ33/d(ln λ3) med central differens
+        // dτ33/d(ln λ3) by central difference
         let e = 1e-6;
         g[2][2] = l3 * (1.0 + e);
         let tp = kirchhoff(h, &g)?[2][2];
@@ -179,10 +179,10 @@ pub fn plane_stress_stretch(h: &dyn HyperModel, f: &M3) -> Result<f64> {
         dl = dl.clamp(-0.5, 0.5);
         l3 *= dl.exp();
     }
-    fail("hyperelastiskt material: plan spänning konvergerade inte (σ33 ≠ 0)")
+    fail("hyperelastic material: plane stress did not converge (σ33 ≠ 0)")
 }
 
-/// Som `plane_stress_stretch`, men med historia (`old` vid inkrementets början).
+/// Like `plane_stress_stretch`, but with history (`old` at the start of the increment).
 pub fn plane_stress_stretch_hist(h: &dyn HyperModel, f: &M3, old: &[f64]) -> Result<f64> {
     if h.n_hist() == 0 {
         return plane_stress_stretch(h, f);
@@ -191,7 +191,7 @@ pub fn plane_stress_stretch_hist(h: &dyn HyperModel, f: &M3, old: &[f64]) -> Res
     let mut g = *f;
     let j2 = f[0][0] * f[1][1] - f[0][1] * f[1][0];
     if !(j2 > 0.0) {
-        return fail("hyperelastiskt material: J ≤ 0 (elementet har vänts ut och in)");
+        return fail("hyperelastic material: J ≤ 0 (the element has been turned inside out)");
     }
     let mut l3 = if g[2][2] > 0.0 { g[2][2] } else { 1.0 / j2 };
     let scale = h.mu0().max(1e-300);
@@ -213,19 +213,19 @@ pub fn plane_stress_stretch_hist(h: &dyn HyperModel, f: &M3, old: &[f64]) -> Res
         let dl = (-tau[2][2] / d).clamp(-0.5, 0.5);
         l3 *= dl.exp();
     }
-    fail("hyperelastiskt material: plan spänning konvergerade inte (σ33 ≠ 0)")
+    fail("hyperelastic material: plane stress did not converge (σ33 ≠ 0)")
 }
 
-/// Materialpunktens spänningsuppdatering för en `HyperModel` med historia
-/// (Cauchyspänning och C^(τJ)/J som `hyperelastic_ogden::update_hyper`).
-/// Tillståndet `state_old`/`state_new` är historievariablerna (`n_hist`).
+/// Material point stress update for a `HyperModel` with history
+/// (Cauchy stress and C^(τJ)/J like `hyperelastic_ogden::update_hyper`).
+/// The state `state_old`/`state_new` holds the history variables (`n_hist`).
 pub fn update_hyper_hist(h: &dyn HyperModel, input: &super::MatInput, state_old: &[f64], state_new: &mut [f64]) -> Result<super::MatOutput> {
     use super::StressMode;
     let Some(f0) = input.defgrad else {
-        return fail("hyperelastiska material kräver NLGEOM=YES på *STEP");
+        return fail("hyperelastic materials require NLGEOM=YES on *STEP");
     };
     if h.incompressible() {
-        return fail("*HYPERELASTIC med D1 = 0 (helt inkompressibelt) kräver hybridelement (C3D8H, CPE4H, ...)");
+        return fail("*HYPERELASTIC with D1 = 0 (fully incompressible) requires hybrid elements (C3D8H, CPE4H, ...)");
     }
     let mode = input.mode;
     let mut f = f0;
@@ -238,7 +238,7 @@ pub fn update_hyper_hist(h: &dyn HyperModel, input: &super::MatInput, state_old:
             f[2][2] = 1.0;
             f[2][2] = plane_stress_stretch_hist(h, &f, state_old)?;
         }
-        StressMode::Uniaxial => return fail("hyperelastiska material med historia eller *HYPERFOAM stöds inte i stänger"),
+        StressMode::Uniaxial => return fail("hyperelastic materials with history or *HYPERFOAM are not supported in trusses"),
         _ => {}
     }
     let j = t::det(&f);

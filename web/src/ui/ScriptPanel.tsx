@@ -1,6 +1,6 @@
-// .rusty-skriptet: modellens innehåll som en lista av kommandon, verktyg som
-// skriver eller ändrar rader och textredigering. Varje tillämpning är ett
-// kommando i motorn och kan ångras.
+// The .rusty script: the model's contents as a list of commands, tools that
+// write or change lines, and text editing. Each application is a
+// command in the engine and can be undone.
 
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { solve, toast, tryEdit } from "../actions";
@@ -14,29 +14,29 @@ type Fields = Record<string, string>;
 
 const tools: { id: Tool; label: string; dims: (2 | 3)[] }[] = [
   { id: "material", label: "Material", dims: [2, 3] },
-  { id: "plate", label: "Platta", dims: [2] },
-  { id: "quad", label: "Fyrhörning", dims: [2] },
-  { id: "box", label: "Kloss", dims: [3] },
-  { id: "beam", label: "Balk", dims: [2, 3] },
-  { id: "truss", label: "Stång", dims: [2, 3] },
-  { id: "support", label: "Stöd", dims: [2, 3] },
-  { id: "load", label: "Last", dims: [2, 3] },
-  { id: "pressure", label: "Tryck", dims: [2, 3] },
-  { id: "gravity", label: "Tyngd", dims: [2, 3] },
+  { id: "plate", label: "Plate", dims: [2] },
+  { id: "quad", label: "Quadrilateral", dims: [2] },
+  { id: "box", label: "Block", dims: [3] },
+  { id: "beam", label: "Beam", dims: [2, 3] },
+  { id: "truss", label: "Truss", dims: [2, 3] },
+  { id: "support", label: "Support", dims: [2, 3] },
+  { id: "load", label: "Load", dims: [2, 3] },
+  { id: "pressure", label: "Pressure", dims: [2, 3] },
+  { id: "gravity", label: "Gravity", dims: [2, 3] },
 ];
 
 const dofs = ["ux", "uy", "uz", "rx", "ry", "rz"];
 const forces = ["fx", "fy", "fz", "mx", "my", "mz"];
 const shapes: Record<string, { label: string; dims: string[] }> = {
-  rect: { label: "Rektangel", dims: ["b", "h"] },
-  circle: { label: "Massiv cirkel", dims: ["r"] },
-  pipe: { label: "Rör", dims: ["r", "t"] },
-  ibeam: { label: "I-balk", dims: ["h", "b", "tf", "tw"] },
-  general: { label: "Allmän (A, I11, I22, J)", dims: ["A", "I11", "I22", "J"] },
+  rect: { label: "Rectangle", dims: ["b", "h"] },
+  circle: { label: "Solid circle", dims: ["r"] },
+  pipe: { label: "Pipe", dims: ["r", "t"] },
+  ibeam: { label: "I-beam", dims: ["h", "b", "tf", "tw"] },
+  general: { label: "General (A, I11, I22, J)", dims: ["A", "I11", "I22", "J"] },
 };
 const shapeDefaults: Record<string, string> = { b: "0.05", h: "0.1", r: "0.02", t: "0.003", tf: "0.01", tw: "0.006", A: "1e-3", I11: "1e-6", I22: "1e-6", J: "2e-6" };
 
-/** Formulärfälten för en befintlig rad. */
+/** The form fields for an existing line. */
 function formFromCmd(c: ScriptCmd): { tool: Tool; f: Fields } | null {
   const f: Fields = {};
   const sel = () => {
@@ -118,7 +118,7 @@ function T(p: { label: string; v: string; on: (v: string) => void; ph?: string; 
   );
 }
 
-/** Koordinaterna för en nod i modellfönstret, avrundade till f32-noggrannhet. */
+/** The coordinates of a node in the viewport, rounded to f32 precision. */
 function nodeCoords(node: number, dim: 2 | 3): string {
   const pos = get().mesh?.positions;
   if (!pos) return "";
@@ -126,7 +126,7 @@ function nodeCoords(node: number, dim: 2 | 3): string {
   return `(${c.join(",")})`;
 }
 
-/** Formulär för ett verktyg. `submit` får raden och returnerar ett fel eller null. */
+/** Form for a tool. `submit` gets the line and returns an error or null. */
 function ToolForm(p: { tool: Tool; dim: 2 | 3; init: Fields; editing: number | null; materials: string[]; submit: (line: string) => Promise<string | null>; cancel: () => void; remove: () => void }) {
   const { tool, dim } = p;
   const [f, setF] = useState<Fields>(p.init);
@@ -141,13 +141,13 @@ function ToolForm(p: { tool: Tool; dim: 2 | 3; init: Fields; editing: number | n
     setOk(null);
   };
 
-  // Enheter: varje värde skrivs i en vald enhet (grupp = fält som delar enhetsval)
-  // och räknas om till modellens enhetssystem när raden skrivs. En befintlig rad
-  // visas i modellens enheter; en ny i den senast valda enheten.
+  // Units: each value is typed in a chosen unit (group = fields that share a unit choice)
+  // and converted to the model's unit system when the line is written. An existing line
+  // is shown in the model's units; a new one in the most recently chosen unit.
   const unit = (g: string, q: ConvQ) => f[`u_${g}`] ?? (p.editing !== null ? modelUnit(q, system) : preferredUnit(q, system));
-  /** Värdet som det visas (standardvärdet anges i modellens enheter). */
+  /** The value as shown (the default value is given in the model's units). */
   const dv = (k: string, dModel: string, g: string, q: ConvQ) => f[k] ?? convert(dModel, q, modelUnit(q, system), unit(g, q));
-  /** Värdet i modellens enheter, för skriptet. */
+  /** The value in the model's units, for the script. */
   const mv = (k: string, dModel: string, g: string, q: ConvQ) => convert(dv(k, dModel, g, q), q, unit(g, q), modelUnit(q, system));
   const U = (g: string, q: ConvQ) => {
     const u = unit(g, q);
@@ -156,7 +156,7 @@ function ToolForm(p: { tool: Tool; dim: 2 | 3; init: Fields; editing: number | n
       <select
         className="unitsel"
         value={u}
-        aria-label="Enhet"
+        aria-label="Unit"
         onChange={(e) => {
           const x = e.target.value;
           setF((o) => ({ ...o, [`u_${g}`]: x }));
@@ -172,15 +172,15 @@ function ToolForm(p: { tool: Tool; dim: 2 | 3; init: Fields; editing: number | n
       </select>
     );
   };
-  /** Enhetsval för en hel rad fält (koordinater, kraftkomponenter). */
+  /** Unit choice for a whole row of fields (coordinates, force components). */
   const UnitCol = (g: string, q: ConvQ) =>
     unit(g, q) ? (
       <label className="field unitcol">
-        <span className="flabel">Enhet</span>
+        <span className="flabel">Unit</span>
         <span className="finput">{U(g, q)}</span>
       </label>
     ) : null;
-  /** Värde i modellens enheter → visad enhet (för knappar och nodval). */
+  /** Value in the model's units → shown unit (for buttons and node picking). */
   const toShown = (s: string, g: string, q: ConvQ) => convert(s, q, modelUnit(q, system), unit(g, q));
 
   const pickNode = (k: string, append: boolean) => {
@@ -195,7 +195,7 @@ function ToolForm(p: { tool: Tool; dim: 2 | 3; init: Fields; editing: number | n
     });
   };
 
-  // urvalet: alla, en punkt eller intervall i x/y/z (i modellens enheter)
+  // the selection: all, a point or ranges in x/y/z (in the model's units)
   const usesSel = tool === "support" || tool === "load" || tool === "pressure";
   const sv = (k: string) => convert(v(k).trim(), "length", unit("sel", "length"), modelUnit("length", system));
   const selText = () => {
@@ -233,21 +233,21 @@ function ToolForm(p: { tool: Tool; dim: 2 | 3; init: Fields; editing: number | n
   const bbox = model && model.nodes > 0 ? { lo: model.bbox_min, hi: model.bbox_max } : null;
   const selFields = (
     <div className="selbox">
-      <div className="flabel">Urval</div>
+      <div className="flabel">Selection</div>
       <label className="check">
         <input type="checkbox" checked={v("all") === "1"} onChange={(e) => on("all")(e.target.checked ? "1" : "")} />
-        alla noder
+        all nodes
       </label>
       {v("all") !== "1" && (
         <>
           <div className="row-fields">
-            <T label="x" v={v("sx")} on={on("sx")} ph="0 eller 0..1" />
+            <T label="x" v={v("sx")} on={on("sx")} ph="0 or 0..1" />
             <T label="y" v={v("sy")} on={on("sy")} />
             {dim === 3 && <T label="z" v={v("sz")} on={on("sz")} />}
             {UnitCol("sel", "length")}
           </div>
           {bbox && (
-            <div className="chips quick" aria-label="Modellens ytterkanter">
+            <div className="chips quick" aria-label="The model's bounds">
               {(["x", "y", "z"] as const).slice(0, dim).flatMap((a, i) =>
                 [
                   ["min", bbox.lo[i]],
@@ -267,14 +267,14 @@ function ToolForm(p: { tool: Tool; dim: 2 | 3; init: Fields; editing: number | n
             </div>
           )}
           <div className="row-fields pickrow">
-            <T label="eller punkt" v={v("at")} on={on("at")} ph={dim === 3 ? "(x,y,z)" : "(x,y)"} />
-            {bbox && <IconButton icon="node" title="Välj nod i modellfönstret" onClick={() => pickNode("at", false)} />}
+            <T label="or point" v={v("at")} on={on("at")} ph={dim === 3 ? "(x,y,z)" : "(x,y)"} />
+            {bbox && <IconButton icon="node" title="Pick a node in the viewport" onClick={() => pickNode("at", false)} />}
           </div>
         </>
       )}
       {hits !== null && (
         <div className={`hits${hits.length ? "" : " none"}`}>
-          {hits.length ? `Träffar ${hits.length} ${hits.length === 1 ? "nod" : "noder"} (markerade i modellen)` : "Träffar inga noder än"}
+          {hits.length ? `Selects ${hits.length} ${hits.length === 1 ? "node" : "nodes"} (marked in the model)` : "Selects no nodes yet"}
         </div>
       )}
     </div>
@@ -283,26 +283,26 @@ function ToolForm(p: { tool: Tool; dim: 2 | 3; init: Fields; editing: number | n
     <Select
       label="Material"
       value={v("mat")}
-      options={[{ value: "", label: p.materials.length ? "Senast definierade" : "Stål (standard)" }, ...p.materials.map((m) => ({ value: m, label: m }))]}
+      options={[{ value: "", label: p.materials.length ? "Most recently defined" : "Steel (default)" }, ...p.materials.map((m) => ({ value: m, label: m }))]}
       onChange={on("mat")}
     />
   );
   const mat = v("mat") ? ` material=${v("mat")}` : "";
   const ptsField = (ph: string) => (
     <div className="row-fields pickrow3">
-      <T label="Punkter" v={dv("pts", ph, "pts", "length")} on={on("pts")} wide />
+      <T label="Points" v={dv("pts", ph, "pts", "length")} on={on("pts")} wide />
       {UnitCol("pts", "length")}
-      {bbox && <IconButton icon="plus" title="Lägg till en nod från modellfönstret" onClick={() => pickNode("pts", true)} />}
+      {bbox && <IconButton icon="plus" title="Add a node from the viewport" onClick={() => pickNode("pts", true)} />}
     </div>
   );
-  /** ` namn=värde` i modellens enheter, eller inget om fältet är tomt. */
+  /** ` name=value` in the model's units, or nothing if the field is empty. */
   const opt = (k: string, name = k, g?: string, q?: ConvQ) => {
     const x = v(k).trim();
     if (!x) return "";
     return ` ${name}=${g && q ? convert(x, q, unit(g, q), modelUnit(q, system)) : x}`;
   };
   const filled = (...vals: string[]) => vals.every((x) => x.trim());
-  /** Platshållare: ett värde i SI visat i vald enhet. */
+  /** Placeholder: a value in SI shown in the chosen unit. */
   const phU = (si: string, g: string, q: ConvQ) => (unit(g, q) ? convert(si, q, "SI", unit(g, q)) : si);
 
   let line = "";
@@ -312,17 +312,17 @@ function ToolForm(p: { tool: Tool; dim: 2 | 3; init: Fields; editing: number | n
     case "material": {
       const name = v("name", "steel").trim().replace(/\s+/g, "_");
       line = `material ${name}${opt("E", "E", "E", "stress")}${opt("nu")}${opt("rho", "rho", "rho", "density")}`;
-      if (!name) missing = "Ange ett namn";
-      else if (!["steel", "stål", "aluminium", "aluminum"].includes(name.toLowerCase()) && !v("E").trim()) missing = "Ange E (bara steel och aluminium har standardvärden)";
+      if (!name) missing = "Enter a name";
+      else if (!["steel", "stål", "aluminium", "aluminum"].includes(name.toLowerCase()) && !v("E").trim()) missing = "Enter E (only steel and aluminium have default values)";
       body = (
         <>
-          <T label="Namn" v={v("name", "steel")} on={on("name")} />
+          <T label="Name" v={v("name", "steel")} on={on("name")} />
           <div className="row-fields">
             <T label="E" v={v("E")} on={on("E")} ph={phU("210e9", "E", "stress")} unit={U("E", "stress")} />
             <T label="ν" v={v("nu")} on={on("nu")} ph="0.3" />
           </div>
           <T label="ρ" v={v("rho")} on={on("rho")} ph={phU("7850", "rho", "density")} unit={U("rho", "density")} />
-          <p className="muted">steel och aluminium har standardvärden (i SI). Geometri utan valt material använder det senast definierade.</p>
+          <p className="muted">steel and aluminium have default values (in SI). Geometry without a chosen material uses the most recently defined one.</p>
         </>
       );
       break;
@@ -330,7 +330,7 @@ function ToolForm(p: { tool: Tool; dim: 2 | 3; init: Fields; editing: number | n
     case "plate": {
       const x = dv("x", "0..1", "xy", "length"), y = dv("y", "0..0.2", "xy", "length"), t = dv("t", "0.01", "t", "length"), size = dv("size", "0.05", "size", "length");
       line = `plate x=${mv("x", "0..1", "xy", "length")} y=${mv("y", "0..0.2", "xy", "length")} t=${mv("t", "0.01", "t", "length")} size=${mv("size", "0.05", "size", "length")}${mat}`;
-      if (!filled(x, y, t, size)) missing = "Fyll i alla fält";
+      if (!filled(x, y, t, size)) missing = "Fill in all fields";
       body = (
         <>
           <div className="row-fields">
@@ -339,8 +339,8 @@ function ToolForm(p: { tool: Tool; dim: 2 | 3; init: Fields; editing: number | n
             {UnitCol("xy", "length")}
           </div>
           <div className="row-fields">
-            <T label="Tjocklek t" v={t} on={on("t")} unit={U("t", "length")} />
-            <T label="Elementstorlek" v={size} on={on("size")} unit={U("size", "length")} />
+            <T label="Thickness t" v={t} on={on("t")} unit={U("t", "length")} />
+            <T label="Element size" v={size} on={on("size")} unit={U("size", "length")} />
           </div>
           {matField}
         </>
@@ -351,14 +351,14 @@ function ToolForm(p: { tool: Tool; dim: 2 | 3; init: Fields; editing: number | n
       const ph = "(0,0) (2,0) (2,1) (0,1)";
       const t = dv("t", "0.01", "t", "length"), size = dv("size", "0.05", "size", "length");
       line = `quad ${mv("pts", ph, "pts", "length")} t=${mv("t", "0.01", "t", "length")} size=${mv("size", "0.05", "size", "length")}${mat}`;
-      if ((dv("pts", ph, "pts", "length").match(/\(/g) ?? []).length !== 4) missing = "Ange fyra hörn i ordning runt fyrhörningen";
-      else if (!filled(t, size)) missing = "Fyll i alla fält";
+      if ((dv("pts", ph, "pts", "length").match(/\(/g) ?? []).length !== 4) missing = "Enter four corners in order around the quadrilateral";
+      else if (!filled(t, size)) missing = "Fill in all fields";
       body = (
         <>
           {ptsField(ph)}
           <div className="row-fields">
-            <T label="Tjocklek t" v={t} on={on("t")} unit={U("t", "length")} />
-            <T label="Elementstorlek" v={size} on={on("size")} unit={U("size", "length")} />
+            <T label="Thickness t" v={t} on={on("t")} unit={U("t", "length")} />
+            <T label="Element size" v={size} on={on("size")} unit={U("size", "length")} />
           </div>
           {matField}
         </>
@@ -368,7 +368,7 @@ function ToolForm(p: { tool: Tool; dim: 2 | 3; init: Fields; editing: number | n
     case "box": {
       const x = dv("x", "0..1", "xyz", "length"), y = dv("y", "0..0.2", "xyz", "length"), z = dv("z", "0..0.2", "xyz", "length"), size = dv("size", "0.05", "size", "length");
       line = `box x=${mv("x", "0..1", "xyz", "length")} y=${mv("y", "0..0.2", "xyz", "length")} z=${mv("z", "0..0.2", "xyz", "length")} size=${mv("size", "0.05", "size", "length")}${mat}`;
-      if (!filled(x, y, z, size)) missing = "Fyll i alla fält";
+      if (!filled(x, y, z, size)) missing = "Fill in all fields";
       body = (
         <>
           <div className="row-fields">
@@ -377,7 +377,7 @@ function ToolForm(p: { tool: Tool; dim: 2 | 3; init: Fields; editing: number | n
             <T label="z" v={z} on={on("z")} />
             {UnitCol("xyz", "length")}
           </div>
-          <T label="Elementstorlek" v={size} on={on("size")} unit={U("size", "length")} />
+          <T label="Element size" v={size} on={on("size")} unit={U("size", "length")} />
           {matField}
         </>
       );
@@ -389,19 +389,19 @@ function ToolForm(p: { tool: Tool; dim: 2 | 3; init: Fields; editing: number | n
       const dimQ = (k: string): ConvQ => (k === "A" ? "area" : k === "I11" || k === "I22" || k === "J" ? "length4" : "length");
       const vals = shapes[shape].dims.map((k) => mv(`d${k}`, shapeDefaults[k], `d${k}`, dimQ(k)));
       line = `beam ${mv("pts", ph, "pts", "length")} section=${shape}(${vals.join(",")}) n=${v("n", "10")}${dim === 3 ? opt("up") : ""}${mat}`;
-      if ((dv("pts", ph, "pts", "length").match(/\(/g) ?? []).length < 2) missing = "Ange minst två punkter";
+      if ((dv("pts", ph, "pts", "length").match(/\(/g) ?? []).length < 2) missing = "Enter at least two points";
       body = (
         <>
           {ptsField(ph)}
-          <Select label="Tvärsnitt" value={shape} options={Object.entries(shapes).map(([value, s]) => ({ value, label: s.label }))} onChange={on("shape")} />
+          <Select label="Section" value={shape} options={Object.entries(shapes).map(([value, s]) => ({ value, label: s.label }))} onChange={on("shape")} />
           <div className="grid2">
             {shapes[shape].dims.map((k) => (
               <T key={k} label={k} v={dv(`d${k}`, shapeDefaults[k], `d${k}`, dimQ(k))} on={on(`d${k}`)} unit={U(`d${k}`, dimQ(k))} />
             ))}
           </div>
           <div className="row-fields">
-            <T label="Element per segment" v={v("n", "10")} on={on("n")} />
-            {dim === 3 && <T label="Uppåtriktning" v={v("up")} on={on("up")} ph="(0,0,1)" />}
+            <T label="Elements per segment" v={v("n", "10")} on={on("n")} />
+            {dim === 3 && <T label="Up direction" v={v("up")} on={on("up")} ph="(0,0,1)" />}
           </div>
           {matField}
         </>
@@ -412,8 +412,8 @@ function ToolForm(p: { tool: Tool; dim: 2 | 3; init: Fields; editing: number | n
       const ph = dim === 3 ? "(0,0,0) (1,1,0)" : "(0,0) (1,1)";
       const area = dv("area", "1e-4", "area", "area");
       line = `truss ${mv("pts", ph, "pts", "length")} area=${mv("area", "1e-4", "area", "area")}${mat}`;
-      if ((dv("pts", ph, "pts", "length").match(/\(/g) ?? []).length < 2) missing = "Ange minst två punkter";
-      else if (!filled(area)) missing = "Ange arean";
+      if ((dv("pts", ph, "pts", "length").match(/\(/g) ?? []).length < 2) missing = "Enter at least two points";
+      else if (!filled(area)) missing = "Enter the area";
       body = (
         <>
           {ptsField(ph)}
@@ -427,11 +427,11 @@ function ToolForm(p: { tool: Tool; dim: 2 | 3; init: Fields; editing: number | n
       const kind = v("kind", "fix");
       const avail = dim === 3 ? dofs : ["ux", "uy", "rz"];
       const chosen = avail.filter((d) => v(`c${d}`) === "1");
-      // förskjutningar i vald längdenhet, rotationer i radianer
+      // displacements in the chosen length unit, rotations in radians
       const dofVal = (d: string) => (d.startsWith("u") ? convert(v(`v${d}`).trim(), "length", unit("sv", "length"), modelUnit("length", system)) : v(`v${d}`).trim());
       const dofText = chosen.map((d) => (v(`v${d}`).trim() && Number(v(`v${d}`)) !== 0 ? `${d}=${dofVal(d)}` : d)).join(" ");
       line = kind === "support" ? `support ${selText()} ${dofText}` : `${kind} ${selText()}`;
-      if (kind === "support" && !chosen.length) missing = "Välj minst en frihetsgrad";
+      if (kind === "support" && !chosen.length) missing = "Select at least one degree of freedom";
       body = (
         <>
           <Segmented
@@ -439,13 +439,13 @@ function ToolForm(p: { tool: Tool; dim: 2 | 3; init: Fields; editing: number | n
             value={kind}
             onChange={on("kind")}
             options={[
-              { value: "fix", label: "Inspänd" },
-              { value: "pin", label: "Led" },
-              { value: "support", label: "Valda frihetsgrader" },
+              { value: "fix", label: "Fixed" },
+              { value: "pin", label: "Pinned" },
+              { value: "support", label: "Selected degrees of freedom" },
             ]}
           />
           <p className="muted">
-            {kind === "fix" ? "Alla frihetsgrader låsta." : kind === "pin" ? "Förskjutningar låsta, rotationer fria." : "Låsta frihetsgrader; ange ett värde för en föreskriven förskjutning (rotationer i rad)."}
+            {kind === "fix" ? "All degrees of freedom locked." : kind === "pin" ? "Displacements locked, rotations free." : "Locked degrees of freedom; enter a value for a prescribed displacement (rotations in rad)."}
           </p>
           {kind === "support" && (
             <>
@@ -458,7 +458,7 @@ function ToolForm(p: { tool: Tool; dim: 2 | 3; init: Fields; editing: number | n
                     </label>
                     {v(`c${d}`) === "1" && (
                       <span className="finput">
-                        <input value={v(`v${d}`)} placeholder="0" onChange={(e) => on(`v${d}`)(e.target.value)} aria-label={`Värde för ${d}`} />
+                        <input value={v(`v${d}`)} placeholder="0" onChange={(e) => on(`v${d}`)(e.target.value)} aria-label={`Value for ${d}`} />
                       </span>
                     )}
                   </div>
@@ -474,7 +474,7 @@ function ToolForm(p: { tool: Tool; dim: 2 | 3; init: Fields; editing: number | n
     }
     case "load": {
       line = `load ${selText()}${forces.map((k) => opt(k, k, k.startsWith("f") ? "f" : "m", k.startsWith("f") ? "force" : "moment")).join("")}`;
-      if (!forces.some((k) => v(k).trim() && Number(v(k)) !== 0)) missing = "Ange minst en lastkomponent";
+      if (!forces.some((k) => v(k).trim() && Number(v(k)) !== 0)) missing = "Enter at least one load component";
       body = (
         <>
           <div className="row-fields">
@@ -489,7 +489,7 @@ function ToolForm(p: { tool: Tool; dim: 2 | 3; init: Fields; editing: number | n
             <T label="Mz" v={v("mz")} on={on("mz")} />
             {UnitCol("m", "moment")}
           </div>
-          <p className="muted">Total kraft och totalt moment på urvalet (fördelas över det). Moment kräver balkar.</p>
+          <p className="muted">Total force and total moment on the selection (distributed over it). Moments require beams.</p>
           {selFields}
         </>
       );
@@ -497,11 +497,11 @@ function ToolForm(p: { tool: Tool; dim: 2 | 3; init: Fields; editing: number | n
     }
     case "pressure":
       line = `pressure ${selText()} p=${mv("p", "1e5", "p", "stress")}`;
-      if (!filled(dv("p", "1e5", "p", "stress"))) missing = "Ange trycket";
+      if (!filled(dv("p", "1e5", "p", "stress"))) missing = "Enter the pressure";
       body = (
         <>
-          <T label="Tryck p" v={dv("p", "1e5", "p", "stress")} on={on("p")} unit={U("p", "stress")} />
-          <p className="muted">Normaltryck på randkanter/randytor i urvalet; positivt trycker in i materialet.</p>
+          <T label="Pressure p" v={dv("p", "1e5", "p", "stress")} on={on("p")} unit={U("p", "stress")} />
+          <p className="muted">Normal pressure on boundary edges/faces in the selection; positive pushes into the material.</p>
           {selFields}
         </>
       );
@@ -512,7 +512,7 @@ function ToolForm(p: { tool: Tool; dim: 2 | 3; init: Fields; editing: number | n
       line = vec ? `gravity${comps.map((k) => opt(k, k, "gv", "acceleration")).join("")}` : `gravity g=${mv("g", "9.81", "g", "acceleration")}`;
       body = (
         <>
-          <T label="g (nedåt)" v={dv("g", "9.81", "g", "acceleration")} on={on("g")} unit={U("g", "acceleration")} />
+          <T label="g (downward)" v={dv("g", "9.81", "g", "acceleration")} on={on("g")} unit={U("g", "acceleration")} />
           <div className="row-fields">
             {comps.map((k) => (
               <T key={k} label={k} v={v(k)} on={on(k)} />
@@ -520,19 +520,19 @@ function ToolForm(p: { tool: Tool; dim: 2 | 3; init: Fields; editing: number | n
             {UnitCol("gv", "acceleration")}
           </div>
           <p className="muted">
-            Nedåt är {dim === 2 ? "−y" : "−z"}. Ange gx/gy{dim === 3 ? "/gz" : ""} för en annan riktning. Materialen behöver densitet ρ.
+            Downward is {dim === 2 ? "−y" : "−z"}. Enter gx/gy{dim === 3 ? "/gz" : ""} for another direction. The materials need a density ρ.
           </p>
         </>
       );
       break;
     }
   }
-  if (!missing && usesSel && !selText()) missing = "Ange ett urval";
+  if (!missing && usesSel && !selText()) missing = "Enter a selection";
   const go = async () => {
     setErr(null);
     const e = await p.submit(line);
     if (e) setErr(e);
-    else setOk(p.editing ? "Ändrad" : "Tillagd");
+    else setOk(p.editing ? "Changed" : "Added");
   };
   return (
     <div className="toolform">
@@ -544,15 +544,15 @@ function ToolForm(p: { tool: Tool; dim: 2 | 3; init: Fields; editing: number | n
       {missing && <div className="muted small">{missing}</div>}
       <div className="row-btns">
         <button type="button" className="btn primary" disabled={!!missing} onClick={go}>
-          <Icon name={p.editing ? "check" : "plus"} size={14} /> {p.editing ? "Spara ändring" : "Lägg till"}
+          <Icon name={p.editing ? "check" : "plus"} size={14} /> {p.editing ? "Save change" : "Add"}
         </button>
         {p.editing && (
           <>
             <button type="button" className="btn" onClick={p.cancel}>
-              Avbryt
+              Cancel
             </button>
             <button type="button" className="btn ghost danger-text" onClick={p.remove}>
-              Ta bort
+              Remove
             </button>
           </>
         )}
@@ -562,14 +562,14 @@ function ToolForm(p: { tool: Tool; dim: 2 | 3; init: Fields; editing: number | n
   );
 }
 
-/** Steg för steg för en ny modell: vad som saknas. */
+/** Step by step for a new model: what is missing. */
 function Guide(p: { cmds: ScriptCmd[]; pick: (t: Tool) => void; geometryTool: Tool }) {
   const has = (cat: string) => p.cmds.some((c) => category(c.cmd) === cat);
   const steps: { label: string; done: boolean; tool?: Tool }[] = [
     { label: "Material", done: has("material"), tool: "material" },
-    { label: "Geometri och nät", done: has("geometry"), tool: p.geometryTool },
-    { label: "Randvillkor", done: has("support"), tool: "support" },
-    { label: "Laster", done: has("load"), tool: "load" },
+    { label: "Geometry and mesh", done: has("geometry"), tool: p.geometryTool },
+    { label: "Boundary conditions", done: has("support"), tool: "support" },
+    { label: "Loads", done: has("load"), tool: "load" },
   ];
   if (steps.every((s) => s.done)) return null;
   return (
@@ -585,7 +585,7 @@ function Guide(p: { cmds: ScriptCmd[]; pick: (t: Tool) => void; geometryTool: To
       <li>
         <button type="button" className="link" onClick={solve}>
           <span className="dotnum" />
-          Lös (F5)
+          Solve (F5)
         </button>
       </li>
     </ol>
@@ -611,7 +611,7 @@ export function ScriptPanel() {
   const lines = useMemo(() => text.split("\n").length, [text]);
   const cmds = useMemo(() => parseScript(text), [text]);
   const mats = useMemo(() => materialNames(cmds), [cmds]);
-  const errLine = Number(/rad (\d+)/.exec(textErr ?? "")?.[1] ?? 0);
+  const errLine = Number(/(?:line|rad) (\d+)/.exec(textErr ?? "")?.[1] ?? 0);
 
   const apply = async (t: string) => {
     const e = await tryEdit({ kind: "FemText", text: t });
@@ -636,7 +636,7 @@ export function ScriptPanel() {
     else if (editing !== null) openTool(tool);
   };
 
-  // öppna en rad som valts i modellträdet
+  // open a line selected in the model tree
   useEffect(() => {
     if (scriptEdit === null) return;
     set({ scriptEdit: null });
@@ -645,7 +645,7 @@ export function ScriptPanel() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [scriptEdit]);
 
-  /** Inställningsrader (model/plane/elements): ersätt befintlig eller lägg först. */
+  /** Setting lines (model/plane/elements): replace an existing one or put it first. */
   const setSetting = async (cmd: string, word: string) => {
     const c = cmds.find((x) => x.cmd === cmd);
     let t: string;
@@ -657,7 +657,7 @@ export function ScriptPanel() {
       ls.splice(at, 0, `${cmd} ${word}`);
       t = ls.join("\n");
     }
-    // t.ex. 3D med en platta i modellen: felet visas där man klickade
+    // e.g. 3D with a plate in the model: the error is shown where you clicked
     const e = await apply(t);
     if (e) toast("error", e);
   };
@@ -676,10 +676,10 @@ export function ScriptPanel() {
     <>
       {session?.problem && (
         <div className="note warn">
-          <b>Kan inte lösas än:</b> {session.problem}
+          <b>Cannot be solved yet:</b> {session.problem}
         </div>
       )}
-      <Section title="Modell">
+      <Section title="Model">
         <Segmented
           small
           value={String(dim) as "2" | "3"}
@@ -692,20 +692,20 @@ export function ScriptPanel() {
         {dim === 2 && (
           <div className="row-fields">
             <Select
-              label="Tillstånd"
+              label="State"
               value={setting("plane", "stress")}
               options={[
-                { value: "stress", label: "Plan spänning" },
-                { value: "strain", label: "Plan töjning" },
+                { value: "stress", label: "Plane stress" },
+                { value: "strain", label: "Plane strain" },
               ]}
               onChange={(v) => setSetting("plane", v)}
             />
             <Select
-              label="Element"
+              label="Elements"
               value={setting("elements", "quad")}
               options={[
-                { value: "quad", label: "Fyrhörningar" },
-                { value: "tri", label: "Trianglar" },
+                { value: "quad", label: "Quadrilaterals" },
+                { value: "tri", label: "Triangles" },
               ]}
               onChange={(v) => setSetting("elements", v)}
             />
@@ -713,8 +713,8 @@ export function ScriptPanel() {
         )}
         <Guide cmds={cmds} pick={(t) => openTool(t)} geometryTool={geometryTool} />
       </Section>
-      <Section title={`Innehåll (${listed.length})`}>
-        {!listed.length && <p className="muted">Inga kommandon än. Börja med ett material och en geometri.</p>}
+      <Section title={`Contents (${listed.length})`}>
+        {!listed.length && <p className="muted">No commands yet. Start with a material and a geometry.</p>}
         {categories
           .filter((g) => g.id !== "model")
           .map((g) => {
@@ -727,12 +727,12 @@ export function ScriptPanel() {
                   const s = summary(c);
                   return (
                     <div key={c.line} className={`cmdrow${editing === c.line ? " on" : ""}${errLine === c.line ? " bad" : ""}`}>
-                      <button type="button" className="cmdmain" onClick={() => startEdit(c)} title="Ändra">
+                      <button type="button" className="cmdmain" onClick={() => startEdit(c)} title="Edit">
                         <span className="cmd-title">{s.title}</span>
                         {s.sub && <span className="cmd-sub">{s.sub}</span>}
                       </button>
                       <span className="cmd-line">{c.line}</span>
-                      <IconButton icon="close" size={13} title={`Ta bort rad ${c.line}`} onClick={() => remove(c.line)} />
+                      <IconButton icon="close" size={13} title={`Remove line ${c.line}`} onClick={() => remove(c.line)} />
                     </div>
                   );
                 })}
@@ -742,11 +742,11 @@ export function ScriptPanel() {
       </Section>
       <div ref={toolsRef}>
         <Section
-          title={editing !== null ? `Ändra rad ${editing}` : "Lägg till"}
+          title={editing !== null ? `Edit line ${editing}` : "Add"}
           right={
             editing !== null ? (
               <button type="button" className="btn small" onClick={() => openTool(tool)}>
-                Ny i stället
+                New instead
               </button>
             ) : undefined
           }
@@ -775,15 +775,15 @@ export function ScriptPanel() {
               remove={() => editing !== null && remove(editing)}
             />
           ) : (
-            <p className="muted">Välj ett verktyg ovan.</p>
+            <p className="muted">Select a tool above.</p>
           )}
         </Section>
       </div>
       <Section
-        title="Skript"
+        title="Script"
         right={
-          <button type="button" className={`btn small${dirty ? " primary" : ""}`} disabled={!dirty} onClick={applyText} title="Tillämpa (Ctrl+Enter)">
-            Tillämpa
+          <button type="button" className={`btn small${dirty ? " primary" : ""}`} disabled={!dirty} onClick={applyText} title="Apply (Ctrl+Enter)">
+            Apply
           </button>
         }
       >
@@ -817,13 +817,13 @@ export function ScriptPanel() {
                 requestAnimationFrame(() => (el.selectionStart = el.selectionEnd = s + 2));
               }
             }}
-            aria-label=".rusty-skript"
+            aria-label=".rusty script"
           />
         </div>
         {textErr && <div className="formerr">{textErr}</div>}
-        {dirty && !textErr && <div className="muted small">Ändringar som inte är tillämpade. Verktygen ovan utgår från texten här.</div>}
+        {dirty && !textErr && <div className="muted small">Changes not yet applied. The tools above work from the text here.</div>}
         <p className="muted">
-          Kommandon: model 2d|3d, plane stress|strain, elements quad|tri, material, plate, quad, box, beam, truss, fix, pin, support, load, pressure, gravity. Ctrl+Enter tillämpar.
+          Commands: model 2d|3d, plane stress|strain, elements quad|tri, material, plate, quad, box, beam, truss, fix, pin, support, load, pressure, gravity. Ctrl+Enter applies.
         </p>
       </Section>
     </>

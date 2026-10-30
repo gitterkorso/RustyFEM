@@ -1,15 +1,15 @@
-//! Geometri för XFEM: referenselement, uppdelning av element längs
-//! nivåmängdsfunktionerna, kvadraturregler på delsimplex och sprickspetsens
-//! asymptotiska funktioner.
+//! Geometry for XFEM: reference elements, subdivision of elements along
+//! the level set functions, quadrature rules on subsimplices and the crack tip
+//! asymptotic functions.
 //!
-//! Allt arbetar i elementets naturliga koordinater. Ett element delas först i
-//! simplex (hexaedern i sex tetraedrar runt diagonalen nod 1–7, fyrhörningen i
-//! två trianglar). Varje simplex skärs sedan av den linjära interpolationen av
-//! φ (sprickytan) och, i spetselement, av ψ (fronten). Delsimplexen får en
-//! sida (tecknet på φ i tyngdpunkten) och integreras med kollapsade
-//! gaussregler (Stroud), "internt genererade integrationspunkter".
+//! Everything works in the element's natural coordinates. An element is first divided into
+//! simplices (the hexahedron into six tetrahedra around the diagonal node 1–7, the quadrilateral into
+//! two triangles). Each simplex is then cut by the linear interpolation of
+//! φ (the crack surface) and, in tip elements, by ψ (the front). The subsimplices get a
+//! side (the sign of φ at the centroid) and are integrated with collapsed
+//! Gauss rules (Stroud), "internally generated integration points".
 
-/// Referenselementets typ.
+/// Reference element type.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Ref {
     Hex8,
@@ -30,7 +30,7 @@ const HEX_NAT: [[f64; 3]; 8] = [
 ];
 
 impl Ref {
-    /// Referenselement för ett elementnamn (de element som får berikas).
+    /// Reference element for an element name (the elements that can be enriched).
     pub fn of(name: &str) -> Option<Ref> {
         match name {
             "C3D8" | "C3D8R" => Some(Ref::Hex8),
@@ -56,7 +56,7 @@ impl Ref {
         }
     }
 
-    /// Nodernas naturliga koordinater.
+    /// The natural coordinates of the nodes.
     pub fn vertices(self) -> Vec<[f64; 3]> {
         match self {
             Ref::Hex8 => HEX_NAT.to_vec(),
@@ -66,7 +66,7 @@ impl Ref {
         }
     }
 
-    /// Tyngdpunkten i naturliga koordinater.
+    /// The centroid in natural coordinates.
     pub fn centroid(self) -> [f64; 3] {
         match self {
             Ref::Hex8 | Ref::Quad4 => [0.0; 3],
@@ -75,7 +75,7 @@ impl Ref {
         }
     }
 
-    /// Uppdelning i simplex (nodindex).
+    /// Subdivision into simplices (node indices).
     pub fn simplices(self) -> Vec<Vec<usize>> {
         match self {
             Ref::Hex8 => vec![vec![0, 1, 2, 6], vec![0, 2, 3, 6], vec![0, 3, 7, 6], vec![0, 7, 4, 6], vec![0, 4, 5, 6], vec![0, 5, 1, 6]],
@@ -85,7 +85,7 @@ impl Ref {
         }
     }
 
-    /// Elementets ytor (3D) respektive kanter (2D) som nodindex, i .inp-formatets ordning.
+    /// The element faces (3D) or edges (2D) as node indices, in the .inp format order.
     pub fn faces(self) -> Vec<Vec<usize>> {
         match self {
             Ref::Hex8 => vec![vec![0, 1, 2, 3], vec![4, 7, 6, 5], vec![0, 4, 5, 1], vec![1, 5, 6, 2], vec![2, 6, 7, 3], vec![3, 7, 4, 0]],
@@ -95,7 +95,7 @@ impl Ref {
         }
     }
 
-    /// Formfunktioner och derivator mot de naturliga koordinaterna.
+    /// Shape functions and derivatives w.r.t. the natural coordinates.
     pub fn shape(self, p: [f64; 3]) -> (Vec<f64>, Vec<[f64; 3]>) {
         match self {
             Ref::Hex8 => {
@@ -127,9 +127,9 @@ impl Ref {
         }
     }
 
-    /// Gaussregel över hela referenselementet (n punkter per riktning för
-    /// hexaeder/fyrhörning, kollapsad regel för simplex). Vikterna summerar
-    /// till referenselementets mått.
+    /// Gauss rule over the whole reference element (n points per direction for
+    /// hexahedron/quadrilateral, collapsed rule for simplices). The weights sum
+    /// to the measure of the reference element.
     pub fn rule(self, n: usize) -> Vec<([f64; 3], f64)> {
         let g = gauss_m11(n);
         match self {
@@ -162,7 +162,7 @@ impl Ref {
     }
 }
 
-/// Gauss–Legendre på [−1, 1] med n punkter (1–5).
+/// Gauss–Legendre on [−1, 1] with n points (1–5).
 pub fn gauss_m11(n: usize) -> Vec<(f64, f64)> {
     match n {
         0 | 1 => vec![(0.0, 2.0)],
@@ -187,9 +187,9 @@ pub fn gauss_m11(n: usize) -> Vec<(f64, f64)> {
     }
 }
 
-/// Kvadratur på ett simplex i barycentriska koordinater; vikterna summerar till 1.
-/// Ordning 1: tyngdpunkten, 2: de klassiska 3- respektive 4-punktsreglerna,
-/// högre: kollapsad Gauss med `order` punkter per riktning.
+/// Quadrature on a simplex in barycentric coordinates; the weights sum to 1.
+/// Order 1: the centroid, 2: the classical 3- and 4-point rules respectively,
+/// higher: collapsed Gauss with `order` points per direction.
 pub fn simplex_rule(dim: usize, order: usize) -> Vec<(Vec<f64>, f64)> {
     match (dim, order) {
         (2, 0 | 1) => vec![(vec![1.0 / 3.0; 3], 1.0)],
@@ -248,7 +248,7 @@ fn sub(a: [f64; 3], b: [f64; 3]) -> [f64; 3] {
     [a[0] - b[0], a[1] - b[1], a[2] - b[2]]
 }
 
-/// Simplexets mått (area eller volym) i de koordinater hörnen anges i.
+/// The measure of the simplex (area or volume) in the coordinates the corners are given in.
 pub fn measure(v: &[[f64; 3]]) -> f64 {
     if v.len() == 3 {
         let (a, b) = (sub(v[1], v[0]), sub(v[2], v[0]));
@@ -259,15 +259,15 @@ pub fn measure(v: &[[f64; 3]]) -> f64 {
     }
 }
 
-/// Ett delsimplex (hörn i naturliga koordinater).
+/// A subsimplex (corners in natural coordinates).
 #[derive(Debug, Clone)]
 pub struct Cell {
     pub v: Vec<[f64; 3]>,
 }
 
-/// Skär ett simplex med den linjära funktionen med hörnvärdena `f`.
-/// Returnerar delarna med f ≥ 0, delarna med f < 0 och snittytan
-/// (segment i 2D, triangel/fyrhörning som trianglar i 3D).
+/// Cuts a simplex with the linear function with the corner values `f`.
+/// Returns the parts with f ≥ 0, the parts with f < 0 and the cut surface
+/// (segment in 2D, triangle/quadrilateral as triangles in 3D).
 pub fn cut_simplex(v: &[[f64; 3]], f: &[f64]) -> (Vec<Vec<[f64; 3]>>, Vec<Vec<[f64; 3]>>, Vec<Vec<[f64; 3]>>) {
     let pos: Vec<usize> = (0..v.len()).filter(|&i| f[i] >= 0.0).collect();
     let neg: Vec<usize> = (0..v.len()).filter(|&i| f[i] < 0.0).collect();
@@ -282,7 +282,7 @@ pub fn cut_simplex(v: &[[f64; 3]], f: &[f64]) -> (Vec<Vec<[f64; 3]>>, Vec<Vec<[f
         lerp(v[a], v[b], t.clamp(0.0, 1.0))
     };
     if v.len() == 3 {
-        // triangel: en ensam hörnpunkt mot två
+        // triangle: a single corner against two
         let (lone, others, lone_pos) = if pos.len() == 1 { (pos[0], &neg, true) } else { (neg[0], &pos, false) };
         let (b, c) = (others[0], others[1]);
         let (pb, pc) = (p(lone, b), p(lone, c));
@@ -291,7 +291,7 @@ pub fn cut_simplex(v: &[[f64; 3]], f: &[f64]) -> (Vec<Vec<[f64; 3]>>, Vec<Vec<[f
         let seg = vec![vec![pb, pc]];
         return if lone_pos { (vec![tri], quad, seg) } else { (quad, vec![tri], seg) };
     }
-    // tetraeder
+    // tetrahedron
     let prism = |a: [[f64; 3]; 3], b: [[f64; 3]; 3]| -> Vec<Vec<[f64; 3]>> {
         vec![vec![a[0], a[1], a[2], b[0]], vec![a[1], a[2], b[0], b[1]], vec![a[2], b[0], b[1], b[2]]]
     };
@@ -313,20 +313,20 @@ pub fn cut_simplex(v: &[[f64; 3]], f: &[f64]) -> (Vec<Vec<[f64; 3]>>, Vec<Vec<[f
     (side_pos, side_neg, face)
 }
 
-/// Interpolerar nodvärdena `vals` i den naturliga punkten `p`.
+/// Interpolates the nodal values `vals` at the natural point `p`.
 pub fn interp(r: Ref, vals: &[f64], p: [f64; 3]) -> f64 {
     let (n, _) = r.shape(p);
     n.iter().zip(vals).map(|(a, b)| a * b).sum()
 }
 
-/// Delceller i ett element med sida (+1/−1 efter φ) och snittytor (φ = 0).
-/// `psi` = Some(...) delar också längs ψ = 0 (spetselement).
+/// Subcells in an element with side (+1/−1 according to φ) and cut surfaces (φ = 0).
+/// `psi` = Some(...) also divides along ψ = 0 (tip elements).
 pub struct Partition {
     pub cells: Vec<(Cell, i8)>,
     pub facets: Vec<Vec<[f64; 3]>>,
 }
 
-/// Delar referenselementet längs φ = 0 (och ψ = 0 om `psi` ges).
+/// Divides the reference element along φ = 0 (and ψ = 0 if `psi` is given).
 pub fn partition(r: Ref, phi: &[f64], psi: Option<&[f64]>) -> Partition {
     let verts = r.vertices();
     let mut cells: Vec<Vec<[f64; 3]>> = r.simplices().into_iter().map(|s| s.iter().map(|&i| verts[i]).collect()).collect();
@@ -355,7 +355,7 @@ pub fn partition(r: Ref, phi: &[f64], psi: Option<&[f64]>) -> Partition {
                 out.push((Cell { v: x }, -1));
             }
         }
-        // snittytan bara där sprickan finns (ψ < 0)
+        // the cut surface only where the crack exists (ψ < 0)
         for x in fa {
             let keep = match psi {
                 Some(ps) => {
@@ -372,8 +372,8 @@ pub fn partition(r: Ref, phi: &[f64], psi: Option<&[f64]>) -> Partition {
     Partition { cells: out, facets }
 }
 
-/// Sprickspetsens fyra asymptotiska funktioner och deras gradienter för
-/// nivåmängdsvärdena (φ, ψ) och gradienterna (∇φ, ∇ψ):
+/// The four asymptotic crack tip functions and their gradients for
+/// the level set values (φ, ψ) and the gradients (∇φ, ∇ψ):
 /// F = √r [sin θ/2, cos θ/2, sin θ/2 sin θ, cos θ/2 sin θ], r = √(φ² + ψ²), θ = atan2(φ, ψ).
 pub fn tip_functions(phi: f64, psi: f64, gphi: [f64; 3], gpsi: [f64; 3]) -> ([f64; 4], [[f64; 3]; 4]) {
     let r2 = (phi * phi + psi * psi).max(1e-300);
@@ -383,7 +383,7 @@ pub fn tip_functions(phi: f64, psi: f64, gphi: [f64; 3], gpsi: [f64; 3]) -> ([f6
     let (s2, c2) = (0.5 * th).sin_cos();
     let (s, c) = th.sin_cos();
     let f = [sr * s2, sr * c2, sr * s2 * s, sr * c2 * s];
-    // derivator mot r och θ
+    // derivatives w.r.t. r and θ
     let fr = [s2 / (2.0 * sr), c2 / (2.0 * sr), s2 * s / (2.0 * sr), c2 * s / (2.0 * sr)];
     let ft = [0.5 * sr * c2, -0.5 * sr * s2, sr * (0.5 * c2 * s + s2 * c), sr * (-0.5 * s2 * s + c2 * c)];
     let mut g = [[0.0; 3]; 4];
@@ -397,7 +397,7 @@ pub fn tip_functions(phi: f64, psi: f64, gphi: [f64; 3], gpsi: [f64; 3]) -> ([f6
     (f, g)
 }
 
-/// Värdena av de asymptotiska funktionerna i en nod (för de förskjutna funktionerna).
+/// The values of the asymptotic functions at a node (for the shifted functions).
 pub fn tip_values(phi: f64, psi: f64) -> [f64; 4] {
     tip_functions(phi, psi, [0.0; 3], [0.0; 3]).0
 }

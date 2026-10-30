@@ -1,12 +1,12 @@
-//! Användarrutinerna i `routines.rs` från ett delat bibliotek (kompilerad
-//! Fortran eller C) med standardargumentlistorna i Fortrans konvention: alla
-//! argument som pekare, heltal som `int32`, CHARACTER*80 med dold längd sist.
+//! The user subroutines in `routines.rs` from a shared library (compiled
+//! Fortran or C) with the standard argument lists in Fortran convention: all
+//! arguments as pointers, integers as `int32`, CHARACTER*80 with a hidden length last.
 //!
-//! Symbolerna `dload_`, `disp_`, `uhard_`, `sigini_`, `ufield_`, `uexpan_`,
-//! `hetval_`, `film_`, `creep_` och `umatht_` (även utan understreck och med
-//! versaler) slås upp i biblioteket i `RUSTYFEM_USER` eller laddas med
-//! `load_routines`, som registrerar dem för alla namn (tomt prefix). USDFLD
-//! (kräver GETVRM) och UAMP finns bara i Rust. Anropen görs ett i taget.
+//! The symbols `dload_`, `disp_`, `uhard_`, `sigini_`, `ufield_`, `uexpan_`,
+//! `hetval_`, `film_`, `creep_` and `umatht_` (also without underscore and in
+//! upper case) are looked up in the library in `RUSTYFEM_USER` or loaded with
+//! `load_routines`, which registers them for all names (empty prefix). USDFLD
+//! (requires GETVRM) and UAMP exist only in Rust. Calls are made one at a time.
 
 use super::dynlib::DynLib;
 use super::routines::*;
@@ -29,7 +29,7 @@ type FilmFn = unsafe extern "C" fn(M, M, P, I, I, P, I, I, P, I, P, I, *const u8
 type CreepFn = unsafe extern "C" fn(M, M, M, P, P, P, P, P, P, P, P, P, P, P, *const u8, I, I, P, I, I, I, I, I, I, I, usize);
 type UmathtFn = unsafe extern "C" fn(M, M, M, M, M, M, M, P, P, P, P, P, P, P, *const u8, I, I, P, I, P, M, I, I, I, I, I, I, usize);
 
-/// En rutin i ett bibliotek: funktionspekaren och ett lås (Fortran kan ha SAVE-variabler).
+/// A routine in a library: the function pointer and a lock (Fortran may have SAVE variables).
 pub struct Dll<F> {
     f: F,
     pub lib: Arc<DynLib>,
@@ -67,7 +67,7 @@ fn i(v: impl TryInto<i32>) -> i32 {
 
 fn finite(sym: &str, v: &[f64]) -> Result<()> {
     if v.iter().any(|x| !x.is_finite()) {
-        return crate::model::fail(format!("{sym} gav värden som inte är ändliga tal"));
+        return crate::model::fail(format!("{sym} returned values that are not finite numbers"));
     }
     Ok(())
 }
@@ -202,7 +202,7 @@ impl Umatht for Dll<UmathtFn> {
     }
 }
 
-/// Rutinerna som finns i ett bibliotek.
+/// The routines found in a library.
 #[derive(Default)]
 pub struct Routines {
     pub dload: Option<Arc<dyn Dload>>,
@@ -220,14 +220,14 @@ pub struct Routines {
 macro_rules! sym {
     ($lib:expr, $name:literal, $ty:ty, $tr:ty) => {
         $lib.symbol(&[concat!($name, "_"), $name, $name.to_uppercase().as_str(), format!("{}_", $name.to_uppercase()).as_str()]).map(|(p, s)| {
-            // SAFETY: symbolen antas ha rutinens standardargumentlista (dokumenterat krav)
+            // SAFETY: the symbol is assumed to have the routine's standard argument list (documented requirement)
             let f: $ty = unsafe { std::mem::transmute::<*mut std::ffi::c_void, $ty>(p) };
             Arc::new(Dll { f, lib: $lib.clone(), symbol: s, lock: Mutex::new(()) }) as Arc<$tr>
         })
     };
 }
 
-/// Slår upp rutinerna i ett laddat bibliotek.
+/// Looks up the routines in a loaded library.
 pub fn routines_in(lib: &Arc<DynLib>) -> Routines {
     Routines {
         dload: sym!(lib, "dload", DloadFn, dyn Dload),
@@ -243,8 +243,8 @@ pub fn routines_in(lib: &Arc<DynLib>) -> Routines {
     }
 }
 
-/// Laddar ett bibliotek och registrerar alla rutiner som finns i det för
-/// alla namn (tomt prefix). Returnerar de registrerade rutinernas namn.
+/// Loads a library and registers all routines found in it for
+/// all names (empty prefix). Returns the names of the registered routines.
 pub fn load_routines(path: &Path) -> Result<Vec<&'static str>> {
     let lib = Arc::new(DynLib::open(path)?);
     let r = routines_in(&lib);

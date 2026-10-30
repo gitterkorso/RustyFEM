@@ -1,7 +1,7 @@
-//! Hyperelasticitet (*HYPERELASTIC) för gummiliknande material.
+//! Hyperelasticity (*HYPERELASTIC) for rubber-like materials.
 //!
-//! Isotropa, kompressibla polynomformer i de deviatoriska invarianterna
-//! Ī1 = tr b̄, Ī2 = ½(Ī1² − tr b̄²) med b̄ = J^(−2/3) F Fᵀ och volymdelen i J:
+//! Isotropic, compressible polynomial forms in the deviatoric invariants
+//! Ī1 = tr b̄, Ī2 = ½(Ī1² − tr b̄²) with b̄ = J^(−2/3) F Fᵀ and the volumetric part in J:
 //!
 //!   U = Σ C_ij (Ī1 − 3)^i (Ī2 − 3)^j + Σ_k (1/D_k)(J − 1)^(2k)
 //!
@@ -10,29 +10,29 @@
 //! - YEOH: C10, C20, C30, D1, D2, D3
 //! - REDUCED POLYNOMIAL, N=n: C10, C20, ..., Cn0, D1, ..., Dn
 //! - POLYNOMIAL, N=n (n ≤ 6): C10, C01, C20, C11, C02, ..., D1, ..., Dn
-//!   (för varje grad k: C(k,0), C(k−1,1), ..., C(0,k)).
+//!   (for each degree k: C(k,0), C(k−1,1), ..., C(0,k)).
 //!
-//! Kirchhoffspänningen är τ = 2 dev[(U1 + Ī1 U2) b̄ − U2 b̄²] + J U_J I
-//! (U1 = ∂U/∂Ī1, U2 = ∂U/∂Ī2, U_J = ∂U/∂J) och Cauchyspänningen σ = τ/J.
+//! The Kirchhoff stress is τ = 2 dev[(U1 + Ī1 U2) b̄ − U2 b̄²] + J U_J I
+//! (U1 = ∂U/∂Ī1, U2 = ∂U/∂Ī2, U_J = ∂U/∂J) and the Cauchy stress σ = τ/J.
 //!
-//! Gränssnittet mot elementen: vid NLGEOM ger elementet deformations-
-//! gradienten (`MatInput::defgrad`), materialet returnerar Cauchyspänningen i
-//! globala axlar och tangenten C^(τJ)/J (Jaumannderivatan av Kirchhoff-
-//! spänningen delad med J – samma konvention som för UMAT), här beräknad
-//! numeriskt med perturbation av F (Miehe 1996). Utan NLGEOM ger materialet
-//! fel (hyperelastiska material kräver NLGEOM=YES).
+//! Interface to the elements: with NLGEOM the element gives the deformation
+//! gradient (`MatInput::defgrad`), the material returns the Cauchy stress in
+//! global axes and the tangent C^(τJ)/J (the Jaumann derivative of the Kirchhoff
+//! stress divided by J – the same convention as for UMAT), here computed
+//! numerically by perturbation of F (Miehe 1996). Without NLGEOM the material reports
+//! an error (hyperelastic materials require NLGEOM=YES).
 //!
-//! Element med selektivt reducerad integrering (CPE4, C3D8 m.fl.) ska skicka
-//! F̄ = (J̄/J)^(1/n) F (n = 2 i planet för plan töjning, 3 i 3D) med J̄ =
-//! elementets volymmedelvärde av J i referensläget (kontrollerat med ett CPE4-
-//! och ett C3D8-element med föreskriven inhomogen deformation); elementets
-//! inre kraft måste också formuleras med F̄, se rapporten för
-//! NLGEOM-området.
+//! Elements with selectively reduced integration (CPE4, C3D8 etc.) must pass
+//! F̄ = (J̄/J)^(1/n) F (n = 2 in-plane for plane strain, 3 in 3D) with J̄ =
+//! the element's volume average of J in the reference configuration (verified with a CPE4
+//! and a C3D8 element with prescribed inhomogeneous deformation); the element's
+//! internal force must also be formulated with F̄, see the report for
+//! the NLGEOM feature area.
 //!
-//! Plan spänning: sträckningen λ3 = F33 löses lokalt så att σ33 = 0.
-//! Inkompressibla material (D1 = 0) kräver hybridelement (`elements/hybrid.rs`);
-//! elementen med egen volymbehandling använder `HyperModel`
-//! (`hyperelastic_split.rs`) i stället för `update`.
+//! Plane stress: the stretch λ3 = F33 is solved locally so that σ33 = 0.
+//! Incompressible materials (D1 = 0) require hybrid elements (`elements/hybrid.rs`);
+//! the elements with their own volumetric treatment use `HyperModel`
+//! (`hyperelastic_split.rs`) instead of `update`.
 
 use super::anisotropic::reduce_6x6;
 use super::hyperelastic_split::HyperModel;
@@ -42,11 +42,11 @@ use crate::model::{fail, Result};
 use std::sync::Arc;
 
 pub static FACTORIES: &[MaterialFactory] =
-    &[MaterialFactory { name: "hyperelasticitet (polynom)", consumes: &["HYPERELASTIC"], priority: 10, build: Some(build) }];
+    &[MaterialFactory { name: "hyperelasticity (polynomial)", consumes: &["HYPERELASTIC"], priority: 10, build: Some(build) }];
 
 pub type M3 = [[f64; 3]; 3];
 
-/// Polynommodell: C[i][j] för (Ī1 − 3)^i (Ī2 − 3)^j och D_k.
+/// Polynomial model: C[i][j] for (Ī1 − 3)^i (Ī2 − 3)^j and D_k.
 #[derive(Debug, Clone)]
 pub struct Hyperelastic {
     pub kind: String,
@@ -57,13 +57,13 @@ pub struct Hyperelastic {
 fn build(def: &MaterialDef) -> Result<Option<Arc<dyn MaterialModel>>> {
     let Some(kw) = def.behavior("HYPERELASTIC") else { return Ok(None) };
     if def.behavior("ELASTIC").is_some() {
-        return kw.err("*HYPERELASTIC och *ELASTIC i samma material stöds inte");
+        return kw.err("*HYPERELASTIC and *ELASTIC in the same material are not supported");
     }
     if kw.has("TEST DATA INPUT") && !kw.has("OGDEN") && !kw.has("ARRUDA-BOYCE") && !kw.has("VAN DER WAALS") && !kw.has("MARLOW") {
-        // byggs av hyperelastic_testdata.rs
+        // built by hyperelastic_testdata.rs
         return Ok(None);
     }
-    // område materials4: OGDEN/ARRUDA-BOYCE/VAN DER WAALS med TEST DATA INPUT (hyperelastic_fit.rs)
+    // feature area materials4: OGDEN/ARRUDA-BOYCE/VAN DER WAALS with TEST DATA INPUT (hyperelastic_fit.rs)
     if super::hyperelastic_fit::claims(kw) {
         return Ok(None);
     }
@@ -72,12 +72,12 @@ fn build(def: &MaterialDef) -> Result<Option<Arc<dyn MaterialModel>>> {
             if p == "MODULI" && kw.param_upper("MODULI").as_deref() == Some("LONG TERM") {
                 continue;
             }
-            return kw.err(format!("parametern {p} stöds inte ännu"));
+            return kw.err(format!("parameter {p} is not supported yet"));
         }
     }
     let n_param = || -> Result<usize> {
         match kw.param("N") {
-            Some(s) => s.trim().parse::<usize>().ok().filter(|&n| (1..=6).contains(&n)).ok_or_else(|| crate::model::FemError(format!("{}: N={s} ska vara 1–6", kw.location()))),
+            Some(s) => s.trim().parse::<usize>().ok().filter(|&n| (1..=6).contains(&n)).ok_or_else(|| crate::model::FemError(format!("{}: N={s} must be 1–6", kw.location()))),
             None => Ok(1),
         }
     };
@@ -104,28 +104,28 @@ fn build(def: &MaterialDef) -> Result<Option<Arc<dyn MaterialModel>>> {
         }
         ("POLYNOMIAL", t, n)
     } else if kw.has("OGDEN") || kw.has("ARRUDA-BOYCE") || kw.has("VAN DER WAALS") || kw.has("MARLOW") {
-        // byggs av hyperelastic_ogden.rs, hyperelastic_vdw.rs och hyperelastic_marlow.rs
+        // built by hyperelastic_ogden.rs, hyperelastic_vdw.rs and hyperelastic_marlow.rs
         return Ok(None);
     } else {
-        let what = kw.params.first().map(|p| p.0.clone()).unwrap_or_else(|| "(ingen)".into());
-        return kw.err(format!("hyperelastisk form {what} stöds inte ännu (NEO HOOKE, MOONEY-RIVLIN, YEOH, POLYNOMIAL, REDUCED POLYNOMIAL)"));
+        let what = kw.params.first().map(|p| p.0.clone()).unwrap_or_else(|| "(none)".into());
+        return kw.err(format!("hyperelastic form {what} is not supported yet (NEO HOOKE, MOONEY-RIVLIN, YEOH, POLYNOMIAL, REDUCED POLYNOMIAL)"));
     };
     let need = cij.len() + nd;
     if v.len() < need {
-        return kw.err(format!("{kind} kräver {need} konstanter, {} angivna", v.len()));
+        return kw.err(format!("{kind} requires {need} constants, {} given", v.len()));
     }
     if v.len() > need && v[need..].iter().any(|&x| x != 0.0) {
-        return kw.err("temperaturberoende konstanter (flera datarader) stöds inte ännu");
+        return kw.err("temperature-dependent constants (multiple data lines) are not supported yet");
     }
     let c: Vec<(usize, usize, f64)> = cij.iter().enumerate().map(|(k, &(i, j))| (i, j, v[k])).collect();
     let d: Vec<f64> = v[cij.len()..need].to_vec();
     if d[0] < 0.0 || (d[0] == 0.0 && d.iter().any(|&x| x != 0.0)) {
-        return kw.err("D1 < 0, eller D1 = 0 med D2/D3 ≠ 0, stöds inte (D1 = 0 betyder helt inkompressibelt)");
+        return kw.err("D1 < 0, or D1 = 0 with D2/D3 ≠ 0, is not supported (D1 = 0 means fully incompressible)");
     }
     let m = Hyperelastic { kind: kind.into(), c, d };
     let (mu, k) = m.initial_moduli();
     if !(mu > 0.0 && k > 0.0) {
-        return kw.err("initial skjuvmodul 2(C10 + C01) och kompressionsmodul 2/D1 ska vara positiva");
+        return kw.err("the initial shear modulus 2(C10 + C01) and bulk modulus 2/D1 must be positive");
     }
     Ok(Some(Arc::new(m)))
 }
@@ -139,7 +139,7 @@ fn det(a: &M3) -> f64 {
         + a[0][2] * (a[1][0] * a[2][1] - a[1][1] * a[2][0])
 }
 
-/// Symmetrisk tensor → Voigt (11, 22, 33, 12, 13, 23), tensorkomponenter.
+/// Symmetric tensor → Voigt (11, 22, 33, 12, 13, 23), tensor components.
 fn voigt(a: &M3) -> [f64; 6] {
     [a[0][0], a[1][1], a[2][2], a[0][1], a[0][2], a[1][2]]
 }
@@ -147,7 +147,7 @@ fn voigt(a: &M3) -> [f64; 6] {
 const PAIRS: [(usize, usize); 6] = [(0, 0), (1, 1), (2, 2), (0, 1), (0, 2), (1, 2)];
 
 impl Hyperelastic {
-    /// (μ0, K0) vid odeformerat tillstånd.
+    /// (μ0, K0) in the undeformed state.
     pub fn initial_moduli(&self) -> (f64, f64) {
         let mut mu = 0.0;
         for &(i, j, c) in &self.c {
@@ -181,7 +181,7 @@ impl Hyperelastic {
         (u1, u2, uj)
     }
 
-    /// Töjningsenergi per referensvolym.
+    /// Strain energy per reference volume.
     pub fn energy(&self, f: &M3) -> f64 {
         let (i1, i2, j) = self.invariants(f);
         let (a, b) = (i1 - 3.0, i2 - 3.0);
@@ -205,11 +205,11 @@ impl Hyperelastic {
         (i1, i2, j)
     }
 
-    /// Kirchhoffspänningen τ(F).
+    /// The Kirchhoff stress τ(F).
     pub fn kirchhoff(&self, f: &M3) -> Result<M3> {
         let j = det(f);
         if !(j > 0.0) {
-            return fail("hyperelastiskt material: J ≤ 0 (elementet har vänts ut och in)");
+            return fail("hyperelastic material: J ≤ 0 (the element has been turned inside out)");
         }
         let ft: M3 = std::array::from_fn(|i| std::array::from_fn(|k| f[k][i]));
         let b = mm(f, &ft);
@@ -231,7 +231,7 @@ impl Hyperelastic {
         Ok(tau)
     }
 
-    /// Cauchyspänning (Voigt) och tangenten C^(τJ)/J (6×6, ingenjörsskjuvning).
+    /// Cauchy stress (Voigt) and the tangent C^(τJ)/J (6×6, engineering shear).
     pub fn cauchy_and_tangent(&self, f: &M3) -> Result<([f64; 6], [[f64; 6]; 6])> {
         let j = det(f);
         let tau = self.kirchhoff(f)?;
@@ -294,10 +294,10 @@ impl MaterialModel for Hyperelastic {
 
     fn update(&self, input: &MatInput, _state_old: &[f64], _state_new: &mut [f64]) -> Result<MatOutput> {
         let Some(f0) = input.defgrad else {
-            return fail("*HYPERELASTIC kräver NLGEOM=YES på *STEP");
+            return fail("*HYPERELASTIC requires NLGEOM=YES on *STEP");
         };
         if self.d[0] == 0.0 {
-            return fail("*HYPERELASTIC med D1 = 0 (helt inkompressibelt) kräver hybridelement (C3D8H, CPE4H, ...)");
+            return fail("*HYPERELASTIC with D1 = 0 (fully incompressible) requires hybrid elements (C3D8H, CPE4H, ...)");
         }
         let mode = input.mode;
         let idx: &[usize] = match mode {
@@ -309,7 +309,7 @@ impl MaterialModel for Hyperelastic {
         let mut f = f0;
         match mode {
             StressMode::PlaneStress => {
-                // λ3 så att σ33 = 0 (Newton på F33)
+                // λ3 such that σ33 = 0 (Newton on F33)
                 f[0][2] = 0.0;
                 f[1][2] = 0.0;
                 f[2][0] = 0.0;
@@ -324,16 +324,16 @@ impl MaterialModel for Hyperelastic {
                         ok = true;
                         break;
                     }
-                    // dσ33/d(ln λ3) ≈ c33 (ln-töjningsinkrement)
+                    // dσ33/d(ln λ3) ≈ c33 (log strain increment)
                     let dl = -s[2] / c[2][2];
                     f[2][2] *= dl.exp();
                 }
                 if !ok {
-                    return fail("hyperelastiskt material: plan spänning konvergerade inte (σ33 ≠ 0)");
+                    return fail("hyperelastic material: plane stress did not converge (σ33 ≠ 0)");
                 }
             }
             StressMode::Uniaxial => {
-                // λ2 = λ3 så att σ22 = σ33 = 0
+                // λ2 = λ3 such that σ22 = σ33 = 0
                 let l1 = f0[0][0];
                 f = [[l1, 0.0, 0.0], [0.0, 1.0 / l1.sqrt(), 0.0], [0.0, 0.0, 1.0 / l1.sqrt()]];
                 let mut ok = false;
@@ -348,7 +348,7 @@ impl MaterialModel for Hyperelastic {
                     f[2][2] = f[1][1];
                 }
                 if !ok {
-                    return fail("hyperelastiskt material: enaxlig spänning konvergerade inte");
+                    return fail("hyperelastic material: uniaxial stress did not converge");
                 }
             }
             _ => {}
@@ -364,7 +364,7 @@ impl MaterialModel for Hyperelastic {
 
     fn tangent_linear(&self, mode: StressMode) -> Result<Vec<f64>> {
         if self.d[0] == 0.0 {
-            return fail("*HYPERELASTIC med D1 = 0 (helt inkompressibelt) kräver hybridelement (C3D8H, CPE4H, ...)");
+            return fail("*HYPERELASTIC with D1 = 0 (fully incompressible) requires hybrid elements (C3D8H, CPE4H, ...)");
         }
         Ok(reduce_6x6(&self.elastic_d6(), mode))
     }
@@ -386,7 +386,7 @@ impl HyperModel for Hyperelastic {
     fn tau_dev(&self, f: &M3) -> Result<M3> {
         let j = det(f);
         if !(j > 0.0) {
-            return fail("hyperelastiskt material: J ≤ 0 (elementet har vänts ut och in)");
+            return fail("hyperelastic material: J ≤ 0 (the element has been turned inside out)");
         }
         let ft: M3 = std::array::from_fn(|i| std::array::from_fn(|k| f[k][i]));
         let b = mm(f, &ft);

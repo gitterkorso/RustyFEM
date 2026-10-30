@@ -1,36 +1,36 @@
-//! NLGEOM för S8R, SC8R och SC6R: korotationell formulering (Rankin–
-//! Nour-Omid 1988, Felippa–Haugen 2005), som för S4R i `shell_nlgeom.rs`.
+//! NLGEOM for S8R, SC8R and SC6R: corotational formulation (Rankin–
+//! Nour-Omid 1988, Felippa–Haugen 2005), as for S4R in `shell_nlgeom.rs`.
 //!
-//! Elementets stelkroppsrörelse avskiljs med ett medföljande system E(x):
-//! normalen från diagonalerna mellan hörnen (S8R: hörnnoderna, SC8R:
-//! mittytans hörn ½(x_undersida + x_översida)), 1-axeln längs ξ-riktningen
-//! (trianglar: normalen från två kanter och 1-axeln längs första kanten), och
-//! referenspunkten x_c = hörnens medelpunkt. Med R_r = E E₀ᵀ är de
-//! deformationella förskjutningarna
+//! The element's rigid body motion is separated with a co-rotating frame E(x):
+//! the normal from the diagonals between the corners (S8R: the corner nodes, SC8R:
+//! the midsurface corners ½(x_bottom + x_top)), the 1-axis along the ξ direction
+//! (triangles: the normal from two edges and the 1-axis along the first edge), and
+//! the reference point x_c = the mean of the corners. With R_r = E E₀ᵀ the
+//! deformational displacements are
 //!
 //! - u_dₐ = R_rᵀ (xₐ − x_c) − (Xₐ − X_c),
-//! - θ_dₐ = log(R_rᵀ Rₐ) (S8R: nodens rotation relativt elementets).
+//! - θ_dₐ = log(R_rᵀ Rₐ) (S8R: the node's rotation relative to the element's).
 //!
-//! Töjningsenergin är Φ(d) = ½ dᵀ K₀ d + Φₙ(d) med elementets linjära
-//! styvhet K₀ i referensläget och membrandelens kvadratiska (Green–Lagrange)
-//! termer i det medföljande systemet: εαβ = εαβ,lin + ½ u,α·u,β med
-//! u = de deformationella förskjutningarna, Φₙ = Σ ½ t w (εᵀDε − εₗᵢₙᵀDεₗᵢₙ)
-//! i membranets integrationspunkter (S8R 2×2, SC8R/SC6R mitten). För
-//! SC8R/SC6R räknas även tjocklekstöjningen som Green-töjning,
-//! ε33 = (|d + Δ|² − |d|²)/(2|d|²); annars ger en rotation φ av direktören
-//! relativt elementet en falsk tjocklekstöjning −φ²/2. Utan Φₙ ger
-//! ett krökt element (S8R kan böjas inom elementet) en falsk membrantöjning av
-//! storleksordningen (Δθ)²/24 från kordans förkortning. Med s = ∂Φ/∂d och
-//! K_d = ∂²Φ/∂d² blir f = Jᵀ s och K = Jᵀ K_d J + Σᵢ sᵢ ∂²dᵢ (J = ∂d/∂q,
-//! andraderivatorna exakt med hyperduala tal; rotationerna varieras med
-//! rumsliga spinn som i NLGEOM-steget). Formuleringen tillåter godtyckligt
-//! stora rotationer men små töjningar, vilket är antagandet för S8R.
-//! För SC8R/SC6R (finita membrantöjningar) ger det avvikelser av
-//! storleksordningen töjningen.
+//! The strain energy is Φ(d) = ½ dᵀ K₀ d + Φₙ(d) with the element's linear
+//! stiffness K₀ in the reference position and the quadratic (Green–Lagrange)
+//! membrane terms in the co-rotating frame: εαβ = εαβ,lin + ½ u,α·u,β with
+//! u = the deformational displacements, Φₙ = Σ ½ t w (εᵀDε − εₗᵢₙᵀDεₗᵢₙ)
+//! at the membrane integration points (S8R 2×2, SC8R/SC6R the center). For
+//! SC8R/SC6R the thickness strain is also computed as a Green strain,
+//! ε33 = (|d + Δ|² − |d|²)/(2|d|²); otherwise a rotation φ of the director
+//! relative to the element gives a spurious thickness strain −φ²/2. Without Φₙ
+//! a curved element (S8R can bend within the element) gives a spurious membrane strain of
+//! the order (Δθ)²/24 from the shortening of the chord. With s = ∂Φ/∂d and
+//! K_d = ∂²Φ/∂d², f = Jᵀ s and K = Jᵀ K_d J + Σᵢ sᵢ ∂²dᵢ (J = ∂d/∂q,
+//! the second derivatives exactly with hyper-dual numbers; the rotations are varied with
+//! spatial spins as in the NLGEOM step). The formulation allows arbitrarily
+//! large rotations but small strains, which is the assumption for S8R.
+//! For SC8R/SC6R (finite membrane strains) this gives deviations of
+//! the order of the strain.
 //!
-//! För S8R beror u_dₐ och θ_dₐ bara på hörnens förskjutningar och nod a:s egna
-//! frihetsgrader (högst 18 variabler), så derivatorna räknas nod för nod med
-//! `Hd<18>` och läggs in i elementets 48 frihetsgrader.
+//! For S8R, u_dₐ and θ_dₐ depend only on the corner displacements and node a's own
+//! degrees of freedom (at most 18 variables), so the derivatives are computed node by node with
+//! `Hd<18>` and inserted into the element's 48 degrees of freedom.
 
 use crate::elements::beam_timoshenko::nlgeom::{log_so3, mtm, mtv, spun};
 use crate::elements::{ElemCtx, ElemResponse};
@@ -38,7 +38,7 @@ use crate::kinematics::hyperdual::{self as hd, Hd, T3, V3};
 use crate::kinematics::tensor as t;
 use crate::model::{fail, FemError, Result};
 
-/// Medföljande system E (kolumner e₁, e₂, e₃) för hörnen `c` (3 eller 4 punkter).
+/// Co-rotating frame E (columns e₁, e₂, e₃) for the corners `c` (3 or 4 points).
 fn frame<const N: usize>(c: &[V3<N>]) -> T3<N> {
     let sub = |a: &V3<N>, b: &V3<N>| -> V3<N> { std::array::from_fn(|i| a[i] - b[i]) };
     let unit = |v: V3<N>| -> V3<N> {
@@ -71,16 +71,16 @@ fn mean<const N: usize>(v: &[V3<N>]) -> V3<N> {
 }
 
 fn too_large(ctx: &ElemCtx, name: &str) -> FemError {
-    FemError(format!("element {} ({name}): för stor rotation av en nod relativt elementet (≥ 180°)", ctx.label))
+    FemError(format!("element {} ({name}): too large rotation of a node relative to the element (≥ 180°)", ctx.label))
 }
 
 // ---------------------------------------------------------------------------
-// S8R: nodvis med Hd<18>
+// S8R: node by node with Hd<18>
 // ---------------------------------------------------------------------------
 
-/// Lokala variabler för nod a: hörnens förskjutningar 0–11, nodens egen
-/// förskjutning 12–14 (mittnoder) och rotation 15–17. Returnerar globalt index
-/// (frihetsgrad i elementet) per lokal variabel (usize::MAX = oanvänd).
+/// Local variables for node a: the corner displacements 0–11, the node's own
+/// displacement 12–14 (midside nodes) and rotation 15–17. Returns the global index
+/// (degree of freedom in the element) per local variable (usize::MAX = unused).
 fn s8r_vars(a: usize) -> [usize; 18] {
     let mut m = [usize::MAX; 18];
     for i in 0..4 {
@@ -99,7 +99,7 @@ fn s8r_vars(a: usize) -> [usize; 18] {
     m
 }
 
-/// Deformationella förskjutningar och rotation för nod a (6 hyperduala tal).
+/// Deformational displacements and rotation for node a (6 hyper-dual numbers).
 fn s8r_node(x0: &[[f64; 3]], u: &[f64], a: usize, with_vars: bool) -> Option<[Hd<18>; 6]> {
     let rel = |b: usize, i: usize| x0[b][i] - x0[0][i];
     let var = |idx: usize| -> Hd<18> { if with_vars { Hd::var(0.0, idx) } else { Hd::cst(0.0) } };
@@ -127,7 +127,7 @@ fn s8r_node(x0: &[[f64; 3]], u: &[f64], a: usize, with_vars: bool) -> Option<[Hd
     Some(std::array::from_fn(|k| if k < 3 { ud[k] - (xr[k].v - xc0[k].v) } else { th[k - 3] }))
 }
 
-/// Deformationella förskjutningar (48) för utdata.
+/// Deformational displacements (48) for output.
 pub fn deformational_s8r(ctx: &ElemCtx, name: &str, u: &[f64]) -> Result<Vec<f64>> {
     let mut d = Vec::with_capacity(48);
     for a in 0..8 {
@@ -137,7 +137,7 @@ pub fn deformational_s8r(ctx: &ElemCtx, name: &str, u: &[f64]) -> Result<Vec<f64
     Ok(d)
 }
 
-/// Inre kraft och tangent för S8R vid NLGEOM med linjär styvhet `k0`.
+/// Internal force and tangent for S8R with NLGEOM with the linear stiffness `k0`.
 pub fn response_s8r(ctx: &ElemCtx, name: &str, k0: &[f64], ops: &[QuadGroup], u: &[f64], tangent: bool) -> Result<ElemResponse> {
     const N: usize = 48;
     let mut dv = vec![0.0; N];
@@ -179,22 +179,22 @@ pub fn response_s8r(ctx: &ElemCtx, name: &str, k0: &[f64], ops: &[QuadGroup], u:
     })
 }
 
-/// Töjningsgrupp med kvadratiska termer: e_k = l_k·d + ½ dᵀQ_k d (k = 1..m)
-/// och energin ½ w eᵀCe; den linjära delen ½ w (Ld)ᵀC(Ld) finns redan i K₀.
+/// Strain group with quadratic terms: e_k = l_k·d + ½ dᵀQ_k d (k = 1..m)
+/// and the energy ½ w eᵀCe; the linear part ½ w (Ld)ᵀC(Ld) is already in K₀.
 pub struct QuadGroup {
-    /// L (m × n, radvis).
+    /// L (m × n, row-wise).
     pub l: Vec<f64>,
-    /// Q_k (n × n, radvis; tom = 0).
+    /// Q_k (n × n, row-wise; empty = 0).
     pub q: Vec<Vec<f64>>,
-    /// C (m × m, radvis).
+    /// C (m × m, row-wise).
     pub c: Vec<f64>,
     pub w: f64,
 }
 
 impl QuadGroup {
-    /// Membranet i en integrationspunkt: e = [ε11, ε22, γ12] med de kvadratiska
-    /// termerna [½u,1·u,1, ½u,2·u,2, u,1·u,2], där u,α = Aα d (3 × n, globala
-    /// komponenter), och C = D·t.
+    /// The membrane at an integration point: e = [ε11, ε22, γ12] with the quadratic
+    /// terms [½u,1·u,1, ½u,2·u,2, u,1·u,2], where u,α = Aα d (3 × n, global
+    /// components), and C = D·t.
     pub fn membrane(bm: Vec<f64>, a: [Vec<f64>; 2], c: [f64; 9], w: f64) -> QuadGroup {
         let n = bm.len() / 3;
         let ata = |x: &[f64], y: &[f64]| -> Vec<f64> {
@@ -223,7 +223,7 @@ impl QuadGroup {
     }
 }
 
-/// Kvadratiska töjningar ½ dᵀQ_k d per grupp (för utdata).
+/// Quadratic strains ½ dᵀQ_k d per group (for output).
 pub fn quad_strains(groups: &[QuadGroup], d: &[f64]) -> Vec<Vec<f64>> {
     let n = d.len();
     groups
@@ -236,8 +236,8 @@ pub fn quad_strains(groups: &[QuadGroup], d: &[f64]) -> Vec<Vec<f64>> {
         .collect()
 }
 
-/// Geometrisk styvhet Σ w Σ_k σ_k Q_k med σ = C·(L u) (linjära töjningar ur `u`):
-/// för membrangrupper ∫ N_αβ u,α·u,β dA, alla tre förskjutningskomponenterna.
+/// Geometric stiffness Σ w Σ_k σ_k Q_k with σ = C·(L u) (linear strains from `u`):
+/// for membrane groups ∫ N_αβ u,α·u,β dA, all three displacement components.
 pub fn geometric(groups: &[QuadGroup], u: &[f64]) -> Vec<f64> {
     let n = u.len();
     let mut k = vec![0.0; n * n];
@@ -256,14 +256,14 @@ pub fn geometric(groups: &[QuadGroup], u: &[f64]) -> Vec<f64> {
     k
 }
 
-/// s = ∂Φ/∂d och K_d = ∂²Φ/∂d² för Φ = ½ dᵀK₀d + Σ grupper (½ w eᵀCe − ½ w (Ld)ᵀC(Ld)).
+/// s = ∂Φ/∂d and K_d = ∂²Φ/∂d² for Φ = ½ dᵀK₀d + Σ groups (½ w eᵀCe − ½ w (Ld)ᵀC(Ld)).
 fn energy_derivs(k0: &[f64], groups: &[QuadGroup], d: &[f64], tangent: bool) -> (Vec<f64>, Option<Vec<f64>>) {
     let n = d.len();
     let mut s: Vec<f64> = (0..n).map(|i| (0..n).map(|j| k0[i * n + j] * d[j]).sum()).collect();
     let mut kd = tangent.then(|| k0.to_vec());
     for g in groups {
         let m = g.m();
-        // Q_k d och de kvadratiska töjningarna
+        // Q_k d and the quadratic strains
         let qd: Vec<Vec<f64>> = g
             .q
             .iter()
@@ -280,7 +280,7 @@ fn energy_derivs(k0: &[f64], groups: &[QuadGroup], d: &[f64], tangent: bool) -> 
             s[q] += g.w * v;
         }
         if let Some(k) = kd.as_mut() {
-            // K += w [(L + G)ᵀC(L + G) − LᵀCL + Σ σ_k Q_k], G = raderna Q_k d
+            // K += w [(L + G)ᵀC(L + G) − LᵀCL + Σ σ_k Q_k], G = the rows Q_k d
             let full: Vec<f64> = (0..m * n).map(|i| g.l[i] + qd[i / n][i % n]).collect();
             super::add_btcb(k, n, &full, &g.c, &full, m, g.w);
             super::add_btcb(k, n, &g.l, &g.c, &g.l, m, -g.w);
@@ -297,13 +297,13 @@ fn energy_derivs(k0: &[f64], groups: &[QuadGroup], d: &[f64], tangent: bool) -> 
     (s, kd)
 }
 
-/// f = Jᵀ s och K = Jᵀ K_d J + Σ sᵢ Hᵢ (`geo` lägger till den sista termen).
+/// f = Jᵀ s and K = Jᵀ K_d J + Σ sᵢ Hᵢ (`geo` adds the last term).
 fn assemble(ctx: &ElemCtx, name: &str, k0: &[f64], ops: &[QuadGroup], d: &[f64], jac: &[f64], tangent: bool, geo: impl Fn(&mut [f64], &[f64])) -> Result<ElemResponse> {
     let n = d.len();
     let (s, kd) = energy_derivs(k0, ops, d, tangent);
     let fint: Vec<f64> = (0..n).map(|q| (0..n).map(|i| jac[i * n + q] * s[i]).sum()).collect();
     if fint.iter().any(|v| !v.is_finite()) {
-        return fail(format!("element {} ({name}): ogiltig deformerad geometri", ctx.label));
+        return fail(format!("element {} ({name}): invalid deformed geometry", ctx.label));
     }
     let k = kd.map(|kd| {
         let mut kj = vec![0.0; n * n];
@@ -342,11 +342,11 @@ fn assemble(ctx: &ElemCtx, name: &str, k0: &[f64], ops: &[QuadGroup], d: &[f64],
 }
 
 // ---------------------------------------------------------------------------
-// SC8R och SC6R: alla frihetsgrader på en gång
+// SC8R and SC6R: all degrees of freedom at once
 // ---------------------------------------------------------------------------
 
-/// Deformationella förskjutningar för ett kontinuumskal med `nc` hörn per yta
-/// (noderna 0..nc undersidan, nc..2nc översidan).
+/// Deformational displacements for a continuum shell with `nc` corners per face
+/// (nodes 0..nc the bottom face, nc..2nc the top face).
 fn sc_def<const N: usize>(x0: &[[f64; 3]], u: &[f64], with_vars: bool) -> Vec<Hd<N>> {
     let nn = x0.len();
     let nc = nn / 2;
@@ -390,16 +390,16 @@ fn sc_response_n<const N: usize>(ctx: &ElemCtx, name: &str, k0: &[f64], ops: &[Q
     })
 }
 
-/// Inre kraft och tangent för SC8R/SC6R vid NLGEOM.
+/// Internal force and tangent for SC8R/SC6R with NLGEOM.
 pub fn response_sc(ctx: &ElemCtx, name: &str, k0: &[f64], ops: &[QuadGroup], u: &[f64], tangent: bool) -> Result<ElemResponse> {
     match ctx.x.len() {
         8 => sc_response_n::<24>(ctx, name, k0, ops, u, tangent),
         6 => sc_response_n::<18>(ctx, name, k0, ops, u, tangent),
-        n => fail(format!("element {} ({name}): NLGEOM stöds inte för {n} noder", ctx.label)),
+        n => fail(format!("element {} ({name}): NLGEOM is not supported for {n} nodes", ctx.label)),
     }
 }
 
-/// Deformationella förskjutningar för utdata (SC8R/SC6R).
+/// Deformational displacements for output (SC8R/SC6R).
 pub fn deformational_sc(ctx: &ElemCtx, u: &[f64]) -> Vec<f64> {
     sc_def::<1>(&ctx.x, u, false).iter().map(|q| q.v).collect()
 }

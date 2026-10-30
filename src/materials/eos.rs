@@ -1,47 +1,47 @@
-//! Tillståndsekvationer (*EOS) för explicit dynamik.
+//! Equations of state (*EOS) for explicit dynamics.
 //!
-//! Båda formerna är linjära i den specifika inre energin Eₘ, p = f(J) + γ(J) Eₘ:
+//! Both forms are linear in the specific internal energy Eₘ, p = f(J) + γ(J) Eₘ:
 //!
 //! ```text
-//! TYPE=USUP (Mie–Grüneisen, linjär Us–Up-Hugoniot; data c₀, s, Γ₀):
+//! TYPE=USUP (Mie–Grüneisen, linear Us–Up Hugoniot; data c₀, s, Γ₀):
 //!   p = ρ₀c₀² η (1 − Γ₀η/2) / (1 − sη)² + Γ₀ ρ₀ Eₘ,   η = 1 − ρ₀/ρ = 1 − J
 //! TYPE=IDEAL GAS (data R, p_A; *SPECIFIC HEAT c_v):
 //!   p + p_A = ρ R (θ − θ_Z) = (R/c_v) ρ Eₘ,   Eₘ = c_v (θ − θ_Z)
 //! ```
 //!
-//! Energiekvationen (adiabatisk) integreras med trapetsregeln över
-//! inkrementet, Eₘ,ₙ₊₁ = Eₘ,ₙ − ½(pₙ + pₙ₊₁)ΔJ/ρ₀ + Δw_dev/ρ₀, och löses ut ur
-//! ekvationen för p (linjär i pₙ₊₁). Volymviskositetens arbete läggs till
-//! energin efter inkrementet (`add_bulk_work`). Den deviatoriska delen är hypoelastisk med
-//! `*ELASTIC, TYPE=SHEAR` (G), annars ingen skjuvstyvhet (fluid). J = det F
-//! vid NLGEOM, annars 1 + tr ε. Stabilitetsgränsen använder den isentropiska
-//! kompressionsmodulen ρc² = J (f_H′(η) + Γ₀p) respektive (1 + R/c_v)(p + p_A)
+//! The energy equation (adiabatic) is integrated with the trapezoidal rule over
+//! the increment, Eₘ,ₙ₊₁ = Eₘ,ₙ − ½(pₙ + pₙ₊₁)ΔJ/ρ₀ + Δw_dev/ρ₀, and is solved from
+//! the equation for p (linear in pₙ₊₁). The work of the bulk viscosity is added to
+//! the energy after the increment (`add_bulk_work`). The deviatoric part is hypoelastic with
+//! `*ELASTIC, TYPE=SHEAR` (G), otherwise there is no shear stiffness (fluid). J = det F
+//! with NLGEOM, otherwise 1 + tr ε. The stability limit uses the isentropic
+//! bulk modulus ρc² = J (f_H′(η) + Γ₀p) or (1 + R/c_v)(p + p_A), respectively
 //! (`current_bulk_modulus`).
 //!
-//! Explicit analys räknar trycket i varje integrationspunkt (C3D8 fullt
-//! integrerad, utan B-bar; `explicit_full_integration`).
+//! Explicit analysis computes the pressure at each integration point (C3D8 fully
+//! integrated, without B-bar; `explicit_full_integration`).
 //!
-//! Begynnelsetillstånd (`apply_initial`, anropas av `steps/explicit.rs` i
-//! analysens början): `*INITIAL CONDITIONS, TYPE=SPECIFIC ENERGY` (element,
-//! Eₘ₀) och för ideal gas annars Eₘ₀ = c_v (θ₀ − θ_Z) ur
-//! `*INITIAL CONDITIONS, TYPE=TEMPERATURE` (nodmedelvärdet) och
-//! `*PHYSICAL CONSTANTS, ABSOLUTE ZERO=`. Begynnelsetrycket p(J = 1, Eₘ₀)
-//! skrivs som begynnelsespänning −p₀ I.
+//! Initial state (`apply_initial`, called by `steps/explicit.rs` at the
+//! start of the analysis): `*INITIAL CONDITIONS, TYPE=SPECIFIC ENERGY` (element,
+//! Eₘ₀) and for ideal gas otherwise Eₘ₀ = c_v (θ₀ − θ_Z) from
+//! `*INITIAL CONDITIONS, TYPE=TEMPERATURE` (the nodal average) and
+//! `*PHYSICAL CONSTANTS, ABSOLUTE ZERO=`. The initial pressure p(J = 1, Eₘ₀)
+//! is written as the initial stress −p₀ I.
 //!
-//! `*TENSILE FAILURE` (inte med ideal gas): när trycket blir mer dragande än
-//! −σ_c brister materialpunkten. ELEMENT DELETION=YES (standard): spänningen
-//! blir noll och elementet tas bort (SDEG = 1 i punkten, `steps/model_change.rs`);
-//! annars SHEAR=BRITTLE (deviatorn noll för resten av analysen) eller DUCTILE
-//! och PRESSURE=BRITTLE (p ≥ 0) eller DUCTILE (p ≥ −σ_c).
+//! `*TENSILE FAILURE` (not with ideal gas): when the pressure becomes more tensile than
+//! −σ_c the material point fails. ELEMENT DELETION=YES (default): the stress
+//! becomes zero and the element is removed (SDEG = 1 at the point, `steps/model_change.rs`);
+//! otherwise SHEAR=BRITTLE (deviator zero for the rest of the analysis) or DUCTILE
+//! and PRESSURE=BRITTLE (p ≥ 0) or DUCTILE (p ≥ −σ_c).
 //!
-//! Område gaps1: TYPE=TABULAR och TYPE=JWL med *DETONATION POINT
+//! Area gaps1: TYPE=TABULAR and TYPE=JWL with *DETONATION POINT
 //! (`eos_forms.rs`).
 //!
-//! Område acoustics2: P-α (*EOS COMPACTION, `eos_compaction.rs`) och
-//! volymviskositetens arbete i energiekvationen (`add_bulk_work`).
+//! Area acoustics2: P-α (*EOS COMPACTION, `eos_compaction.rs`) and
+//! the work of the bulk viscosity in the energy equation (`add_bulk_work`).
 //!
-//! Begränsningar: inte IGNITION AND GROWTH eller
-//! användardefinierad, ingen temperaturutdata, bara 3D och plan töjning.
+//! Limitations: not IGNITION AND GROWTH or
+//! user-defined, no temperature output, only 3D and plane strain.
 
 use super::{MatInput, MatOutput, MaterialFactory, MaterialModel, StressMode};
 use crate::fem::assembly::Prepared;
@@ -52,33 +52,33 @@ use std::sync::Arc;
 
 #[path = "eos_forms.rs"]
 pub mod forms;
-// område acoustics2: *EOS COMPACTION (P-α)
+// area acoustics2: *EOS COMPACTION (P-α)
 #[path = "eos_compaction.rs"]
 pub mod compaction;
 
 pub static FACTORIES: &[MaterialFactory] = &[MaterialFactory {
-    name: "tillståndsekvation (*EOS, TYPE=USUP, IDEAL GAS, TABULAR, JWL)",
+    name: "equation of state (*EOS, TYPE=USUP, IDEAL GAS, TABULAR, JWL)",
     consumes: &["EOS", "ELASTIC", "TENSILE FAILURE", "SPECIFIC HEAT", "DETONATION POINT", "EOS COMPACTION"],
     priority: 20,
     build: Some(build),
 }];
 
-/// Parameter som markerar ett upplöst *INITIAL CONDITIONS, TYPE=SPECIFIC
-/// ENERGY (rader: elementindex, Eₘ₀).
+/// Parameter that marks a resolved *INITIAL CONDITIONS, TYPE=SPECIFIC
+/// ENERGY (lines: element index, Eₘ₀).
 pub const RESOLVED: &str = "RUSTYFEM_EOS";
 
 #[derive(Debug, Clone)]
 enum Form {
     UsUp { c0: f64, s: f64, gamma0: f64 },
     IdealGas { r: f64, pa: f64, cv: f64 },
-    /// Område gaps1.
+    /// Area gaps1.
     Tabular(forms::Tabular),
     Jwl(forms::Jwl),
 }
 
 #[derive(Debug, Clone, Copy)]
 struct TensileFailure {
-    /// Hydrostatisk gränsspänning (positiv i drag).
+    /// Hydrostatic cutoff stress (positive in tension).
     cutoff: f64,
     delete: bool,
     shear_brittle: bool,
@@ -93,12 +93,12 @@ pub struct Eos {
     tf: Option<TensileFailure>,
 }
 
-/// Tillståndets platser.
+/// State slots.
 const EM: usize = 0;
 const JAC: usize = 1;
 const PRES: usize = 2;
 const FAILED: usize = 3;
-/// JWL: detonationsvågens ankomsttid och elementets karakteristiska längd.
+/// JWL: arrival time of the detonation wave and the characteristic element length.
 const TD: usize = 4;
 const LE: usize = 5;
 
@@ -108,11 +108,11 @@ fn first(kw: &RawKeyword) -> Result<Vec<f64>> {
 
 fn tensile_failure(kw: &RawKeyword) -> Result<TensileFailure> {
     if kw.has("DEPENDENCIES") || kw.data.len() > 1 {
-        return kw.err("*TENSILE FAILURE: bara en konstant gränsspänning stöds");
+        return kw.err("*TENSILE FAILURE: only one constant cutoff stress is supported");
     }
     let cutoff = first(kw)?.first().copied().unwrap_or(f64::NAN);
     if !cutoff.is_finite() {
-        return kw.err("*TENSILE FAILURE: ange den hydrostatiska gränsspänningen");
+        return kw.err("*TENSILE FAILURE: give the hydrostatic cutoff stress");
     }
     let delete = kw.flag("ELEMENT DELETION", true)?;
     let brittle = |key: &str| -> Result<bool> {
@@ -120,8 +120,8 @@ fn tensile_failure(kw: &RawKeyword) -> Result<TensileFailure> {
             Some("BRITTLE") => Ok(true),
             Some("DUCTILE") => Ok(false),
             None if delete => Ok(false),
-            None => kw.err(format!("*TENSILE FAILURE, ELEMENT DELETION=NO kräver {key}=BRITTLE eller DUCTILE")),
-            Some(o) => kw.err(format!("{key}={o} stöds inte (BRITTLE, DUCTILE)")),
+            None => kw.err(format!("*TENSILE FAILURE, ELEMENT DELETION=NO requires {key}=BRITTLE or DUCTILE")),
+            Some(o) => kw.err(format!("{key}={o} is not supported (BRITTLE, DUCTILE)")),
         }
     };
     Ok(TensileFailure { cutoff, delete, shear_brittle: brittle("SHEAR")?, pressure_brittle: brittle("PRESSURE")? })
@@ -129,12 +129,12 @@ fn tensile_failure(kw: &RawKeyword) -> Result<TensileFailure> {
 
 fn build(def: &MaterialDef) -> Result<Option<Arc<dyn MaterialModel>>> {
     if def.behavior("DETONATION POINT").is_some() && def.behavior("EOS").is_some_and(|k| k.param_upper("TYPE").as_deref() != Some("JWL")) {
-        return def.behavior("DETONATION POINT").unwrap().err("*DETONATION POINT kräver *EOS, TYPE=JWL");
+        return def.behavior("DETONATION POINT").unwrap().err("*DETONATION POINT requires *EOS, TYPE=JWL");
     }
     let Some(kw) = def.behavior("EOS") else {
         if let Some(t) = def.behavior("TENSILE FAILURE") {
             if def.behavior("PLASTIC").is_some() {
-                return t.err("*TENSILE FAILURE med *PLASTIC stöds inte ännu (bara med *EOS)");
+                return t.err("*TENSILE FAILURE with *PLASTIC is not yet supported (only with *EOS)");
             }
         }
         return Ok(None);
@@ -144,43 +144,43 @@ fn build(def: &MaterialDef) -> Result<Option<Arc<dyn MaterialModel>>> {
     let form = match ty.as_str() {
         "USUP" => {
             if v.is_empty() || !(v[0] > 0.0) {
-                return kw.err("*EOS, TYPE=USUP: ange c₀ (> 0), s och Γ₀");
+                return kw.err("*EOS, TYPE=USUP: give c₀ (> 0), s and Γ₀");
             }
             Form::UsUp { c0: v[0], s: v.get(1).copied().unwrap_or(0.0), gamma0: v.get(2).copied().unwrap_or(0.0) }
         }
         "IDEAL GAS" => {
             let r = v.first().copied().unwrap_or(0.0);
             if !(r > 0.0) {
-                return kw.err("*EOS, TYPE=IDEAL GAS: ange gaskonstanten R (> 0) och omgivningstrycket p_A");
+                return kw.err("*EOS, TYPE=IDEAL GAS: give the gas constant R (> 0) and the ambient pressure p_A");
             }
             let Some(sh) = def.behavior("SPECIFIC HEAT") else {
-                return kw.err("*EOS, TYPE=IDEAL GAS kräver *SPECIFIC HEAT (c_v)");
+                return kw.err("*EOS, TYPE=IDEAL GAS requires *SPECIFIC HEAT (c_v)");
             };
             if sh.data.len() > 1 || sh.has("DEPENDENCIES") {
-                return sh.err("*SPECIFIC HEAT med *EOS, TYPE=IDEAL GAS: bara konstant c_v stöds");
+                return sh.err("*SPECIFIC HEAT with *EOS, TYPE=IDEAL GAS: only constant c_v is supported");
             }
             let cv = first(sh)?.first().copied().unwrap_or(0.0);
             if !(cv > 0.0) {
-                return sh.err("*SPECIFIC HEAT: c_v ska vara > 0");
+                return sh.err("*SPECIFIC HEAT: c_v must be > 0");
             }
             if let Some(t) = def.behavior("TENSILE FAILURE") {
-                return t.err("*TENSILE FAILURE kan inte användas med *EOS, TYPE=IDEAL GAS");
+                return t.err("*TENSILE FAILURE cannot be used with *EOS, TYPE=IDEAL GAS");
             }
             Form::IdealGas { r, pa: v.get(1).copied().unwrap_or(0.0), cv }
         }
         "TABULAR" => Form::Tabular(forms::Tabular::parse(kw)?),
         "JWL" => {
             if let Some(t) = def.behavior("TENSILE FAILURE") {
-                return t.err("*TENSILE FAILURE kan inte användas med *EOS, TYPE=JWL");
+                return t.err("*TENSILE FAILURE cannot be used with *EOS, TYPE=JWL");
             }
             Form::Jwl(forms::Jwl::parse(kw, def)?)
         }
-        o => return kw.err(format!("*EOS, TYPE={o} stöds inte ännu (USUP, IDEAL GAS, TABULAR, JWL)")),
+        o => return kw.err(format!("*EOS, TYPE={o} is not yet supported (USUP, IDEAL GAS, TABULAR, JWL)")),
     };
     let g = match def.behavior("ELASTIC") {
         Some(e) => {
             if e.param_upper("TYPE").as_deref() != Some("SHEAR") {
-                return e.err("med *EOS ska *ELASTIC ha TYPE=SHEAR (skjuvmodulen G)");
+                return e.err("with *EOS, *ELASTIC must have TYPE=SHEAR (the shear modulus G)");
             }
             first(e)?.first().copied().unwrap_or(0.0)
         }
@@ -191,14 +191,14 @@ fn build(def: &MaterialDef) -> Result<Option<Arc<dyn MaterialModel>>> {
         None => 0.0,
     };
     if !(rho0 > 0.0) {
-        return kw.err("*EOS kräver *DENSITY");
+        return kw.err("*EOS requires *DENSITY");
     }
     let tf = def.behavior("TENSILE FAILURE").map(tensile_failure).transpose()?;
     let eos = Eos { rho0, form, g, tf };
-    // område acoustics2: P-α
+    // area acoustics2: P-α
     if let Some(c) = def.behavior("EOS COMPACTION") {
         if eos.tf.is_some() {
-            return c.err("*EOS COMPACTION med *TENSILE FAILURE stöds inte ännu");
+            return c.err("*EOS COMPACTION with *TENSILE FAILURE is not yet supported");
         }
         return Ok(Some(Arc::new(compaction::build(eos, c)?)));
     }
@@ -215,7 +215,7 @@ impl Eos {
                 (self.rho0 * c0 * c0 * eta * (1.0 - 0.5 * gamma0 * eta) / (d * d), gamma0 * self.rho0)
             }
             Form::IdealGas { r, pa, cv } => (-pa, r / cv * self.rho0 / j),
-            // område gaps1: p = f₁(ln J) + ρ₀ f₂(ln J) Eₘ
+            // area gaps1: p = f₁(ln J) + ρ₀ f₂(ln J) Eₘ
             Form::Tabular(ref t) => {
                 let (f1, f2, _, _) = t.eval(j.max(1e-12).ln());
                 (f1, self.rho0 * f2)
@@ -224,7 +224,7 @@ impl Eos {
         }
     }
 
-    /// Omgivningstrycket p_A (ideal gas), annars 0.
+    /// The ambient pressure p_A (ideal gas), otherwise 0.
     fn ambient(&self) -> f64 {
         match self.form {
             Form::IdealGas { pa, .. } => pa,
@@ -232,8 +232,8 @@ impl Eos {
         }
     }
 
-    /// Referensmodul för den linjära tangenten (våghastigheten före första
-    /// inkrementet; `current_bulk_modulus` ger den aktuella).
+    /// Reference modulus for the linear tangent (the wave speed before the first
+    /// increment; `current_bulk_modulus` gives the current one).
     fn bulk(&self) -> f64 {
         match self.form {
             Form::UsUp { c0, .. } => self.rho0 * c0 * c0,
@@ -285,7 +285,7 @@ impl MaterialModel for Eos {
     fn current_bulk_modulus(&self, state: &[f64]) -> Option<f64> {
         let (j, p) = (state[JAC], state[PRES]);
         match self.form {
-            // K_s = ρc² = J (f_H′(η) + Γ₀ p) ur p(ρ, Eₘ) vid konstant entropi
+            // K_s = ρc² = J (f_H′(η) + Γ₀ p) from p(ρ, Eₘ) at constant entropy
             Form::UsUp { c0, s, gamma0: g } => {
                 let eta = 1.0 - j;
                 let d = 1.0 - s * eta;
@@ -294,7 +294,7 @@ impl MaterialModel for Eos {
             }
             // ρc² = γ (p + p_A), γ = c_p/c_v = 1 + R/c_v
             Form::IdealGas { r, pa, cv } => Some(((1.0 + r / cv) * (p + pa)).max(0.0)),
-            // område gaps1: ρc² = −(f₁′ + ρ₀ f₂′ Eₘ) + f₂ p J
+            // area gaps1: ρc² = −(f₁′ + ρ₀ f₂′ Eₘ) + f₂ p J
             Form::Tabular(ref t) => {
                 let (_, f2, d1, d2) = t.eval(j.max(1e-12).ln());
                 Some((-(d1 + self.rho0 * d2 * state[EM]) + f2 * p * j).max(0.0))
@@ -323,7 +323,7 @@ impl MaterialModel for Eos {
     }
 
     fn output_names(&self) -> &[&'static str] {
-        // brustna punkter med elementborttagning (`steps/model_change.rs` läser SDEG)
+        // failed points with element deletion (`steps/model_change.rs` reads SDEG)
         match self.tf {
             Some(t) if t.delete => &["SDEG"],
             _ => &[],
@@ -340,7 +340,7 @@ impl MaterialModel for Eos {
     fn update(&self, input: &MatInput, state_old: &[f64], state_new: &mut [f64]) -> Result<MatOutput> {
         let mode = input.mode;
         if !matches!(mode, StressMode::ThreeD | StressMode::PlaneStrain) {
-            return fail("*EOS stöds bara i 3D och plan töjning");
+            return fail("*EOS is only supported in 3D and plane strain");
         }
         let n = mode.ncomp();
         let j1 = match input.defgrad {
@@ -350,7 +350,7 @@ impl MaterialModel for Eos {
         let (em0, j0) = (state_old[EM], state_old[JAC]);
         let failed0 = state_old.get(FAILED).copied().unwrap_or(0.0) > 0.5;
         let p0 = -input.stress_old[..3].iter().sum::<f64>() / 3.0;
-        // deviatorisk del (hypoelastisk)
+        // deviatoric part (hypoelastic)
         let tr = input.dstrain[..3].iter().sum::<f64>() / 3.0;
         let mut s_new = vec![0.0; n];
         let dev = |i: usize| if i < 3 { (input.stress_old[i] + p0, input.dstrain[i] - tr) } else { (input.stress_old[i], 0.5 * input.dstrain[i]) };
@@ -359,11 +359,11 @@ impl MaterialModel for Eos {
             *s = so + 2.0 * self.g * de;
         }
         let dj = j1 - j0;
-        // ideal gas: värmen ur det absoluta trycket p + p_A (samma
-        // adiabatiska förlopp för p + p_A med och utan omgivningstryck)
+        // ideal gas: the heat from the absolute pressure p + p_A (the same
+        // adiabatic process for p + p_A with and without ambient pressure)
         let pa = self.ambient();
         let solve = |s_new: &[f64]| -> (f64, f64) {
-            // Δw_dev per massenhet: (s : Δe) · J/ρ₀ (aktuell volym per massa)
+            // Δw_dev per unit mass: (s : Δe) · J/ρ₀ (current volume per mass)
             let mut wdev = 0.0;
             for (i, sn) in s_new.iter().enumerate() {
                 let (so, de) = dev(i);
@@ -375,7 +375,7 @@ impl MaterialModel for Eos {
             ((f + gam * a) / (1.0 + 0.5 * gam * dj / self.rho0), wdev)
         };
         let (mut p1, mut wdev) = solve(&s_new);
-        // område gaps1: JWL – trycket ur K_pd före detonationen, sedan F_b p_JWL
+        // area gaps1: JWL – the pressure from K_pd before detonation, then F_b p_JWL
         if let Form::Jwl(ref jw) = self.form {
             let (td, le) = (state_old[TD], state_old[LE]);
             let fb = jw.burn(input.time, td, le);
@@ -434,13 +434,13 @@ impl MaterialModel for Eos {
     }
 
     fn init_energy(&self, state: &mut [f64], em: Option<f64>, temperature: Option<f64>, abs_zero: f64) -> Result<Option<(f64, f64)>> {
-        // trycket bestäms av begynnelsespänningen (Us–Up: 0) respektive
-        // begynnelsetemperaturen (ideal gas); *INITIAL CONDITIONS, TYPE=SPECIFIC
-        // ENERGY ändrar bara den inre energin ALLIE (samma rörelse med
-        // och utan, ALLIE(0) = Σ m Eₘ₀)
+        // the pressure is determined by the initial stress (Us–Up: 0) or
+        // the initial temperature (ideal gas); *INITIAL CONDITIONS, TYPE=SPECIFIC
+        // ENERGY only changes the internal energy ALLIE (the same motion with
+        // and without, ALLIE(0) = Σ m Eₘ₀)
         match self.form {
             Form::UsUp { .. } | Form::Tabular(_) => Ok(em.map(|e| (0.0, e))),
-            // område gaps1: Eₘ₀ = E₀ om inget annat anges, trycket börjar på 0
+            // area gaps1: Eₘ₀ = E₀ unless otherwise specified, the pressure starts at 0
             Form::Jwl(ref jw) => {
                 let e = em.unwrap_or(jw.e0);
                 state[EM] = e;
@@ -448,11 +448,11 @@ impl MaterialModel for Eos {
             }
             Form::IdealGas { cv, .. } => {
                 let Some(t) = temperature else {
-                    return fail("*EOS, TYPE=IDEAL GAS kräver *INITIAL CONDITIONS, TYPE=TEMPERATURE (begynnelsetemperaturen)");
+                    return fail("*EOS, TYPE=IDEAL GAS requires *INITIAL CONDITIONS, TYPE=TEMPERATURE (the initial temperature)");
                 };
                 let eth = cv * (t - abs_zero);
                 if !(eth > 0.0) {
-                    return fail("*EOS, TYPE=IDEAL GAS: begynnelsetemperaturen ska ligga över absoluta nollpunkten");
+                    return fail("*EOS, TYPE=IDEAL GAS: the initial temperature must be above absolute zero");
                 }
                 state[EM] = eth;
                 let (f, gam) = self.linear_in_energy(1.0);
@@ -464,17 +464,17 @@ impl MaterialModel for Eos {
     }
 }
 
-/// Absoluta nollpunkten θ_Z (*PHYSICAL CONSTANTS, ABSOLUTE ZERO=), annars 0.
+/// Absolute zero θ_Z (*PHYSICAL CONSTANTS, ABSOLUTE ZERO=), otherwise 0.
 fn absolute_zero(m: &FeModel) -> Result<f64> {
     match m.extra.iter().rev().find(|k| k.name == "PHYSICAL CONSTANTS").and_then(|k| k.param("ABSOLUTE ZERO").map(|v| (k, v))) {
-        Some((k, v)) => parse_f64(v).ok_or_else(|| FemError(format!("{}: ogiltigt ABSOLUTE ZERO={v}", k.location()))),
+        Some((k, v)) => parse_f64(v).ok_or_else(|| FemError(format!("{}: invalid ABSOLUTE ZERO={v}", k.location()))),
         None => Ok(0.0),
     }
 }
 
-/// Begynnelsetillståndet för *EOS-material (se modulens dokumentation):
-/// specifik energi och begynnelsetryck i elementtillstånden `states`.
-/// Returnerar den inre energin Σ m Eₘ₀ i analysens början (ALLIE).
+/// The initial state for *EOS materials (see the module documentation):
+/// specific energy and initial pressure in the element states `states`.
+/// Returns the internal energy Σ m Eₘ₀ at the start of the analysis (ALLIE).
 pub fn apply_initial(p: &Prepared, states: &mut [Vec<f64>]) -> Result<f64> {
     let mut energy = 0.0;
     let m = p.model;
@@ -495,7 +495,7 @@ pub fn apply_initial(p: &Prepared, states: &mut [Vec<f64>]) -> Result<f64> {
         let Some(mat) = ctx.material else { continue };
         if !mat.name().starts_with("*EOS") {
             if em[e].is_some() {
-                return fail(format!("{}: *INITIAL CONDITIONS, TYPE=SPECIFIC ENERGY kräver ett material med *EOS", m.elem_name(e)));
+                return fail(format!("{}: *INITIAL CONDITIONS, TYPE=SPECIFIC ENERGY requires a material with *EOS", m.elem_name(e)));
             }
             continue;
         }
@@ -512,9 +512,9 @@ pub fn apply_initial(p: &Prepared, states: &mut [Vec<f64>]) -> Result<f64> {
             continue;
         }
         let stride = nc + ns;
-        // elementets massa (lika i integrationspunkterna)
+        // element mass (equal at the integration points)
         let mass = crate::steps::explicit::dt::geometry(el.etype.family(), el.etype.name(), &ctx.x).map_or(0.0, |g| g.vol) * ctx.density;
-        // område gaps1: integrationspunkternas lägen och karakteristisk längd (JWL)
+        // area gaps1: integration point positions and characteristic length (JWL)
         let ipx = forms_ip_positions(el.etype.name(), &ctx.x, nip);
         let le = crate::steps::explicit::dt::geometry(el.etype.family(), el.etype.name(), &ctx.x).map_or(0.0, |g| g.vol).abs().cbrt();
         for ip in 0..nip {
@@ -532,16 +532,16 @@ pub fn apply_initial(p: &Prepared, states: &mut [Vec<f64>]) -> Result<f64> {
     Ok(energy)
 }
 
-/// Område explicit_adv: sätter J = ρ₀/ρ i ett *EOS-tillstånd efter
-/// Euler-advektionen (energiekvationens ΔJ räknas från detta värde).
+/// Area explicit_adv: sets J = ρ₀/ρ in an *EOS state after
+/// the Euler advection (the ΔJ of the energy equation is computed from this value).
 pub fn set_jacobian(mat: &dyn MaterialModel, state: &mut [f64], j: f64) {
     if mat.name().starts_with("*EOS") && state.len() > JAC {
         state[JAC] = j;
     }
 }
 
-/// Område gaps1: integrationspunkternas lägen (standardordning) för C3D8
-/// (2 × 2 × 2 Gauss), annars tyngdpunkten för alla punkter.
+/// Area gaps1: integration point positions (standard order) for C3D8
+/// (2 × 2 × 2 Gauss), otherwise the centroid for all points.
 fn forms_ip_positions(etype: &str, x: &[[f64; 3]], nip: usize) -> Vec<[f64; 3]> {
     let n = x.len().max(1);
     let mut c = [0.0; 3];
@@ -555,7 +555,7 @@ fn forms_ip_positions(etype: &str, x: &[[f64; 3]], nip: usize) -> Vec<[f64; 3]> 
         let nat: [[f64; 3]; 8] = [[-1.0, -1.0, -1.0], [1.0, -1.0, -1.0], [1.0, 1.0, -1.0], [-1.0, 1.0, -1.0], [-1.0, -1.0, 1.0], [1.0, -1.0, 1.0], [1.0, 1.0, 1.0], [-1.0, 1.0, 1.0]];
         let mut out = Vec::with_capacity(8);
         for k in 0..8 {
-            // ordning: ξ snabbast, sedan η, sedan ζ
+            // order: ξ fastest, then η, then ζ
             let (a, b, cz) = ([-g, g][k % 2], [-g, g][(k / 2) % 2], [-g, g][k / 4]);
             let mut p = [0.0; 3];
             for (i, xi) in x.iter().enumerate() {
@@ -571,9 +571,9 @@ fn forms_ip_positions(etype: &str, x: &[[f64; 3]], nip: usize) -> Vec<[f64; 3]> 
     vec![c; nip.max(1)]
 }
 
-/// Område acoustics2: volymviskositetens arbete i energiekvationen (räknas
-/// in): Eₘ ökar med σ_bv ε̇_vol Δt/ρ i elementets alla
-/// integrationspunkter. `work` har (element, σ_bv ε̇_vol/ρ) från
+/// Area acoustics2: the work of the bulk viscosity in the energy equation (is
+/// included): Eₘ increases by σ_bv ε̇_vol Δt/ρ at all the element's
+/// integration points. `work` holds (element, σ_bv ε̇_vol/ρ) from
 /// `steps/explicit_bulk.rs`.
 pub fn add_bulk_work(p: &Prepared, states: &mut [Vec<f64>], work: &[(usize, f64)], dt: f64) {
     let m = p.model;

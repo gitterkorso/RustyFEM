@@ -1,15 +1,15 @@
-//! Projektfilen `.rustyproj`: binärt format med magiskt nummer och version.
+//! The project file `.rustyproj`: binary format with magic number and version.
 //!
 //! ```text
 //! "RUSTYPRJ"  u32 version
-//! källa:      u8 typ (0 = .rusty, 1 = .inp), sträng sökväg, sträng text
-//! inkluderade filer: u32 antal, (sträng namn, bytes innehåll) ...
-//! redigeringar: u32 antal, (u8 typ, fält) ...   (kommandona i ordning)
-//! enhetssystem: sträng
-//! resultat:   u8 finns, därefter analysens utdata (steg, frames, fält, history)
+//! source:     u8 kind (0 = .rusty, 1 = .inp), string path, string text
+//! included files: u32 count, (string name, bytes contents) ...
+//! edits:      u32 count, (u8 kind, fields) ...   (the commands in order)
+//! unit system: string
+//! results:    u8 present, then the analysis output (steps, frames, fields, history)
 //! ```
-//! Heltal och flyttal är little-endian; strängar och bytes har längd (u64) först.
-//! Modellen byggs upp igen från källan och redigeringarna när filen öppnas.
+//! Integers and floats are little-endian; strings and bytes have their length (u64) first.
+//! The model is rebuilt from the source and the edits when the file is opened.
 
 use crate::edit::Edit;
 use rustyfem::elements::IpField;
@@ -88,7 +88,7 @@ type Res<T> = Result<T, String>;
 impl<'a> R<'a> {
     fn take(&mut self, n: usize) -> Res<&'a [u8]> {
         if self.p + n > self.b.len() {
-            return Err("projektfilen är trasig (slutar för tidigt)".into());
+            return Err("the project file is corrupt (ends too early)".into());
         }
         let s = &self.b[self.p..self.p + n];
         self.p += n;
@@ -114,7 +114,7 @@ impl<'a> R<'a> {
         Ok(self.take(n)?.to_vec())
     }
     fn str(&mut self) -> Res<String> {
-        String::from_utf8(self.bytes()?).map_err(|_| "projektfilen är trasig (ogiltig text)".to_string())
+        String::from_utf8(self.bytes()?).map_err(|_| "the project file is corrupt (invalid text)".to_string())
     }
     fn opt_f64(&mut self) -> Res<Option<f64>> {
         Ok(if self.u8()? == 1 { Some(self.f64()?) } else { None })
@@ -220,7 +220,7 @@ fn read_edit(r: &mut R) -> Res<Edit> {
         8 => Edit::CloadValue { step: r.u32()?, block: r.u32()?, item: r.u32()?, value: r.f64()? },
         9 => Edit::DloadValue { step: r.u32()?, block: r.u32()?, item: r.u32()?, value: r.f64()? },
         10 => Edit::StepName { step: r.u32()?, name: r.str()? },
-        k => return Err(format!("okänd redigering {k} i projektfilen (nyare version?)")),
+        k => return Err(format!("unknown edit {k} in the project file (newer version?)")),
     })
 }
 
@@ -430,12 +430,12 @@ impl Project {
 
     pub fn from_bytes(b: &[u8]) -> Res<Project> {
         if b.len() < 12 || &b[..8] != MAGIC {
-            return Err("filen är ingen RustyFEM-projektfil".into());
+            return Err("the file is not a RustyFEM project file".into());
         }
         let mut r = R { b, p: 8 };
         let version = r.u32()?;
         if version > VERSION {
-            return Err(format!("projektfilen har version {version}; den här versionen av appen läser upp till {VERSION}"));
+            return Err(format!("the project file has version {version}; this version of the app reads up to {VERSION}"));
         }
         let kind = if r.u8()? == 0 { SourceKind::Rusty } else { SourceKind::Inp };
         let path = r.str()?;

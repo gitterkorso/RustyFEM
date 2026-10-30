@@ -1,25 +1,25 @@
-//! Triangulära skal: hjälpfunktioner (konstant töjning) och S3/S3R.
+//! Triangular shells: helper functions (constant strain) and S3/S3R.
 //!
-//! S3 och S3R är samma element. Formulering i elementets
-//! lokala plan (se `shell.rs` för axlarna):
+//! S3 and S3R are the same element. Formulation in the element's
+//! local plane (see `shell.rs` for the axes):
 //!
-//! - Membran: konstant töjning (CST).
-//! - Böjning: konstant krökning från linjärt interpolerade rotationer.
-//! - Tvärskjuvning: kanternas tangentiella skjuvtöjningar
-//!   sₖ = (w_j − w_i)/Lₖ + tₖ·β̄ₖ (β = (θy, −θx), medelvärde på kanten).
-//!   Varje hörn v ger ett konstant skjuvfält γᵥ som uppfyller de två kanterna
-//!   som möts i v exakt. Elementets konstanta fält är γ0 = Σ wᵥ γᵥ med vikterna
-//!   wᵥ ∝ (L_a² − L_b²)² (L_a, L_b = kanterna vid v), normerade till summan 1;
-//!   för en liksidig triangel (alla vikter noll) används 1/3. Den del av
-//!   kanttöjningarna som ett konstant fält inte kan beskriva, ρ = Σ Lₖ sₖ
-//!   (cirkulationen kring elementet), stabiliseras med styvheten
+//! - Membrane: constant strain (CST).
+//! - Bending: constant curvature from linearly interpolated rotations.
+//! - Transverse shear: the tangential shear strains of the edges
+//!   sₖ = (w_j − w_i)/Lₖ + tₖ·β̄ₖ (β = (θy, −θx), mean value on the edge).
+//!   Each corner v gives a constant shear field γᵥ that satisfies the two edges
+//!   meeting at v exactly. The element's constant field is γ0 = Σ wᵥ γᵥ with the weights
+//!   wᵥ ∝ (L_a² − L_b²)² (L_a, L_b = the edges at v), normalized to sum 1;
+//!   for an equilateral triangle (all weights zero) 1/3 is used. The part of
+//!   the edge strains that a constant field cannot describe, ρ = Σ Lₖ sₖ
+//!   (the circulation around the element), is stabilized with the stiffness
 //!   ks·(L₁₂² + L₃₁²)/(48000·A).
-//! - Drill: straff på gᵢ = θzᵢ − ω (ω = ½(v,x − u,y), konstant) med vikten
-//!   ½·A i nod 2 och 3 och en medelvärdesterm A/320·(2g₁ + g₂ + g₃)²,
-//!   multiplicerat med samma kfac som för S4R.
+//! - Drill: penalty on gᵢ = θzᵢ − ω (ω = ½(v,x − u,y), constant) with the weight
+//!   ½·A at nodes 2 and 3 and a mean-value term A/320·(2g₁ + g₂ + g₃)²,
+//!   multiplied by the same kfac as for S4R.
 //!
-//! Massan är konsistent (ρt och ρt³/12
-//! för θx, θy; ingen massa för θz).
+//! The mass is consistent (ρt and ρt³/12
+//! for θx, θy; no mass for θz).
 
 use crate::elements::api::{not_implemented, ElemCtx, ElemResponse, ElementType, Family, IpField, MassKind};
 use crate::elements::common;
@@ -28,7 +28,7 @@ use crate::fem::dof::{Dof, U1, U2, U3, UR1, UR2, UR3};
 use crate::fem::model::DistLoad;
 use crate::model::{fail, Result};
 
-/// Linjär triangel i lokala koordinater: dN/dx, dN/dy och arean.
+/// Linear triangle in local coordinates: dN/dx, dN/dy and the area.
 pub fn cst(x: &[[f64; 2]]) -> ([f64; 3], [f64; 3], f64) {
     let (x1, y1, x2, y2, x3, y3) = (x[0][0], x[0][1], x[1][0], x[1][1], x[2][0], x[2][1]);
     let det = (x2 - x1) * (y3 - y1) - (x3 - x1) * (y2 - y1);
@@ -44,7 +44,7 @@ pub struct ShellTri {
 pub static S3: ShellTri = ShellTri { name: "S3" };
 pub static S3R: ShellTri = ShellTri { name: "S3R" };
 
-/// Tvärskjuvningens konstanta fält B0 (2 × 18), cirkulationen ρ (18) och kantlängderna.
+/// The constant transverse shear field B0 (2 × 18), the circulation ρ (18) and the edge lengths.
 fn tri_shear(x: &[[f64; 2]]) -> (Vec<f64>, Vec<f64>, [f64; 3]) {
     let n = 3 * ND;
     let edges = [(0usize, 1usize), (1, 2), (2, 0)];
@@ -62,7 +62,7 @@ fn tri_shear(x: &[[f64; 2]]) -> (Vec<f64>, Vec<f64>, [f64; 3]) {
             s[k][m * ND + 3] -= 0.5 * t[k][1];
         }
     }
-    // hörn v: kanterna (a, b) som möts i v
+    // corner v: the edges (a, b) that meet at v
     let pairs = [(2usize, 0usize), (0, 1), (1, 2)];
     let mut w = [0.0; 3];
     for (v, &(a, b)) in pairs.iter().enumerate() {
@@ -101,7 +101,7 @@ impl ShellTri {
         Ok((loc, ShellSec::get(ctx, self.name)?))
     }
 
-    /// Lokal styvhet (18 × 18) i [u, v, w, θx, θy, θz] per nod.
+    /// Local stiffness (18 × 18) in [u, v, w, θx, θy, θz] per node.
     fn local_k(&self, x: &[[f64; 2]], sec: &ShellSec) -> Vec<f64> {
         let n = 3 * ND;
         let (bx, by, a) = cst(x);
@@ -112,12 +112,12 @@ impl ShellTri {
         k
     }
 
-    /// Tvärskjuvning (styvheten [K11, K22, K12]) och drill (elastiska delar av styvheten).
+    /// Transverse shear (the stiffness [K11, K22, K12]) and drill (elastic parts of the stiffness).
     fn rest_k(x: &[[f64; 2]], sec: &ShellSec, kk: [f64; 3]) -> Vec<f64> {
         let n = 3 * ND;
         let mut k = vec![0.0; n * n];
         let (bx, by, a) = cst(x);
-        // tvärskjuvning: konstant fält plus stabilisering av cirkulationen
+        // transverse shear: constant field plus stabilization of the circulation
         let ks = 0.5 * (kk[0] + kk[1]);
         let (b0, rho, l) = tri_shear(x);
         add_btcb(&mut k, n, &b0, &[kk[0], kk[2], kk[2], kk[1]], &b0, 2, a);
@@ -143,7 +143,7 @@ impl ShellTri {
         k
     }
 
-    /// Generaliserade töjningar [ε(3), κ(3), γ(2)] (en integrationspunkt).
+    /// Generalized strains [ε(3), κ(3), γ(2)] (one integration point).
     fn strains(&self, x: &[[f64; 2]], ul: &[f64]) -> [f64; 8] {
         let n = 3 * ND;
         let (bx, by, _) = cst(x);
@@ -159,7 +159,7 @@ impl ShellTri {
         common::matvec(&t, u)
     }
 
-    /// Kinematik för integrering genom tjockleken (område struct_nonlin).
+    /// Kinematics for integration through the thickness (area struct_nonlin).
     fn kin(&self, ctx: &ElemCtx) -> Result<section::Kin> {
         let (loc, mut sec) = self.setup(ctx)?;
         let (bx, by, a) = cst(&loc.xl);
@@ -207,7 +207,7 @@ impl ElementType for ShellTri {
 
     fn stiffness(&self, ctx: &ElemCtx) -> Result<Vec<f64>> {
         if section::is_general(ctx) {
-            // område struct_nonlin: tvärsnittets elastiska styvhet ur sektionspunkterna
+            // area struct_nonlin: the elastic section stiffness from the section points
             let kin = self.kin(ctx)?;
             return kin.stiffness(&section::Layup::new(ctx, self.name, &kin.loc)?);
         }
@@ -217,7 +217,7 @@ impl ElementType for ShellTri {
 
     fn internal_force(&self, ctx: &ElemCtx, u: &[f64], _du: &[f64], _so: &[f64], _sn: &mut Vec<f64>, tangent: bool) -> Result<ElemResponse> {
         if section::is_general(ctx) {
-            // område struct_nonlin: integrering genom tjockleken (shell_section.rs)
+            // area struct_nonlin: integration through the thickness (shell_section.rs)
             let kin = self.kin(ctx)?;
             let lay = section::Layup::new(ctx, self.name, &kin.loc)?;
             if ctx.nlgeom {
@@ -226,7 +226,7 @@ impl ElementType for ShellTri {
             return kin.response(ctx, &lay, u, _so, _sn, tangent);
         }
         if ctx.nlgeom {
-            // område nlgeom_struct: korotationell formulering (shell_nlgeom.rs)
+            // area nlgeom_struct: corotational formulation (shell_nlgeom.rs)
             let k0 = self.stiffness(ctx)?;
             return super::nlgeom::response(ctx, self.name, &k0, u, super::nlgeom::MemRule::Tri, tangent);
         }
@@ -253,8 +253,8 @@ impl ElementType for ShellTri {
                 for d in 0..3 {
                     m[(i * ND + d) * n + j * ND + d] += f * mt;
                 }
-                // område struct_nonlin: diagonal massa (*DYNAMIC) har
-                // rotationströghet även kring normalen
+                // area struct_nonlin: diagonal mass (*DYNAMIC) has
+                // rotary inertia also about the normal
                 let dmax = if kind == MassKind::Lumped { 6 } else { 5 };
                 for d in 3..dmax {
                     m[(i * ND + d) * n + j * ND + d] += f * mr;
@@ -266,7 +266,7 @@ impl ElementType for ShellTri {
 
     fn geometric_stiffness(&self, ctx: &ElemCtx, u: &[f64], _state: &[f64]) -> Result<Vec<f64>> {
         if section::is_general(ctx) {
-            return not_implemented("geometrisk styvhet med integrering genom tjockleken", self.name);
+            return not_implemented("geometric stiffness with integration through the thickness", self.name);
         }
         let (loc, sec) = self.setup(ctx)?;
         let ul = Self::local_u(&loc, u);
@@ -289,7 +289,7 @@ impl ElementType for ShellTri {
     fn distributed_load(&self, ctx: &ElemCtx, load: &DistLoad, _u: &[f64]) -> Result<Vec<f64>> {
         let (loc, sec) = self.setup(ctx)?;
         let Some(q) = area_load_vector(load, loc.r[2], &sec, self.name)? else {
-            return not_implemented(&format!("lasttypen {}", load.kind), self.name);
+            return not_implemented(&format!("load type {}", load.kind), self.name);
         };
         let (_, _, a) = cst(&loc.xl);
         let ql = [0usize, 1, 2].map(|r| common::dot(loc.r[r], q));
@@ -329,7 +329,7 @@ impl ElementType for ShellTri {
         if !ctx.nlgeom {
             return Ok(shell_output(&sec, &[e], sec.ks(a)));
         }
-        // område nlgeom_struct: logaritmisk membrantöjning och aktuell tjocklek
+        // area nlgeom_struct: logarithmic membrane strain and current thickness
         let el = super::nlgeom::membrane_strains(ctx, self.name, u_tot, super::nlgeom::MemRule::Tri)?[0];
         e[..3].copy_from_slice(&el);
         let mut out = shell_output(&sec, &[e], sec.ks(a));

@@ -1,4 +1,4 @@
-# Fackverksbro (Pratt), 2D-stänger.
+# Truss bridge (Pratt), 2D trusses.
 material steel E=210e9 nu=0.3
 truss (0,0) (2,0) (4,0) (6,0) (8,0) area=2e-3
 truss (2,2) (4,2) (6,2) area=2e-3

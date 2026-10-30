@@ -1,22 +1,22 @@
-//! Område explicit_adv: element för avancerade metoder i explicit dynamik.
+//! Area explicit_adv: elements for advanced methods in explicit dynamics.
 //!
-//! - PC3D: SPH-partikel (en nod, U1–U3). Massan ρ (2L)³ med L från
+//! - PC3D: SPH particle (one node, U1–U3). The mass ρ (2L)³ with L from
 //!   `*SOLID SECTION`.
-//! - PD3D: diskret partikel (DEM, en nod, U1–U3 och UR1–UR3), stel sfär med
-//!   radien och densiteten från `*DISCRETE SECTION`.
-//! - EC3D8R: Euler-element (åtta noder, U1–U3) med `*EULERIAN SECTION`.
+//! - PD3D: discrete particle (DEM, one node, U1–U3 and UR1–UR3), rigid sphere with
+//!   the radius and density from `*DISCRETE SECTION`.
+//! - EC3D8R: Eulerian element (eight nodes, U1–U3) with `*EULERIAN SECTION`.
 //!
-//! Elementen har familjen `Other`: den allmänna explicita lösaren
-//! (`steps/explicit.rs`) räknar inte deras krafter, massor, volymviskositet
-//! eller stabilitetsgräns. Allt detta görs av `steps/explicit_adv.rs`
-//! (SPH, DEM, Euler), som också skriver deras utdata. I implicita steg ger
-//! elementen ett fel.
+//! The elements have the family `Other`: the general explicit solver
+//! (`steps/explicit.rs`) does not compute their forces, masses, bulk viscosity
+//! or stability limit. All of this is done by `steps/explicit_adv.rs`
+//! (SPH, DEM, Euler), which also writes their output. In implicit steps the
+//! elements give an error.
 
 use super::api::{ElemCtx, ElemResponse, ElementType, Family, IpField, MassKind};
 use crate::fem::dof::{Dof, U1, U2, U3, UR1, UR2, UR3};
 use crate::model::{fail, Result};
 
-/// Ett element vars mekanik sköts av `steps/explicit_adv.rs`.
+/// An element whose mechanics is handled by `steps/explicit_adv.rs`.
 pub struct AdvElem {
     pub name: &'static str,
     pub nodes: usize,
@@ -29,12 +29,12 @@ pub static EC3D8R: AdvElem = AdvElem { name: "EC3D8R", nodes: 8, rot: false };
 
 pub static TYPES: &[&dyn ElementType] = &[&PC3D, &PD3D, &EC3D8R];
 
-/// Är elementtypen en partikel (PC3D, PD3D)?
+/// Is the element type a particle (PC3D, PD3D)?
 pub fn is_particle(name: &str) -> bool {
     matches!(name, "PC3D" | "PD3D")
 }
 
-/// Är elementtypen en av områdets (PC3D, PD3D, EC3D8R)?
+/// Is the element type one of this area's (PC3D, PD3D, EC3D8R)?
 pub fn is_adv(name: &str) -> bool {
     matches!(name, "PC3D" | "PD3D" | "EC3D8R")
 }
@@ -85,35 +85,35 @@ impl ElementType for AdvElem {
     }
 
     fn init_state(&self, _ctx: &ElemCtx) -> Result<Vec<f64>> {
-        // tillståndet skapas av steps/explicit_adv.rs i första explicita steget
+        // the state is created by steps/explicit_adv.rs in the first explicit step
         Ok(Vec::new())
     }
 
     fn stiffness(&self, _ctx: &ElemCtx) -> Result<Vec<f64>> {
-        fail(format!("{} kan bara användas i *DYNAMIC, EXPLICIT", self.name))
+        fail(format!("{} can only be used in *DYNAMIC, EXPLICIT", self.name))
     }
 
     fn internal_force(&self, _ctx: &ElemCtx, u: &[f64], _du: &[f64], state_old: &[f64], state_new: &mut Vec<f64>, _tangent: bool) -> Result<ElemResponse> {
-        // explicit: krafterna och tillståndet sköts av steps/explicit_adv.rs
+        // explicit: the forces and the state are handled by steps/explicit_adv.rs
         *state_new = state_old.to_vec();
         Ok(ElemResponse { fint: vec![0.0; u.len()], k: None })
     }
 
     fn mass(&self, _ctx: &ElemCtx, _kind: MassKind) -> Result<Vec<f64>> {
-        // massan läggs till av steps/explicit_adv.rs
+        // the mass is added by steps/explicit_adv.rs
         Ok(Vec::new())
     }
 
-    /// Tyngdkraft (GRAV, BX, BY, BZ) på partiklar: m g med partikelns massa
-    /// (PC3D: ρ (2L)³, PD3D: ρ 4πr³/3). Euler-elementens massa ändras med
-    /// materialet; deras volymkrafter läggs till av steps/explicit_adv_euler.rs.
+    /// Gravity (GRAV, BX, BY, BZ) on particles: m g with the particle mass
+    /// (PC3D: ρ (2L)³, PD3D: ρ 4πr³/3). The mass of the Eulerian elements changes with
+    /// the material; their body forces are added by steps/explicit_adv_euler.rs.
     fn distributed_load(&self, ctx: &ElemCtx, load: &crate::fem::model::DistLoad, _u: &[f64]) -> Result<Vec<f64>> {
         let n = self.n_dofs();
         if self.nodes == 8 {
             if matches!(load.kind.as_str(), "GRAV" | "BX" | "BY" | "BZ") {
                 return Ok(vec![0.0; n]);
             }
-            return super::api::not_implemented(&format!("lasttypen {}", load.kind), self.name);
+            return super::api::not_implemented(&format!("load type {}", load.kind), self.name);
         }
         let sec = ctx.section(self.name)?;
         let v = sec.raw.first_floats()?;
@@ -125,9 +125,9 @@ impl ElementType for AdvElem {
             (ctx.density, (2.0 * size).powi(3))
         };
         let Some(b) = super::common::body_load_vector(&load.kind, load.magnitude, &load.extra, rho, self.name)? else {
-            return super::api::not_implemented(&format!("lasttypen {}", load.kind), self.name);
+            return super::api::not_implemented(&format!("load type {}", load.kind), self.name);
         };
-        // BX/BY/BZ är kraft per volym, GRAV per volym genom densiteten
+        // BX/BY/BZ is force per volume, GRAV per volume through the density
         let mut f = vec![0.0; n];
         for c in 0..3 {
             f[c] = b[c] * vol;

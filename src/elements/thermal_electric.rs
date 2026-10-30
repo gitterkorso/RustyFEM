@@ -1,11 +1,11 @@
-//! Kopplade termisk-elektriska element (DC2D3E, DC2D4E, DC2D8E, DCAX4E,
-//! DC3D4E, DC3D8E, DC3D20E) för *COUPLED THERMAL-ELECTRICAL.
+//! Coupled thermal-electrical elements (DC2D3E, DC2D4E, DC2D8E, DCAX4E,
+//! DC3D4E, DC3D8E, DC3D20E) for *COUPLED THERMAL-ELECTRICAL.
 //!
-//! Varje nod har den elektriska potentialen (frihetsgrad 9, EPOT) och
-//! temperaturen (11). Geometri, integrationsregler och ytor är desamma som för
-//! värmeledningselementen (`elements/heat.rs`); steg-typen
-//! (`steps/thermal_electric.rs`) använder `HeatElem`-delen både för
-//! värmeledningen och för den elektriska ledningen.
+//! Each node has the electric potential (degree of freedom 9, EPOT) and
+//! the temperature (11). Geometry, integration rules and surfaces are the same as for
+//! the heat conduction elements (`elements/heat.rs`); the step type
+//! (`steps/thermal_electric.rs`) uses the `HeatElem` part both for
+//! heat conduction and for electrical conduction.
 
 use super::api::{ElemCtx, ElementType, Family};
 use super::heat::{gauss_rule, shape_dim, shape_nodes, HeatElem, Shape};
@@ -34,10 +34,10 @@ pub static TYPES: &[&dyn ElementType] = &[&DC2D3E, &DC2D4E, &DC2D8E, &DCAX4E, &D
 
 static ALL: &[&TeElem] = &[&DC2D3E, &DC2D4E, &DC2D8E, &DCAX4E, &DC3D4E, &DC3D8E, &DC3D20E];
 
-/// Geometridelen av det termisk-elektriska elementet `name`.
+/// The geometry part of the thermal-electrical element `name`.
 pub fn lookup(name: &str) -> Option<&'static HeatElem> {
     ALL.iter().find(|e| e.heat.name == name).map(|e| &e.heat)
-        // område coupled2: Q3D4, Q3D8, Q3D20
+        // area coupled2: Q3D4, Q3D8, Q3D20
         .or_else(|| super::thermal_electric_structural::thermal(name))
 }
 

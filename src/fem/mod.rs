@@ -1,7 +1,7 @@
-//! Kärnan: modell, frihetsgrader, assemblering, tillstånd och utdata.
+//! Core: model, degrees of freedom, assembly, state and output.
 //!
-//! Filerna här är delade av alla områden. Ändra dem bara när ett gränssnitt
-//! verkligen behöver utökas (se ARCHITECTURE.md).
+//! The files here are shared by all areas. Only change them when an interface
+//! really needs to be extended (see ARCHITECTURE.md).
 
 pub mod assembly;
 pub mod dat;

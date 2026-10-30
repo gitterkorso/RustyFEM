@@ -1,36 +1,36 @@
-//! *DYNAMIC TEMPERATURE-DISPLACEMENT, EXPLICIT i den allmänna explicita
-//! lösaren (`explicit.rs`, område coupled2): mekaniken som *DYNAMIC, EXPLICIT
-//! (explicit hourglass-kontroll för CPE4RT/CPS4RT/C3D8RT, volymviskositet,
-//! NLGEOM, kontakt, massskalning, energier) och temperaturen med framåt
-//! Euler och lumpad värmekapacitet:
+//! *DYNAMIC TEMPERATURE-DISPLACEMENT, EXPLICIT in the general explicit
+//! solver (`explicit.rs`, area coupled2): the mechanics as *DYNAMIC, EXPLICIT
+//! (explicit hourglass control for CPE4RT/CPS4RT/C3D8RT, bulk viscosity,
+//! NLGEOM, contact, mass scaling, energies) and the temperature with forward
+//! Euler and lumped heat capacity:
 //!
 //! ```text
 //! θ̇(i)   = C⁻¹ (Q(i) − F(θ(i)) + Q_pl(i))
 //! θ(i+1) = θ(i) + Δt(i+1) θ̇(i)
 //! ```
 //!
-//! Värmeflödet F (ledning, *CFLUX, *DFLUX, *FILM, *RADIATE och termisk
-//! kontakt *GAP CONDUCTANCE med spalten ur de aktuella förskjutningarna)
-//! räknas med `steps/heat.rs` (`HeatSystem`). Q_pl är värmen från plastisk
-//! dissipation, η σ:ε̇ᵖˡ med η från *INELASTIC HEAT FRACTION
-//! (`materials/inelastic_heat.rs`), fördelad lika på elementets noder.
+//! The heat flux F (conduction, *CFLUX, *DFLUX, *FILM, *RADIATE and thermal
+//! contact *GAP CONDUCTANCE with the gap from the current displacements)
+//! is computed with `steps/heat.rs` (`HeatSystem`). Q_pl is the heat from plastic
+//! dissipation, η σ:ε̇ᵖˡ with η from *INELASTIC HEAT FRACTION
+//! (`materials/inelastic_heat.rs`), distributed equally to the element nodes.
 //!
-//! Tidsinkrement: den mekaniska elementvisa gränsen (`explicit_dt`) och den
-//! termiska Lₑ²/(2α) med samma karakteristiska längd Lₑ och α = k/(ρc),
-//! omräknad varje inkrement med aktuell geometri och temperatur;
-//! utan NLGEOM gånger volymviskositetens dämpningsfaktor (`stable_in`), och
-//! noder med termisk kontakt får en nodvis gräns (`contact_limit`).
+//! Time increment: the mechanical element-by-element limit (`explicit_dt`) and the
+//! thermal Lₑ²/(2α) with the same characteristic length Lₑ and α = k/(ρc),
+//! recomputed each increment with the current geometry and temperature;
+//! without NLGEOM times the bulk viscosity damping factor (`stable_in`), and
+//! nodes with thermal contact get a nodal limit (`contact_limit`).
 //!
-//! Övrigt (kontrollerat i testfallen i
-//! `tests/cases/coupled2/`): värmekapaciteten är radsummerad (∫Nᵢ ρc dV), de
-//! reducerade elementens termiska töjning använder den volymviktade
-//! nodtemperaturen (`temp_weights`), HFL redovisas i elementets mittpunkt och
-//! volymviskositeten använder c_d·Δtₑ i stället för Lₑ när den termiska
-//! gränsen styr elementet (`bulk_scale`).
+//! Other (verified in the test cases in
+//! `tests/cases/coupled2/`): the heat capacity is row-summed (∫Nᵢ ρc dV), the
+//! thermal strain of the reduced elements uses the volume-weighted
+//! nodal temperature (`temp_weights`), HFL is reported at the element midpoint and
+//! the bulk viscosity uses c_d·Δtₑ instead of Lₑ when the thermal
+//! limit governs the element (`bulk_scale`).
 //!
-//! Mekaniken i stegets början räknas med begynnelsetemperaturen (frame 0
-//! är spänningsfri); temperaturrandvillkoren verkar från första
-//! inkrementet.
+//! The mechanics at the start of the step is computed with the initial temperature (frame 0
+//! is stress-free); the temperature boundary conditions act from the first
+//! increment.
 
 use super::super::heat::{ensure_initial, heat_loads, HeatSystem, TS};
 use super::super::newton::NonlinearSystem;
@@ -45,10 +45,10 @@ use crate::fem::state::StepLoads;
 use crate::materials::heat::HeatProps;
 use crate::model::{FemError, Result};
 
-/// Procedurnamnet.
+/// The procedure name.
 pub const PROC: &str = "DYNAMIC TEMPERATURE-DISPLACEMENT";
 
-/// Värmeledningens och mekanikens laster.
+/// Loads of the heat transfer and of the mechanics.
 pub fn split_loads(l: &StepLoads) -> (StepLoads, StepLoads) {
     let thermal_kind = |k: &str| k.starts_with("DFLUX:") || k.starts_with("FILM") || k.starts_with("RAD:");
     let mut th = l.clone();
@@ -64,13 +64,13 @@ pub fn split_loads(l: &StepLoads) -> (StepLoads, StepLoads) {
     (th, me)
 }
 
-/// Standard-elementet för explicit hourglass-kontroll (även de kopplade RT-elementen).
+/// The default element for explicit hourglass control (also the coupled RT elements).
 pub fn standard(name: &str) -> Option<&'static crate::elements::solid_higher::Solid> {
     super::solid::standard(name).or_else(|| crate::elements::heat_coupled::mech_name(name).and_then(super::solid::standard))
 }
 
-/// Explicit hourglass-kontroll för ett element; kopplade element har
-/// temperaturen sist per nod, och den delen lämnas orörd.
+/// Explicit hourglass control for one element; coupled elements have
+/// the temperature last per node, and that part is left untouched.
 #[allow(clippy::too_many_arguments)]
 pub fn hourglass_force(ctx: &ElemCtx, el: &crate::elements::solid_higher::Solid, family: Family, fint: &mut [f64], u: &[f64], old: &[f64], mode: Hourglass) -> Result<(Vec<f64>, f64)> {
     let nn = ctx.x.len();
@@ -92,10 +92,10 @@ pub fn hourglass_force(ctx: &ElemCtx, el: &crate::elements::solid_higher::Solid,
     Ok(r)
 }
 
-/// Sätter nodtemperaturerna (temperaturen i slutet och i början av
-/// inkrementet) i elementets kontext för kopplade element. Med vikter `w`
-/// (reducerade element) får alla noder integrationspunktens temperatur
-/// Σ wᵢ θᵢ, så att elementets medelvärde blir den.
+/// Sets the nodal temperatures (the temperature at the end and at the start of the
+/// increment) in the element context for coupled elements. With weights `w`
+/// (reduced elements) all nodes get the integration point temperature
+/// Σ wᵢ θᵢ, so that the element mean becomes that value.
 pub fn set_temps(p: &Prepared, ctx: &mut ElemCtx, e: usize, u: &[NodeVec], du: &[NodeVec], w: &[f64]) {
     let el = &p.model.elements[e];
     if !el.etype.node_dofs(0).iter().any(|d| crate::fem::dof::slot_of(*d) == TS) {
@@ -111,25 +111,25 @@ pub fn set_temps(p: &Prepared, ctx: &mut ElemCtx, e: usize, u: &[NodeVec], du: &
     }
 }
 
-/// Det termiska delsystemet.
+/// The thermal subsystem.
 pub struct Thermal<'p, 'm> {
     pub heat: HeatSystem<'p, 'm>,
-    /// Lumpad värmekapacitet per nod.
+    /// Lumped heat capacity per node.
     cap: Vec<f64>,
-    /// θ̇ per nod.
+    /// θ̇ per node.
     pub rate: Vec<f64>,
-    /// Aktuella nodtemperaturer (med randvillkoren); i stegets början kan de
-    /// skilja sig från temperaturerna som mekaniken senast räknades med.
+    /// Current nodal temperatures (with the boundary conditions); at the start of the step they can
+    /// differ from the temperatures the mechanics was last computed with.
     theta: Vec<f64>,
-    /// Andel av den plastiska dissipationen som blir värme, per element.
+    /// Fraction of the plastic dissipation that becomes heat, per element.
     eta: Vec<f64>,
-    /// Termiska egenskaper per element (`None` utan värmedel).
+    /// Thermal properties per element (`None` without a heat part).
     props: Vec<Option<HeatProps>>,
     period: f64,
 }
 
 impl<'p, 'm> Thermal<'p, 'm> {
-    /// Bygger delsystemet och returnerar det med mekanikens laster.
+    /// Builds the subsystem and returns it with the mechanics' loads.
     pub fn new(ctx: &mut StepCtx<'p, 'm>, period: f64) -> Result<(Self, StepLoads)> {
         let prep: &'p Prepared<'m> = ctx.prep;
         let model = prep.model;
@@ -159,7 +159,7 @@ impl<'p, 'm> Thermal<'p, 'm> {
             let pr = HeatProps::from_def(&model.materials[mi]).map_err(wrap)?;
             eta[e] = crate::materials::inelastic_heat::fraction(&model.materials[mi])?.unwrap_or(0.0);
             let x: Vec<[f64; 3]> = el.nodes.iter().map(|&n| model.nodes[n]).collect();
-            // radsummerad (konsistent) kapacitet ∫Nᵢ ρc dV
+            // row-summed (consistent) capacity ∫Nᵢ ρc dV
             let cips = he.ips(&x, sec.solid_thickness()).map_err(wrap)?;
             let t: Vec<f64> = el.nodes.iter().map(|&n| ctx.state.u[n][TS]).collect();
             let (_, kc) = he.capacity(&cips, &pr, &t, &t, 1.0, true).map_err(wrap)?;
@@ -174,7 +174,7 @@ impl<'p, 'm> Thermal<'p, 'm> {
         Ok((Thermal { heat, cap, rate: vec![0.0; nn], theta, eta, props, period }, me))
     }
 
-    /// Föreskrivna temperaturer vid stegtiden `t`.
+    /// Prescribed temperatures at the step time `t`.
     fn apply_bc(&self, u: &mut [NodeVec], t: f64) {
         for (n, s, val) in self.heat.bc_now(t / self.period) {
             if self.heat.dm.constrained[n] & (1 << s) != 0 {
@@ -183,16 +183,16 @@ impl<'p, 'm> Thermal<'p, 'm> {
         }
     }
 
-    /// Stegets början: randvillkoren vid t = 0 och θ̇ med dem. Mekaniken i
-    /// `u` behåller begynnelsetemperaturen (spänningsfri frame 0); hoppet
-    /// till randvillkoren räknas i första inkrementet.
+    /// Start of the step: the boundary conditions at t = 0 and θ̇ with them. The mechanics in
+    /// `u` keeps the initial temperature (stress-free frame 0); the jump
+    /// to the boundary conditions is computed in the first increment.
     pub fn start(&mut self, p: &Prepared, x: &dyn Fn(usize) -> Vec<[f64; 3]>, u: &[NodeVec], st: &[Vec<f64>]) -> Result<()> {
         let mut ut = u.to_vec();
         self.apply_bc(&mut ut, 0.0);
         self.update_rate(p, x, &ut, 0.0, 0.0, st, st)
     }
 
-    /// θ(i+1) = θ(i) + Δt θ̇(i) och randvillkoren vid t1.
+    /// θ(i+1) = θ(i) + Δt θ̇(i) and the boundary conditions at t1.
     pub fn advance(&self, u1: &mut [NodeVec], h: f64, t1: f64) {
         for n in 0..u1.len() {
             u1[n][TS] = self.theta[n] + h * self.rate[n];
@@ -200,7 +200,7 @@ impl<'p, 'm> Thermal<'p, 'm> {
         self.apply_bc(u1, t1);
     }
 
-    /// Plastisk värme per nod (effekt) under ett inkrement av längden `h`.
+    /// Plastic heat per node (power) during an increment of length `h`.
     fn plastic_heat(&self, p: &Prepared, x: &dyn Fn(usize) -> Vec<[f64; 3]>, old: &[Vec<f64>], new: &[Vec<f64>], h: f64) -> Vec<f64> {
         let m = p.model;
         let mut q = vec![0.0; m.nodes.len()];
@@ -216,8 +216,8 @@ impl<'p, 'm> Thermal<'p, 'm> {
             let Some(ip) = mat.output_names().iter().position(|n| *n == "PEEQ") else { continue };
             let nip = el.etype.n_ips();
             let (so, sn) = (&old[e], &new[e]);
-            // spänningens komponenter efter elementets spänningstillstånd; extra
-            // tillstånd (NLGEOM, inkompatibla moder) ligger efter punkterna
+            // the stress components according to the element's stress state; extra
+            // state (NLGEOM, incompatible modes) lies after the points
             let nc = match el.etype.family() {
                 Family::Continuum3D => 6,
                 Family::Continuum2D if el.etype.name().starts_with("CPS") => 3,
@@ -227,7 +227,7 @@ impl<'p, 'm> Thermal<'p, 'm> {
             if nip == 0 || sn.len() != so.len() || sn.len() < nip * stride {
                 continue;
             }
-            // integrationspunkternas volymer i aktuell konfiguration
+            // the integration point volumes in the current configuration
             let xe = x(e);
             let vol = match geometry(el.etype.family(), el.etype.name(), &xe) {
                 Some(g) => g.vol * if el.etype.family() == Family::Continuum2D { ctx.section.map_or(1.0, |s| s.solid_thickness()) } else { 1.0 },
@@ -255,13 +255,13 @@ impl<'p, 'm> Thermal<'p, 'm> {
         q
     }
 
-    /// θ̇ = C⁻¹ (Q − F + Q_pl) i tillståndet `u` vid stegtiden `t`.
+    /// θ̇ = C⁻¹ (Q − F + Q_pl) in the state `u` at the step time `t`.
     #[allow(clippy::too_many_arguments)]
     pub fn update_rate(&mut self, p: &Prepared, x: &dyn Fn(usize) -> Vec<[f64; 3]>, u: &[NodeVec], t: f64, h: f64, old: &[Vec<f64>], new: &[Vec<f64>]) -> Result<()> {
         self.heat.source = self.plastic_heat(p, x, old, new, h);
         self.theta = u.iter().map(|v| v[TS]).collect();
         self.heat.u_committed = u.to_vec();
-        // flöden med stegamplitud verkar fullt redan vid t = 0
+        // fluxes with step amplitude act fully already at t = 0
         let tt = (t / self.period).max(1e-12);
         self.heat.begin_increment(tt, tt)?;
         self.heat.u = u.to_vec();
@@ -273,23 +273,23 @@ impl<'p, 'm> Thermal<'p, 'm> {
         Ok(())
     }
 
-    /// Termisk stabilitetsgräns min Lₑ²/(2α) över elementen i konfigurationen
-    /// `u`. Utan NLGEOM multipliceras gränsen med
-    /// volymviskositetens dämpningsfaktor √(1 + ξ²) − ξ.
+    /// Thermal stability limit min Lₑ²/(2α) over the elements in the configuration
+    /// `u`. Without NLGEOM the limit is multiplied by
+    /// the bulk viscosity damping factor √(1 + ξ²) − ξ.
     pub(super) fn stable_in(&self, sys: &super::Explicit1, u: &[NodeVec], rates: &[f64]) -> (f64, usize) {
         let mut xi = vec![0.0; sys.p.model.elements.len()];
         if !sys.nlgeom {
             for (i, be) in sys.bulk.elems.iter().enumerate() {
                 let xe = sys.coords(be.e, u);
                 if let Some(g) = geometry(sys.p.model.elements[be.e].etype.family(), sys.p.model.elements[be.e].etype.name(), &xe) {
-                    // den kvadratiska termens längd som i volymviskositeten (s²·Lₑ)
+                    // the length of the quadratic term as in the bulk viscosity (s²·Lₑ)
                     let sc = sys.bulk.le_scale.get(be.e).copied().unwrap_or(1.0);
                     xi[be.e] = sys.bulk.xi(i, g.lchar * sc * sc, rates.get(i).copied().unwrap_or(0.0));
                 }
             }
         }
         let (d, e) = self.stable(sys.p, &|e| sys.coords(e, u), u, &xi);
-        // termisk kontakt (*GAP CONDUCTANCE): nodvis gräns
+        // thermal contact (*GAP CONDUCTANCE): nodal limit
         let dc = self.contact_limit(u).unwrap_or(f64::INFINITY);
         if dc < d {
             return (dc, e);
@@ -297,8 +297,8 @@ impl<'p, 'm> Thermal<'p, 'm> {
         (d, e)
     }
 
-    /// Stabilitetsgräns för noder med termisk kontakt: 2Cₙ / Σⱼ|Kₙⱼ| med
-    /// ledningens och kontaktens matriser (Gershgorin).
+    /// Stability limit for nodes with thermal contact: 2Cₙ / Σⱼ|Kₙⱼ| with
+    /// the conduction and contact matrices (Gershgorin).
     fn contact_limit(&self, u: &[NodeVec]) -> Result<f64> {
         if self.heat.gaps.is_empty() {
             return Ok(f64::INFINITY);
@@ -357,9 +357,9 @@ impl<'p, 'm> Thermal<'p, 'm> {
         Ok(best)
     }
 
-    /// Faktorn på Lₑ i volymviskositeten per element: min(1, Δt_th/Δt_m)
-    /// med elementets odämpade termiska och mekaniska gränser: den linjära
-    /// volymviskositeten motsvarar b₁·Δt_th/Δt_m.
+    /// The factor on Lₑ in the bulk viscosity per element: min(1, Δt_th/Δt_m)
+    /// with the element's undamped thermal and mechanical limits: the linear
+    /// bulk viscosity corresponds to b₁·Δt_th/Δt_m.
     pub(super) fn bulk_scale(&self, sys: &super::Explicit1, u: &[NodeVec]) -> Vec<f64> {
         let m = sys.p.model;
         let mut out = vec![1.0; m.elements.len()];
@@ -376,7 +376,7 @@ impl<'p, 'm> Thermal<'p, 'm> {
         out
     }
 
-    /// Termisk stabilitetsgräns min Lₑ²/(2α) · f(ξₑ) över elementen i konfigurationen `x`.
+    /// Thermal stability limit min Lₑ²/(2α) · f(ξₑ) over the elements in the configuration `x`.
     fn stable(&self, p: &Prepared, x: &dyn Fn(usize) -> Vec<[f64; 3]>, u: &[NodeVec], xi: &[f64]) -> (f64, usize) {
         let mut best = (f64::INFINITY, 0usize);
         for (e, d) in self.limits(p, x, u, xi).into_iter().enumerate() {
@@ -387,7 +387,7 @@ impl<'p, 'm> Thermal<'p, 'm> {
         best
     }
 
-    /// Termisk gräns per element (oändlig utan värmedel).
+    /// Thermal limit per element (infinite without a heat part).
     fn limits(&self, p: &Prepared, x: &dyn Fn(usize) -> Vec<[f64; 3]>, u: &[NodeVec], xi: &[f64]) -> Vec<f64> {
         let m = p.model;
         let mut out = vec![f64::INFINITY; m.elements.len()];
@@ -414,7 +414,7 @@ impl<'p, 'm> Thermal<'p, 'm> {
         out
     }
 
-    /// Lägger temperaturer, reaktionsflöden och HFL i en frame.
+    /// Puts temperatures, reaction fluxes and HFL into a frame.
     pub fn frame(&mut self, fr: &mut FrameData, u: &[NodeVec], t: f64) -> Result<()> {
         let mut u = u.to_vec();
         for (x, &th) in u.iter_mut().zip(&self.theta) {
@@ -441,9 +441,9 @@ impl<'p, 'm> Thermal<'p, 'm> {
             let nip = el.etype.n_ips();
             let centroid = self.centroid_flux(e, u)?;
             x.extend(y.into_iter().filter(|f| f.name == "HFL").map(|mut f| {
-                // linjära simplexelement (konstant gradient) och reducerade
-                // element har en integrationspunkt: flödet i
-                // elementets mittpunkt
+                // linear simplex elements (constant gradient) and reduced
+                // elements have one integration point: the flux at
+                // the element midpoint
                 if nip == 1 && f.points.len() > 1 {
                     if let Some(c) = &centroid {
                         f.points = vec![(1, 0, c.clone())];
@@ -464,10 +464,10 @@ impl<'p, 'm> Thermal<'p, 'm> {
 }
 
 impl Thermal<'_, '_> {
-    /// Vikter ∫Nᵢ dV / V för integrationspunktens temperatur i element med en
-    /// integrationspunkt och fyrhörnings- eller hexaederform (CPE4RT, CPS4RT,
-    /// CAX4RT, C3D8RT): den termiska töjningen svarar mot den volymviktade
-    /// nodtemperaturen. Tom vektor = medelvärdet.
+    /// Weights ∫Nᵢ dV / V for the integration point temperature in elements with one
+    /// integration point and quadrilateral or hexahedral shape (CPE4RT, CPS4RT,
+    /// CAX4RT, C3D8RT): the thermal strain corresponds to the volume-weighted
+    /// nodal temperature. Empty vector = the mean value.
     pub fn temp_weights(&self) -> Result<Vec<Vec<f64>>> {
         let model = self.heat.p.model;
         let mut out = Vec::with_capacity(model.elements.len());
@@ -498,7 +498,7 @@ impl Thermal<'_, '_> {
         Ok(out)
     }
 
-    /// HFL i mittpunkten (ξ = 0) för fyrhörningar och hexaedrar.
+    /// HFL at the midpoint (ξ = 0) for quadrilaterals and hexahedra.
     fn centroid_flux(&self, e: usize, u: &[NodeVec]) -> Result<Option<Vec<f64>>> {
         let model = self.heat.p.model;
         let el = &model.elements[e];
@@ -515,7 +515,7 @@ impl Thermal<'_, '_> {
     }
 }
 
-/// von Mises-spänning ur komponenterna (3: plan spänning, 4: plan töjning/axisymmetri, 6: 3D).
+/// von Mises stress from the components (3: plane stress, 4: plane strain/axisymmetry, 6: 3D).
 fn mises(s: &[f64]) -> f64 {
     let (s11, s22, s33, s12, s13, s23) = match s.len() {
         3 => (s[0], s[1], 0.0, s[2], 0.0, 0.0),
@@ -525,8 +525,8 @@ fn mises(s: &[f64]) -> f64 {
     (0.5 * ((s11 - s22).powi(2) + (s22 - s33).powi(2) + (s33 - s11).powi(2)) + 3.0 * (s12 * s12 + s13 * s13 + s23 * s23)).sqrt()
 }
 
-/// Kapacitetens massa för temperaturfrihetsgraderna är noll i den mekaniska
-/// massan; hastighet och acceleration i temperaturens plats nollställs.
+/// The capacity mass for the temperature degrees of freedom is zero in the mechanical
+/// mass; velocity and acceleration in the temperature slot are zeroed.
 pub fn clear_ts(v: &mut [NodeVec]) {
     for x in v.iter_mut() {
         x[TS] = 0.0;

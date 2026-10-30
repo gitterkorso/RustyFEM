@@ -1,6 +1,6 @@
-//! XFEM-sprickor (`elements/xfem.rs`) som interaktion: återställer sprickan
-//! när analysen börjar, låter sprickan växa när ett inkrement har godkänts
-//! (`commit`) och ger nodutdata PHILSM och PSILSM.
+//! XFEM cracks (`elements/xfem.rs`) as an interaction: resets the crack
+//! when the analysis starts, lets the crack grow once an increment has been accepted
+//! (`commit`) and provides the nodal output PHILSM and PSILSM.
 
 use super::{Interaction, InteractionCtx, InteractionFactory, NodeOutput, TangentSink};
 use crate::elements::xfem::{self, Crack};
@@ -13,7 +13,7 @@ pub static FACTORIES: &[InteractionFactory] = &[InteractionFactory { keywords: &
 fn build(model: &FeModel, kw: &RawKeyword) -> Result<Vec<Box<dyn Interaction>>> {
     let Some(name) = kw.param_upper("NAME") else { return Ok(Vec::new()) };
     let Some(crack) = xfem::crack_of(model, &name) else {
-        return fail(format!("{}: berikningen {name} har inga XFEM-element", kw.location()));
+        return fail(format!("{}: enrichment {name} has no XFEM elements", kw.location()));
     };
     crack.reset();
     Ok(vec![Box::new(XfemCrack { crack })])

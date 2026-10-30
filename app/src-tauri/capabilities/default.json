@@ -1,7 +1,7 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "Huvudfönstret: kommandon mot motorn och fildialoger",
+  "description": "Main window: engine commands and file dialogs",
   "windows": ["main"],
   "permissions": ["core:default", "dialog:default"]
 }

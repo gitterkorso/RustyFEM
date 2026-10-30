@@ -1,11 +1,11 @@
-//! Delar upp en .inp-fil i nyckelordsblock och följer *INCLUDE.
+//! Splits an .inp file into keyword blocks and follows *INCLUDE.
 //!
-//! - Rader som börjar med `**` är kommentarer; tomma rader hoppas över.
-//! - En nyckelordsrad som slutar med komma fortsätter på nästa rad.
-//! - Datarader delas på komma; en datarad som slutar med komma markeras
-//!   `continued` (används t.ex. av *ELEMENT med många noder).
-//! - Nyckelord och parameternamn görs om till versaler; parametervärden
-//!   behålls som de står (utan citattecken).
+//! - Lines starting with `**` are comments; empty lines are skipped.
+//! - A keyword line that ends with a comma continues on the next line.
+//! - Data lines are split on commas; a data line that ends with a comma is marked
+//!   `continued` (used e.g. by *ELEMENT with many nodes).
+//! - Keywords and parameter names are converted to upper case; parameter values
+//!   are kept as written (without quotes).
 
 use crate::fem::model::{DataLine, RawKeyword};
 use crate::model::{fail, Result};
@@ -47,13 +47,13 @@ fn parse_keyword_line(text: &str, file: &str, line: usize) -> RawKeyword {
     RawKeyword { name, params, data: Vec::new(), file: file.to_string(), line }
 }
 
-/// Ger innehållet för en sökväg (filresolver). Standard är filsystemet; appen
-/// kan ge en egen (t.ex. filer som importerats till iOS-sandlådan).
+/// Gives the contents for a path (file resolver). The default is the file system; the app
+/// can provide its own (e.g. files imported into the iOS sandbox).
 pub type Resolver<'a> = &'a dyn Fn(&Path) -> Result<Vec<u8>>;
 
-/// Filsystemet som resolver.
+/// The file system as resolver.
 pub fn fs_resolver(path: &Path) -> Result<Vec<u8>> {
-    std::fs::read(path).map_err(|e| crate::model::FemError(format!("kunde inte läsa {}: {e}", path.display())))
+    std::fs::read(path).map_err(|e| crate::model::FemError(format!("could not read {}: {e}", path.display())))
 }
 
 fn read_text(path: &Path, resolve: Resolver) -> Result<String> {
@@ -62,15 +62,15 @@ fn read_text(path: &Path, resolve: Resolver) -> Result<String> {
     Ok(s.strip_prefix('\u{feff}').map(|t| t.to_string()).unwrap_or(s))
 }
 
-/// Läser filen och alla *INCLUDE-filer. `included` får de inkluderade sökvägarna.
+/// Reads the file and all *INCLUDE files. `included` receives the included paths.
 pub fn blocks_from_file(path: &Path, included: &mut Vec<PathBuf>, depth: usize) -> Result<Vec<RawKeyword>> {
     blocks_from_file_with(path, &fs_resolver, included, depth)
 }
 
-/// Som `blocks_from_file`, med filerna från `resolve`.
+/// Like `blocks_from_file`, with the files from `resolve`.
 pub fn blocks_from_file_with(path: &Path, resolve: Resolver, included: &mut Vec<PathBuf>, depth: usize) -> Result<Vec<RawKeyword>> {
     if depth > 20 {
-        return fail(format!("{}: för djup *INCLUDE-nästling", path.display()));
+        return fail(format!("{}: *INCLUDE nested too deeply", path.display()));
     }
     let text = read_text(path, resolve)?;
     let name = path.file_name().map(|s| s.to_string_lossy().to_string()).unwrap_or_default();
@@ -78,12 +78,12 @@ pub fn blocks_from_file_with(path: &Path, resolve: Resolver, included: &mut Vec<
     blocks_from_str_with(&text, &name, &dir, resolve, included, depth)
 }
 
-/// Delar upp text i block. `dir` används för relativa *INCLUDE-sökvägar.
+/// Splits text into blocks. `dir` is used for relative *INCLUDE paths.
 pub fn blocks_from_str(text: &str, file: &str, dir: &Path, included: &mut Vec<PathBuf>, depth: usize) -> Result<Vec<RawKeyword>> {
     blocks_from_str_with(text, file, dir, &fs_resolver, included, depth)
 }
 
-/// Som `blocks_from_str`, med *INCLUDE-filerna från `resolve`.
+/// Like `blocks_from_str`, with the *INCLUDE files from `resolve`.
 pub fn blocks_from_str_with(text: &str, file: &str, dir: &Path, resolve: Resolver, included: &mut Vec<PathBuf>, depth: usize) -> Result<Vec<RawKeyword>> {
     let mut out: Vec<RawKeyword> = Vec::new();
     let lines: Vec<&str> = text.lines().collect();
@@ -110,7 +110,7 @@ pub fn blocks_from_str_with(text: &str, file: &str, dir: &Path, resolve: Resolve
             let kw = parse_keyword_line(&text, file, no);
             if kw.name == "INCLUDE" {
                 let Some(inp) = kw.param("INPUT") else {
-                    return fail(format!("{file} rad {no}: *INCLUDE saknar INPUT="));
+                    return fail(format!("{file} line {no}: *INCLUDE lacks INPUT="));
                 };
                 let p = dir.join(inp.trim().trim_matches('"'));
                 included.push(p.clone());
@@ -120,7 +120,7 @@ pub fn blocks_from_str_with(text: &str, file: &str, dir: &Path, resolve: Resolve
             out.push(kw);
         } else {
             let Some(kw) = out.last_mut() else {
-                return fail(format!("{file} rad {no}: datarad före första nyckelordet"));
+                return fail(format!("{file} line {no}: data line before the first keyword"));
             };
             let continued = t.ends_with(',');
             let body = if continued { &t[..t.len() - 1] } else { t };

@@ -1,18 +1,18 @@
-//! Påtvingad konvektion i *HEAT TRANSFER: DCC-elementen
-//! (`elements/heat_convection.rs`) och *MASS FLOW RATE.
+//! Forced convection in *HEAT TRANSFER: the DCC elements
+//! (`elements/heat_convection.rs`) and *MASS FLOW RATE.
 //!
-//! *MASS FLOW RATE (stegdata, OP=MOD/NEW, ärvs till senare steg): massflöde
-//! per area (ρv₁, ρv₂, ρv₃) per nod, för DCC1D2 hela massflödet genom
-//! tvärsnittet (positivt från nod 1 mot nod 2). Värdena rampas från
-//! föregående stegs värde (stationär analys, standard) eller gäller direkt
-//! (transient analys), enligt AMPLITUDE= på *STEP som för övriga laster.
-//! Startvärdet är 0 (*INITIAL CONDITIONS, TYPE=MASS FLOW RATE stöds inte).
+//! *MASS FLOW RATE (step data, OP=MOD/NEW, inherited by later steps): mass flow
+//! per area (ρv₁, ρv₂, ρv₃) per node, for DCC1D2 the whole mass flow through
+//! the cross-section (positive from node 1 towards node 2). The values are ramped from
+//! the value of the previous step (steady-state analysis, default) or apply directly
+//! (transient analysis), according to AMPLITUDE= on *STEP as for other loads.
+//! The starting value is 0 (*INITIAL CONDITIONS, TYPE=MASS FLOW RATE is not supported).
 //!
-//! Elementens bidrag (osymmetriska; lösaren `unsymmetric` väljs automatiskt)
-//! läggs till i värmebalansen i `steps/heat.rs`:
-//! r = C(θ₁ − θ₀)/Δt + ½K(θ₁ + θ₀) (transient), r = Kθ (stationär).
-//! HFL = −k∇T skrivs i elementens integrationspunkter (transient vid
-//! inkrementets mitt).
+//! The element contributions (unsymmetric; the solver `unsymmetric` is selected automatically)
+//! are added to the heat balance in `steps/heat.rs`:
+//! r = C(θ₁ − θ₀)/Δt + ½K(θ₁ + θ₀) (transient), r = Kθ (steady-state).
+//! HFL = −k∇T is written at the element integration points (transient at the
+//! midpoint of the increment).
 
 use super::api::StepType;
 use crate::elements::heat_convection::{self as hc, ConvElem};
@@ -25,7 +25,7 @@ use crate::materials::heat::HeatProps;
 use crate::model::{fail, FemError, Result};
 use crate::solver::SystemMatrix;
 
-/// Inga egna steg-typer; används av `steps/heat.rs`.
+/// No step types of its own; used by `steps/heat.rs`.
 pub static STEP_TYPES: &[&dyn StepType] = &[];
 
 const TS: usize = 7;
@@ -40,23 +40,23 @@ struct CElem {
 
 pub struct Convection {
     elems: Vec<CElem>,
-    /// Massflöde per nod vid stegets början och slut (komponenter 1–3).
+    /// Mass flow per node at the start and end of the step (components 1–3).
     flow0: Vec<[f64; 3]>,
     flow1: Vec<[f64; 3]>,
     ramp: bool,
-    /// Diagonal Galerkindel i kapacitetsmatrisen.
+    /// Diagonal Galerkin part of the capacity matrix.
     lumped: bool,
-    /// Temperaturerna i början av senaste transienta inkrementet (HFL tas vid
-    /// inkrementets mitt, ½(θ₀ + θ₁)).
+    /// The temperatures at the start of the latest transient increment (HFL is taken at
+    /// the midpoint of the increment, ½(θ₀ + θ₁)).
     start: std::cell::RefCell<Option<Vec<f64>>>,
 }
 
-/// Har modellen DCC-element?
+/// Does the model have DCC elements?
 pub fn has_convection(model: &FeModel) -> bool {
     model.elements.iter().any(|e| hc::lookup(e.etype.name()).is_some())
 }
 
-/// Massflödena (per nod) efter stegen 0..=index, och värdet vid början av steget `index`.
+/// The mass flows (per node) after steps 0..=index, and the value at the start of step `index`.
 fn mass_flow(model: &FeModel, index: usize) -> Result<(Vec<[f64; 3]>, Vec<[f64; 3]>)> {
     let nn = model.nodes.len();
     let mut cur = vec![[0.0; 3]; nn];
@@ -68,7 +68,7 @@ fn mass_flow(model: &FeModel, index: usize) -> Result<(Vec<[f64; 3]>, Vec<[f64; 
         for kw in step.extra.iter().filter(|k| k.name == "MASS FLOW RATE") {
             for p in ["USER", "INPUT", "AMPLITUDE"] {
                 if kw.has(p) {
-                    return kw.err(format!("{p}= stöds inte ännu"));
+                    return kw.err(format!("{p}= is not supported yet"));
                 }
             }
             if kw.param_upper("OP").as_deref() == Some("NEW") {
@@ -77,14 +77,14 @@ fn mass_flow(model: &FeModel, index: usize) -> Result<(Vec<[f64; 3]>, Vec<[f64; 
             for d in &kw.data {
                 let f: Vec<&str> = d.fields.iter().map(|s| s.as_str()).collect();
                 if f.len() < 2 {
-                    return kw.err_at(d.line, "skriv 'nod/nodset, massflöde 1, 2, 3'");
+                    return kw.err_at(d.line, "write 'node/node set, mass flow 1, 2, 3'");
                 }
                 let Some(nodes) = super::heat::resolve_nodes(model, f[0]) else {
-                    return kw.err_at(d.line, format!("noden/nodsetet '{}' finns inte", f[0].trim()));
+                    return kw.err_at(d.line, format!("the node/node set '{}' does not exist", f[0].trim()));
                 };
                 let mut v = [0.0; 3];
                 for (c, s) in f.iter().skip(1).take(3).enumerate() {
-                    v[c] = parse_f64(s).ok_or_else(|| FemError(format!("{} rad {}: '{}' är inget tal", kw.file, d.line, s.trim())))?;
+                    v[c] = parse_f64(s).ok_or_else(|| FemError(format!("{} line {}: '{}' is not a number", kw.file, d.line, s.trim())))?;
                 }
                 for n in nodes {
                     cur[n] = v;
@@ -95,7 +95,7 @@ fn mass_flow(model: &FeModel, index: usize) -> Result<(Vec<[f64; 3]>, Vec<[f64; 
     Ok((start, cur))
 }
 
-/// Konvektionen i steget `index` (None om modellen saknar DCC-element).
+/// The convection in step `index` (None if the model has no DCC elements).
 pub fn for_step(p: &Prepared, index: usize, loads: &StepLoads, transient: bool) -> Result<Option<Convection>> {
     let model = p.model;
     if !has_convection(model) {
@@ -105,25 +105,25 @@ pub fn for_step(p: &Prepared, index: usize, loads: &StepLoads, transient: bool) 
     for (e, el) in model.elements.iter().enumerate() {
         let Some(ce) = hc::lookup(el.etype.name()) else { continue };
         if ce.dispersion {
-            return fail(format!("{}: {} (dispersionskontroll) stöds inte ännu", model.elem_name(e), ce.name));
+            return fail(format!("{}: {} (dispersion control) is not supported yet", model.elem_name(e), ce.name));
         }
-        let Some(si) = el.section else { return fail(format!("{}: saknar *SOLID SECTION", model.elem_name(e))) };
+        let Some(si) = el.section else { return fail(format!("{}: missing *SOLID SECTION", model.elem_name(e))) };
         let sec = &model.sections[si];
-        let Some(mi) = sec.material_index else { return fail(format!("{}: tvärsnittet saknar material", model.elem_name(e))) };
+        let Some(mi) = sec.material_index else { return fail(format!("{}: the section has no material", model.elem_name(e))) };
         let props = HeatProps::from_def(&model.materials[mi])?;
         if props.cond.is_none() {
-            return fail(format!("material {}: *CONDUCTIVITY saknas", props.name));
+            return fail(format!("material {}: *CONDUCTIVITY is missing", props.name));
         }
         if transient && (props.density <= 0.0 || props.capacity().is_none()) {
-            return fail(format!("material {}: *DENSITY och *SPECIFIC HEAT krävs för transient konvektion", props.name));
+            return fail(format!("material {}: *DENSITY and *SPECIFIC HEAT are required for transient convection", props.name));
         }
         let x: Vec<[f64; 3]> = el.nodes.iter().map(|&n| model.nodes[n]).collect();
         elems.push(CElem { e, el: ce, x, section: sec.solid_thickness(), props });
     }
-    // fördelade laster på DCC-element stöds inte (de skulle annars ignoreras)
+    // distributed loads on DCC elements are not supported (they would otherwise be ignored)
     for (l, _) in &loads.dload {
         if hc::lookup(model.elements[l.elem].etype.name()).is_some() {
-            return fail(format!("{}: lasten {} på ett konvektionselement stöds inte ännu", model.elem_name(l.elem), l.kind));
+            return fail(format!("{}: the load {} on a convection element is not supported yet", model.elem_name(l.elem), l.kind));
         }
     }
     let (flow0, flow1) = mass_flow(model, index)?;
@@ -138,7 +138,7 @@ pub fn for_step(p: &Prepared, index: usize, loads: &StepLoads, transient: bool) 
 }
 
 impl Convection {
-    /// Massflödet per nod vid stegtidsandelen `t`.
+    /// The mass flow per node at the step time fraction `t`.
     fn flow_at(&self, n: usize, t: f64) -> [f64; 3] {
         if !self.ramp {
             return self.flow1[n];
@@ -146,14 +146,14 @@ impl Convection {
         [0, 1, 2].map(|c| self.flow0[n][c] + (self.flow1[n][c] - self.flow0[n][c]) * t)
     }
 
-    /// Elementets massflöde per area (ρv) per nod.
+    /// The element's mass flow per area (ρv) per node.
     fn g(&self, ce: &CElem, nodes: &[usize], t: f64) -> Vec<[f64; 3]> {
         nodes
             .iter()
             .map(|&n| {
                 let m = self.flow_at(n, t);
                 if ce.el.is_link() {
-                    // hela massflödet längs länken (nod 1 → nod 2) per tvärsnittsarea
+                    // the whole mass flow along the link (node 1 → node 2) per cross-sectional area
                     let d = [ce.x[1][0] - ce.x[0][0], ce.x[1][1] - ce.x[0][1], ce.x[1][2] - ce.x[0][2]];
                     let l = (d[0] * d[0] + d[1] * d[1] + d[2] * d[2]).sqrt();
                     let area = if ce.el.kind == hc::Kind::LinkAx { ce.section * 2.0 * std::f64::consts::PI * 0.5 * (ce.x[0][0] + ce.x[1][0]) } else { ce.section };
@@ -174,8 +174,8 @@ impl Convection {
         ce.el.matrices(&ce.x, ce.section, k, ce.props.density, c, &g, transient, self.lumped).map_err(|err| FemError(format!("{}: {}", model.elem_name(ce.e), err.0)))
     }
 
-    /// Lägger till elementens inre flöden i `fint` och tangenten i `mat`.
-    /// `t1` = stegtidsandel vid inkrementets slut, `dt` = tidsinkrementet.
+    /// Adds the element internal fluxes to `fint` and the tangent to `mat`.
+    /// `t1` = step time fraction at the end of the increment, `dt` = the time increment.
     #[allow(clippy::too_many_arguments)]
     pub fn contribute(&self, model: &FeModel, u: &[NodeVec], u0: &[NodeVec], t1: f64, dt: f64, transient: bool, dm: &DofMap, fint: &mut [NodeVec], mut mat: Option<&mut dyn SystemMatrix>) -> Result<()> {
         *self.start.borrow_mut() = if transient && dt > 0.0 { Some(u0.iter().map(|v| v[TS]).collect()) } else { None };
@@ -217,7 +217,7 @@ impl Convection {
         Ok(())
     }
 
-    /// HFL i DCC-elementens integrationspunkter (ersätter de tomma posterna).
+    /// HFL at the integration points of the DCC elements (replaces the empty entries).
     pub fn output(&self, model: &FeModel, u: &[NodeVec], out: &mut [Vec<IpField>]) -> Result<()> {
         let start = self.start.borrow();
         let temp = |n: usize| match start.as_ref() {

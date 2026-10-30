@@ -1,29 +1,29 @@
-//! Infinita element CINPE4, CINPS4, CINAX4 och CIN3D8 (statik och frekvens).
+//! Infinite elements CINPE4, CINPS4, CINAX4 and CIN3D8 (statics and frequency).
 //!
-//! Formulering (Zienkiewicz m.fl. 1983):
+//! Formulation (Zienkiewicz et al. 1983):
 //!
-//! - Nod 1–2 (1–4 i 3D) ligger på gränsytan mot de finita elementen (yta 1),
-//!   nod 3–4 (5–8) på kanterna mot oändligheten, ovanför nod 2 respektive 1
-//!   (5–8 ovanför 1–4). Den yttre noden ska ligga dubbelt så långt från polen
-//!   som gränsnoden; polen är därmed implicit 2·x_inre − x_yttre per kant.
-//! - Geometrin längs varje kant avbildas med x(s) = −2s/(1−s)·x₁ + (1+s)/(1−s)·x₂,
-//!   s ∈ [−1, 1), så att r → ∞ när s → 1 (r = 2a/(1−s) från polen).
-//! - Förskjutningen interpoleras kvadratiskt i s med u = 0 i oändligheten:
-//!   u = ½s(s−1)·u₁ + (1−s²)·u₂, dvs. termer av ordning 1/r och 1/r².
-//! - Tvärs kanterna linjär (2D) respektive bilinjär (3D) interpolation, i
-//!   produktform med ovanstående.
-//! - 2×2 (2×2×2) gausspunkter; punkterna närmast gränsytan numreras först.
+//! - Nodes 1–2 (1–4 in 3D) lie on the interface to the finite elements (face 1),
+//!   nodes 3–4 (5–8) on the edges towards infinity, above node 2 and 1 respectively
+//!   (5–8 above 1–4). The outer node must lie twice as far from the pole
+//!   as the interface node; the pole is thus implicitly 2·x_inner − x_outer per edge.
+//! - The geometry along each edge is mapped with x(s) = −2s/(1−s)·x₁ + (1+s)/(1−s)·x₂,
+//!   s ∈ [−1, 1), so that r → ∞ as s → 1 (r = 2a/(1−s) from the pole).
+//! - The displacement is interpolated quadratically in s with u = 0 at infinity:
+//!   u = ½s(s−1)·u₁ + (1−s²)·u₂, i.e. terms of order 1/r and 1/r².
+//! - Across the edges linear (2D) or bilinear (3D) interpolation, in
+//!   product form with the above.
+//! - 2×2 (2×2×2) Gauss points; the points closest to the interface are numbered first.
 //!
-//! Elementen är linjärt elastiska (bara linjära material godtas) och har
-//! ingen massa. I *FREQUENCY ger de varken styvhet eller massa (se
-//! `frequency_stiffness`); de yttre nodernas modförskjutning blir 0.
-//! I direkta dynamiska steg och *STEADY STATE DYNAMICS fungerar infinita
-//! element normalt som dämpare (tysta ränder) utan styvhet; det är inte implementerat
-//! (elementen ger där sin statiska styvhet).
+//! The elements are linear elastic (only linear materials are accepted) and have
+//! no mass. In *FREQUENCY they give neither stiffness nor mass (see
+//! `frequency_stiffness`); the mode displacement of the outer nodes becomes 0.
+//! In direct dynamic steps and *STEADY STATE DYNAMICS infinite
+//! elements normally act as dampers (silent boundaries) without stiffness; this is not implemented
+//! (the elements give their static stiffness there).
 //!
-//! De kvadratiska varianterna (CINPE5R, CINPS5R, CINAX5R, CIN3D12R) saknas:
-//! deras interpolation för mittnoderna (som saknar yttre nod) är inte
-//! återskapad.
+//! The quadratic variants (CINPE5R, CINPS5R, CINAX5R, CIN3D12R) are missing:
+//! their interpolation for the midside nodes (which have no outer node) has not been
+//! reconstructed.
 
 use super::api::{ElemCtx, ElemResponse, ElementType, Family, IpField, MassKind};
 use super::common::{self, Ip, DISTORTED};
@@ -48,8 +48,8 @@ pub static TYPES: &[&dyn ElementType] = &[&CIN3D8, &CINAX4, &CINPE4, &CINPS4];
 const FACES2: &[&[usize]] = &[&[0, 1], &[1, 2], &[2, 3], &[3, 0]];
 const FACES3: &[&[usize]] = super::continuum3d::HEX8_FACES;
 
-/// Avbildningens och förskjutningens funktioner i den oändliga riktningen:
-/// (M₀, M₁, dM₀, dM₁) för geometrin och (L₀, L₁, dL₀, dL₁) för förskjutningen.
+/// The mapping and displacement functions in the infinite direction:
+/// (M₀, M₁, dM₀, dM₁) for the geometry and (L₀, L₁, dL₀, dL₁) for the displacement.
 fn infinite_1d(s: f64) -> ([f64; 4], [f64; 4]) {
     let q = 1.0 - s;
     (
@@ -71,9 +71,9 @@ impl Infinite {
         common::ndim(self.mode)
     }
 
-    /// Tvärsfunktioner för gränsnoderna och de yttre noderna i elementets
-    /// nodordning: (index för inre noder, index för yttre noder) och
-    /// funktioner med derivator i tvärskoordinaterna.
+    /// Transverse functions for the interface nodes and the outer nodes in the element's
+    /// node order: (indices of inner nodes, indices of outer nodes) and
+    /// functions with derivatives in the transverse coordinates.
     fn transverse(&self, t: &[f64]) -> (Vec<f64>, Vec<[f64; 2]>) {
         if self.three_d() {
             let s = [(-1.0, -1.0), (1.0, -1.0), (1.0, 1.0), (-1.0, 1.0)];
@@ -85,7 +85,7 @@ impl Infinite {
         }
     }
 
-    /// Nodindex för (inre, yttre) nod i tvärsposition k.
+    /// Node indices for the (inner, outer) node at transverse position k.
     fn pair(&self, k: usize) -> (usize, usize) {
         if self.three_d() {
             (k, k + 4)
@@ -96,8 +96,8 @@ impl Infinite {
         }
     }
 
-    /// Integrationspunkter (gaussvikt × det J × tjocklek eller 2πr) och
-    /// B-matriser.
+    /// Integration points (Gauss weight × det J × thickness or 2πr) and
+    /// B matrices.
     fn ips(&self, ctx: &ElemCtx) -> Result<(Vec<Ip>, Vec<Vec<f64>>)> {
         let x = &ctx.x;
         let nn = self.nn();
@@ -132,7 +132,7 @@ impl Infinite {
             let s = p[pd - 1];
             let (m, l) = infinite_1d(s);
             let (nt, dnt) = self.transverse(&p[..pd - 1]);
-            // geometri- och förskjutningsfunktioner med derivator i (t.., s)
+            // geometry and displacement functions with derivatives in (t.., s)
             let mut gn = vec![0.0; nn];
             let mut gd = vec![[0.0; 3]; nn];
             let mut un = vec![0.0; nn];
@@ -193,25 +193,25 @@ impl Infinite {
     fn check_material(&self, ctx: &ElemCtx) -> Result<()> {
         let m = ctx.material(self.name)?;
         if !m.is_linear() {
-            return fail(format!("element {} ({}): infinita element kan bara ha linjärt elastiskt material (inte {})", ctx.label, self.name, m.name()));
+            return fail(format!("element {} ({}): infinite elements can only have a linear elastic material (not {})", ctx.label, self.name, m.name()));
         }
         if ctx.nlgeom {
-            return fail(format!("element {} ({}): infinita element är linjära och stöder inte NLGEOM", ctx.label, self.name));
+            return fail(format!("element {} ({}): infinite elements are linear and do not support NLGEOM", ctx.label, self.name));
         }
         Ok(())
     }
 }
 
-/// Är elementtypen ett infinit element?
+/// Is the element type an infinite element?
 pub fn is_infinite(et: &dyn ElementType) -> bool {
     TYPES.iter().any(|t| t.name() == et.name())
 }
 
-/// Styvheten för *FREQUENCY: de infinita elementen ger varken
-/// styvhet eller massa i egenvärdesanalysen. Elementens styvhet dras därför av från K₀, och
-/// frihetsgrader som då saknar styvhet (de yttre noderna) hålls fasta med
-/// elementets egen diagonal – de har ingen massa och påverkar inte moderna,
-/// och deras modförskjutning blir noll.
+/// The stiffness for *FREQUENCY: the infinite elements give neither
+/// stiffness nor mass in the eigenvalue analysis. The element stiffness is therefore subtracted from K₀, and
+/// degrees of freedom that then have no stiffness (the outer nodes) are held fixed with
+/// the element's own diagonal – they have no mass and do not affect the modes,
+/// and their mode displacement becomes zero.
 pub fn frequency_stiffness(p: &Prepared, idx: &[[usize; SLOTS]], k0: SymCsr) -> Result<SymCsr> {
     let m = p.model;
     let ns = k0.n;

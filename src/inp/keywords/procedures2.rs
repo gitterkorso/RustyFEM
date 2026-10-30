@@ -1,15 +1,15 @@
-//! Nyckelord för stegprocedurerna i `steps/complex_frequency.rs`,
+//! Keywords for the step procedures in `steps/complex_frequency.rs`,
 //! `steps/random_response.rs`, `steps/subspace.rs`, `steps/direct_cyclic.rs`
-//! och `steps/explicit_coupled.rs`:
+//! and `steps/explicit_coupled.rs`:
 //!
-//! - *COMPLEX FREQUENCY och *RANDOM RESPONSE: linjära perturbationssteg
-//!   (som *FREQUENCY), tillståndet återställs efteråt.
-//! - *PSD-DEFINITION (modellen) och *CORRELATION (steget): sparas och läses
-//!   av *RANDOM RESPONSE.
-//! - *DIRECT CYCLIC, *ANNEAL och *DYNAMIC TEMPERATURE-DISPLACEMENT: allmänna steg.
+//! - *COMPLEX FREQUENCY and *RANDOM RESPONSE: linear perturbation steps
+//!   (like *FREQUENCY), the state is restored afterwards.
+//! - *PSD-DEFINITION (the model) and *CORRELATION (the step): stored and read
+//!   by *RANDOM RESPONSE.
+//! - *DIRECT CYCLIC, *ANNEAL and *DYNAMIC TEMPERATURE-DISPLACEMENT: general steps.
 //!
-//! *DYNAMIC, SUBSPACE och *STEADY STATE DYNAMICS, SUBSPACE PROJECTION
-//! använder de befintliga procedurnyckelorden.
+//! *DYNAMIC, SUBSPACE and *STEADY STATE DYNAMICS, SUBSPACE PROJECTION
+//! use the existing procedure keywords.
 
 use crate::fem::model::RawKeyword;
 use crate::inp::{procedure, store_model, store_step, InpCtx, Keyword, Kind};

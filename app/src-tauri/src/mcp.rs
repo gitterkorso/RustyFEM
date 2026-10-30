@@ -1,13 +1,13 @@
-//! Lokal MCP-server (Model Context Protocol) inbyggd i appen.
+//! Local MCP server (Model Context Protocol) built into the app.
 //!
-//! - HTTP (Streamable HTTP, JSON-svar) på `127.0.0.1`, med en bearer-token.
-//!   Bara lokala anslutningar; webbsidor stoppas via Origin-kontrollen.
-//! - stdio: `rustyfem-app --mcp` är en brygga för klienter som startar
-//!   servern som ett kommando (Claude Desktop, Claude Code, Codex). Bryggan
-//!   startar appen om den inte redan kör och skickar varje JSON-RPC-rad vidare.
+//! - HTTP (Streamable HTTP, JSON responses) on `127.0.0.1`, with a bearer token.
+//!   Local connections only; web pages are blocked by the Origin check.
+//! - stdio: `rustyfem-app --mcp` is a bridge for clients that start
+//!   the server as a command (Claude Desktop, Claude Code, Codex). The bridge
+//!   starts the app if it is not already running and forwards each JSON-RPC line.
 //!
-//! Verktygen arbetar i den modell som är öppen i appen, så ändringar och
-//! lösningar syns direkt i fönstret och kan ångras där.
+//! The tools work in the model that is open in the app, so edits and
+//! solutions are visible in the window immediately and can be undone there.
 
 use crate::{AppState, Opened, Res};
 use rustyfem_session::edit::Edit;
@@ -27,7 +27,7 @@ use tauri::{AppHandle, Emitter};
 pub const DEFAULT_PORT: u16 = 7456;
 const PROTOCOLS: [&str; 3] = ["2025-06-18", "2025-03-26", "2024-11-05"];
 
-/// Sparade inställningar (`mcp.json` i appens konfigurationskatalog).
+/// Saved settings (`mcp.json` in the app's configuration directory).
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct Config {
     pub enabled: bool,
@@ -35,7 +35,7 @@ pub struct Config {
     pub token: String,
 }
 
-/// Appens konfigurationskatalog (samma för appen och stdio-bryggan).
+/// The app's configuration directory (the same for the app and the stdio bridge).
 pub fn config_dir() -> PathBuf {
     let home = |v: &str| std::env::var_os(v).map(PathBuf::from);
     let base = if cfg!(windows) {
@@ -68,7 +68,7 @@ fn save_config(c: &Config) {
     let _ = std::fs::write(config_path(), serde_json::to_vec_pretty(c).unwrap_or_default());
 }
 
-/// Slumpmässig token (32 hextecken) från tid, process och adresser.
+/// Random token (32 hex characters) from time, process and addresses.
 fn new_token() -> String {
     use std::collections::hash_map::RandomState;
     use std::hash::{BuildHasher, Hasher};
@@ -83,19 +83,19 @@ fn new_token() -> String {
     out
 }
 
-/// Läge för gränssnittet.
+/// Status for the UI.
 #[derive(Debug, Clone, Serialize, Type)]
 pub struct McpStatus {
     pub running: bool,
     pub port: u16,
     pub token: String,
     pub url: String,
-    /// Sökväg till appens exe (för stdio-konfigurationen).
+    /// Path to the app's executable (for the stdio configuration).
     pub exe: String,
     pub calls: u32,
     pub last_tool: Option<String>,
     pub error: Option<String>,
-    /// Claude Desktops konfigurationsfiler som redan har RustyFEM.
+    /// Claude Desktop configuration files that already contain RustyFEM.
     pub claude_desktop: Vec<String>,
 }
 
@@ -140,7 +140,7 @@ impl Mcp {
         }
     }
 
-    /// Startar HTTP-servern (`port` = 0 ger den sparade eller standardporten).
+    /// Starts the HTTP server (`port` = 0 gives the saved or default port).
     pub fn start(self: &Arc<Self>, port: u16) -> Res<McpStatus> {
         if self.server.lock().unwrap().is_some() {
             return Ok(self.status());
@@ -150,7 +150,7 @@ impl Mcp {
             c.port = port;
         }
         let listener = TcpListener::bind(("127.0.0.1", c.port)).map_err(|e| {
-            let msg = format!("kunde inte lyssna på 127.0.0.1:{} ({e}) – välj en annan port", c.port);
+            let msg = format!("could not listen on 127.0.0.1:{} ({e}) – choose another port", c.port);
             *self.error.lock().unwrap() = Some(msg.clone());
             msg
         })?;
@@ -185,7 +185,7 @@ impl Mcp {
     pub fn stop(&self) -> McpStatus {
         if let Some((port, stop)) = self.server.lock().unwrap().take() {
             stop.store(true, Ordering::Relaxed);
-            // väck accept-loopen
+            // wake the accept loop
             let _ = TcpStream::connect_timeout(&([127, 0, 0, 1], port).into(), Duration::from_millis(200));
         }
         let mut c = load_config();
@@ -196,33 +196,33 @@ impl Mcp {
         s
     }
 
-    /// En HTTP-förfrågan per anslutning.
+    /// One HTTP request per connection.
     fn serve(&self, mut conn: TcpStream, token: &str) -> std::io::Result<()> {
         conn.set_read_timeout(Some(Duration::from_secs(30)))?;
         let req = match read_request(&mut conn) {
             Ok(r) => r,
             Err(e) => return respond(&mut conn, 400, "text/plain", e.as_bytes()),
         };
-        // webbsidor får inte nå servern (skydd mot DNS-rebinding)
+        // web pages must not reach the server (protection against DNS rebinding)
         if let Some(o) = req.header("origin") {
             let ok = ["http://127.0.0.1", "http://localhost", "tauri://", "http://tauri.localhost"].iter().any(|p| o.starts_with(p));
             if !ok {
-                return respond(&mut conn, 403, "text/plain", b"origin ej tillaten");
+                return respond(&mut conn, 403, "text/plain", b"origin not allowed");
             }
         }
         if req.path != "/mcp" {
-            return respond(&mut conn, 200, "text/plain; charset=utf-8", "RustyFEM MCP-server – anslut till /mcp".as_bytes());
+            return respond(&mut conn, 200, "text/plain; charset=utf-8", "RustyFEM MCP server – connect to /mcp".as_bytes());
         }
         if req.method != "POST" {
-            return respond(&mut conn, 405, "text/plain", b"bara POST");
+            return respond(&mut conn, 405, "text/plain", b"POST only");
         }
         if req.header("authorization").map(|a| a.trim()) != Some(&format!("Bearer {token}")) {
-            return respond(&mut conn, 401, "text/plain", b"fel eller saknad token");
+            return respond(&mut conn, 401, "text/plain", b"wrong or missing token");
         }
         let body: Value = match serde_json::from_slice(&req.body) {
             Ok(v) => v,
             Err(e) => {
-                let err = json!({"jsonrpc":"2.0","id":null,"error":{"code":-32700,"message":format!("ogiltig JSON: {e}")}});
+                let err = json!({"jsonrpc":"2.0","id":null,"error":{"code":-32700,"message":format!("invalid JSON: {e}")}});
                 return respond(&mut conn, 400, "application/json", err.to_string().as_bytes());
             }
         };
@@ -239,7 +239,7 @@ impl Mcp {
         }
     }
 
-    /// Ett JSON-RPC-meddelande; `None` för notifieringar.
+    /// One JSON-RPC message; `None` for notifications.
     fn rpc(&self, m: Value) -> Option<Value> {
         let id = m.get("id").cloned();
         let method = m.get("method").and_then(Value::as_str).unwrap_or("");
@@ -275,7 +275,7 @@ impl Mcp {
             }
             "resources/list" => Ok(json!({"resources": []})),
             "prompts/list" => Ok(json!({"prompts": []})),
-            _ => Err((-32601, format!("okänd metod {method}"))),
+            _ => Err((-32601, format!("unknown method {method}"))),
         };
         Some(match result {
             Ok(r) => json!({"jsonrpc": "2.0", "id": id, "result": r}),
@@ -283,10 +283,10 @@ impl Mcp {
         })
     }
 
-    /// Den session som visas i appen (den senast öppnade).
+    /// The session shown in the app (the most recently opened).
     fn active(&self) -> Res<u32> {
         let g = self.state.lock().map_err(|e| e.to_string())?;
-        g.active.filter(|id| g.open.contains_key(id)).ok_or_else(|| "ingen modell är öppen i appen – använd new_model eller open_file".to_string())
+        g.active.filter(|id| g.open.contains_key(id)).ok_or_else(|| "no model is open in the app – use new_model or open_file".to_string())
     }
 
     fn with<T>(&self, f: impl FnOnce(&mut Session) -> Res<T>) -> Res<T> {
@@ -313,7 +313,7 @@ impl Mcp {
         match name {
             "new_model" => self.opened(Session::new_fem(s("script").as_deref().unwrap_or(rustyfem_session::NEW_MODEL))?),
             "open_file" => {
-                let p = s("path").ok_or("path saknas")?;
+                let p = s("path").ok_or("path is missing")?;
                 self.opened(Session::open(&PathBuf::from(p))?)
             }
             "model_info" => self.with(|x| {
@@ -321,7 +321,7 @@ impl Mcp {
                 Ok(json!({"session": info, "model": rustyfem_session::info::model_info(x.model())}))
             }),
             "set_units" => {
-                let u: UnitSystem = serde_json::from_value(a.get("units").cloned().ok_or("units saknas")?).map_err(|_| "units ska vara none, si, si_mm eller us".to_string())?;
+                let u: UnitSystem = serde_json::from_value(a.get("units").cloned().ok_or("units is missing")?).map_err(|_| "units must be none, si, si_mm or us".to_string())?;
                 self.with(|x| {
                     x.set_units(u);
                     Ok(())
@@ -329,15 +329,15 @@ impl Mcp {
                 self.changed(false);
                 Ok(json!({"ok": true, "units": u, "label": u.label()}))
             }
-            "get_script" => self.with(|x| x.info().script.ok_or_else(|| "modellen är en .inp – den redigeras med edit".to_string()).map(Value::String)),
+            "get_script" => self.with(|x| x.info().script.ok_or_else(|| "the model is an .inp – it is edited with edit".to_string()).map(Value::String)),
             "set_script" => {
-                let text = s("script").ok_or("script saknas")?;
+                let text = s("script").ok_or("script is missing")?;
                 self.with(|x| x.apply(Edit::FemText { text }))?;
                 self.changed(true);
                 self.with(|x| Ok(json!({"ok": true, "nodes": x.model().nodes.len(), "elements": x.model().elements.len()})))
             }
             "edit" => {
-                let e: Edit = serde_json::from_value(a.get("edit").cloned().ok_or("edit saknas")?).map_err(|e| format!("ogiltig edit: {e}"))?;
+                let e: Edit = serde_json::from_value(a.get("edit").cloned().ok_or("edit is missing")?).map_err(|e| format!("invalid edit: {e}"))?;
                 let g = self.with(|x| x.apply(e))?;
                 self.changed(g);
                 Ok(json!({"ok": true}))
@@ -350,34 +350,34 @@ impl Mcp {
             "solve" => self.solve(s("solver"), a.get("all_frames").and_then(Value::as_bool).unwrap_or(true)),
             "results" => self.with(|x| Ok(json!(x.catalog().unwrap_or_default()))),
             "field_stats" => self.with(|x| {
-                let cat = x.catalog().ok_or("inga resultat – kör solve först")?;
+                let cat = x.catalog().ok_or("no results – run solve first")?;
                 let step = n("step").unwrap_or(cat.len().saturating_sub(1));
                 let frame = n("frame").unwrap_or_else(|| cat.get(step).map(|st| st.frames.len().saturating_sub(1)).unwrap_or(0));
-                let st = x.field_stats(step, frame, &s("field").ok_or("field saknas")?, &s("component").unwrap_or_default())?;
+                let st = x.field_stats(step, frame, &s("field").ok_or("field is missing")?, &s("component").unwrap_or_default())?;
                 Ok(json!({"step": step, "frame": frame, "stats": st}))
             }),
             "node_info" | "element_info" => self.with(|x| {
                 let el = name == "element_info";
-                let what = a.get(if el { "element" } else { "node" }).map(|v| v.as_str().map(str::to_string).unwrap_or_else(|| v.to_string())).ok_or("nummer saknas")?;
+                let what = a.get(if el { "element" } else { "node" }).map(|v| v.as_str().map(str::to_string).unwrap_or_else(|| v.to_string())).ok_or("number is missing")?;
                 let idx = x.lookup(&what, el)?;
                 let at = x.results.as_ref().map(|r| (r.steps.len() - 1, r.steps.last().map(|s| s.frames.len().saturating_sub(1)).unwrap_or(0)));
                 Ok(json!(if el { x.element_info(idx, at)? } else { x.node_info(idx, at)? }))
             }),
             "save_project" => {
-                let p = PathBuf::from(s("path").ok_or("path saknas")?);
+                let p = PathBuf::from(s("path").ok_or("path is missing")?);
                 self.with(|x| {
-                    std::fs::write(&p, x.to_project()).map_err(|e| format!("kunde inte skriva {}: {e}", p.display()))?;
+                    std::fs::write(&p, x.to_project()).map_err(|e| format!("could not write {}: {e}", p.display()))?;
                     x.path = Some(p.clone());
                     x.dirty = false;
                     Ok(json!({"ok": true, "path": p.display().to_string()}))
                 })
             }
             "rusty_help" => Ok(Value::String(FEM_HELP.into())),
-            _ => Err(format!("okänt verktyg {name}")),
+            _ => Err(format!("unknown tool {name}")),
         }
     }
 
-    /// Löser modellen och väntar på resultatet; framstegen syns i appen.
+    /// Solves the model and waits for the result; the progress is shown in the app.
     fn solve(&self, solver: Option<String>, all_frames: bool) -> Res<Value> {
         let id = self.active()?;
         let app = self.app.lock().unwrap().clone();
@@ -391,11 +391,11 @@ impl Mcp {
         crate::start_run(&self.state, id, solver, all_frames, emit)?;
         let mut steps = Vec::new();
         loop {
-            match rx.recv_timeout(Duration::from_secs(3600)).map_err(|_| "lösningen svarade inte".to_string())? {
+            match rx.recv_timeout(Duration::from_secs(3600)).map_err(|_| "the solution did not respond".to_string())? {
                 RunEvent::Step { name, procedure, .. } => steps.push(format!("{name} (*{procedure})")),
                 RunEvent::Finished { ok, cancelled, seconds, message } => {
                     if !ok {
-                        return Err(if cancelled { "körningen avbröts".into() } else { message });
+                        return Err(if cancelled { "the run was cancelled".into() } else { message });
                     }
                     let summary = self.with(|x| {
                         let cat = x.catalog().unwrap_or_default();
@@ -413,45 +413,45 @@ impl Mcp {
     }
 }
 
-const INSTRUCTIONS: &str = "RustyFEM är en FEM-lösare som även läser indatafiler (.inp). Verktygen arbetar i modellen som är öppen i RustyFEM-appen; användaren ser alla ändringar direkt och kan ångra dem. Bygg enkla modeller med new_model/set_script (.rusty-skript, se rusty_help) eller öppna en .inp-fil med open_file. Lös med solve och läs resultat med results, field_stats, node_info och element_info. Motorn är enhetslös med konsekventa enheter; modellens enhetssystem (model_info: session.units och unit_symbols) är bara en etikett som appen visar. Ändra det med set_units om det inte stämmer med värdena – inga värden räknas om. field_stats och node_info/element_info anger enheten för varje värde.";
+const INSTRUCTIONS: &str = "RustyFEM is an FEM solver that also reads input files in .inp format. The tools work in the model that is open in the RustyFEM app; the user sees all changes immediately and can undo them. Build simple models with new_model/set_script (.rusty scripts, see rusty_help) or open an .inp file with open_file. Solve with solve and read results with results, field_stats, node_info and element_info. The engine is unitless with consistent units; the model's unit system (model_info: session.units and unit_symbols) is only a label shown by the app. Change it with set_units if it does not match the values – no values are converted. field_stats and node_info/element_info give the unit of each value.";
 
-const FEM_HELP: &str = "Skriptspråket .rusty (en rad per kommando, # inleder kommentar):
-model 2d|3d                       dimension (annars härledd)
-plane stress|strain               2D: plan spänning (standard) eller töjning
-elements quad|tri                 2D: elementform
-material NAMN E=.. nu=.. rho=..   steel och aluminium har standardvärden; senaste materialet används
-plate x=0..2 y=0..0.2 t=0.01 size=0.05          rektangulär platta (2D) med tjocklek t
-quad (0,0) (2,0) (2,1) (0,1) t=0.01 size=0.05   fyrhörning
-box x=0..1 y=0..0.2 z=0..0.2 size=0.05          kloss (3D, C3D8)
+const FEM_HELP: &str = "The .rusty script language (one line per command, # starts a comment):
+model 2d|3d                       dimension (otherwise inferred)
+plane stress|strain               2D: plane stress (default) or plane strain
+elements quad|tri                 2D: element shape
+material NAME E=.. nu=.. rho=..   steel and aluminium have default values; the latest material is used
+plate x=0..2 y=0..0.2 t=0.01 size=0.05          rectangular plate (2D) with thickness t
+quad (0,0) (2,0) (2,1) (0,1) t=0.01 size=0.05   quadrilateral
+box x=0..1 y=0..0.2 z=0..0.2 size=0.05          block (3D, C3D8)
 beam (0,0,0) (2,0,0) section=rect(b,h)|circle(r)|pipe(r,t)|ibeam(h,b,tf,tw) n=10 [up=(0,0,1)]
 truss (0,0) (1,1) area=1e-4
-fix SEL | pin SEL | support SEL ux uy uz rx ry rz (eller ux=0.001)
+fix SEL | pin SEL | support SEL ux uy uz rx ry rz (or ux=0.001)
 load SEL fx=.. fy=.. fz=.. mx=.. my=.. mz=..
 pressure SEL p=1e5
-gravity g=9.81  (eller gx= gy= gz=)
-SEL: x=0, y=0..1, z=.., at=(x,y[,z]) eller all
-Exempel: model 2d / material steel / plate x=0..2 y=0..0.2 t=0.01 size=0.025 / fix x=0 / load x=2 fy=-1000";
+gravity g=9.81  (or gx= gy= gz=)
+SEL: x=0, y=0..1, z=.., at=(x,y[,z]) or all
+Example: model 2d / material steel / plate x=0..2 y=0..0.2 t=0.01 size=0.025 / fix x=0 / load x=2 fy=-1000";
 
 fn tools() -> Value {
     let obj = |props: Value, req: &[&str]| json!({"type": "object", "properties": props, "required": req});
     let none = json!({"type": "object", "properties": {}});
     json!([
-        {"name": "model_info", "description": "Översikt av modellen som är öppen i appen: noder, element, set, material, tvärsnitt, steg, randvillkor och laster.", "inputSchema": none, "annotations": {"readOnlyHint": true}},
-        {"name": "new_model", "description": "Skapar en ny modell från ett .rusty-skript (se rusty_help) och visar den i appen.", "inputSchema": obj(json!({"script": {"type": "string", "description": ".rusty-skript"}}), &[])},
-        {"name": "open_file", "description": "Öppnar en modell (.inp, .rusty eller .rustyproj) från disk och visar den i appen.", "inputSchema": obj(json!({"path": {"type": "string"}}), &["path"])},
-        {"name": "set_units", "description": "Sätter modellens enhetssystem (bara etiketter i appen; inga värden räknas om): none, si (m, N, kg, s, Pa), si_mm (mm, N, t, s, MPa) eller us (in, lbf, s, psi).", "inputSchema": obj(json!({"units": {"type": "string", "enum": ["none", "si", "si_mm", "us"]}}), &["units"])},
-        {"name": "get_script", "description": "Hämtar .rusty-skriptet för modellen (bara .rusty-modeller).", "inputSchema": none, "annotations": {"readOnlyHint": true}},
-        {"name": "set_script", "description": "Ersätter .rusty-skriptet; modellen byggs om och visas i appen. Kan ångras med undo.", "inputSchema": obj(json!({"script": {"type": "string"}}), &["script"])},
-        {"name": "edit", "description": "Ändrar ett värde i en .inp-modell (kan ångras). edit är ett objekt med kind och fält: {kind:'MaterialData',material,behavior,line,fields:[..]}, {kind:'Density',material,value}, {kind:'SectionThickness',section,value}, {kind:'ProcedureData',step,line,fields}, {kind:'Nlgeom',step,value}, {kind:'MaxIncrements',step,value}, {kind:'BcValue',step|null,block,item,value}, {kind:'CloadValue',step,block,item,value}, {kind:'DloadValue',step,block,item,value}, {kind:'StepName',step,name}. Index är 0-baserade och kommer från model_info.", "inputSchema": obj(json!({"edit": {"type": "object"}}), &["edit"])},
-        {"name": "undo", "description": "Ångrar senaste ändringen.", "inputSchema": none},
-        {"name": "redo", "description": "Gör om senast ångrade ändring.", "inputSchema": none},
-        {"name": "solve", "description": "Löser modellen (framstegen syns i appen) och returnerar en sammanfattning: största förskjutning, största von Mises, fält.", "inputSchema": obj(json!({"solver": {"type": "string", "enum": ["direct", "indefinite", "unsymmetric", "iterative", "iterative-ic0", "iterative-jacobi"]}, "all_frames": {"type": "boolean", "description": "spara en frame per inkrement (standard true)"}}), &[])},
-        {"name": "results", "description": "Resultatkatalog: steg, frames (tid/mod), fält och komponenter, history-utdata.", "inputSchema": none, "annotations": {"readOnlyHint": true}},
-        {"name": "field_stats", "description": "Min och max av ett fält med noden där det inträffar. Elementfält utjämnas till noderna. S har komponenten Mises.", "inputSchema": obj(json!({"field": {"type": "string", "description": "t.ex. U, S, E, RF, PEEQ, SF, SM"}, "component": {"type": "string", "description": "t.ex. Magnitude, U2, Mises, S11 (standard: första)"}, "step": {"type": "integer"}, "frame": {"type": "integer"}}), &["field"]), "annotations": {"readOnlyHint": true}},
-        {"name": "node_info", "description": "Koordinater och resultat för en nod (\"12\" eller \"INSTANS.12\").", "inputSchema": obj(json!({"node": {"type": "string"}}), &["node"]), "annotations": {"readOnlyHint": true}},
-        {"name": "element_info", "description": "Typ, noder, tvärsnitt och resultat (medel över integrationspunkterna) för ett element.", "inputSchema": obj(json!({"element": {"type": "string"}}), &["element"]), "annotations": {"readOnlyHint": true}},
-        {"name": "save_project", "description": "Sparar modellen och resultaten som RustyFEM-projekt (.rustyproj).", "inputSchema": obj(json!({"path": {"type": "string"}}), &["path"])},
-        {"name": "rusty_help", "description": "Syntaxen för .rusty-skript med exempel.", "inputSchema": none, "annotations": {"readOnlyHint": true}},
+        {"name": "model_info", "description": "Overview of the model that is open in the app: nodes, elements, sets, materials, sections, steps, boundary conditions and loads.", "inputSchema": none, "annotations": {"readOnlyHint": true}},
+        {"name": "new_model", "description": "Creates a new model from a .rusty script (see rusty_help) and shows it in the app.", "inputSchema": obj(json!({"script": {"type": "string", "description": ".rusty script"}}), &[])},
+        {"name": "open_file", "description": "Opens a model (.inp, .rusty or .rustyproj) from disk and shows it in the app.", "inputSchema": obj(json!({"path": {"type": "string"}}), &["path"])},
+        {"name": "set_units", "description": "Sets the model's unit system (only labels in the app; no values are converted): none, si (m, N, kg, s, Pa), si_mm (mm, N, t, s, MPa) or us (in, lbf, s, psi).", "inputSchema": obj(json!({"units": {"type": "string", "enum": ["none", "si", "si_mm", "us"]}}), &["units"])},
+        {"name": "get_script", "description": "Gets the model's .rusty script (.rusty models only).", "inputSchema": none, "annotations": {"readOnlyHint": true}},
+        {"name": "set_script", "description": "Replaces the .rusty script; the model is rebuilt and shown in the app. Can be undone with undo.", "inputSchema": obj(json!({"script": {"type": "string"}}), &["script"])},
+        {"name": "edit", "description": "Changes a value in an .inp model (can be undone). edit is an object with kind and fields: {kind:'MaterialData',material,behavior,line,fields:[..]}, {kind:'Density',material,value}, {kind:'SectionThickness',section,value}, {kind:'ProcedureData',step,line,fields}, {kind:'Nlgeom',step,value}, {kind:'MaxIncrements',step,value}, {kind:'BcValue',step|null,block,item,value}, {kind:'CloadValue',step,block,item,value}, {kind:'DloadValue',step,block,item,value}, {kind:'StepName',step,name}. Indices are 0-based and come from model_info.", "inputSchema": obj(json!({"edit": {"type": "object"}}), &["edit"])},
+        {"name": "undo", "description": "Undoes the latest change.", "inputSchema": none},
+        {"name": "redo", "description": "Redoes the most recently undone change.", "inputSchema": none},
+        {"name": "solve", "description": "Solves the model (the progress is shown in the app) and returns a summary: maximum displacement, maximum von Mises, fields.", "inputSchema": obj(json!({"solver": {"type": "string", "enum": ["direct", "indefinite", "unsymmetric", "iterative", "iterative-ic0", "iterative-jacobi"]}, "all_frames": {"type": "boolean", "description": "save one frame per increment (default true)"}}), &[])},
+        {"name": "results", "description": "Results catalog: steps, frames (time/mode), fields and components, history output.", "inputSchema": none, "annotations": {"readOnlyHint": true}},
+        {"name": "field_stats", "description": "Min and max of a field with the node where it occurs. Element fields are averaged to the nodes. S has the component Mises.", "inputSchema": obj(json!({"field": {"type": "string", "description": "e.g. U, S, E, RF, PEEQ, SF, SM"}, "component": {"type": "string", "description": "e.g. Magnitude, U2, Mises, S11 (default: the first)"}, "step": {"type": "integer"}, "frame": {"type": "integer"}}), &["field"]), "annotations": {"readOnlyHint": true}},
+        {"name": "node_info", "description": "Coordinates and results for a node (\"12\" or \"INSTANCE.12\").", "inputSchema": obj(json!({"node": {"type": "string"}}), &["node"]), "annotations": {"readOnlyHint": true}},
+        {"name": "element_info", "description": "Type, nodes, section and results (mean over the integration points) for an element.", "inputSchema": obj(json!({"element": {"type": "string"}}), &["element"]), "annotations": {"readOnlyHint": true}},
+        {"name": "save_project", "description": "Saves the model and the results as a RustyFEM project (.rustyproj).", "inputSchema": obj(json!({"path": {"type": "string"}}), &["path"])},
+        {"name": "rusty_help", "description": "The syntax of .rusty scripts, with examples.", "inputSchema": none, "annotations": {"readOnlyHint": true}},
     ])
 }
 
@@ -485,12 +485,12 @@ fn read_request(conn: &mut TcpStream) -> Result<Request, String> {
             headers.push((k.trim().to_lowercase(), v.trim().to_string()));
         }
         if headers.len() > 100 {
-            return Err("för många rubriker".into());
+            return Err("too many headers".into());
         }
     }
     let len: usize = headers.iter().find(|(k, _)| k == "content-length").and_then(|(_, v)| v.parse().ok()).unwrap_or(0);
     if len > 16 << 20 {
-        return Err("för stor förfrågan".into());
+        return Err("request too large".into());
     }
     let mut body = vec![0u8; len];
     r.read_exact(&mut body).map_err(|e| e.to_string())?;
@@ -512,7 +512,7 @@ fn respond(conn: &mut TcpStream, code: u16, ctype: &str, body: &[u8]) -> std::io
     conn.flush()
 }
 
-/// Skickar en JSON-RPC-text till appens server och returnerar svaret (tomt för 202).
+/// Sends a JSON-RPC text to the app's server and returns the response (empty for 202).
 fn post(port: u16, token: &str, body: &str) -> Result<String, String> {
     let mut c = TcpStream::connect_timeout(&([127, 0, 0, 1], port).into(), Duration::from_secs(2)).map_err(|e| e.to_string())?;
     c.set_read_timeout(Some(Duration::from_secs(3700))).ok();
@@ -528,13 +528,13 @@ fn post(port: u16, token: &str, body: &str) -> Result<String, String> {
     let (head, body) = text.split_once("\r\n\r\n").unwrap_or((&text, ""));
     let status: u16 = head.split_whitespace().nth(1).and_then(|s| s.parse().ok()).unwrap_or(0);
     if status >= 400 {
-        return Err(format!("servern svarade {status}: {body}"));
+        return Err(format!("the server responded {status}: {body}"));
     }
     Ok(body.to_string())
 }
 
-/// `rustyfem-app --mcp`: stdio-brygga till appens server. Startar appen med
-/// servern påslagen om den inte redan svarar.
+/// `rustyfem-app --mcp`: stdio bridge to the app's server. Starts the app with
+/// the server switched on if it does not already respond.
 pub fn stdio_bridge() {
     let reachable = |c: &Config| TcpStream::connect_timeout(&([127, 0, 0, 1], c.port).into(), Duration::from_millis(300)).is_ok();
     let mut cfg = load_config();
@@ -565,10 +565,10 @@ pub fn stdio_bridge() {
             }
             Ok(_) => {}
             Err(e) => {
-                // svara med ett JSON-RPC-fel på förfrågningar (inte på notifieringar)
+                // reply with a JSON-RPC error to requests (not to notifications)
                 if let Ok(v) = serde_json::from_str::<Value>(&line) {
                     if let Some(id) = v.get("id") {
-                        let err = json!({"jsonrpc": "2.0", "id": id, "error": {"code": -32000, "message": format!("RustyFEM-appen svarar inte: {e}. Starta appen och slå på MCP-servern.")}});
+                        let err = json!({"jsonrpc": "2.0", "id": id, "error": {"code": -32000, "message": format!("The RustyFEM app is not responding: {e}. Start the app and switch on the MCP server.")}});
                         let _ = writeln!(out, "{err}");
                         let _ = out.flush();
                     }
@@ -578,7 +578,7 @@ pub fn stdio_bridge() {
     }
 }
 
-/// Claude Desktops konfigurationsfiler (vanlig installation och Microsoft Store-varianten).
+/// Claude Desktop configuration files (regular installation and the Microsoft Store variant).
 pub fn claude_desktop_configs() -> Vec<PathBuf> {
     let mut v = Vec::new();
     if cfg!(windows) {
@@ -611,11 +611,11 @@ fn has_rustyfem(p: &PathBuf) -> bool {
     std::fs::read(p).ok().and_then(|b| serde_json::from_slice::<Value>(&b).ok()).is_some_and(|v| v.pointer("/mcpServers/rustyfem").is_some())
 }
 
-/// Lägger till RustyFEM i Claude Desktops konfiguration (med säkerhetskopia).
+/// Adds RustyFEM to the Claude Desktop configuration (with a backup).
 pub fn install_claude_desktop() -> Res<Vec<String>> {
     let exe = std::env::current_exe().map_err(|e| e.to_string())?.display().to_string();
     let mut paths: Vec<PathBuf> = claude_desktop_configs();
-    // finns Claude-katalogen bara för en variant skrivs bara den; annars den vanliga
+    // if the Claude directory exists for only one variant, only that one is written; otherwise the regular one
     let existing: Vec<PathBuf> = paths.iter().filter(|p| p.parent().is_some_and(|d| d.exists())).cloned().collect();
     if !existing.is_empty() {
         paths = existing;
@@ -627,17 +627,17 @@ pub fn install_claude_desktop() -> Res<Vec<String>> {
         let mut v: Value = match std::fs::read(&p) {
             Ok(b) => {
                 let _ = std::fs::write(p.with_extension("json.bak"), &b);
-                serde_json::from_slice(&b).map_err(|e| format!("{} är ingen giltig JSON ({e}) – ändra den för hand", p.display()))?
+                serde_json::from_slice(&b).map_err(|e| format!("{} is not valid JSON ({e}) – edit it by hand", p.display()))?
             }
             Err(_) => json!({}),
         };
-        let o = v.as_object_mut().ok_or("konfigurationen är inget JSON-objekt")?;
+        let o = v.as_object_mut().ok_or("the configuration is not a JSON object")?;
         let servers = o.entry("mcpServers").or_insert_with(|| json!({}));
-        servers.as_object_mut().ok_or("mcpServers är inget objekt")?.insert("rustyfem".into(), json!({"command": exe, "args": ["--mcp"]}));
+        servers.as_object_mut().ok_or("mcpServers is not an object")?.insert("rustyfem".into(), json!({"command": exe, "args": ["--mcp"]}));
         if let Some(d) = p.parent() {
             std::fs::create_dir_all(d).map_err(|e| e.to_string())?;
         }
-        std::fs::write(&p, serde_json::to_vec_pretty(&v).unwrap()).map_err(|e| format!("kunde inte skriva {}: {e}", p.display()))?;
+        std::fs::write(&p, serde_json::to_vec_pretty(&v).unwrap()).map_err(|e| format!("could not write {}: {e}", p.display()))?;
         done.push(p.display().to_string());
     }
     Ok(done)

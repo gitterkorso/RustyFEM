@@ -1,21 +1,21 @@
-//! Piezoelektrisk analys i *STATIC och *FREQUENCY med elementen i
+//! Piezoelectric analysis in *STATIC and *FREQUENCY with the elements in
 //! `elements/piezo.rs` (C3D8E, C3D20E, CPE4E, CPS4E).
 //!
-//! Typerna gör anspråk på *STATIC (utan NLGEOM) och *FREQUENCY med prioritet 1
-//! och lämnar över till `static_linear.rs` respektive `frequency.rs` när
-//! modellen saknar piezoelektriska element.
+//! The types claim *STATIC (without NLGEOM) and *FREQUENCY with priority 1
+//! and hand over to `static_linear.rs` and `frequency.rs` respectively when
+//! the model has no piezoelectric elements.
 //!
-//! - *STATIC: linjärt, K = [[K_uu, K_uφ], [K_φu, −K_κ]] (symmetrisk, indefinit)
-//!   löses med den indefinita LDLᵀ-lösaren. Laster *CLOAD, *CECHARGE
-//!   (koncentrerad laddning, frihetsgrad 9) och randvillkor på 1–3 och 9.
-//! - *FREQUENCY: potentialen kondenseras statiskt (K* = K_uu − K_uφ K_φφ⁻¹ K_φu,
-//!   ingen massa på potentialen) och K* x = ω² M x löses tätt (Cholesky av M,
-//!   Jacobi). Massan är diagonal för första ordningens element och konsistent
-//!   för C3D20E. Modformerna massnormeras; potentialen i moden är
+//! - *STATIC: linear, K = [[K_uu, K_uφ], [K_φu, −K_κ]] (symmetric, indefinite)
+//!   solved with the indefinite LDLᵀ solver. Loads *CLOAD, *CECHARGE
+//!   (concentrated charge, DOF 9) and boundary conditions on 1–3 and 9.
+//! - *FREQUENCY: the potential is condensed statically (K* = K_uu − K_uφ K_φφ⁻¹ K_φu,
+//!   no mass on the potential) and K* x = ω² M x is solved densely (Cholesky of M,
+//!   Jacobi). The mass is diagonal for first-order elements and consistent
+//!   for C3D20E. The mode shapes are mass-normalized; the potential in the mode is
 //!   φ = −K_φφ⁻¹ K_φu x.
 //!
-//! Utdata: U, RF, EPOT, RCHG (reaktionsladdning, samma tecken som reaktionskrafterna), S, E, EFLX,
-//! EPG; i *FREQUENCY history EIGVAL, EIGFREQ och GM.
+//! Output: U, RF, EPOT, RCHG (reaction charge, same sign as the reaction forces), S, E, EFLX,
+//! EPG; in *FREQUENCY history EIGVAL, EIGFREQ and GM.
 
 use super::api::{StepCtx, StepType};
 use super::newton::Controls;
@@ -33,7 +33,7 @@ pub struct PiezoFrequency;
 
 pub static STEP_TYPES: &[&dyn StepType] = &[&PiezoStatic, &PiezoFrequency];
 
-/// Slot för potentialen.
+/// Slot for the potential.
 const PS: usize = 6;
 
 fn has_piezo(p: &Prepared) -> bool {
@@ -51,11 +51,11 @@ fn prepare(p: &Prepared, time: f64) -> Result<PzModel> {
     let mut a = Vec::new();
     for (e, el) in m.elements.iter().enumerate() {
         let Some(pe) = piezo::lookup(el.etype.name()) else {
-            return fail(format!("{}: piezoelektrisk analys med andra element än C3D8E, C3D20E, CPE4E och CPS4E stöds inte ännu ({})", m.elem_name(e), el.etype.name()));
+            return fail(format!("{}: piezoelectric analysis with elements other than C3D8E, C3D20E, CPE4E and CPS4E is not supported yet ({})", m.elem_name(e), el.etype.name()));
         };
         let ctx = p.ctx(e, false, time, 0.0);
         let Some(mi) = ctx.section.and_then(|s| s.material_index) else {
-            return fail(format!("{}: saknar *SOLID SECTION med material", m.elem_name(e)));
+            return fail(format!("{}: has no *SOLID SECTION with material", m.elem_name(e)));
         };
         let wrap = |err: FemError| FemError(format!("{}: {err}", m.elem_name(e)));
         a.push(PzElem::constitutive(&ctx, &m.materials[mi], pe.name).map_err(wrap)?);
@@ -77,7 +77,7 @@ fn elem_output(p: &Prepared, pz: &PzModel, u: &[NodeVec], time: f64) -> Result<V
         .collect()
 }
 
-/// Inre "krafter" K u per nod (laddningsrader med samma teckenkonvention som RCHG).
+/// Internal "forces" K u per node (charge rows with the same sign convention as RCHG).
 fn internal(p: &Prepared, pz: &PzModel, u: &[NodeVec], time: f64) -> Result<Vec<NodeVec>> {
     let mut f = vec![[0.0; SLOTS]; p.model.nodes.len()];
     for e in 0..p.model.elements.len() {
@@ -112,7 +112,7 @@ fn make_frame(p: &Prepared, dm: &DofMap, pz: &PzModel, u: &[NodeVec], rf: &[Node
 
 impl StepType for PiezoStatic {
     fn name(&self) -> &'static str {
-        "STATIC (piezoelektrisk)"
+        "STATIC (piezoelectric)"
     }
 
     fn claim(&self, step: &StepDef, nlgeom: bool) -> Option<i32> {
@@ -129,7 +129,7 @@ impl StepType for PiezoStatic {
         let period = ctrl.period;
         let time = ctx.state.time + period;
         if !ctx.loads.dload.is_empty() {
-            return fail("fördelade laster i piezoelektrisk *STATIC stöds inte ännu");
+            return fail("distributed loads in piezoelectric *STATIC are not supported yet");
         }
         let pz = prepare(p, time)?;
         let solver = crate::solver::select(Some("indefinite"))?;
@@ -138,7 +138,7 @@ impl StepType for PiezoStatic {
         for (n, s, v) in ctx.loads.bc_at(1.0) {
             u[n][s] = v;
         }
-        // fria frihetsgrader börjar från tillståndet före steget (linjärt: totalt svar)
+        // free DOFs start from the state before the step (linear: total response)
         for e in 0..model.elements.len() {
             let ectx = p.ctx(e, false, time, 0.0);
             let k = elem_matrix(&pz, &ectx, e)?;
@@ -158,7 +158,7 @@ impl StepType for PiezoStatic {
             if let Err(q) = mat.factor() {
                 return Err(assembly::mechanism_message(p, &dm, q));
             }
-            // symmetrisk form: laddningsraderna med omvänt tecken
+            // symmetric form: the charge rows with reversed sign
             let mut r: Vec<f64> = dm.owner.iter().map(|&(n, s)| if s == PS { -(fext[n][s] - fint0[n][s]) } else { fext[n][s] - fint0[n][s] }).collect();
             mat.solve(&mut r);
             for (q, &(n, s)) in dm.owner.iter().enumerate() {
@@ -187,7 +187,7 @@ impl StepType for PiezoStatic {
     }
 }
 
-/// Tät Cholesky (undre triangeln, radvis n×n). `None` om matrisen inte är positivt definit.
+/// Dense Cholesky (lower triangle, row-wise n×n). `None` if the matrix is not positive definite.
 fn cholesky(a: &[f64], n: usize) -> Option<Vec<f64>> {
     let mut l = vec![0.0; n * n];
     for j in 0..n {
@@ -211,7 +211,7 @@ fn cholesky(a: &[f64], n: usize) -> Option<Vec<f64>> {
     Some(l)
 }
 
-/// Löser L Lᵀ x = b.
+/// Solves L Lᵀ x = b.
 fn chol_solve(l: &[f64], n: usize, b: &mut [f64]) {
     for i in 0..n {
         let s: f64 = (0..i).map(|k| l[i * n + k] * b[k]).sum();
@@ -225,7 +225,7 @@ fn chol_solve(l: &[f64], n: usize, b: &mut [f64]) {
 
 impl StepType for PiezoFrequency {
     fn name(&self) -> &'static str {
-        "FREQUENCY (piezoelektrisk)"
+        "FREQUENCY (piezoelectric)"
     }
 
     fn claim(&self, step: &StepDef, _nlgeom: bool) -> Option<i32> {
@@ -241,7 +241,7 @@ impl StepType for PiezoFrequency {
         let kw = ctx.step.procedure.as_ref().unwrap();
         let nmodes = super::frequency::data_field(kw, 0)?.map_or(1, |v| v.max(1.0) as usize);
         if super::frequency::data_field(kw, 1)?.is_some() || super::frequency::data_field(kw, 2)?.is_some() {
-            return kw.err("frekvensintervall i piezoelektrisk *FREQUENCY stöds inte ännu (ange bara antal moder)");
+            return kw.err("frequency ranges in piezoelectric *FREQUENCY are not supported yet (give only the number of modes)");
         }
         let time = ctx.state.time;
         let pz = prepare(p, time)?;
@@ -273,14 +273,14 @@ impl StepType for PiezoFrequency {
         let iu: Vec<usize> = (0..ne).filter(|&q| dm.owner[q].1 != PS).collect();
         let ip: Vec<usize> = (0..ne).filter(|&q| dm.owner[q].1 == PS).collect();
         let (nu, np) = (iu.len(), ip.len());
-        // −K_φφ (positivt definit) och K* = K_uu + K_uφ (−K_φφ)⁻¹ K_φu
+        // −K_φφ (positive definite) and K* = K_uu + K_uφ (−K_φφ)⁻¹ K_φu
         let mut kpp = vec![0.0; np * np];
         for (a, &qa) in ip.iter().enumerate() {
             for (b, &qb) in ip.iter().enumerate() {
                 kpp[a * np + b] = -k[qa * ne + qb];
             }
         }
-        let lp = if np > 0 { Some(cholesky(&kpp, np).ok_or_else(|| FemError("potentialens dielektriska matris är inte positivt definit (saknas *DIELECTRIC eller randvillkor på 9?)".into()))?) } else { None };
+        let lp = if np > 0 { Some(cholesky(&kpp, np).ok_or_else(|| FemError("the dielectric matrix of the potential is not positive definite (missing *DIELECTRIC or boundary conditions on 9?)".into()))?) } else { None };
         // X = (−K_φφ)⁻¹ K_φu (np × nu)
         let mut x = vec![0.0; np * nu];
         if let Some(lp) = &lp {
@@ -308,11 +308,11 @@ impl StepType for PiezoFrequency {
                 m[r * nu + c] = mm[qr * ne + qc];
             }
         }
-        let lm = cholesky(&m, nu).ok_or_else(|| FemError("massmatrisen är inte positivt definit (*DENSITY saknas?)".into()))?;
+        let lm = cholesky(&m, nu).ok_or_else(|| FemError("the mass matrix is not positive definite (missing *DENSITY?)".into()))?;
         // A = L⁻¹ K* L⁻ᵀ
         let mut a = ks.clone();
         for c in 0..nu {
-            // kolumn c: L⁻¹ ks[:, c]
+            // column c: L⁻¹ ks[:, c]
             for i in 0..nu {
                 let s: f64 = (0..i).map(|kk| lm[i * nu + kk] * a[kk * nu + c]).sum();
                 a[i * nu + c] = (a[i * nu + c] - s) / lm[i * nu + i];

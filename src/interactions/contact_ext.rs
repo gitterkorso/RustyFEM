@@ -1,37 +1,38 @@
-//! Utökningar av kontakten i implicit analys (inkluderas med `#[path]` från
+//! Extensions of the contact in implicit analysis (included with `#[path]` from
 //! `contact.rs`):
 //!
-//! - *FRICTION, ANISOTROPIC (3D): friktionskoefficienterna μ₁, μ₂ i de lokala
-//!   tangentriktningarna t₁, t₂ (samma som för CSHEAR1/2). Elastisk glidning
-//!   med styvheten μᵢ p/γ i riktning i; glidgränsen är ellipsen
-//!   (τ₁/μ₁)² + (τ₂/μ₂)² = p², och i glidning är τᵢ = μᵢ p êᵢ med ê
-//!   riktningen för den elastiska glidningens prediktor (radiell återföring i
-//!   de normerade spänningarna τᵢ/μᵢ, så att isotrop friktion är specialfallet
+//! - *FRICTION, ANISOTROPIC (3D): the friction coefficients μ₁, μ₂ in the local
+//!   tangent directions t₁, t₂ (the same as for CSHEAR1/2). Elastic slip
+//!   with the stiffness μᵢ p/γ in direction i; the slip limit is the ellipse
+//!   (τ₁/μ₁)² + (τ₂/μ₂)² = p², and when slipping τᵢ = μᵢ p êᵢ with ê the
+//!   direction of the elastic slip predictor (radial return in the normalized
+//!   stresses τᵢ/μᵢ, so that isotropic friction is the special case
 //!   μ₁ = μ₂).
 
 use crate::fem::model::{FeModel, RawKeyword};
 use crate::model::Result;
 
-/// Självkontakt för ytan `name` (*CONTACT INCLUSIONS med en yta eller
-/// ALL EXTERIOR för en kropp som kan nå sig själv): ytan är både slav och
-/// master, med vikten ½ eftersom varje kontaktställe räknas från båda
-/// sidorna (balanserad master–slav som i general contact). Masterytor
-/// vars element innehåller slavpunktens noder hoppas över, så att en nod inte
-/// får kontakt med sina egna element.
+/// Self-contact for the surface `name` (*CONTACT INCLUSIONS with one surface or
+/// ALL EXTERIOR for a body that can reach itself): the surface is both slave and
+/// master, with weight ½ since each contact location is counted from both
+/// sides (balanced master–slave as in general contact). Master facets whose
+/// element contains the slave point's nodes are skipped, so that a node does
+/// not come into contact with its own elements.
 pub(super) fn self_pair(m: &FeModel, kw: &RawKeyword, name: &str, per_pair: &[(String, String, String)], p: super::Props) -> Result<super::ContactPair> {
     let up = name.to_uppercase();
     let props = match per_pair.iter().find(|(a, b, _)| *a == up && *b == up) {
         Some((_, _, n)) => super::props(m, kw, n)?,
         None => p,
     };
-    let label = format!("*CONTACT {name} (självkontakt, {})", kw.location());
+    let label = format!("*CONTACT {name} (self-contact, {})", kw.location());
     let mut cp = super::ContactPair::new(m, kw, label, name, name, props, true, false, 0.5)?;
     cp.make_self(m);
     Ok(cp)
 }
 
-/// Kroppen (dess yttre ytor) är inte konvex i referensläget, så att den kan
-/// komma i kontakt med sig själv: någon nod ligger framför någon ytas plan.
+/// The body (its exterior surfaces) is not convex in the reference
+/// configuration, so it can come into contact with itself: some node lies in
+/// front of some facet's plane.
 pub(super) fn can_self_contact(m: &FeModel, faces: &[(usize, String)]) -> bool {
     let fs: Vec<super::Facet> = faces
         .iter()
@@ -60,20 +61,22 @@ pub(super) fn can_self_contact(m: &FeModel, faces: &[(usize, String)]) -> bool {
     false
 }
 
-/// Justering av slavnoder i början av analysen (töjningsfritt):
+/// Adjustment of slave nodes at the start of the analysis (strain-free):
 ///
-/// - *CONTACT PAIR, ADJUST=a: slavnoder med gapet g ≤ a (även överlappande)
-///   flyttas till masterytan längs dess normal; ADJUST=nodset: nodsetets
-///   slavnoder flyttas till masterytan.
-/// - *CONTACT INITIALIZATION DATA (via *CONTACT INITIALIZATION ASSIGNMENT i
-///   *CONTACT): slavnoder med −SEARCH BELOW ≤ g ≤ SEARCH ABOVE flyttas så att
-///   gapet blir INITIAL CLEARANCE (standard 0; utan SEARCH ABOVE bara
-///   överlappande noder). Ytparet tolkas som för general contact (första ytan
-///   slav). INITIAL CLEARANCE brukar inte flytta noderna; här
-///   flyttas de till det angivna gapet (samma kontaktgap, något ändrad geometri).
+/// - *CONTACT PAIR, ADJUST=a: slave nodes with gap g ≤ a (also overlapping)
+///   are moved onto the master surface along its normal; ADJUST=node set: the
+///   node set's slave nodes are moved onto the master surface.
+/// - *CONTACT INITIALIZATION DATA (via *CONTACT INITIALIZATION ASSIGNMENT in
+///   *CONTACT): slave nodes with −SEARCH BELOW ≤ g ≤ SEARCH ABOVE are moved so
+///   that the gap becomes INITIAL CLEARANCE (default 0; without SEARCH ABOVE only
+///   overlapping nodes). The surface pair is interpreted as for general contact
+///   (first surface is slave). INITIAL CLEARANCE usually does not move the
+///   nodes; here they are moved to the given gap (same contact gap, slightly
+///   changed geometry).
 ///
-/// Masterytan är den närmaste masterytan i referensläget (projektionen inom
-/// ytan); nodernas nya lägen blir referenslägen (U räknas därifrån).
+/// The master facet is the closest master facet in the reference configuration
+/// (projection within the facet); the new node positions become reference
+/// positions (U is measured from there).
 pub(super) fn adjust(m: &mut FeModel) -> Result<()> {
     let mut moves: Vec<(usize, [f64; 3])> = Vec::new();
     for kw in m.extra.iter().filter(|k| k.name == "CONTACT PAIR") {
@@ -109,18 +112,18 @@ pub(super) fn adjust(m: &mut FeModel) -> Result<()> {
         for d in kw.records() {
             let f: Vec<&str> = d.fields.iter().map(|s| s.trim()).collect();
             if f.len() < 3 || f[0].is_empty() || f[1].is_empty() || f[2].is_empty() {
-                return kw.err_at(d.line, "skriv 'yta, yta, initieringsnamn' (två ytor krävs)");
+                return kw.err_at(d.line, "write 'surface, surface, initialization name' (two surfaces are required)");
             }
             let up = f[2].to_uppercase();
             let Some(init) = m.extra.iter().find(|k| k.name == "CONTACT INITIALIZATION DATA" && k.param_upper("NAME").as_deref() == Some(up.as_str())) else {
-                return kw.err_at(d.line, format!("*CONTACT INITIALIZATION DATA, NAME={} finns inte", f[2]));
+                return kw.err_at(d.line, format!("*CONTACT INITIALIZATION DATA, NAME={} does not exist", f[2]));
             };
             if init.has("INTERFERENCE FIT") {
-                return init.err("INTERFERENCE FIT stöds inte ännu");
+                return init.err("INTERFERENCE FIT is not supported yet");
             }
             let num = |k: &str| -> Result<Option<f64>> {
                 match init.param(k) {
-                    Some(v) => crate::fem::model::parse_f64(v).map(Some).ok_or_else(|| crate::model::FemError(format!("{}: {k}= ska vara ett tal", init.location()))),
+                    Some(v) => crate::fem::model::parse_f64(v).map(Some).ok_or_else(|| crate::model::FemError(format!("{}: {k}= must be a number", init.location()))),
                     None => Ok(None),
                 }
             };
@@ -144,13 +147,13 @@ pub(super) fn adjust(m: &mut FeModel) -> Result<()> {
     Ok(())
 }
 
-/// (slavnod, gap, masternormal) för slavytans noder mot närmaste masteryta
-/// (projektionen inom ytan) i referensläget.
+/// (slave node, gap, master normal) for the slave surface nodes against the
+/// closest master facet (projection within the facet) in the reference configuration.
 fn gaps(m: &FeModel, kw: &RawKeyword, slave: &str, master: &str) -> Result<Vec<(usize, f64, [f64; 3])>> {
     let ss = super::geom::surface(m, kw, slave)?;
     let ms = super::geom::surface(m, kw, master)?;
     let nodes = super::geom::surface_nodes(m, ss)?;
-    let mf = super::geom::facets(m, ms, "masteryta")?;
+    let mf = super::geom::facets(m, ms, "master surface")?;
     let mut out = Vec::new();
     for n in nodes {
         let p = m.nodes[n];
@@ -180,38 +183,37 @@ fn sub(a: [f64; 3], b: [f64; 3]) -> [f64; 3] {
     [a[0] - b[0], a[1] - b[1], a[2] - b[2]]
 }
 
-/// μ₁, μ₂ från dataraden till *FRICTION, ANISOTROPIC.
+/// μ₁, μ₂ from the data line of *FRICTION, ANISOTROPIC.
 pub(super) fn anisotropic(sub: &RawKeyword) -> Result<(f64, f64)> {
     if sub.data.len() > 1 {
-        return sub.err("tabulerad anisotrop friktion stöds inte ännu (en rad med μ₁, μ₂)");
+        return sub.err("tabular anisotropic friction is not supported yet (one line with μ₁, μ₂)");
     }
     let v = sub.first_floats()?;
     match v.as_slice() {
         [m1, m2, ..] if *m1 >= 0.0 && *m2 >= 0.0 => Ok((*m1, *m2)),
         [m1] => Ok((*m1, *m1)),
-        _ => sub.err("*FRICTION, ANISOTROPIC kräver μ₁, μ₂"),
+        _ => sub.err("*FRICTION, ANISOTROPIC requires μ₁, μ₂"),
     }
 }
 
-/// Friktionens svar för en slavnod.
+/// The friction response for a slave node.
 pub(super) struct Aniso {
     pub tau: [f64; 3],
     pub dtau_dp: [f64; 3],
     pub slip: [f64; 3],
-    /// ∂τ/∂e (osymmetrisk när μ₁ ≠ μ₂; den symmetriska delen används i symmetriska lösare).
+    /// ∂τ/∂e (unsymmetric when μ₁ ≠ μ₂; the symmetric part is used in symmetric solvers).
     pub kt: [[f64; 3]; 3],
 }
 
-/// Anisotrop friktion för den elastiska glidningens prediktor `e_tr`
-/// (i tangentplanet), normalen `n`, trycket `p` och den kritiska elastiska
-/// glidningen `gam`.
+/// Anisotropic friction for the elastic slip predictor `e_tr` (in the tangent
+/// plane), the normal `n`, the pressure `p` and the critical elastic slip `gam`.
 pub(super) fn aniso_friction(e_tr: [f64; 3], n: [f64; 3], p: f64, mu1: f64, mu2: f64, gam: f64) -> Aniso {
     let t = super::local_tangents(n, 3);
     let mu = [mu1, mu2];
     let e = [dot(e_tr, t[0]), dot(e_tr, t[1])];
     let e_len = (e[0] * e[0] + e[1] * e[1]).sqrt();
     let mut out = Aniso { tau: [0.0; 3], dtau_dp: [0.0; 3], slip: e_tr, kt: [[0.0; 3]; 3] };
-    // dτ_i/de_j i lokala riktningar
+    // dτ_i/de_j in local directions
     let mut d = [[0.0; 2]; 2];
     let mut tl = [0.0; 2];
     let mut dpl = [0.0; 2];
@@ -250,14 +252,14 @@ pub(super) fn aniso_friction(e_tr: [f64; 3], n: [f64; 3], p: f64, mu1: f64, mu2:
     out
 }
 
-/// Symmetrisk och snedsymmetrisk del av en 3×3-matris.
+/// Symmetric and skew-symmetric parts of a 3×3 matrix.
 pub(super) fn split(k: &[[f64; 3]; 3]) -> ([[f64; 3]; 3], [[f64; 3]; 3]) {
     let s = std::array::from_fn(|a| std::array::from_fn(|b| 0.5 * (k[a][b] + k[b][a])));
     let w = std::array::from_fn(|a| std::array::from_fn(|b| 0.5 * (k[a][b] - k[b][a])));
     (s, w)
 }
 
-/// Den snedsymmetriska delen av friktionstangenten (osymmetrisk lösare):
+/// The skew-symmetric part of the friction tangent (unsymmetric solver):
 /// K[B₁, B₂] += A c₁ c₂ W.
 pub(super) fn add_skew(k: &mut dyn super::TangentSink, coef: &[(usize, f64)], area: f64, w: &[[f64; 3]; 3], dim: usize) {
     for &(b1, c1) in coef {

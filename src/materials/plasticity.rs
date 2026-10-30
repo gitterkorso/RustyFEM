@@ -1,42 +1,42 @@
-//! Plasticitet med von Mises flytvillkor (*PLASTIC) och isotrop linjär elasticitet.
+//! Plasticity with the von Mises yield criterion (*PLASTIC) and isotropic linear elasticity.
 //!
-//! Hårdnande:
-//! - HARDENING=ISOTROPIC (standard): flytspänningen som tabell över plastisk
-//!   ekvivalent töjning (linjär interpolation, konstant efter sista punkten),
-//! - HARDENING=KINEMATIC: linjärt kinematiskt hårdnande (Prager/Ziegler),
-//!   C = (σ1 − σ0)/εp1 från två datapunkter, konstant flytytestorlek σ0,
-//! - HARDENING=COMBINED, DATATYPE=PARAMETERS: olinjärt kinematiskt hårdnande
-//!   (Armstrong–Frederick/Chaboche) med en eller flera mottensorer
-//!   (NUMBER BACKSTRESSES=n, data σ0, C1, γ1, C2, γ2, ...) och isotrop del från
-//!   *CYCLIC HARDENING (tabell σ0(ε̄p) eller PARAMETERS σ|0, Q∞, b enligt Voce).
+//! Hardening:
+//! - HARDENING=ISOTROPIC (default): the yield stress as a table over equivalent
+//!   plastic strain (linear interpolation, constant after the last point),
+//! - HARDENING=KINEMATIC: linear kinematic hardening (Prager/Ziegler),
+//!   C = (σ1 − σ0)/εp1 from two data points, constant yield surface size σ0,
+//! - HARDENING=COMBINED, DATATYPE=PARAMETERS: nonlinear kinematic hardening
+//!   (Armstrong–Frederick/Chaboche) with one or more backstresses
+//!   (NUMBER BACKSTRESSES=n, data σ0, C1, γ1, C2, γ2, ...) and an isotropic part from
+//!   *CYCLIC HARDENING (table σ0(ε̄p) or PARAMETERS σ|0, Q∞, b per Voce).
 //!
-//! Integrationen är implicit Euler (radial return / closest point projection):
-//! med prövospänningen σ_tr = D(ε − εp_n). Mottensorernas evolution
-//! α̇_k = 2/3 C_k n ṗ − γ_k α_k ṗ integreras exakt för fix flödesriktning n
-//! under inkrementet: α_k = θ_k α_k,n + 2/3 ψ_k n med θ_k = e^(−γ_k Δp) och
-//! ψ_k = C_k (1 − θ_k)/γ_k (se tests/cases/materials). Med den relativa deviatorn
-//! ξ̃(Δp) = s_tr − Σ θ_k α_k,n löses den skalära ekvationen
+//! The integration is implicit Euler (radial return / closest point projection)
+//! with the trial stress σ_tr = D(ε − εp_n). The backstress evolution
+//! α̇_k = 2/3 C_k n ṗ − γ_k α_k ṗ is integrated exactly for a fixed flow direction n
+//! over the increment: α_k = θ_k α_k,n + 2/3 ψ_k n with θ_k = e^(−γ_k Δp) and
+//! ψ_k = C_k (1 − θ_k)/γ_k (see tests/cases/materials). With the relative deviator
+//! ξ̃(Δp) = s_tr − Σ θ_k α_k,n the scalar equation
 //!
 //!   q(ξ̃) − 3G Δp − Σ ψ_k − σ0(p_n + Δp) = 0
 //!
-//! med Newton (inneslutet mellan säkra gränser). Flödesriktningen är
-//! n = 3/2 ξ̃/q(ξ̃) och Δεp = Δp n. Den konsistenta tangenten är
-//! sluten (Simo–Taylor) när alla γ_k = 0, annars numeriskt deriverad av
-//! returalgoritmen (framåtdifferens).
+//! is solved by Newton (bracketed between safe bounds). The flow direction is
+//! n = 3/2 ξ̃/q(ξ̃) and Δεp = Δp n. The consistent tangent is
+//! closed-form (Simo–Taylor) when all γ_k = 0, otherwise numerically differentiated from
+//! the return algorithm (forward difference).
 //!
-//! Plan spänning och stänger löses med 3D-algoritmen och lokal Newton på de
-//! spänningsfria töjningskomponenterna (σ33 = σ13 = σ23 = 0 respektive bara σ11 ≠ 0);
-//! tangenten kondenseras statiskt. Plan töjning och axisymmetri använder
-//! 3D-algoritmen direkt med ε13 = ε23 = 0.
+//! Plane stress and beams/trusses are solved with the 3D algorithm and a local Newton on the
+//! stress-free strain components (σ33 = σ13 = σ23 = 0, or only σ11 ≠ 0, respectively);
+//! the tangent is condensed statically. Plane strain and axisymmetry use
+//! the 3D algorithm directly with ε13 = ε23 = 0.
 //!
-//! Temperaturberoende (HARDENING=ISOTROPIC): *ELASTIC med rader (E, ν, T) och
-//! *PLASTIC med rader (σ0, ε̄p, T). Modulerna och flytkurvan interpoleras
-//! linjärt i temperaturen vid inkrementets slut (konstant utanför tabellen) och
-//! spänningen räknas i totalform σ = D(T)(ε − εp). Se
-//! `thermal_elastic.rs` för tabellerna.
+//! Temperature dependence (HARDENING=ISOTROPIC): *ELASTIC with rows (E, ν, T) and
+//! *PLASTIC with rows (σ0, ε̄p, T). The moduli and the yield curve are interpolated
+//! linearly in the temperature at the end of the increment (constant outside the table) and
+//! the stress is computed in total form σ = D(T)(ε − εp). See
+//! `thermal_elastic.rs` for the tables.
 //!
-//! Utdata: PEEQ (ackumulerad plastisk ekvivalent töjning ∫√(2/3 ε̇p:ε̇p) dt)
-//! och PE (plastisk töjning, ingenjörsskjuvtöjning som E).
+//! Output: PEEQ (accumulated equivalent plastic strain ∫√(2/3 ε̇p:ε̇p) dt)
+//! and PE (plastic strain, engineering shear strain like E).
 
 use super::anisotropic::{free_components, mode_components, solve_dense};
 use super::{MatInput, MatOutput, MaterialFactory, MaterialModel, StressMode};
@@ -45,7 +45,7 @@ use crate::model::{fail, Result};
 use std::sync::Arc;
 
 pub static FACTORIES: &[MaterialFactory] = &[MaterialFactory {
-    name: "von Mises-plasticitet",
+    name: "von Mises plasticity",
     consumes: &["ELASTIC", "PLASTIC", "CYCLIC HARDENING"],
     priority: 10,
     build: Some(build),
@@ -54,7 +54,7 @@ pub static FACTORIES: &[MaterialFactory] = &[MaterialFactory {
 pub type M6 = [[f64; 6]; 6];
 pub type V6 = [f64; 6];
 
-/// Isotrop elasticitetsmatris (3D, ingenjörsskjuvtöjning).
+/// Isotropic elasticity matrix (3D, engineering shear strain).
 pub fn iso_d6(e: f64, nu: f64) -> M6 {
     let lam = e * nu / ((1.0 + nu) * (1.0 - 2.0 * nu));
     let mu = e / (2.0 * (1.0 + nu));
@@ -73,20 +73,20 @@ pub fn mv6(d: &M6, x: &V6) -> V6 {
     std::array::from_fn(|i| (0..6).map(|j| d[i][j] * x[j]).sum())
 }
 
-/// Deviator av en spänningslik vektor (tensorskjuvkomponenter).
+/// Deviator of a stress-like vector (tensor shear components).
 pub fn dev(s: &V6) -> V6 {
     let p = (s[0] + s[1] + s[2]) / 3.0;
     [s[0] - p, s[1] - p, s[2] - p, s[3], s[4], s[5]]
 }
 
-/// a:b för spänningslika vektorer (skjuvkomponenter räknas två gånger).
+/// a:b for stress-like vectors (shear components counted twice).
 pub fn ddot(a: &V6, b: &V6) -> f64 {
     a[0] * b[0] + a[1] * b[1] + a[2] * b[2] + 2.0 * (a[3] * b[3] + a[4] * b[4] + a[5] * b[5])
 }
 
-/// von Mises ekvivalent √(3/2 s:s) för en deviator.
-/// Roterar en symmetrisk tensor i Voigt-form (ordning 11, 22, 33, 12, 13, 23)
-/// till R A Rᵀ. `engineering`: skjuvkomponenterna är ingenjörstöjningar (2·A12).
+/// von Mises equivalent √(3/2 s:s) for a deviator.
+/// Rotates a symmetric tensor in Voigt form (order 11, 22, 33, 12, 13, 23)
+/// to R A Rᵀ. `engineering`: the shear components are engineering strains (2·A12).
 pub fn rotate_v6(r: &[[f64; 3]; 3], v: &mut [f64], engineering: bool) {
     let f = if engineering { 0.5 } else { 1.0 };
     let a = [[v[0], v[3] * f, v[4] * f], [v[3] * f, v[1], v[5] * f], [v[4] * f, v[5] * f, v[2]]];
@@ -111,17 +111,17 @@ pub fn mises(s: &V6) -> f64 {
 }
 
 // ---------------------------------------------------------------------------
-// Reduktion från 3D till plan spänning, plan töjning och stänger
+// Reduction from 3D to plane stress, plane strain and beams/trusses
 // ---------------------------------------------------------------------------
 
-/// Uppdatering i 3D: total töjning (6, ingenjörsskjuvning) → (spänning, tangent).
+/// Update in 3D: total strain (6, engineering shear) → (stress, tangent).
 pub type Update3D<'a> = dyn FnMut(&V6) -> Result<(V6, M6)> + 'a;
 
-/// Kör en 3D-spänningsuppdatering i spänningstillståndet `mode`.
+/// Runs a 3D stress update in the stress state `mode`.
 ///
-/// `eps3_old` är den fullständiga 3D-töjningen vid inkrementets början (för
-/// startgissningen av de spänningsfria komponenterna), `ce` den elastiska
-/// 3D-matrisen. Returnerar 3D-töjningen och resultatet i `mode`.
+/// `eps3_old` is the full 3D strain at the start of the increment (for
+/// the initial guess of the stress-free components), `ce` the elastic
+/// 3D matrix. Returns the 3D strain and the result in `mode`.
 pub fn update_reduced(mode: StressMode, strain: &[f64], eps3_old: &V6, ce: &M6, f: &mut Update3D) -> Result<(V6, MatOutput)> {
     let a = mode_components(mode);
     let b = free_components(mode);
@@ -130,7 +130,7 @@ pub fn update_reduced(mode: StressMode, strain: &[f64], eps3_old: &V6, ce: &M6, 
         eps[i] = strain[k];
     }
     if !b.is_empty() {
-        // startgissning: gammal töjning + elastisk kondensation av ändringen
+        // initial guess: old strain + elastic condensation of the change
         let nb = b.len();
         let dbb: Vec<f64> = b.iter().flat_map(|&i| b.iter().map(move |&j| ce[i][j])).collect();
         let rhs: Vec<f64> = b.iter().map(|&i| -a.iter().map(|&j| ce[i][j] * (eps[j] - eps3_old[j])).sum::<f64>()).collect();
@@ -161,7 +161,7 @@ pub fn update_reduced(mode: StressMode, strain: &[f64], eps3_old: &V6, ce: &M6, 
         if !ok {
             let r = b.iter().map(|&i| res.0[i].abs()).fold(0.0, f64::max);
             if r > 1e-8 * scale {
-                return fail(format!("materialpunkten konvergerade inte mot spänningsfrihet ({mode:?}), |σ| = {r:e}"));
+                return fail(format!("the material point did not converge to a stress-free state ({mode:?}), |σ| = {r:e}"));
             }
         }
     }
@@ -172,7 +172,7 @@ pub fn update_reduced(mode: StressMode, strain: &[f64], eps3_old: &V6, ce: &M6, 
     if !b.is_empty() {
         let nb = b.len();
         let cbb: Vec<f64> = b.iter().flat_map(|&i| b.iter().map(move |&j| c[i][j])).collect();
-        // C_aa − C_ab C_bb⁻¹ C_ba, kolumn för kolumn
+        // C_aa − C_ab C_bb⁻¹ C_ba, column by column
         for (cj, &j) in a.iter().enumerate() {
             let rhs: Vec<f64> = b.iter().map(|&i| c[i][j]).collect();
             if let Some(x) = solve_dense(&cbb, &rhs) {
@@ -186,7 +186,7 @@ pub fn update_reduced(mode: StressMode, strain: &[f64], eps3_old: &V6, ce: &M6, 
     Ok((eps, MatOutput { stress, tangent }))
 }
 
-/// Komponentnamn för plastisk töjning i ett spänningstillstånd.
+/// Component names for plastic strain in a stress state.
 pub fn pe_labels(mode: StressMode) -> (Vec<&'static str>, &'static [usize]) {
     match mode {
         StressMode::ThreeD => (vec!["PE11", "PE22", "PE33", "PE12", "PE13", "PE23"], &[0, 1, 2, 3, 4, 5]),
@@ -196,20 +196,20 @@ pub fn pe_labels(mode: StressMode) -> (Vec<&'static str>, &'static [usize]) {
 }
 
 // ---------------------------------------------------------------------------
-// Hårdnande
+// Hardening
 // ---------------------------------------------------------------------------
 
-/// Flytytans storlek σ0 som funktion av plastisk ekvivalent töjning.
+/// Yield surface size σ0 as a function of equivalent plastic strain.
 #[derive(Debug, Clone)]
 pub enum Hardening {
-    /// (ε̄p, σ0)-punkter, stigande ε̄p, första ε̄p = 0.
+    /// (ε̄p, σ0) points, increasing ε̄p, first ε̄p = 0.
     Table(Vec<(f64, f64)>),
     /// σ0 = s0 + q (1 − e^(−b ε̄p)).
     Voce { s0: f64, q: f64, b: f64 },
 }
 
 impl Hardening {
-    /// (σ0, dσ0/dε̄p) vid `p`.
+    /// (σ0, dσ0/dε̄p) at `p`.
     pub fn eval(&self, p: f64) -> (f64, f64) {
         match self {
             Hardening::Table(t) => {
@@ -238,39 +238,39 @@ impl Hardening {
     }
 }
 
-/// Tolkar en tabell (σ0, ε̄p) från datarader.
+/// Parses a table (σ0, ε̄p) from data lines.
 fn yield_table(kw: &RawKeyword) -> Result<Vec<(f64, f64)>> {
     let mut t = Vec::new();
     for d in &kw.data {
         let v = kw.floats(d)?;
         if v.len() > 2 && v[2..].iter().any(|&x| x != 0.0) {
-            return kw.err_at(d.line, "temperatur- eller fältberoende hårdnande stöds inte ännu");
+            return kw.err_at(d.line, "temperature- or field-dependent hardening is not supported yet");
         }
         let s = v.first().copied().unwrap_or(0.0);
         let p = v.get(1).copied().unwrap_or(0.0);
         if !(s > 0.0) {
-            return kw.err_at(d.line, "flytspänningen ska vara positiv");
+            return kw.err_at(d.line, "the yield stress must be positive");
         }
         if let Some(&(pl, _)) = t.last() {
             if !(p > pl) {
-                return kw.err_at(d.line, "den plastiska töjningen ska öka i tabellen");
+                return kw.err_at(d.line, "the plastic strain must increase in the table");
             }
         } else if p != 0.0 {
-            return kw.err_at(d.line, "första punkten ska ha plastisk töjning 0");
+            return kw.err_at(d.line, "the first point must have plastic strain 0");
         }
         t.push((p, s));
     }
     if t.is_empty() {
-        return kw.err("flytspänning saknas");
+        return kw.err("yield stress missing");
     }
     Ok(t)
 }
 
 // ---------------------------------------------------------------------------
-// Modellen
+// The model
 // ---------------------------------------------------------------------------
 
-/// von Mises-plasticitet med isotropt och (linjärt eller olinjärt) kinematiskt hårdnande.
+/// von Mises plasticity with isotropic and (linear or nonlinear) kinematic hardening.
 #[derive(Debug, Clone)]
 pub struct Mises {
     pub e: f64,
@@ -278,15 +278,15 @@ pub struct Mises {
     pub g: f64,
     pub ce: M6,
     pub iso: Hardening,
-    /// Mottensorer (C_k, γ_k).
+    /// Backstresses (C_k, γ_k).
     pub back: Vec<(f64, f64)>,
-    /// Temperaturberoende elasticitet (E, ν, T); tom om konstant.
+    /// Temperature-dependent elasticity (E, ν, T); empty if constant.
     pub etab: Vec<(f64, f64, f64)>,
-    /// Temperaturberoende flytkurvor (T, tabell); tom om oberoende av temperaturen.
+    /// Temperature-dependent yield curves (T, table); empty if independent of temperature.
     pub ytab: Vec<(f64, Vec<(f64, f64)>)>,
 }
 
-/// Tillståndslayout: [ε̄p, εp (6), ε 3D (6), α_k (6 per mottensor)].
+/// State layout: [ε̄p, εp (6), ε 3D (6), α_k (6 per backstress)].
 const P: usize = 0;
 const EP: usize = 1;
 const EPS3: usize = 7;
@@ -294,14 +294,14 @@ const ALPHA: usize = 13;
 
 fn elastic_iso(def: &MaterialDef) -> Result<Vec<(f64, f64, f64)>> {
     let Some(kw) = def.behavior("ELASTIC") else {
-        return fail(format!("material {}: *PLASTIC kräver *ELASTIC", def.name));
+        return fail(format!("material {}: *PLASTIC requires *ELASTIC", def.name));
     };
     let ty = kw.param_upper("TYPE").unwrap_or_else(|| "ISOTROPIC".into());
     if ty != "ISOTROPIC" {
-        return kw.err("von Mises-plasticitet kräver isotrop elasticitet (TYPE=ISOTROPIC)");
+        return kw.err("von Mises plasticity requires isotropic elasticity (TYPE=ISOTROPIC)");
     }
     if kw.has("TEMPERATURE") {
-        return kw.err("parametern TEMPERATURE stöds inte ännu");
+        return kw.err("the TEMPERATURE parameter is not supported yet");
     }
     super::thermal_elastic::iso_table(kw)
 }
@@ -309,7 +309,7 @@ fn elastic_iso(def: &MaterialDef) -> Result<Vec<(f64, f64, f64)>> {
 fn build(def: &MaterialDef) -> Result<Option<Arc<dyn MaterialModel>>> {
     let Some(kw) = def.behavior("PLASTIC") else { return Ok(None) };
     if super::plasticity_hill::claims(def) {
-        return Ok(None); // Hill, *RATE DEPENDENT, Johnson–Cook, anisotrop elasticitet
+        return Ok(None); // Hill, *RATE DEPENDENT, Johnson–Cook, anisotropic elasticity
     }
     let etab = elastic_iso(def)?;
     let (e, nu) = (etab[0].0, etab[0].1);
@@ -317,7 +317,7 @@ fn build(def: &MaterialDef) -> Result<Option<Arc<dyn MaterialModel>>> {
     let mut ytab = Vec::new();
     for p in ["RATE", "DEPENDENCIES"] {
         if kw.has(p) {
-            return kw.err(format!("parametern {p} stöds inte ännu"));
+            return kw.err(format!("the {p} parameter is not supported yet"));
         }
     }
     let hard = kw.param_upper("HARDENING").unwrap_or_else(|| "ISOTROPIC".into());
@@ -325,7 +325,7 @@ fn build(def: &MaterialDef) -> Result<Option<Arc<dyn MaterialModel>>> {
     let (iso, back) = match hard.as_str() {
         "ISOTROPIC" => {
             if cyclic.is_some() {
-                return kw.err("*CYCLIC HARDENING kräver HARDENING=COMBINED");
+                return kw.err("*CYCLIC HARDENING requires HARDENING=COMBINED");
             }
             let tabs = super::thermal_elastic::yield_tables(kw)?;
             let first = tabs[0].1.clone();
@@ -336,11 +336,11 @@ fn build(def: &MaterialDef) -> Result<Option<Arc<dyn MaterialModel>>> {
         }
         "KINEMATIC" => {
             if cyclic.is_some() {
-                return kw.err("*CYCLIC HARDENING kräver HARDENING=COMBINED");
+                return kw.err("*CYCLIC HARDENING requires HARDENING=COMBINED");
             }
             let t = yield_table(kw)?;
             if t.len() > 2 {
-                return kw.err("linjärt kinematiskt hårdnande tar högst två datapunkter (σ0, 0) och (σ1, εp1)");
+                return kw.err("linear kinematic hardening takes at most two data points (σ0, 0) and (σ1, εp1)");
             }
             let c = if t.len() == 2 { (t[1].1 - t[0].1) / t[1].0 } else { 0.0 };
             (Hardening::Table(vec![t[0]]), vec![(c, 0.0)])
@@ -348,11 +348,11 @@ fn build(def: &MaterialDef) -> Result<Option<Arc<dyn MaterialModel>>> {
         "COMBINED" => {
             let dt = kw.param_upper("DATATYPE").unwrap_or_else(|| "HALF CYCLE".into());
             if dt != "PARAMETERS" {
-                return kw.err(format!("HARDENING=COMBINED stöds bara med DATATYPE=PARAMETERS (inte {dt})"));
+                return kw.err(format!("HARDENING=COMBINED is only supported with DATATYPE=PARAMETERS (not {dt})"));
             }
             let nb = match kw.param("NUMBER BACKSTRESSES") {
                 Some(s) => s.trim().parse::<usize>().ok().filter(|&n| (1..=10).contains(&n)).ok_or_else(|| {
-                    crate::model::FemError(format!("{}: NUMBER BACKSTRESSES={s} ska vara 1–10", kw.location()))
+                    crate::model::FemError(format!("{}: NUMBER BACKSTRESSES={s} must be 1–10", kw.location()))
                 })?,
                 None => 1,
             };
@@ -361,13 +361,13 @@ fn build(def: &MaterialDef) -> Result<Option<Arc<dyn MaterialModel>>> {
                 v.extend(kw.floats(&d)?);
             }
             if kw.records().len() > 1 {
-                return kw.err("temperaturberoende parametrar (flera datarader) stöds inte ännu");
+                return kw.err("temperature-dependent parameters (multiple data lines) are not supported yet");
             }
             if v.len() < 1 + 2 * nb {
-                return kw.err(format!("dataraden ska ha σ0 och {nb} par (C, γ)"));
+                return kw.err(format!("the data line must have σ0 and {nb} pairs (C, γ)"));
             }
             if v.len() > 1 + 2 * nb && v[1 + 2 * nb..].iter().any(|&x| x != 0.0) {
-                return kw.err("temperaturberoende parametrar stöds inte ännu");
+                return kw.err("temperature-dependent parameters are not supported yet");
             }
             let s0 = v[0];
             let back: Vec<(f64, f64)> = (0..nb).map(|k| (v[1 + 2 * k], v[2 + 2 * k])).collect();
@@ -377,7 +377,7 @@ fn build(def: &MaterialDef) -> Result<Option<Arc<dyn MaterialModel>>> {
                     if ck.param_upper("PARAMETERS").is_some() || ck.has("PARAMETERS") {
                         let w = ck.first_floats()?;
                         if w.len() < 3 {
-                            return ck.err("PARAMETERS kräver σ|0, Q∞ och b");
+                            return ck.err("PARAMETERS requires σ|0, Q∞ and b");
                         }
                         Hardening::Voce { s0: w[0], q: w[1], b: w[2] }
                     } else {
@@ -387,20 +387,20 @@ fn build(def: &MaterialDef) -> Result<Option<Arc<dyn MaterialModel>>> {
             };
             (iso, back)
         }
-        other => return kw.err(format!("HARDENING={other} stöds inte ännu (ISOTROPIC, KINEMATIC, COMBINED)")),
+        other => return kw.err(format!("HARDENING={other} is not supported yet (ISOTROPIC, KINEMATIC, COMBINED)")),
     };
     if !(iso.initial() > 0.0) {
-        return kw.err("den initiala flytspänningen ska vara positiv");
+        return kw.err("the initial yield stress must be positive");
     }
     let g = e / (2.0 * (1.0 + nu));
     if !etab.is_empty() && hard != "ISOTROPIC" {
-        return kw.err("temperaturberoende elasticitet med kinematiskt hårdnande stöds inte ännu");
+        return kw.err("temperature-dependent elasticity with kinematic hardening is not supported yet");
     }
     Ok(Some(Arc::new(Mises { e, nu, g, ce: iso_d6(e, nu), iso, back, etab, ytab })))
 }
 
-/// C (1 − e^(−γ Δp))/γ (→ C Δp när γ → 0): mottensorns tillväxt under
-/// inkrementet med fix flödesriktning.
+/// C (1 − e^(−γ Δp))/γ (→ C Δp as γ → 0): the backstress growth over
+/// the increment with a fixed flow direction.
 fn psi(c: f64, gam: f64, dp: f64) -> f64 {
     let x = gam * dp;
     if x.abs() < 1e-8 {
@@ -410,18 +410,18 @@ fn psi(c: f64, gam: f64, dp: f64) -> f64 {
     }
 }
 
-/// Resultat av returalgoritmen i 3D.
+/// Result of the return algorithm in 3D.
 struct Ret {
     sig: V6,
     dp: f64,
-    /// Flödesriktning n = 3/2 ξ/q (tensorkomponenter).
+    /// Flow direction n = 3/2 ξ/q (tensor components).
     n: V6,
     q_tr: f64,
     xi_tr: V6,
 }
 
 impl Mises {
-    /// Modellen vid temperaturen `t` (bara när något är temperaturberoende).
+    /// The model at temperature `t` (only when something is temperature dependent).
     fn at_temperature(&self, t: f64) -> Option<Mises> {
         if self.etab.is_empty() && self.ytab.is_empty() {
             return None;
@@ -435,7 +435,7 @@ impl Mises {
         self.back.len()
     }
 
-    /// Index för den plastiska töjningen vid senaste *ANNEAL (område coupled2).
+    /// Index of the plastic strain at the latest *ANNEAL (feature area coupled2).
     fn anneal_offset(&self) -> usize {
         ALPHA + 6 * self.n_back()
     }
@@ -444,7 +444,7 @@ impl Mises {
         std::array::from_fn(|i| st[ALPHA + 6 * k + i])
     }
 
-    /// Returalgoritmen för total 3D-töjning `eps` från tillståndet `st` (skriver `stn`).
+    /// Return algorithm for the total 3D strain `eps` from the state `st` (writes `stn`).
     fn ret(&self, eps: &V6, st: &[f64], stn: &mut [f64]) -> Result<Ret> {
         let g = self.g;
         let p_n = st[P];
@@ -465,7 +465,7 @@ impl Mises {
         if q_tr - sy <= 1e-12 * sy {
             return Ok(Ret { sig: sig_tr, dp: 0.0, n: [0.0; 6], q_tr, xi_tr });
         }
-        // ξ̃(Δp) = s_tr − Σ θ_k α_k,n och dess derivata
+        // ξ̃(Δp) = s_tr − Σ θ_k α_k,n and its derivative
         let xi_of = |dp: f64| -> (V6, V6) {
             let mut x = s_tr;
             let mut dx = [0.0; 6];
@@ -520,7 +520,7 @@ impl Mises {
             dp = next;
         }
         if !conv {
-            return fail("returalgoritmen för von Mises-plasticitet konvergerade inte");
+            return fail("the return algorithm for von Mises plasticity did not converge");
         }
         let (x, _) = xi_of(dp);
         let q = mises(&x);
@@ -545,7 +545,7 @@ impl Mises {
         Ok(Ret { sig, dp, n, q_tr, xi_tr })
     }
 
-    /// Spänning och konsistent tangent i 3D.
+    /// Stress and consistent tangent in 3D.
     fn update3d(&self, eps: &V6, st: &[f64], stn: &mut [f64]) -> Result<(V6, M6)> {
         let r = self.ret(eps, st, stn)?;
         if r.dp == 0.0 {
@@ -554,7 +554,7 @@ impl Mises {
         let g = self.g;
         let k = self.e / (3.0 * (1.0 - 2.0 * self.nu));
         if self.back.iter().all(|&(_, gk)| gk == 0.0) {
-            // sluten konsistent tangent (Simo–Taylor), riktningen är fix
+            // closed-form consistent tangent (Simo–Taylor), the direction is fixed
             let h: f64 = self.iso.eval(st[P] + r.dp).1 + self.back.iter().map(|b| b.0).sum::<f64>();
             let nrm = ddot(&r.xi_tr, &r.xi_tr).sqrt();
             let nn: V6 = std::array::from_fn(|i| r.xi_tr[i] / nrm);
@@ -571,7 +571,7 @@ impl Mises {
             let _ = r.n;
             return Ok((r.sig, d));
         }
-        // numerisk konsistent tangent (framåtdifferens av returalgoritmen)
+        // numerical consistent tangent (forward difference of the return algorithm)
         let scale = eps.iter().fold(0.0f64, |m, x| m.max(x.abs())).max(self.iso.initial() / self.e);
         let hstep = 1e-7 * scale;
         let mut d = [[0.0; 6]; 6];
@@ -584,7 +584,7 @@ impl Mises {
                 d[i][j] = (r2.sig[i] - r.sig[i]) / hstep;
             }
         }
-        // symmetrisera (exakt tangent är symmetrisk för associativ plasticitet)
+        // symmetrize (the exact tangent is symmetric for associative plasticity)
         for i in 0..6 {
             for j in 0..i {
                 let m = 0.5 * (d[i][j] + d[j][i]);
@@ -602,7 +602,7 @@ impl MaterialModel for Mises {
     }
 
     fn n_state(&self) -> usize {
-        // område coupled2: sist den plastiska töjningen vid senaste *ANNEAL (6)
+        // feature area coupled2: last, the plastic strain at the latest *ANNEAL (6)
         ALPHA + 6 * self.n_back() + 6
     }
 
@@ -611,7 +611,7 @@ impl MaterialModel for Mises {
     }
 
     fn rotate_state(&self, r: &[[f64; 3]; 3], state: &mut [f64]) {
-        // plastisk töjning, total 3D-töjning och mottensorer följer materialet
+        // plastic strain, total 3D strain and backstresses follow the material
         rotate_v6(r, &mut state[EP..EP + 6], true);
         rotate_v6(r, &mut state[EPS3..EPS3 + 6], true);
         for k in 0..self.n_back() {
@@ -630,7 +630,7 @@ impl MaterialModel for Mises {
         let eps_old: V6 = std::array::from_fn(|i| state_old[EPS3 + i]);
         let mut f = |e: &V6| -> Result<(V6, M6)> { self.update3d(e, state_old, state_new) };
         let (eps3, out) = update_reduced(input.mode, input.strain, &eps_old, &self.ce, &mut f)?;
-        // sista anropet i update_reduced gjordes med eps3: state_new är aktuellt
+        // the last call in update_reduced was made with eps3: state_new is current
         state_new[EPS3..EPS3 + 6].copy_from_slice(&eps3);
         Ok(out)
     }
@@ -647,10 +647,10 @@ impl MaterialModel for Mises {
         vec![state[P]]
     }
 
-    /// *ANNEAL: den plastiska töjningen blir den totala (spänningsfritt),
-    /// PEEQ och mottensorerna nollställs (`steps/anneal.rs`). PE redovisas
-    /// därefter från glödgningen (PE = 0 direkt efter): den
-    /// plastiska töjningen vid glödgningen sparas sist i tillståndet.
+    /// *ANNEAL: the plastic strain becomes the total strain (stress-free),
+    /// PEEQ and the backstresses are reset (`steps/anneal.rs`). PE is reported
+    /// relative to the annealing thereafter (PE = 0 directly after): the
+    /// plastic strain at the annealing is stored last in the state.
     fn anneal(&self, strain: &[f64; 6], state: &mut [f64]) -> bool {
         state[P] = 0.0;
         state[EP..EP + 6].copy_from_slice(strain);
@@ -670,7 +670,7 @@ impl MaterialModel for Mises {
         let a0 = self.anneal_offset();
         v.extend(pe_labels(mode).1.iter().map(|&i| state[EP + i] - state.get(a0 + i).copied().unwrap_or(0.0)));
         if mode == StressMode::PlaneStress {
-            // PE33 = 0 redovisas för plan spänning (som E33), kontrollerat
+            // PE33 = 0 is reported for plane stress (like E33), checked
             v[3] = 0.0;
         }
         v

@@ -1,8 +1,8 @@
-//! Nyckelord för kopplingselementens beteenden och stegdata
+//! Keywords for connector element behaviors and step data
 //! (`src/interactions/connector.rs`). *CONNECTOR SECTION, *CONNECTOR BEHAVIOR
-//! och *CONNECTOR ELASTICITY registreras i `interactions.rs`. Beteendena
-//! sparas i modellen och läses i ordning efter *CONNECTOR BEHAVIOR;
-//! *CONNECTOR MOTION och *CONNECTOR LOAD sparas i steget.
+//! and *CONNECTOR ELASTICITY are registered in `interactions.rs`. The behaviors
+//! are stored in the model and read in order after *CONNECTOR BEHAVIOR;
+//! *CONNECTOR MOTION and *CONNECTOR LOAD are stored in the step.
 
 use crate::inp::{store_model, store_step, Keyword, Kind};
 

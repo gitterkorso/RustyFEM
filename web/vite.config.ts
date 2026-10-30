@@ -1,7 +1,7 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 
-// Tauri förväntar sig en fast port och vill se Rust-felen i terminalen.
+// Tauri expects a fixed port and wants to see the Rust errors in the terminal.
 export default defineConfig({
   plugins: [react()],
   clearScreen: false,

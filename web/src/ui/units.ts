@@ -1,11 +1,11 @@
-// Enhetsetiketter utifrån modellens enhetssystem. Motorn är enhetslös;
-// här räknas inga värden om, etiketterna beskriver bara vad talen betyder.
+// Unit labels based on the model's unit system. The engine is unitless;
+// no values are converted here, the labels only describe what the numbers mean.
 
 import type { UnitSymbols } from "../engine/Engine";
 
 type Quantity = keyof UnitSymbols;
 
-/** Storhet per kolumn för kända nyckelord (null = dimensionslös eller okänd). */
+/** Quantity per column for known keywords (null = dimensionless or unknown). */
 const timeColumns: (Quantity | null)[] = ["time", "time", "time", "time"];
 const columnQuantities: Record<string, (Quantity | null)[]> = {
   ELASTIC: ["stress", null, null],
@@ -23,12 +23,12 @@ export function columnUnit(keyword: string, column: number, u: UnitSymbols | und
   return q && u ? u[q] : "";
 }
 
-/** "Namn [enhet]", eller bara namnet när enheten saknas. */
+/** "Name [unit]", or just the name when there is no unit. */
 export function withUnit(label: string, unit: string | undefined): string {
   return unit ? `${label} [${unit}]` : label;
 }
 
-/** Enheten för ett randvillkor (förskjutning) eller en punktlast (kraft) på en frihetsgrad. */
+/** The unit of a boundary condition (displacement) or a point load (force) on a degree of freedom. */
 export function dofUnit(dof: string, load: boolean, u: UnitSymbols | undefined): string {
   if (!u) return "";
   if (/^UR\d$/.test(dof)) return load ? u.moment : u.angle;
@@ -36,7 +36,7 @@ export function dofUnit(dof: string, load: boolean, u: UnitSymbols | undefined):
   return "";
 }
 
-/** Enheten för en utbredd last efter typ (P, GRAV, BX …). */
+/** The unit of a distributed load by type (P, GRAV, BX …). */
 export function dloadUnit(kind: string, u: UnitSymbols | undefined): string {
   if (!u || !u.length) return "";
   const k = kind.toUpperCase();
@@ -47,12 +47,12 @@ export function dloadUnit(kind: string, u: UnitSymbols | undefined): string {
   return "";
 }
 
-// Omräkning vid inmatning: verktygen låter användaren skriva i valfri enhet
-// och skriver talet i modellens enhetssystem i skriptet.
+// Conversion on input: the tools let the user type in any unit
+// and write the number in the model's unit system in the script.
 
 export type ConvQ = "length" | "area" | "length4" | "force" | "moment" | "stress" | "density" | "acceleration";
 
-/** Enheter per storhet med faktor till SI. */
+/** Units per quantity with factor to SI. */
 const convUnits: Record<ConvQ, [string, number][]> = {
   length: [["mm", 1e-3], ["cm", 1e-2], ["m", 1], ["in", 0.0254], ["ft", 0.3048]],
   area: [["mm²", 1e-6], ["cm²", 1e-4], ["m²", 1], ["in²", 0.0254 ** 2]],
@@ -64,14 +64,14 @@ const convUnits: Record<ConvQ, [string, number][]> = {
   acceleration: [["m/s²", 1], ["mm/s²", 1e-3], ["in/s²", 0.0254], ["ft/s²", 0.3048]],
 };
 
-/** Talet `v` i enheten `from` uttryckt i `to` (oförändrat om någon saknas). */
+/** The number `v` in the unit `from` expressed in `to` (unchanged if either is missing). */
 export function convertValue(v: number, q: ConvQ, from: string | null, to: string | null): number {
   if (!from || !to || from === to) return v;
   const f = (u: string) => convUnits[q].find(([x]) => x === u)?.[1] ?? 1;
   return (v * f(from)) / f(to);
 }
 
-/** Kraftenheter att visa laster i, med motsvarande momentenhet. */
+/** Force units to show loads in, with the corresponding moment unit. */
 export const loadUnits: [force: string, moment: string][] = [
   ["N", "N·m"],
   ["kN", "kN·m"],
@@ -80,7 +80,7 @@ export const loadUnits: [force: string, moment: string][] = [
   ["kip", "kip·ft"],
 ];
 
-/** Modellens enhet per storhet (motsvarar symbolerna i `units.rs`). */
+/** The model's unit per quantity (corresponds to the symbols in `units.rs`). */
 const systemUnits: Record<string, Record<ConvQ, string>> = {
   si: { length: "m", area: "m²", length4: "m⁴", force: "N", moment: "N·m", stress: "Pa", density: "kg/m³", acceleration: "m/s²" },
   si_mm: { length: "mm", area: "mm²", length4: "mm⁴", force: "N", moment: "N·mm", stress: "MPa", density: "t/mm³", acceleration: "mm/s²" },
@@ -91,14 +91,14 @@ export function unitOptions(q: ConvQ): string[] {
   return convUnits[q].map(([u]) => u);
 }
 
-/** Modellens enhet för storheten, eller null om enhetssystemet inte är angivet. */
+/** The model's unit for the quantity, or null if the unit system is not specified. */
 export function modelUnit(q: ConvQ, system: string | undefined): string | null {
   return (system && systemUnits[system]?.[q]) || null;
 }
 
 const prefKey = "rustyfem.units.";
 
-/** Senast valda enhet för storheten (annars modellens). */
+/** The most recently chosen unit for the quantity (otherwise the model's). */
 export function preferredUnit(q: ConvQ, system: string | undefined): string | null {
   const m = modelUnit(q, system);
   if (!m) return null;
@@ -106,7 +106,7 @@ export function preferredUnit(q: ConvQ, system: string | undefined): string | nu
     const u = localStorage.getItem(prefKey + q);
     if (u && convUnits[q].some(([x]) => x === u)) return u;
   } catch {
-    /* ingen lagring */
+    /* no storage */
   }
   return m;
 }
@@ -115,11 +115,11 @@ export function rememberUnit(q: ConvQ, u: string) {
   try {
     localStorage.setItem(prefKey + q, u);
   } catch {
-    /* ingen lagring */
+    /* no storage */
   }
 }
 
-/** Kort tal för skriptet: exponent för mycket stora och små tal. */
+/** Short number for the script: exponent for very large and small numbers. */
 export function scriptNum(v: number): string {
   if (v === 0) return "0";
   const r = Number(v.toPrecision(10));
@@ -128,14 +128,14 @@ export function scriptNum(v: number): string {
 }
 
 /**
- * Räknar om alla tal i texten (t.ex. "210", "0..2" eller "(0,0) (2,0)") från
- * enheten `from` till modellens enhet. Text som inte är tal lämnas orörd.
+ * Converts all numbers in the text (e.g. "210", "0..2" or "(0,0) (2,0)") from
+ * the unit `from` to the model's unit. Text that is not a number is left untouched.
  */
 export function convertText(s: string, q: ConvQ, from: string | null, system: string | undefined): string {
   return convert(s, q, from, modelUnit(q, system));
 }
 
-/** Som `convertText` men mellan två valfria enheter ("SI" = storhetens SI-enhet). */
+/** Like `convertText` but between two arbitrary units ("SI" = the quantity's SI unit). */
 export function convert(s: string, q: ConvQ, from: string | null, to: string | null): string {
   if (!from || !to || from === to) return s;
   const f = (convUnits[q].find(([u]) => u === from)?.[1] ?? 1) / (convUnits[q].find(([u]) => u === to)?.[1] ?? 1);
@@ -143,7 +143,7 @@ export function convert(s: string, q: ConvQ, from: string | null, to: string | n
     tok
       .split("..")
       .map((t) => {
-        const v = Number(t.replace(",", "."));
+        const v = Number(t);
         return t.trim() !== "" && Number.isFinite(v) ? scriptNum(v * f) : t;
       })
       .join(".."),

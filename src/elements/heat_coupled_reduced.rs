@@ -1,12 +1,12 @@
-//! Reducerat integrerade kopplade temperatur–förskjutningselement CPE4RT,
-//! CPS4RT, CAX4RT och C3D8RT (område coupled2).
+//! Reduced-integration coupled temperature–displacement elements CPE4RT,
+//! CPS4RT, CAX4RT and C3D8RT (area coupled2).
 //!
-//! Byggda som de övriga kopplade elementen (`heat_coupled.rs`): den
-//! mekaniska delen är CPE4R, CPS4R, CAX4R respektive C3D8R (enpunktsregel
-//! med hourglass-kontroll; i *DYNAMIC TEMPERATURE-DISPLACEMENT, EXPLICIT med
-//! explicit hourglass-kontroll, `steps/explicit_coupled_full.rs`), den termiska
-//! delen ett värmeledningselement med samma form. `heat_coupled::lookup`
-//! hittar elementen här.
+//! Built like the other coupled elements (`heat_coupled.rs`): the
+//! mechanical part is CPE4R, CPS4R, CAX4R and C3D8R respectively (one-point rule
+//! with hourglass control; in *DYNAMIC TEMPERATURE-DISPLACEMENT, EXPLICIT with
+//! explicit hourglass control, `steps/explicit_coupled_full.rs`), the thermal
+//! part a heat conduction element of the same shape. `heat_coupled::lookup`
+//! finds the elements here.
 
 use super::api::{ElementType, Family};
 use super::heat::{HeatElem, Shape};
@@ -26,7 +26,7 @@ pub static TYPES: &[&dyn ElementType] = &[&CPE4RT, &CPS4RT, &CAX4RT, &C3D8RT];
 
 static ALL: &[&CoupledElem] = &[&CPE4RT, &CPS4RT, &CAX4RT, &C3D8RT];
 
-/// Det reducerade kopplade elementet med namnet `name`.
+/// The reduced coupled element named `name`.
 pub fn lookup(name: &str) -> Option<&'static CoupledElem> {
     ALL.iter().copied().find(|e| e.name == name)
 }

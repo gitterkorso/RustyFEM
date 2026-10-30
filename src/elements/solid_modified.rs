@@ -1,33 +1,33 @@
-//! Modifierad tiotodstetraeder C3D10M.
+//! Modified ten-node tetrahedron C3D10M.
 //!
-//! Formulering:
+//! Formulation:
 //!
-//! - Elementet har en intern nod (nod 11, tre förskjutningar) och delas i fyra
-//!   hexaedrar, en per hörn: hörnet, de tre kantmittnoderna vid hörnet, de tre
-//!   ytcentrumen på hörnets ytor och den interna noden. Hexaedrarna har
-//!   trilinjär interpolation i det fysiska rummet.
-//! - Ytcentrumet är ingen nod: dess läge och förskjutning är −1/15 av ytans
-//!   hörn plus 2/5 av ytans kantmittnoder. Den interna nodens läge är
-//!   w_h·Σhörn + w_m·Σkantmitt med w_h = 83/12200, w_m = 989/6100 (konstanter
-//!   oberoende av geometrin).
-//! - Varje hexaeder har en integrationspunkt med likformig töjning (medelvärdet
-//!   av B över hexaedern, Flanagan–Belytschko), dvs. fyra integrationspunkter
-//!   (punkt k hör till hörn k).
-//! - Diagonal massa ρ·∫Nᵢ dV med hexaedrarnas funktioner (ytcentrumens andel
-//!   fördelad som ovan); volymkrafter fördelas på samma sätt.
-//!   Tryck på en yta fördelas som på fyra plana deltrianglar (hörn A/12,
-//!   kantmitt A/4).
-//! - Stabilisering: elementmatrisen ovan saknar styvhet för tre moder (den
-//!   interna noden mot de övriga). Standardstabiliseringen (samma som
-//!   HOURGLASS=ENHANCED) lägger på varje hexaeders ξηζ-mod (Flanagan–
-//!   Belytschkos formvektor γ₄ i alla tre riktningar) samma styvhet som
-//!   C3D8R med HOURGLASS=ENHANCED ger den moden: en 3×3-matris som är
-//!   diagonal i hexaederns naturliga bas g_r = ∂x/∂ξ_r (se
+//! - The element has an internal node (node 11, three displacements) and is divided into four
+//!   hexahedra, one per corner: the corner, the three edge midside nodes at the corner, the three
+//!   face centers on the corner's faces and the internal node. The hexahedra have
+//!   trilinear interpolation in physical space.
+//! - The face center is not a node: its position and displacement are −1/15 of the face's
+//!   corners plus 2/5 of the face's edge midside nodes. The position of the internal node is
+//!   w_h·Σcorners + w_m·Σedge midsides with w_h = 83/12200, w_m = 989/6100 (constants
+//!   independent of the geometry).
+//! - Each hexahedron has one integration point with uniform strain (the mean
+//!   of B over the hexahedron, Flanagan–Belytschko), i.e. four integration points
+//!   (point k belongs to corner k).
+//! - Diagonal mass ρ·∫Nᵢ dV with the hexahedra's functions (the face centers' share
+//!   distributed as above); body forces are distributed the same way.
+//!   Pressure on a face is distributed as on four flat subtriangles (corner A/12,
+//!   edge midside A/4).
+//! - Stabilization: the element matrix above lacks stiffness for three modes (the
+//!   internal node against the others). The default stabilization (the same as
+//!   HOURGLASS=ENHANCED) applies to each hexahedron's ξηζ mode (Flanagan–
+//!   Belytschko's shape vector γ₄ in all three directions) the same stiffness that
+//!   C3D8R with HOURGLASS=ENHANCED gives that mode: a 3×3 matrix that is
+//!   diagonal in the hexahedron's natural basis g_r = ∂x/∂ξ_r (see
 //!   `enhanced_mode4`).
 //!
-//! Material: alla material som kontinuumelementen stöder (spänningsuppdatering
-//! i de fyra punkterna, stabiliseringen elastisk med E och ν ur den linjära
-//! tangenten). NLGEOM stöds inte.
+//! Material: all materials that the continuum elements support (stress update
+//! at the four points, the stabilization elastic with E and ν from the linear
+//! tangent). NLGEOM is not supported.
 
 use super::api::{not_implemented, ElemCtx, ElemResponse, ElementType, Family, IpField, MassKind};
 use super::common::{self, Ip, DISTORTED};
@@ -45,14 +45,14 @@ pub static C3D10M: ModifiedTet = ModifiedTet { name: "C3D10M" };
 
 pub static TYPES: &[&dyn ElementType] = &[&C3D10M];
 
-/// Den interna nodens läge (och den enda dolda kopplingen i hourglass-moden).
+/// The position of the internal node (and the only hidden coupling in the hourglass mode).
 pub const W_CORNER: f64 = 83.0 / 12200.0;
 pub const W_MID: f64 = 989.0 / 6100.0;
-/// Ytcentrum: andel per hörn respektive kantmittnod.
+/// Face center: share per corner and edge midside node, respectively.
 const F_CORNER: f64 = -1.0 / 15.0;
 const F_MID: f64 = 0.4;
 
-/// Kantmittnod mellan hörnen a och b (.inp-formatets numrering).
+/// Edge midside node between the corners a and b (the .inp format numbering).
 fn edge(a: usize, b: usize) -> usize {
     match (a.min(b), a.max(b)) {
         (0, 1) => 4,
@@ -64,7 +64,7 @@ fn edge(a: usize, b: usize) -> usize {
     }
 }
 
-/// Ytor (hörn) i den interna ordningen för ytcentrumen 10..13.
+/// Faces (corners) in the internal order for the face centers 10..13.
 const FACES: [[usize; 3]; 4] = [[0, 1, 2], [0, 1, 3], [1, 2, 3], [0, 2, 3]];
 
 fn face_center(f: [usize; 3]) -> usize {
@@ -73,8 +73,8 @@ fn face_center(f: [usize; 3]) -> usize {
     10 + FACES.iter().position(|g| *g == s).unwrap()
 }
 
-/// Hexaederns 15 punkter (10 noder, 4 ytcentrum, intern nod) som
-/// linjärkombinationer av elementets 11 noder.
+/// The hexahedron's 15 points (10 nodes, 4 face centers, internal node) as
+/// linear combinations of the element's 11 nodes.
 fn tmat() -> [[f64; 11]; 15] {
     let mut t = [[0.0; 11]; 15];
     for (i, row) in t.iter_mut().enumerate().take(10) {
@@ -94,7 +94,7 @@ fn tmat() -> [[f64; 11]; 15] {
     t
 }
 
-/// De fyra hexaedrarna (punktindex 0..14), hexaeder k vid hörn k.
+/// The four hexahedra (point indices 0..14), hexahedron k at corner k.
 fn hexes() -> [[usize; 8]; 4] {
     let mut h = [[0; 8]; 4];
     for (a, hx) in h.iter_mut().enumerate() {
@@ -120,8 +120,8 @@ fn hex_shape(p: [f64; 3]) -> ([f64; 8], [[f64; 3]; 8]) {
     (n, d)
 }
 
-/// En hexaeder: volym, medelgradienter per elementnod (11), formvektorn γ₄
-/// per elementnod och ∫N per punkt (15).
+/// A hexahedron: volume, mean gradients per element node (11), the shape vector γ₄
+/// per element node and ∫N per point (15).
 struct Sub {
     v: f64,
     dndx: Vec<[f64; 3]>,
@@ -129,7 +129,7 @@ struct Sub {
     gamma: Vec<f64>,
     wn: [f64; 8],
     pts: [usize; 8],
-    /// Jacobianen i hexaederns mitt: rad r = ∂x/∂ξ_r.
+    /// The Jacobian at the hexahedron center: row r = ∂x/∂ξ_r.
     j0: [[f64; 3]; 3],
 }
 
@@ -208,7 +208,7 @@ fn subs(x10: &[[f64; 3]]) -> Result<Vec<Sub>> {
     Ok(out)
 }
 
-/// E och ν ur en (isotrop) linjär tangent.
+/// E and ν from an (isotropic) linear tangent.
 fn young_poisson(d: &[f64]) -> (f64, f64) {
     let g = d[3 * 6 + 3];
     let lam = d[1];
@@ -218,12 +218,12 @@ fn young_poisson(d: &[f64]) -> (f64, f64) {
     (g * (3.0 * lam + 2.0 * g) / (lam + g), lam / (2.0 * (lam + g)))
 }
 
-/// Förstärkt hourglass-styvhet (HOURGLASS=ENHANCED, Puso) för en
-/// hexaeders ξηζ-mod, som 3×3-matris Q på formvektorn γ₄ (K = Σ Q_cd (γ₄⊗e_c)(γ₄⊗e_d)ᵀ).
+/// Enhanced hourglass stiffness (HOURGLASS=ENHANCED, Puso) for a
+/// hexahedron's ξηζ mode, as a 3×3 matrix Q on the shape vector γ₄ (K = Σ Q_cd (γ₄⊗e_c)(γ₄⊗e_d)ᵀ).
 ///
-/// För C3D8R och C3D10M: Q = Σ_r Λ_r g_r g_rᵀ med g_r = ∂x/∂ξ_r i mitten
-/// (raderna i J₀), Λ_r = E·V·φ_r/36, V = 8|det J₀| och
-/// φ_r = 1ᵀH⁻¹1, där H (2×2) bildas av kantlängderna a = 2|g_r| och
+/// For C3D8R and C3D10M: Q = Σ_r Λ_r g_r g_rᵀ with g_r = ∂x/∂ξ_r at the center
+/// (the rows of J₀), Λ_r = E·V·φ_r/36, V = 8|det J₀| and
+/// φ_r = 1ᵀH⁻¹1, where H (2×2) is formed from the edge lengths a = 2|g_r| and
 /// b, c = 2|g_s|, 2|g_t| (s, t ≠ r):
 /// H = [[a⁴ + b⁴ + 2ν a²b², a⁴ + ν(a²(b² + c²) − b²c²)], [·, a⁴ + c⁴ + 2ν a²c²]].
 pub fn enhanced_mode4(j0: &[[f64; 3]; 3], e: f64, nu: f64) -> [[f64; 3]; 3] {
@@ -269,7 +269,7 @@ impl ModifiedTet {
         Ok((ips, bs, ss))
     }
 
-    /// Stabiliseringens matris (33×33).
+    /// The stabilization matrix (33×33).
     fn stabilization(&self, ctx: &ElemCtx, ss: &[Sub]) -> Result<Vec<f64>> {
         let d = ctx.material(self.name)?.tangent_linear(StressMode::ThreeD)?;
         let (e, nu) = young_poisson(&d);
@@ -294,7 +294,7 @@ impl ModifiedTet {
         Ok(k)
     }
 
-    /// ∫Nᵢ dV för de 11 noderna.
+    /// ∫Nᵢ dV for the 11 nodes.
     fn weights(&self, ctx: &ElemCtx) -> Result<Vec<f64>> {
         let ss = subs(self.x10(ctx))?;
         let t = tmat();
@@ -310,9 +310,9 @@ impl ModifiedTet {
     }
 }
 
-/// Elementmatrisen utan stabilisering (33×33) och hexaedrarnas formvektorer
-/// γ₄ (11 värden var). Hela elementmatrisen skiljer sig från huvuddelen bara inom
-/// rummet som spänns av γ₄ ⊗ eᵢ (används i tests/elements2.rs).
+/// The element matrix without stabilization (33×33) and the hexahedra's shape vectors
+/// γ₄ (11 values each). The full element matrix differs from the main part only within
+/// the space spanned by γ₄ ⊗ eᵢ (used in tests/elements2.rs).
 pub fn main_part(ctx: &ElemCtx) -> Result<(Vec<f64>, Vec<Vec<f64>>)> {
     let (ips, bs, ss) = C3D10M.ips(ctx)?;
     let k = common::stiffness_ctx(ctx, StressMode::ThreeD, &ips, &bs, ctx.material(C3D10M.name)?)?;
@@ -366,11 +366,11 @@ impl ElementType for ModifiedTet {
 
     fn internal_force(&self, ctx: &ElemCtx, u: &[f64], du: &[f64], so: &[f64], sn: &mut Vec<f64>, tangent: bool) -> Result<ElemResponse> {
         if ctx.nlgeom {
-            return not_implemented("geometrisk olinjäritet (NLGEOM)", self.name);
+            return not_implemented("geometric nonlinearity (NLGEOM)", self.name);
         }
         let (ips, bs, ss) = self.ips(ctx)?;
         let mut r = common::response(ctx, StressMode::ThreeD, &ips, &bs, ctx.material(self.name)?, u, du, so, sn, tangent)?;
-        // stabiliseringen är elastisk (se docs/REFERENS.md)
+        // the stabilization is elastic (see docs/REFERENCE.md)
         let kh = self.stabilization(ctx, &ss)?;
         let fh = common::matvec(&kh, u);
         for (a, b) in r.fint.iter_mut().zip(&fh) {
@@ -385,7 +385,7 @@ impl ElementType for ModifiedTet {
     }
 
     fn mass(&self, ctx: &ElemCtx, _kind: MassKind) -> Result<Vec<f64>> {
-        // de modifierade elementen har alltid diagonal massa
+        // the modified elements always have diagonal mass
         let w = self.weights(ctx)?;
         let n = 33;
         let mut m = vec![0.0; n * n];
@@ -427,11 +427,11 @@ impl ElementType for ModifiedTet {
         if let Some(num) = load.kind.strip_prefix('P').and_then(|s| s.parse::<usize>().ok()) {
             let faces = Shape::Tet10.faces();
             if num == 0 || num > faces.len() {
-                return fail(format!("{} har bara ytorna P1–P4, inte {}", self.name, load.kind));
+                return fail(format!("{} has only the faces P1–P4, not {}", self.name, load.kind));
             }
             let fl = faces[num - 1];
             let (c, m) = ([fl[0], fl[1], fl[2]], [fl[3], fl[4], fl[5]]);
-            // fyra deltrianglar: tre hörntrianglar och mittriangeln
+            // four subtriangles: three corner triangles and the middle triangle
             let tris = [[c[0], m[0], m[2]], [c[1], m[1], m[0]], [c[2], m[2], m[1]], [m[0], m[1], m[2]]];
             let inside = common::centroid(&x[..4]);
             let mut f = vec![0.0; 33];
@@ -456,7 +456,7 @@ impl ElementType for ModifiedTet {
             }
             return Ok(f);
         }
-        not_implemented(&format!("lasttypen {}", load.kind), self.name)
+        not_implemented(&format!("load type {}", load.kind), self.name)
     }
 
     fn volume_weights(&self, ctx: &ElemCtx) -> Result<Vec<f64>> {

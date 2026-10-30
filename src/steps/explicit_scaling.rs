@@ -1,29 +1,29 @@
-//! Massskalning i explicit dynamik: *FIXED MASS SCALING och
-//! *VARIABLE MASS SCALING (stegdata).
+//! Mass scaling in explicit dynamics: *FIXED MASS SCALING and
+//! *VARIABLE MASS SCALING (step data).
 //!
-//! Skalningen multiplicerar elementets densitet med fₑ ≥ 0, vilket ändrar
-//! elementets stabilitetsgräns till Δtₑ √fₑ:
+//! The scaling multiplies the element's density by fₑ ≥ 0, which changes
+//! the element's stability limit to Δtₑ √fₑ:
 //!
 //! - `FACTOR=f`: fₑ = f.
-//! - `DT=d, TYPE=BELOW MIN` (standard när DT ges): fₑ = (d/Δtₑ)² för element
-//!   med Δtₑ < d, annars 1.
-//! - `DT=d, TYPE=UNIFORM`: samma faktor (d/min Δtₑ)² för alla element i
-//!   ELSET om min Δtₑ < d.
-//! - `DT=d, TYPE=SET EQUAL DT`: fₑ = (d/Δtₑ)² för alla element (även < 1).
-//! - FACTOR och DT tillsammans: faktorn först, sedan DT.
+//! - `DT=d, TYPE=BELOW MIN` (default when DT is given): fₑ = (d/Δtₑ)² for elements
+//!   with Δtₑ < d, otherwise 1.
+//! - `DT=d, TYPE=UNIFORM`: the same factor (d/min Δtₑ)² for all elements in
+//!   ELSET if min Δtₑ < d.
+//! - `DT=d, TYPE=SET EQUAL DT`: fₑ = (d/Δtₑ)² for all elements (also < 1).
+//! - FACTOR and DT together: the factor first, then DT.
 //!
-//! *FIXED MASS SCALING gäller från stegets början. *VARIABLE MASS SCALING
-//! räknas om i stegets början och var n:te inkrement (FREQUENCY=n) eller vid
-//! NUMBER INTERVAL=n jämnt fördelade tider, med aktuell geometri. Utan
-//! ELSET gäller skalningen alla element. Δtₑ är den dämpade elementvisa
-//! gränsen (med volymviskositet), före SCALE FACTOR.
+//! *FIXED MASS SCALING applies from the start of the step. *VARIABLE MASS SCALING
+//! is recomputed at the start of the step and every n-th increment (FREQUENCY=n) or at
+//! NUMBER INTERVAL=n evenly spaced times, with the current geometry. Without
+//! ELSET the scaling applies to all elements. Δtₑ is the damped element-by-element
+//! limit (with bulk viscosity), before SCALE FACTOR.
 
 use crate::fem::assembly::Prepared;
 use crate::fem::model::{parse_f64, RawKeyword, StepDef};
 use crate::model::Result;
 
-/// Skalningen ger Δtₑ ≥ d även efter avrundning (så att Δt blir exakt d
-/// och utdata vid d·n hamnar i rätt inkrement).
+/// The scaling gives Δtₑ ≥ d even after rounding (so that Δt becomes exactly d
+/// and output at d·n ends up in the right increment).
 const ROUND: f64 = 1.0 + 1e-12;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -39,7 +39,7 @@ pub struct Rule {
     pub factor: Option<f64>,
     pub dt: Option<(f64, Kind)>,
     pub variable: bool,
-    /// Var n:te inkrement (FREQUENCY) eller antal intervall (NUMBER INTERVAL).
+    /// Every n-th increment (FREQUENCY) or number of intervals (NUMBER INTERVAL).
     pub frequency: Option<usize>,
     pub intervals: Option<usize>,
 }
@@ -54,24 +54,24 @@ fn rule(p: &Prepared, kw: &RawKeyword, variable: bool) -> Result<Rule> {
         None | Some("BELOW MIN") => Kind::BelowMin,
         Some("UNIFORM") => Kind::Uniform,
         Some("SET EQUAL DT") => Kind::SetEqual,
-        Some(o) => return kw.err(format!("TYPE={o} stöds inte (BELOW MIN, UNIFORM, SET EQUAL DT)")),
+        Some(o) => return kw.err(format!("TYPE={o} is not supported (BELOW MIN, UNIFORM, SET EQUAL DT)")),
     };
     let dt = kw.param("DT").and_then(parse_f64).map(|d| (d, kind));
     if factor.is_none() && dt.is_none() {
-        return kw.err("ange FACTOR= eller DT=");
+        return kw.err("give FACTOR= or DT=");
     }
     if kw.has("TARGET") || kw.has("CROSS SECTION") || kw.has("DIRECTION") {
-        return kw.err("massskalning för valsning (TYPE=ROLLING) stöds inte");
+        return kw.err("mass scaling for rolling (TYPE=ROLLING) is not supported");
     }
     let frequency = kw.param("FREQUENCY").and_then(parse_f64).map(|n| (n.round() as usize).max(1));
     let intervals = kw.param("NUMBER INTERVAL").and_then(parse_f64).map(|n| (n.round() as usize).max(1));
     if variable && frequency.is_none() && intervals.is_none() {
-        return kw.err("*VARIABLE MASS SCALING kräver FREQUENCY= eller NUMBER INTERVAL=");
+        return kw.err("*VARIABLE MASS SCALING requires FREQUENCY= or NUMBER INTERVAL=");
     }
     Ok(Rule { elems, factor, dt, variable, frequency, intervals })
 }
 
-/// Stegets massskalningsregler i ordning.
+/// The step's mass scaling rules in order.
 pub fn rules(p: &Prepared, step: &StepDef) -> Result<Vec<Rule>> {
     let mut out = Vec::new();
     for kw in &step.extra {
@@ -84,9 +84,9 @@ pub fn rules(p: &Prepared, step: &StepDef) -> Result<Vec<Rule>> {
     Ok(out)
 }
 
-/// Tillämpar reglerna (bara de variabla om `only_variable`) på faktorerna
-/// `f`, givet den oskalade elementvisa gränsen `dt0[e]` (oändlig för element
-/// utan massa).
+/// Applies the rules (only the variable ones if `only_variable`) to the factors
+/// `f`, given the unscaled element-by-element limit `dt0[e]` (infinite for elements
+/// without mass).
 pub fn apply(rules: &[Rule], only_variable: bool, dt0: &[f64], f: &mut [f64]) {
     for r in rules.iter().filter(|r| r.variable || !only_variable) {
         let all: Vec<usize>;

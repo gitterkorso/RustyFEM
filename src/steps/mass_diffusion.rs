@@ -1,20 +1,20 @@
-//! *MASS DIFFUSION (stationär eller transient, fasta inkrement eller DCMAX=)
-//! med diffusionselementen DC2D3 … DC3D20 (`elements/heat.rs`).
+//! *MASS DIFFUSION (steady-state or transient, fixed increments or DCMAX=)
+//! with the diffusion elements DC2D3 … DC3D20 (`elements/heat.rs`).
 //!
-//! Frihetsgraden 11 är den normerade koncentrationen φ = c/s (NNC11).
-//! Ficks lag utan Soret- och tryckterm, J = −s D ∇φ, och massbalansen
+//! DOF 11 is the normalized concentration φ = c/s (NNC11).
+//! Fick's law without Soret and pressure terms, J = −s D ∇φ, and the mass balance
 //!
 //! ∫ δφ s φ̇ dV + ∫ ∇δφ · s D ∇φ dV = ∫ δφ q dS
 //!
-//! är samma diskreta problem som värmeledningen med k = s D och ρc = s, så
-//! steget använder `HeatSystem` (`steps/heat.rs`) med de egenskaperna:
-//! kapaciteten är diagonal för första ordningens element, *CFLUX/*DFLUX/
-//! *BOUNDARY 11 och *INITIAL CONDITIONS, TYPE=CONCENTRATION gäller φ.
-//! DCMAX= ger automatisk inkrementering med samma regel som DELTMX.
+//! is the same discrete problem as heat conduction with k = s D and ρc = s, so
+//! the step uses `HeatSystem` (`steps/heat.rs`) with those properties:
+//! the capacity is diagonal for first-order elements, *CFLUX/*DFLUX/
+//! *BOUNDARY 11 and *INITIAL CONDITIONS, TYPE=CONCENTRATION apply to φ.
+//! DCMAX= gives automatic incrementation with the same rule as DELTMX.
 //!
-//! Utdata: NNC11 och RFL11 (nodvärden), CONC = s φ (första ordningens element:
-//! φ i noden närmast punkten) och MFL = −s D ∇φ i
-//! integrationspunkterna.
+//! Output: NNC11 and RFL11 (nodal values), CONC = s φ (first-order elements:
+//! φ at the node nearest the point) and MFL = −s D ∇φ at
+//! the integration points.
 
 use super::api::{StepCtx, StepType};
 use super::heat::{heat_controls, heat_loads, run_deltmx, HeatControls, HeatSystem, TS};
@@ -34,12 +34,12 @@ pub static STEP_TYPES: &[&dyn StepType] = &[&MassDiffusion];
 
 const PROC: &str = "MASS DIFFUSION";
 
-/// Nyckel i `SolutionState::vectors` för begynnelsekoncentrationerna.
+/// Key in `SolutionState::vectors` for the initial concentrations.
 pub const INIT_KEY: &str = "NNC11 INITIAL";
 
 fn props_of(def: &MaterialDef) -> Result<HeatProps> {
     let Some(d) = DiffProps::from_def(def)? else {
-        return fail(format!("material {}: *DIFFUSIVITY saknas (krävs för *MASS DIFFUSION)", def.name));
+        return fail(format!("material {}: *DIFFUSIVITY is missing (required for *MASS DIFFUSION)", def.name));
     };
     let k = &d.d;
     let v = vec![d.s * k[0][0], d.s * k[0][1], d.s * k[1][1], d.s * k[0][2], d.s * k[1][2], d.s * k[2][2]];
@@ -53,7 +53,7 @@ fn props_of(def: &MaterialDef) -> Result<HeatProps> {
     })
 }
 
-/// Begynnelsevärden från *INITIAL CONDITIONS, TYPE=CONCENTRATION (upplösta).
+/// Initial values from *INITIAL CONDITIONS, TYPE=CONCENTRATION (resolved).
 fn initial(model: &FeModel, state: &mut crate::fem::state::SolutionState) -> Result<()> {
     if state.vectors.contains_key(INIT_KEY) {
         return Ok(());
@@ -75,7 +75,7 @@ fn initial(model: &FeModel, state: &mut crate::fem::state::SolutionState) -> Res
     Ok(())
 }
 
-/// CONC och MFL per element.
+/// CONC and MFL per element.
 fn output(model: &FeModel, props: &[Option<DiffProps>], u: &[NodeVec]) -> Result<Vec<Vec<IpField>>> {
     let mut out = Vec::new();
     for (e, el) in model.elements.iter().enumerate() {
@@ -96,8 +96,8 @@ fn output(model: &FeModel, props: &[Option<DiffProps>], u: &[NodeVec]) -> Result
         let mut conc = IpField::new("CONC", &["CONC"]);
         let mut mfl = IpField::new("MFL", labels);
         for (q, ip) in ips.iter().enumerate() {
-            // första ordningen: värdet i noden närmast punkten (diagonal
-            // kapacitet); annars interpolerat
+            // first order: the value at the node nearest the point (diagonal
+            // capacity); otherwise interpolated
             let c: f64 = if he.first_order() {
                 let i = (0..ip.n.len()).max_by(|&a, &b| ip.n[a].total_cmp(&ip.n[b])).unwrap_or(0);
                 phi[i]
@@ -129,7 +129,7 @@ fn controls(step: &StepDef) -> Result<HeatControls> {
     let mut hc = heat_controls(step)?;
     let kw = step.procedure.as_ref();
     if let Some(d) = kw.and_then(|k| k.param("DCMAX")) {
-        let v = crate::fem::model::parse_f64(d).ok_or_else(|| FemError(format!("DCMAX={d} är inget tal")))?.max(0.0);
+        let v = crate::fem::model::parse_f64(d).ok_or_else(|| FemError(format!("DCMAX={d} is not a number")))?.max(0.0);
         hc.deltmx = v;
         if v > 0.0 && !hc.steady {
             hc.ctrl.fixed = false;
@@ -155,7 +155,7 @@ impl StepType for MassDiffusion {
         let prep = ctx.prep;
         let model = prep.model;
         if ctx.step.perturbation {
-            return fail("*MASS DIFFUSION kan inte vara ett perturbationssteg");
+            return fail("*MASS DIFFUSION cannot be a perturbation step");
         }
         let hc = controls(ctx.step)?;
         let had_init = ctx.state.vectors.contains_key(INIT_KEY);

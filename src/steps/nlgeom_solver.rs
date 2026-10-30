@@ -1,27 +1,27 @@
-//! Ekvationslösning för NLGEOM och Riks när tangenten inte är positivt definit.
+//! Equation solving for NLGEOM and Riks when the tangent is not positive definite.
 //!
-//! Efter en gränspunkt (knäckning, genomslag) eller vid en dålig iterationspunkt
-//! kan tangentstyvheten ha negativa egenvärden. Kärnans direktlösare kräver
-//! positivt definit matris, så NLGEOM-stegen använder `DualSolver`: matrisen
-//! assembleras både i den valda lösaren och i den indefinita multifrontala
-//! LDLᵀ-lösaren (`solver/indefinite.rs`, 1×1/2×2-pivotering). Den valda lösaren
-//! används så länge den klarar faktoriseringen, annars den indefinita. Antalet
-//! negativa pivoter (= antal negativa egenvärden enligt Sylvesters
-//! tröghetslag) redovisas, vilket Riks-steget använder.
+//! After a limit point (buckling, snap-through) or at a poor iteration point
+//! the tangent stiffness can have negative eigenvalues. The core's direct solver requires
+//! a positive definite matrix, so the NLGEOM steps use `DualSolver`: the matrix
+//! is assembled both in the selected solver and in the indefinite multifrontal
+//! LDLᵀ solver (`solver/indefinite.rs`, 1×1/2×2 pivoting). The selected solver
+//! is used as long as it manages the factorization, otherwise the indefinite one. The number of
+//! negative pivots (= number of negative eigenvalues according to Sylvester's
+//! law of inertia) is reported, which the Riks step uses.
 //!
-//! De två lösarna kan välja olika ekvationsordning (`first_dof`), så index
-//! översätts block för block mellan numreringarna.
+//! The two solvers may choose different equation orderings (`first_dof`), so indices
+//! are translated block by block between the numberings.
 
 use crate::model::Result;
 use crate::solver::{Graph, LinearSolver, SystemMatrix};
 use std::sync::{Arc, Mutex};
 
-/// Information från senaste faktoriseringen.
+/// Information from the latest factorization.
 #[derive(Debug, Clone, Copy, Default)]
 pub struct FactorInfo {
-    /// Antal negativa pivoter (0 om den valda lösaren klarade matrisen).
+    /// Number of negative pivots (0 if the selected solver handled the matrix).
     pub negative: usize,
-    /// Den indefinita lösaren användes.
+    /// The indefinite solver was used.
     pub fallback: bool,
 }
 
@@ -43,9 +43,9 @@ impl LinearSolver for DualSolver {
 
     fn prepare(&self, g: &Graph) -> Result<Box<dyn SystemMatrix>> {
         let main = self.main.prepare(g)?;
-        // utan varning per faktorisering: Riks redovisar antalet negativa egenvärden
+        // no warning per factorization: Riks reports the number of negative eigenvalues
         let indef = crate::solver::indefinite::prepare_quiet(g)?;
-        // ekvation i huvudlösarens numrering -> ekvation i den indefinitas
+        // equation in the main solver's numbering -> equation in the indefinite one's
         let n = main.n();
         let mut map = vec![0; n];
         for (b, &nd) in g.ndof.iter().enumerate() {
@@ -103,7 +103,7 @@ impl SystemMatrix for DualMatrix {
         self.indef.factor().map_err(|e| self.inv.get(e).copied().unwrap_or(e))?;
         let neg = self.indef.inertia().map(|i| i.neg).unwrap_or(0);
         self.use_indef = true;
-        // tillbaka till den valda lösaren när matrisen åter är positivt definit
+        // back to the selected solver when the matrix is positive definite again
         self.prefer_indef = neg > 0;
         *self.info.lock().unwrap() = FactorInfo { negative: neg, fallback: true };
         Ok(())
@@ -137,10 +137,10 @@ impl SystemMatrix for DualMatrix {
 mod tests {
     use super::*;
 
-    /// Indefinit tridiagonal matris: huvudlösaren (direct) misslyckas, den
-    /// indefinita tar över och ger rätt lösning och två negativa egenvärden
-    /// (handräknat: ledande minorer 2, −7, −9, 19 byter
-    /// tecken två gånger).
+    /// Indefinite tridiagonal matrix: the main solver (direct) fails, the
+    /// indefinite one takes over and gives the correct solution and two negative eigenvalues
+    /// (computed by hand: leading minors 2, −7, −9, 19 change
+    /// sign twice).
     #[test]
     fn dual_indefinite() {
         let g = Graph { coords: (0..4).map(|i| [i as f64, 0.0, 0.0]).collect(), adj: vec![vec![1], vec![0, 2], vec![1, 3], vec![2]], ndof: vec![1; 4] };
@@ -148,7 +148,7 @@ mod tests {
         let dual = DualSolver::new(main);
         let mut s = dual.prepare(&g).unwrap();
         let a = [[2.0, 1.0, 0.0, 0.0], [1.0, -3.0, 1.0, 0.0], [0.0, 1.0, 1.0, 2.0], [0.0, 0.0, 2.0, 1.0]];
-        // a i blocknumrering; ekvation för block b är first_dof[b]
+        // a in block numbering; the equation for block b is first_dof[b]
         let fd = s.first_dof().to_vec();
         for i in 0..4 {
             for j in 0..=i {

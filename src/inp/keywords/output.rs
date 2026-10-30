@@ -1,5 +1,5 @@
-//! Rubrik, utdata- och diagnostiknyckelord. RustyFEM skriver alltid sina
-//! utdatafält; begäran sparas i steget (`StepDef::output`) för senare bruk.
+//! Heading, output and diagnostic keywords. RustyFEM always writes its
+//! output fields; the request is stored in the step (`StepDef::output`) for later use.
 
 use crate::fem::model::RawKeyword;
 use crate::inp::{ignore, InpCtx, Keyword, Kind};

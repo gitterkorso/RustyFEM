@@ -1,37 +1,37 @@
-//! Utskrift till `.dat`-filen: `*NODE PRINT`, `*EL PRINT`
-//! och `*ENERGY PRINT` (tabeller per inkrement).
+//! Printout to the `.dat` file: `*NODE PRINT`, `*EL PRINT`
+//! and `*ENERGY PRINT` (tables per increment).
 //!
 //! - `*NODE PRINT, NSET=, FREQUENCY=n, TOTALS=YES|NO, SUMMARY=YES|NO`:
-//!   en rad per nod med de begärda variablerna (U, RF, UR, RM, NT, CF, ...,
-//!   hela fält eller komponenter som U1, RF2), därefter MAX/MIN med
-//!   noden (SUMMARY, standard YES) och SUMMA (TOTALS, standard NO).
+//!   one row per node with the requested variables (U, RF, UR, RM, NT, CF, ...,
+//!   whole fields or components such as U1, RF2), followed by MAX/MIN with
+//!   the node (SUMMARY, default YES) and TOTAL (TOTALS, default NO).
 //! - `*EL PRINT, ELSET=, POSITION=INTEGRATION POINTS|CENTROIDAL, FREQUENCY=n,
-//!   TOTALS=, SUMMARY=`: en rad per integrationspunkt (eller elementets
-//!   mittpunkt: medelvärdet av punkterna, för fyrhörningar och
-//!   hexaedrar med full integration) och elementtyp; variabler som S, E, PE,
-//!   PEEQ, SDV, komponenter som S11 och MISES. Flera datarader ger flera tabeller.
-//! - `*ENERGY PRINT, FREQUENCY=n`: modellens energitotaler: elastisk
-//!   töjningsenergi (ALLSE = ∫ ½ σ:(ε − εp − εcr − εth) dV med
-//!   integrationspunkternas vikter), plastisk dissipation och krypdissipation (ALLPD,
-//!   ALLCD: trapetsregeln ∫σ:dεp över inkrementen), inre energi
-//!   (ALLIE = ALLSE + ALLPD + ALLCD) och yttre arbete (= ALLIE i statik).
+//!   TOTALS=, SUMMARY=`: one row per integration point (or the element
+//!   centroid: the mean of the points, for quadrilaterals and
+//!   fully integrated hexahedra) and element type; variables such as S, E, PE,
+//!   PEEQ, SDV, components such as S11 and MISES. Several data lines give several tables.
+//! - `*ENERGY PRINT, FREQUENCY=n`: energy totals of the model: elastic
+//!   strain energy (ALLSE = ∫ ½ σ:(ε − εp − εcr − εth) dV with
+//!   the integration point weights), plastic and creep dissipation (ALLPD,
+//!   ALLCD: trapezoidal rule ∫σ:dεp over the increments), internal energy
+//!   (ALLIE = ALLSE + ALLPD + ALLCD) and external work (= ALLIE in statics).
 //!
-//! Tabellerna skrivs vid inkrement som är jämnt delbara med FREQUENCY och
-//! alltid vid stegets sista inkrement (FREQUENCY=0 stänger av). Siffrornas
-//! format: fyra värdesiffror i elementtabellerna, E14.7 för
-//! noderna.
+//! The tables are written at increments evenly divisible by FREQUENCY and
+//! always at the last increment of the step (FREQUENCY=0 turns them off). Number
+//! format: four significant digits in the element tables, E14.7 for
+//! the nodes.
 
 use crate::fem::model::{FeModel, RawKeyword};
 use crate::fem::output::{AnalysisOutput, Frame, ResultSet};
 use std::collections::BTreeMap;
 use std::fmt::Write as _;
 
-/// Har modellen någon utskriftsbegäran?
+/// Does the model have any print request?
 pub fn has_print(model: &FeModel) -> bool {
     model.steps.iter().any(|s| s.output.iter().any(|k| matches!(k.name.as_str(), "NODE PRINT" | "EL PRINT" | "ENERGY PRINT")))
 }
 
-/// E-format som Fortran (mantissa d.ddd…, exponent med två siffror).
+/// E format as in Fortran (mantissa d.ddd…, two-digit exponent).
 pub fn fmt_e(v: f64, dec: usize) -> String {
     let s = format!("{v:.dec$E}");
     let (m, e) = s.split_once('E').unwrap_or((&s, "0"));
@@ -39,8 +39,8 @@ pub fn fmt_e(v: f64, dec: usize) -> String {
     format!("{m}E{}{:02}", if ex < 0 { '-' } else { '+' }, ex.abs())
 }
 
-/// Fyra värdesiffror som i elementtabellerna: fast form för 0,1 ≤ |v| < 10⁴,
-/// annars E-form med fyra decimaler.
+/// Four significant digits as in the element tables: fixed form for 0.1 ≤ |v| < 10⁴,
+/// otherwise E form with four decimals.
 pub fn fmt_g4(v: f64) -> String {
     if v == 0.0 {
         return "0.000".into();
@@ -60,8 +60,8 @@ pub fn fmt_g4(v: f64) -> String {
     }
 }
 
-/// Energitotaler (Fortran G12.6): sex värdesiffror, fast form för
-/// 0,1 ≤ |v| < 10⁶, annars E-form.
+/// Energy totals (Fortran G12.6): six significant digits, fixed form for
+/// 0.1 ≤ |v| < 10⁶, otherwise E form.
 fn fmt_energy(v: f64) -> String {
     if v == 0.0 {
         return " 0.00000    ".into();
@@ -84,12 +84,12 @@ fn frequency(kw: &RawKeyword) -> usize {
     kw.param("FREQUENCY").and_then(crate::inp::parse_label).map_or(1, |f| f.max(0) as usize)
 }
 
-/// Variabelnamnen på dataraderna, en lista per rad.
+/// The variable names on the data lines, one list per line.
 fn variable_lines(kw: &RawKeyword) -> Vec<Vec<String>> {
     kw.data.iter().map(|d| d.fields.iter().map(|f| f.trim().to_uppercase()).filter(|f| !f.is_empty()).collect::<Vec<_>>()).filter(|v| !v.is_empty()).collect()
 }
 
-/// (fältnamn, komponent) för en begärd variabel, t.ex. "U" → alla, "U2" → ("U", "U2").
+/// (field name, component) for a requested variable, e.g. "U" → all, "U2" → ("U", "U2").
 fn node_columns(frame: &Frame, vars: &[String]) -> Vec<(String, String)> {
     let mut cols = Vec::new();
     for v in vars {
@@ -100,7 +100,7 @@ fn node_columns(frame: &Frame, vars: &[String]) -> Vec<(String, String)> {
             }
             continue;
         }
-        // komponent i ett fält: ta bort siffrorna sist
+        // component of a field: strip the trailing digits
         let base: String = v.trim_end_matches(|c: char| c.is_ascii_digit()).to_string();
         if let Some(f) = frame.node.get(&base) {
             if f.labels.contains(&v) {
@@ -149,7 +149,7 @@ fn summary(out: &mut String, cols: usize, vals: &[Vec<f64>], keys: &[String], la
         });
     }
     if totals {
-        let _ = write!(out, "\n {:<14}", "SUMMA");
+        let _ = write!(out, "\n {:<14}", "TOTAL");
         for c in 0..cols {
             let s: f64 = vals.iter().map(|r| r[c]).sum();
             let _ = write!(out, "{:>width$}", fmt_g4(s));
@@ -164,7 +164,7 @@ fn node_print(out: &mut String, model: &FeModel, frame: &Frame, kw: &RawKeyword)
         Some(s) => match model.nsets.get(s) {
             Some(v) => v.clone(),
             None => {
-                let _ = writeln!(out, "\n ***VARNING: nodsetet {s} finns inte (*NODE PRINT)");
+                let _ = writeln!(out, "\n ***WARNING: node set {s} does not exist (*NODE PRINT)");
                 return;
             }
         },
@@ -173,14 +173,14 @@ fn node_print(out: &mut String, model: &FeModel, frame: &Frame, kw: &RawKeyword)
     for vars in variable_lines(kw) {
         let cols = node_columns(frame, &vars);
         if cols.is_empty() {
-            let _ = writeln!(out, "\n ***VARNING: variablerna {} finns inte i resultatet (*NODE PRINT)", vars.join(", "));
+            let _ = writeln!(out, "\n ***WARNING: the variables {} are not in the results (*NODE PRINT)", vars.join(", "));
             continue;
         }
-        let _ = write!(out, "\n\n\n   Tabell för {}\n\n", match &set {
-            Some(s) => format!("noderna i nodsetet {s}"),
-            None => "alla noder".to_string(),
+        let _ = write!(out, "\n\n\n   Table for {}\n\n", match &set {
+            Some(s) => format!("the nodes in node set {s}"),
+            None => "all nodes".to_string(),
         });
-        let _ = write!(out, "        NOD        ");
+        let _ = write!(out, "       NODE        ");
         for (_, l) in &cols {
             let _ = write!(out, "{l:<15}");
         }
@@ -198,11 +198,11 @@ fn node_print(out: &mut String, model: &FeModel, frame: &Frame, kw: &RawKeyword)
             vals.push(row);
             keys.push(model.node_label[n].to_string());
         }
-        summary(out, cols.len(), &vals, &keys, "I NOD", flag(kw, "TOTALS", false), flag(kw, "SUMMARY", true), 12);
+        summary(out, cols.len(), &vals, &keys, "AT NODE", flag(kw, "TOTALS", false), flag(kw, "SUMMARY", true), 12);
     }
 }
 
-/// Komponenter (fält, komponent) för elementvariabler; "MISES" räknas ur S.
+/// Components (field, component) for element variables; "MISES" is computed from S.
 fn elem_columns(frame: &Frame, vars: &[String]) -> Vec<(String, String)> {
     let mut cols = Vec::new();
     for v in vars {
@@ -238,7 +238,7 @@ fn el_print(out: &mut String, model: &FeModel, frame: &Frame, kw: &RawKeyword) {
         Some(s) => match model.elsets.get(s) {
             Some(v) => v.clone(),
             None => {
-                let _ = writeln!(out, "\n ***VARNING: elementsetet {s} finns inte (*EL PRINT)");
+                let _ = writeln!(out, "\n ***WARNING: element set {s} does not exist (*EL PRINT)");
                 return;
             }
         },
@@ -247,10 +247,10 @@ fn el_print(out: &mut String, model: &FeModel, frame: &Frame, kw: &RawKeyword) {
     let pos = kw.param_upper("POSITION").unwrap_or_else(|| "INTEGRATION POINTS".into());
     let centroid = pos == "CENTROIDAL";
     if !centroid && pos != "INTEGRATION POINTS" {
-        let _ = writeln!(out, "\n ***VARNING: POSITION={pos} stöds inte (*EL PRINT skriver INTEGRATION POINTS eller CENTROIDAL)");
+        let _ = writeln!(out, "\n ***WARNING: POSITION={pos} is not supported (*EL PRINT writes INTEGRATION POINTS or CENTROIDAL)");
         return;
     }
-    // element per typ i ordning
+    // elements per type, in order
     let mut by_type: Vec<(&'static str, Vec<usize>)> = Vec::new();
     for &e in &elems {
         let t = model.elements[e].etype.name();
@@ -262,13 +262,13 @@ fn el_print(out: &mut String, model: &FeModel, frame: &Frame, kw: &RawKeyword) {
     for vars in variable_lines(kw) {
         let cols = elem_columns(frame, &vars);
         if cols.is_empty() {
-            let _ = writeln!(out, "\n ***VARNING: variablerna {} finns inte i resultatet (*EL PRINT)", vars.join(", "));
+            let _ = writeln!(out, "\n ***WARNING: the variables {} are not in the results (*EL PRINT)", vars.join(", "));
             continue;
         }
         for (ty, list) in &by_type {
-            let where_ = if centroid { "i elementens mittpunkt" } else { "i integrationspunkterna" };
-            let set_txt = set.as_deref().map(|s| format!(", elementset {s}")).unwrap_or_default();
-            let _ = write!(out, "\n\n\n   Tabell {where_}, elementtyp {ty}{set_txt}\n\n");
+            let where_ = if centroid { "at the element centroids" } else { "at the integration points" };
+            let set_txt = set.as_deref().map(|s| format!(", element set {s}")).unwrap_or_default();
+            let _ = write!(out, "\n\n\n   Table {where_}, element type {ty}{set_txt}\n\n");
             let _ = write!(out, "{}", if centroid { "    ELEMENT          " } else { "    ELEMENT  IP             " });
             for (_, l) in &cols {
                 let _ = write!(out, "{l:<12}");
@@ -279,7 +279,7 @@ fn el_print(out: &mut String, model: &FeModel, frame: &Frame, kw: &RawKeyword) {
             for &e in list {
                 let el = &model.elements[e];
                 let inst = model.instances[el.inst as usize].clone();
-                // integrationspunkterna (sektionspunkt 0 eller första) som finns i S eller första fältet
+                // the integration points (section point 0 or the first) present in S or the first field
                 let probe = frame.elem.get(&cols[0].0);
                 let mut pts: Vec<(usize, usize)> = probe
                     .map(|f| f.items.keys().filter(|k| k.0 == inst && k.1 == el.label).map(|k| (k.2, k.3)).collect())
@@ -327,10 +327,10 @@ fn el_print(out: &mut String, model: &FeModel, frame: &Frame, kw: &RawKeyword) {
     }
 }
 
-/// Energier i en frame och integrationspunkternas plastiska/krypande töjning.
+/// Energies in a frame and the plastic/creep strain at the integration points.
 struct Energy {
     se: f64,
-    /// (nyckel → (σ, εp, εcr)) för dissipationen mellan frames.
+    /// (key → (σ, εp, εcr)) for the dissipation between frames.
     pts: BTreeMap<(String, i64, usize, usize), ([f64; 6], [f64; 6], [f64; 6])>,
 }
 
@@ -353,7 +353,7 @@ fn energy(model: &FeModel, frame: &Frame, weights: &BTreeMap<(String, i64), Vec<
             ec[i] = get("CE", key, c);
             eel[i] = get("E", key, c) - ep[i] - ec[i] - get("THE", key, c);
         }
-        // σ:ε med ingenjörsskjuvtöjning
+        // σ:ε with engineering shear strain
         let dot: f64 = (0..6).map(|i| sig[i] * eel[i]).sum();
         se += 0.5 * dot * w;
         pts.insert(key.clone(), (sig, ep, ec));
@@ -362,8 +362,8 @@ fn energy(model: &FeModel, frame: &Frame, weights: &BTreeMap<(String, i64), Vec<
     Energy { se, pts }
 }
 
-/// Integrationspunkternas vikter (volym) per element: elementet rapporterar
-/// dem till `user::context` när den inre kraften räknas (kontinuumelementen).
+/// Integration point weights (volume) per element: the element reports
+/// them to `user::context` when the internal force is computed (continuum elements).
 fn ip_weights(model: &FeModel) -> BTreeMap<(String, i64), Vec<f64>> {
     let mut m = BTreeMap::new();
     let Ok(prep) = crate::fem::assembly::Prepared::new(model) else { return m };
@@ -401,14 +401,14 @@ fn dissipation(a: &Energy, b: &Energy, weights: &BTreeMap<(String, i64), Vec<f64
     (pd, cd)
 }
 
-/// .dat-texten för analysen (tom om modellen saknar utskriftsbegäran).
+/// The .dat text for the analysis (empty if the model has no print request).
 pub fn write(model: &FeModel, out: &AnalysisOutput) -> String {
     if !has_print(model) {
         return String::new();
     }
     let rs: ResultSet = out.to_result_set(model);
     let mut t = String::new();
-    let _ = writeln!(t, "\n   RustyFEM: utskrift (*NODE PRINT, *EL PRINT, *ENERGY PRINT)\n");
+    let _ = writeln!(t, "\n   RustyFEM: printout (*NODE PRINT, *EL PRINT, *ENERGY PRINT)\n");
     let needs_energy = model.steps.iter().any(|s| s.output.iter().any(|k| k.name == "ENERGY PRINT"));
     let weights = if needs_energy { ip_weights(model) } else { BTreeMap::new() };
     let (mut pd, mut cd) = (0.0, 0.0);
@@ -419,7 +419,7 @@ pub fn write(model: &FeModel, out: &AnalysisOutput) -> String {
         let period = crate::user::context::step_period(step);
         let _ = writeln!(t, "\n\n                              S T E P       {}     {}\n", si + 1, step.name.to_uppercase());
         let nf = so.frames.len();
-        // frame 0 är tillståndet vid stegets början när steget har flera frames
+        // frame 0 is the state at the start of the step when the step has several frames
         let initial = nf > 1 && so.frames[0].value == 0.0;
         for (fi, frame) in so.frames.iter().enumerate() {
             if fi == 0 && initial {
@@ -436,7 +436,7 @@ pub fn write(model: &FeModel, out: &AnalysisOutput) -> String {
                 pd += p;
                 cd += c;
             }
-            // ordning: energi, element, noder
+            // order: energy, elements, nodes
             let rank = |k: &RawKeyword| match k.name.as_str() {
                 "ENERGY PRINT" => 0,
                 "EL PRINT" => 1,
@@ -451,32 +451,32 @@ pub fn write(model: &FeModel, out: &AnalysisOutput) -> String {
                 let st = frame.value;
                 let _ = write!(
                     t,
-                    "\n   Inkrement {inc}: stegtid {}, total tid {}\n",
+                    "\n   Increment {inc}: step time {}, total time {}\n",
                     fmt_g4(st),
                     fmt_g4(total_time + st)
                 );
                 for k in due {
                     match k.name.as_str() {
                         "NODE PRINT" => {
-                            let _ = write!(t, "\n\n   NODRESULTAT\n");
+                            let _ = write!(t, "\n\n   NODE RESULTS\n");
                             node_print(&mut t, model, frame, k);
                         }
                         "EL PRINT" => {
-                            let _ = write!(t, "\n\n   ELEMENTRESULTAT\n");
+                            let _ = write!(t, "\n\n   ELEMENT RESULTS\n");
                             el_print(&mut t, model, frame, k);
                         }
                         _ => {
                             if let Some(e) = &en {
                                 let ie = e.se + pd + cd;
-                                let _ = write!(t, "\n\n   ENERGIER för hela modellen vid t = {}\n\n", fmt_e(total_time + st, 5));
+                                let _ = write!(t, "\n\n   ENERGY TOTALS for the whole model at t = {}\n\n", fmt_e(total_time + st, 5));
                                 for (name, v) in [
-                                    ("Elastisk töjningsenergi", e.se),
-                                    ("Kinetisk energi", 0.0),
-                                    ("Yttre arbete", ie),
-                                    ("Plastisk dissipation", pd),
-                                    ("Krypdissipation", cd),
-                                    ("Inre energi (spänningseffekt)", ie),
-                                    ("Energibalans", 0.0),
+                                    ("Elastic strain energy", e.se),
+                                    ("Kinetic energy", 0.0),
+                                    ("External work", ie),
+                                    ("Plastic dissipation", pd),
+                                    ("Creep dissipation", cd),
+                                    ("Internal energy (stress power)", ie),
+                                    ("Energy balance", 0.0),
                                 ] {
                                     let _ = writeln!(t, "   {name:<34}{}", fmt_energy(v));
                                 }
@@ -491,6 +491,6 @@ pub fn write(model: &FeModel, out: &AnalysisOutput) -> String {
         }
         total_time += period;
     }
-    let _ = writeln!(t, "\n\n   Analysen är klar\n");
+    let _ = writeln!(t, "\n\n   Analysis completed\n");
     t
 }

@@ -1,26 +1,26 @@
-//! Mullins-effekt (*MULLINS EFFECT) enligt Ogden & Roxburgh (1999),
-//! ovanpå *HYPERELASTIC (alla former) och *HYPERFOAM.
+//! Mullins effect (*MULLINS EFFECT) according to Ogden & Roxburgh (1999),
+//! on top of *HYPERELASTIC (all forms) and *HYPERFOAM.
 //!
-//! Energin är U = η Ũ_dev(F) + φ(η) + Ũ_vol(J) med skadevariabeln
+//! The energy is U = η Ũ_dev(F) + φ(η) + Ũ_vol(J) with the damage variable
 //!
 //!   η = 1 − (1/r) erf[(U_m − Ũ_dev)/(m + β U_m)],
 //!
-//! där Ũ_dev är grundmaterialets deviatoriska energi och U_m dess största värde
-//! hittills (uppdateras vid varje inkrement). Spänningen blir
-//! τ = η τ̃_dev + J Ũ_vol′ I. För *HYPERFOAM (ingen uppdelning) gäller η hela
-//! energin: Ũ_dev = Ũ och τ = η τ̃. Data: r, m, β.
+//! where Ũ_dev is the deviatoric energy of the base material and U_m its largest value
+//! so far (updated at every increment). The stress becomes
+//! τ = η τ̃_dev + J Ũ_vol′ I. For *HYPERFOAM (no split) η applies to the whole
+//! energy: Ũ_dev = Ũ and τ = η τ̃. Data: r, m, β.
 //!
-//! Skadefunktionen (φ′(η) = −Ũ_dev, φ(1) = 0):
+//! The damage function (φ′(η) = −Ũ_dev, φ(1) = 0):
 //!
 //!   φ(η) = (1 − η) U_m − (m + β U_m)/(r√π) [1 − exp(−z²)],  z = (U_m − Ũ_dev)/(m + β U_m).
 //!
-//! Utdata: SENER = η Ũ_dev + Ũ_vol (återvinningsbar energi per referensvolym) och
-//! DMENER = φ(η) (energi som skadan förbrukat), så att SENER + DMENER = det
-//! arbete som tillförts.
+//! Output: SENER = η Ũ_dev + Ũ_vol (recoverable energy per reference volume) and
+//! DMENER = φ(η) (energy dissipated by the damage), so that SENER + DMENER = the
+//! work supplied.
 //!
-//! Tillstånd per integrationspunkt: [U_m, SENER, DMENER]. Tangenten är
-//! derivatan av spänningen som funktion av F vid givet U_m vid inkrementets
-//! början (pålastning på grundkurvan ger η = 1 och grundmaterialets tangent).
+//! State per integration point: [U_m, SENER, DMENER]. The tangent is
+//! the derivative of the stress as a function of F at the given U_m at the start of the
+//! increment (loading on the primary curve gives η = 1 and the base material's tangent).
 
 use super::hyperelastic_split::{self as hs, HyperModel};
 use super::{MatInput, MatOutput, MaterialFactory, MaterialModel, StressMode};
@@ -30,7 +30,7 @@ use crate::model::{fail, Result};
 use std::sync::Arc;
 
 pub static FACTORIES: &[MaterialFactory] = &[MaterialFactory {
-    name: "Mullins-effekt (*MULLINS EFFECT)",
+    name: "Mullins effect (*MULLINS EFFECT)",
     consumes: &["HYPERELASTIC", "HYPERFOAM", "MULLINS EFFECT", "UNIAXIAL TEST DATA", "BIAXIAL TEST DATA", "PLANAR TEST DATA", "VOLUMETRIC TEST DATA"],
     priority: 20,
     build: Some(build),
@@ -41,18 +41,18 @@ pub struct Mullins {
     pub r: f64,
     pub m: f64,
     pub beta: f64,
-    /// grundmaterialet är *HYPERFOAM (η gäller hela energin)
+    /// the base material is *HYPERFOAM (η applies to the whole energy)
     pub full: bool,
 }
 
 fn build(def: &MaterialDef) -> Result<Option<Arc<dyn MaterialModel>>> {
     let Some(kw) = def.behavior("MULLINS EFFECT") else { return Ok(None) };
     if def.behavior("HYPERELASTIC").is_none() && def.behavior("HYPERFOAM").is_none() {
-        return kw.err("*MULLINS EFFECT kräver *HYPERELASTIC eller *HYPERFOAM i samma material");
+        return kw.err("*MULLINS EFFECT requires *HYPERELASTIC or *HYPERFOAM in the same material");
     }
     for p in ["TEST DATA INPUT", "USER", "DEPENDENCIES", "PROPERTIES"] {
         if kw.has(p) {
-            return kw.err(format!("parametern {p} stöds inte ännu för *MULLINS EFFECT"));
+            return kw.err(format!("the parameter {p} is not supported yet for *MULLINS EFFECT"));
         }
     }
     let mut v = Vec::new();
@@ -60,29 +60,29 @@ fn build(def: &MaterialDef) -> Result<Option<Arc<dyn MaterialModel>>> {
         v.extend(kw.floats(&d)?);
     }
     if v.len() < 3 {
-        return kw.err(format!("*MULLINS EFFECT kräver 3 konstanter (r, m, β), {} angivna", v.len()));
+        return kw.err(format!("*MULLINS EFFECT requires 3 constants (r, m, β), {} given", v.len()));
     }
     if v[3..].iter().any(|&x| x != 0.0) {
-        return kw.err("temperaturberoende konstanter (flera datarader) stöds inte ännu");
+        return kw.err("temperature-dependent constants (multiple data lines) are not supported yet");
     }
     let (r, m, beta) = (v[0], v[1], v[2]);
     if !(r > 0.0) || m < 0.0 || beta < 0.0 || (m == 0.0 && beta == 0.0) {
-        return kw.err("*MULLINS EFFECT: r > 0, m ≥ 0 och β ≥ 0 med m och β inte båda noll");
+        return kw.err("*MULLINS EFFECT: r > 0, m ≥ 0 and β ≥ 0 with m and β not both zero");
     }
     let mut d2 = def.clone();
     d2.behaviors.retain(|b| b.name != "MULLINS EFFECT");
     let inner = super::build(&d2)?;
     let Some(h) = inner.hyperelastic() else {
-        return kw.err("*MULLINS EFFECT stöds bara ovanpå *HYPERELASTIC och *HYPERFOAM (inte med *VISCOELASTIC)");
+        return kw.err("*MULLINS EFFECT is only supported on top of *HYPERELASTIC and *HYPERFOAM (not with *VISCOELASTIC)");
     };
     if h.energy(&t::I3).is_none() || h.n_hist() != 0 {
-        return kw.err("*MULLINS EFFECT stöds inte för den här hyperelastiska formen");
+        return kw.err("*MULLINS EFFECT is not supported for this hyperelastic form");
     }
     let full = h.kirchhoff_full(&t::I3).is_some();
     Ok(Some(Arc::new(Mullins { inner, r, m, beta, full })))
 }
 
-/// Felfunktionen (serie för |x| < 2,5, kedjebråk för erfc annars; ~1e-14).
+/// The error function (series for |x| < 2.5, continued fraction for erfc otherwise; ~1e-14).
 pub fn erf(x: f64) -> f64 {
     if x < 0.0 {
         return -erf(-x);
@@ -126,10 +126,10 @@ pub fn erf(x: f64) -> f64 {
 
 impl Mullins {
     fn h(&self) -> &dyn HyperModel {
-        self.inner.hyperelastic().expect("grundmaterialet är hyperelastiskt")
+        self.inner.hyperelastic().expect("the base material is hyperelastic")
     }
 
-    /// (η, U_m, SENER, DMENER) för (Ũ_dev, Ũ_vol) och tidigare U_m.
+    /// (η, U_m, SENER, DMENER) for (Ũ_dev, Ũ_vol) and the previous U_m.
     fn damage(&self, ud: f64, uv: f64, um_old: f64) -> (f64, f64, f64, f64) {
         let um = um_old.max(ud);
         let den = self.m + self.beta * um;
@@ -142,7 +142,7 @@ impl Mullins {
     fn energies(&self, f: &M3) -> Result<(f64, f64)> {
         match self.h().energy(f) {
             Some(e) => Ok(e),
-            None => fail("*MULLINS EFFECT: grundmaterialets energi kunde inte beräknas"),
+            None => fail("*MULLINS EFFECT: the energy of the base material could not be computed"),
         }
     }
 }
@@ -179,7 +179,7 @@ impl HyperModel for Mullins {
     fn kirchhoff_hist(&self, f: &M3, old: &[f64], new: &mut [f64]) -> Result<M3> {
         let j = t::det(f);
         if !(j > 0.0) {
-            return fail("hyperelastiskt material: J ≤ 0 (elementet har vänts ut och in)");
+            return fail("hyperelastic material: J ≤ 0 (the element has been turned inside out)");
         }
         let (ud, uv) = self.energies(f)?;
         let (eta, um, sener, phi) = self.damage(ud, uv, old[0]);
@@ -200,7 +200,7 @@ impl HyperModel for Mullins {
 
     fn tau_dev_hist(&self, f: &M3, old: &[f64], new: &mut [f64]) -> Result<M3> {
         if self.full {
-            return fail("*HYPERFOAM stöds inte i hybridelement");
+            return fail("*HYPERFOAM is not supported in hybrid elements");
         }
         let (ud, uv) = self.energies(f)?;
         let (eta, um, sener, phi) = self.damage(ud, uv, old[0]);

@@ -1,30 +1,30 @@
-//! *RANDOM RESPONSE: svar på stationär slumpmässig last (spektraltäthet,
-//! PSD) med moderna från det föregående *FREQUENCY-steget.
+//! *RANDOM RESPONSE: response to a stationary random load (power spectral density,
+//! PSD) using the modes from the preceding *FREQUENCY step.
 //!
-//! Lasterna delas i lastfall: `*CLOAD, LOAD CASE=n` och
-//! `*BASE MOTION, DOF=, LOAD CASE=n` (basacceleration). Varje lastfall ger
-//! en modal överföringsfunktion som i den modala *STEADY STATE DYNAMICS
-//! (`steady_state.rs`): qᵢ = Pᵢ / (ωᵢ² − Ω² + i(2ζᵢωᵢΩ + sᵢωᵢ²)), med Pᵢ = φᵢᵀF
-//! respektive −Γᵢ (basrörelse), och svaret H_c = Σ φᵢ qᵢ. Bara
-//! diagonal dämpning (*MODAL DAMPING) tas med; material- och elementdämpning
-//! ignoreras.
+//! The loads are divided into load cases: `*CLOAD, LOAD CASE=n` and
+//! `*BASE MOTION, DOF=, LOAD CASE=n` (base acceleration). Each load case gives
+//! a modal transfer function as in the modal *STEADY STATE DYNAMICS
+//! (`steady_state.rs`): qᵢ = Pᵢ / (ωᵢ² − Ω² + i(2ζᵢωᵢΩ + sᵢωᵢ²)), with Pᵢ = φᵢᵀF
+//! or −Γᵢ (base motion), and the response H_c = Σ φᵢ qᵢ. Only
+//! diagonal damping (*MODAL DAMPING) is included; material and element damping
+//! are ignored.
 //!
-//! Lastfallens vikter ges med `*CORRELATION, PSD=namn, TYPE=CORRELATED|
-//! UNCORRELATED` och dataraderna "lastfall, realdel[, imaginärdel]": med CORRELATED (standard) är lastfallets laster i
-//! olika noder fullt korrelerade, med UNCORRELATED okorrelerade; olika
-//! lastfall är okorrelerade. Frekvensfunktionen
-//! `*PSD-DEFINITION, NAME=, TYPE=FORCE|BASE` har dataraderna "realdel,
-//! imaginärdel, frekvens" och interpoleras log–log. Spektraltätheten för en
-//! svarsstorhet är S(f) = Σ Re(c Ψ(f)) |H(f)|² över lastfallen (CORRELATED)
-//! respektive över lastfallens noder och frihetsgrader (UNCORRELATED).
-//! `*BASE MOTION, SCALE=` påverkar inte resultatet.
+//! The load case weights are given with `*CORRELATION, PSD=name, TYPE=CORRELATED|
+//! UNCORRELATED` and the data lines "load case, real part[, imaginary part]": with CORRELATED (default) a load case's loads at
+//! different nodes are fully correlated, with UNCORRELATED uncorrelated; different
+//! load cases are uncorrelated. The frequency function
+//! `*PSD-DEFINITION, NAME=, TYPE=FORCE|BASE` has the data lines "real part,
+//! imaginary part, frequency" and is interpolated log–log. The spectral density of a
+//! response quantity is S(f) = Σ Re(c Ψ(f)) |H(f)|² over the load cases (CORRELATED)
+//! or over the load cases' nodes and degrees of freedom (UNCORRELATED).
+//! `*BASE MOTION, SCALE=` does not affect the result.
 //!
-//! Frekvenspunkter som *STEADY STATE DYNAMICS (`frequency_points`).
-//! Utdata: frame 0 med nollor, sedan en frame per frekvens
-//! med `value` = frekvensen; U, V, A (och TU, TA vid basrörelse) och S är
-//! spektraltätheter, RU, RV, RA, RTU, RTA och RS är RMS-värden
-//! √(∫ S df) från lägsta frekvensen till frame-frekvensen (trapetsregeln i
-//! frekvens).
+//! Frequency points as in *STEADY STATE DYNAMICS (`frequency_points`).
+//! Output: frame 0 with zeros, then one frame per frequency
+//! with `value` = the frequency; U, V, A (and TU, TA for base motion) and S are
+//! spectral densities, RU, RV, RA, RTU, RTA and RS are RMS values
+//! √(∫ S df) from the lowest frequency to the frame frequency (trapezoidal rule in
+//! frequency).
 
 use super::api::{StepCtx, StepType};
 use super::complex_frequency::dense::Cx;
@@ -41,7 +41,7 @@ pub struct RandomResponse;
 
 pub static STEP_TYPES: &[&dyn StepType] = &[&RandomResponse];
 
-/// *PSD-DEFINITION: (frekvens, värde) sorterat i frekvens.
+/// *PSD-DEFINITION: (frequency, value) sorted by frequency.
 struct Psd {
     table: Vec<(f64, Cx)>,
 }
@@ -50,26 +50,26 @@ impl Psd {
     fn parse(kw: &RawKeyword) -> Result<Psd> {
         if let Some(d) = kw.param_upper("DEFINITION") {
             if d != "USER" {
-                return kw.err(format!("DEFINITION={d} stöds inte (bara USER)"));
+                return kw.err(format!("DEFINITION={d} is not supported (only USER)"));
             }
         }
         let mut table = Vec::new();
         for d in &kw.data {
             let v = kw.floats(d)?;
             if v.len() < 3 {
-                return kw.err_at(d.line, "skriv 'realdel, imaginärdel, frekvens'");
+                return kw.err_at(d.line, "write 'real part, imaginary part, frequency'");
             }
             table.push((v[2], Cx::new(v[0], v[1])));
         }
         if table.is_empty() {
-            return kw.err("datarader saknas");
+            return kw.err("data lines missing");
         }
         table.sort_by(|a, b| a.0.total_cmp(&b.0));
         Ok(Psd { table })
     }
 
-    /// Värdet vid frekvensen f: interpolation i log–log-skala mellan
-    /// tabellpunkterna (linjärt om något värde är ≤ 0), ändvärdena utanför.
+    /// The value at frequency f: interpolation on a log–log scale between
+    /// the table points (linear if any value is ≤ 0), end values outside.
     fn at(&self, f: f64) -> Cx {
         let t = &self.table;
         if f <= t[0].0 {
@@ -98,8 +98,8 @@ impl Psd {
     }
 }
 
-/// En term i korskorrelationen: lastfall, koefficient, PSD-funktion och om
-/// lastfallets laster i olika noder är okorrelerade.
+/// A term in the cross-correlation: load case, coefficient, PSD function and whether
+/// the load case's loads at different nodes are uncorrelated.
 struct Term {
     case: i64,
     c: Cx,
@@ -107,24 +107,24 @@ struct Term {
     uncorrelated: bool,
 }
 
-/// *CORRELATION: dataraderna "lastfall, realdel[, imaginärdel]" för båda
-/// typerna (första fältet är lastfallet; en senare rad för
-/// samma lastfall ersätter den tidigare). TYPE=CORRELATED
-/// (standard): lastfallets laster i olika noder är fullt korrelerade;
-/// UNCORRELATED: de är okorrelerade. Olika lastfall är okorrelerade.
+/// *CORRELATION: the data lines "load case, real part[, imaginary part]" for both
+/// types (the first field is the load case; a later line for
+/// the same load case replaces the earlier one). TYPE=CORRELATED
+/// (default): the load case's loads at different nodes are fully correlated;
+/// UNCORRELATED: they are uncorrelated. Different load cases are uncorrelated.
 fn correlations(step: &StepDef) -> Result<Vec<Term>> {
     let mut out: Vec<Term> = Vec::new();
     for kw in step.extra.iter().filter(|k| k.name == "CORRELATION") {
-        let Some(psd) = kw.param_upper("PSD") else { return kw.err("PSD= saknas") };
+        let Some(psd) = kw.param_upper("PSD") else { return kw.err("PSD= missing") };
         let uncorrelated = match kw.param_upper("TYPE").as_deref() {
             None | Some("CORRELATED") => false,
             Some("UNCORRELATED") => true,
-            Some(other) => return kw.err(format!("TYPE={other} stöds inte (CORRELATED eller UNCORRELATED)")),
+            Some(other) => return kw.err(format!("TYPE={other} is not supported (CORRELATED or UNCORRELATED)")),
         };
         for d in &kw.data {
             let v = kw.floats(d)?;
             if v.len() < 2 {
-                return kw.err_at(d.line, "skriv 'lastfall, realdel[, imaginärdel]'");
+                return kw.err_at(d.line, "write 'load case, real part[, imaginary part]'");
             }
             let case = v[0].round() as i64;
             let c = Cx::new(v[1], v.get(2).copied().unwrap_or(0.0));
@@ -133,27 +133,27 @@ fn correlations(step: &StepDef) -> Result<Vec<Term>> {
         }
     }
     if out.is_empty() {
-        return fail("*RANDOM RESPONSE kräver *CORRELATION");
+        return fail("*RANDOM RESPONSE requires *CORRELATION");
     }
     Ok(out)
 }
 
-/// En del av ett lastfall: modal last φᵢᵀF (eller −Γᵢ för basrörelse) och
-/// basrörelsens riktning.
+/// A part of a load case: modal load φᵢᵀF (or −Γᵢ for base motion) and
+/// the base motion direction.
 struct Part {
     p: Vec<f64>,
     dir: Option<usize>,
 }
 
-/// Lastfallens delar: en per nod och frihetsgrad (för UNCORRELATED) samt
-/// deras summa (CORRELATED).
+/// The load cases' parts: one per node and degree of freedom (for UNCORRELATED) and
+/// their sum (CORRELATED).
 fn load_cases(ctx: &StepCtx, b: &ModalBasis) -> Result<BTreeMap<i64, Vec<Part>>> {
     let model = ctx.prep.model;
     let nn = model.nodes.len();
     let mut cases: BTreeMap<i64, Vec<Part>> = BTreeMap::new();
     let num = |kw: &RawKeyword, k: &str| -> Result<Option<f64>> {
         match kw.param(k) {
-            Some(s) => parse_f64(s).map(Some).ok_or_else(|| FemError(format!("{}: {k}={s} är inget tal", kw.location()))),
+            Some(s) => parse_f64(s).map(Some).ok_or_else(|| FemError(format!("{}: {k}={s} is not a number", kw.location()))),
             None => Ok(None),
         }
     };
@@ -162,7 +162,7 @@ fn load_cases(ctx: &StepCtx, b: &ModalBasis) -> Result<BTreeMap<i64, Vec<Part>>>
         let bi = num(mk, "BLOCK")?.unwrap_or(0.0) as usize;
         let block = &ctx.step.cloads[bi];
         if block.amplitude.is_some() {
-            return mk.err("AMPLITUDE= på *CLOAD i *RANDOM RESPONSE stöds inte (frekvensberoendet ges av *PSD-DEFINITION)");
+            return mk.err("AMPLITUDE= on *CLOAD in *RANDOM RESPONSE is not supported (the frequency dependence is given by *PSD-DEFINITION)");
         }
         for &(n, d, v) in &block.items {
             let mut f = vec![[0.0; SLOTS]; nn];
@@ -171,30 +171,30 @@ fn load_cases(ctx: &StepCtx, b: &ModalBasis) -> Result<BTreeMap<i64, Vec<Part>>>
         }
     }
     if ctx.step.cloads.len() > ctx.step.extra.iter().filter(|k| k.name == "_LOAD CASE CLOAD").count() {
-        return fail("*CLOAD i *RANDOM RESPONSE kräver LOAD CASE=");
+        return fail("*CLOAD in *RANDOM RESPONSE requires LOAD CASE=");
     }
     if !ctx.step.dloads.is_empty() {
-        return fail("*DLOAD i *RANDOM RESPONSE stöds inte ännu (använd *CLOAD, LOAD CASE=)");
+        return fail("*DLOAD in *RANDOM RESPONSE is not yet supported (use *CLOAD, LOAD CASE=)");
     }
     for kw in ctx.step.extra.iter().filter(|k| k.name == "BASE MOTION") {
-        let dof = num(kw, "DOF")?.ok_or_else(|| FemError(format!("{}: DOF= saknas", kw.location())))?.round() as usize;
+        let dof = num(kw, "DOF")?.ok_or_else(|| FemError(format!("{}: DOF= missing", kw.location())))?.round() as usize;
         if !(1..=3).contains(&dof) {
-            return kw.err("bara translationer (DOF=1, 2 eller 3) stöds");
+            return kw.err("only translations (DOF=1, 2 or 3) are supported");
         }
         if kw.param_upper("TYPE").is_some_and(|t| t != "ACCELERATION") {
-            return kw.err("bara TYPE=ACCELERATION stöds i *RANDOM RESPONSE");
+            return kw.err("only TYPE=ACCELERATION is supported in *RANDOM RESPONSE");
         }
         let lc = num(kw, "LOAD CASE")?.unwrap_or(1.0).round() as i64;
-        // SCALE= påverkar inte resultatet i *RANDOM RESPONSE:
-        // basaccelerationens spektraltäthet ges helt av *PSD-DEFINITION
+        // SCALE= does not affect the result in *RANDOM RESPONSE:
+        // the base acceleration's spectral density is given entirely by *PSD-DEFINITION
         let gamma = b.participation(&model.nodes, dof - 1);
         cases.entry(lc).or_default().push(Part { p: gamma.iter().map(|g| -g).collect(), dir: Some(dof - 1) });
     }
     Ok(cases)
 }
 
-/// Spektraltätheten Σ w |H|² för varje värde i en frame. `resp` är
-/// (vikt, realdel, imaginärdel) av svaret som frames.
+/// The spectral density Σ w |H|² for each value in a frame. `resp` is
+/// (weight, real part, imaginary part) of the response as frames.
 fn psd_frame(resp: &[(f64, FrameData, FrameData)]) -> FrameData {
     let mut out = resp[0].1.clone();
     let comb = |get: &dyn Fn(&FrameData) -> f64| -> f64 { resp.iter().map(|(w, a, b)| w * (get(a).powi(2) + get(b).powi(2))).sum() };
@@ -215,7 +215,7 @@ fn psd_frame(resp: &[(f64, FrameData, FrameData)]) -> FrameData {
     out
 }
 
-/// Löpande integral ∫ S df (trapetsregeln) av alla värden i frames.
+/// Running integral ∫ S df (trapezoidal rule) of all values in frames.
 struct Rms {
     prev: Option<(f64, FrameData)>,
     acc: Option<FrameData>,
@@ -281,7 +281,7 @@ impl StepType for RandomResponse {
     fn run(&self, ctx: &mut StepCtx) -> Result<()> {
         let kw = ctx.step.procedure.as_ref().unwrap();
         if !ctx.step.bcs.is_empty() {
-            return fail("*BOUNDARY i *RANDOM RESPONSE stöds inte");
+            return fail("*BOUNDARY in *RANDOM RESPONSE is not supported");
         }
         let model = ctx.prep.model;
         let b = ModalBasis::from_frequency_step(ctx)?;
@@ -296,15 +296,15 @@ impl StepType for RandomResponse {
                 continue;
             }
             let Some(k) = model.extra.iter().find(|k| k.name == "PSD-DEFINITION" && k.param_upper("NAME").as_deref() == Some(t.psd.as_str())) else {
-                return fail(format!("*PSD-DEFINITION, NAME={} saknas", t.psd));
+                return fail(format!("*PSD-DEFINITION, NAME={} missing", t.psd));
             };
             psds.insert(t.psd.clone(), Psd::parse(k)?);
         }
-        // svarsenheter: (vikt-term, modal last, basriktning)
+        // response units: (weight term, modal load, base direction)
         let mut units: Vec<(usize, Vec<f64>, Option<usize>)> = Vec::new();
         for (ti, t) in corr.iter().enumerate() {
             let Some(parts) = cases.get(&t.case) else {
-                return fail(format!("*CORRELATION: lastfall {} har inga laster (LOAD CASE={})", t.case, t.case));
+                return fail(format!("*CORRELATION: load case {} has no loads (LOAD CASE={})", t.case, t.case));
             };
             if t.uncorrelated {
                 units.extend(parts.iter().map(|p| (ti, p.p.clone(), p.dir)));
@@ -313,14 +313,14 @@ impl StepType for RandomResponse {
                 for p in parts {
                     s.iter_mut().zip(&p.p).for_each(|(a, x)| *a += x);
                 }
-                // fullt korrelerade: basriktningen gäller om lastfallet bara är en basrörelse
+                // fully correlated: the base direction applies if the load case is only a base motion
                 let dir = if parts.len() == 1 { parts[0].dir } else { None };
                 units.push((ti, s, dir));
             }
         }
         for c in cases.keys() {
             if !corr.iter().any(|t| t.case == *c) {
-                return fail(format!("lastfall {c} används inte i någon *CORRELATION"));
+                return fail(format!("load case {c} is not used in any *CORRELATION"));
             }
         }
         let base_dirs: Vec<usize> = units.iter().filter_map(|u| u.2).collect();
@@ -345,9 +345,9 @@ impl StepType for RandomResponse {
         let mut rms: Vec<Rms> = (0..5).map(|_| Rms { prev: None, acc: None }).collect();
         for (k, &f) in pts.iter().enumerate() {
             let w = tp * f;
-            // vikt Re(c Ψ(f)) per term
+            // weight Re(c Ψ(f)) per term
             let wts: Vec<f64> = corr.iter().map(|t| (t.c * psds[&t.psd].at(f)).re).collect();
-            // svar per enhet: relativ förskjutning och (vid basrörelse) total
+            // response per unit: relative displacement and (for base motion) total
             let mut resp: Vec<(f64, FrameData, FrameData)> = Vec::new();
             let mut tot: Vec<(f64, FrameData, FrameData)> = Vec::new();
             for (ti, p, dir) in &units {
@@ -363,7 +363,7 @@ impl StepType for RandomResponse {
                 let fre = plain_frame(ctx, &b.dm, &re, f, -1, desc)?;
                 let fim = plain_frame(ctx, &b.dm, &im, f, -1, String::new())?;
                 if !base_dirs.is_empty() {
-                    // total förskjutning u + r u_g med u_g = ü_g/(−Ω²) (ü_g = 1 per enhet)
+                    // total displacement u + r u_g with u_g = ü_g/(−Ω²) (ü_g = 1 per unit)
                     let (mut tr, ti2) = (re.clone(), im.clone());
                     if let Some(d) = dir {
                         if w > 0.0 {
@@ -406,7 +406,7 @@ impl StepType for RandomResponse {
                 add_node_field(&mut fr, dim, rot, "TA", "TAR", &ta);
                 add_node_field(&mut fr, dim, rot, "RTA", "RTAR", &rta.u);
             }
-            // RMS för elementfälten (RS, RE, ...)
+            // RMS for the element fields (RS, RE, ...)
             for (e, fields) in ru.elem.into_iter().enumerate() {
                 for mut fl in fields {
                     fl.name = format!("R{}", fl.name);

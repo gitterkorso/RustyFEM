@@ -1,13 +1,13 @@
-//! Euler–Bernoulli-balkar med kubisk interpolation: B23 (plan) och B33 (rumslig).
+//! Euler–Bernoulli beams with cubic interpolation: B23 (planar) and B33 (spatial).
 //!
-//! Lokala axlar: t längs balken, n1 tvärsnittets 1-axel och
-//! n2 = t × n1. Böjning kring 1-axeln använder I11, kring 2-axeln I22.
-//! B23 har n1 = (0, 0, −1). För B33 anges en ungefärlig n1 på tvärsnittets
-//! andra datarad (standard (0, 0, −1)); den görs vinkelrät mot balken som
+//! Local axes: t along the beam, n1 the section 1-axis and
+//! n2 = t × n1. Bending about the 1-axis uses I11, about the 2-axis I22.
+//! B23 has n1 = (0, 0, −1). For B33 an approximate n1 is given on the second data line
+//! of the section (default (0, 0, −1)); it is made perpendicular to the beam as
 //! n2 = t × n1 / |t × n1|, n1 = n2 × t.
 //!
-//! Fördelade laster (PX, PY, PZ, GRAV) ger konsistenta nodkrafter och -moment.
-//! Snittkrafter som utdata (SF/SM) och massmatris är inte implementerade ännu.
+//! Distributed loads (PX, PY, PZ, GRAV) give consistent nodal forces and moments.
+//! Section forces as output (SF/SM) and the mass matrix are not implemented yet.
 
 use super::api::{not_implemented, ElemCtx, ElemResponse, ElementType, Family, IpField, MassKind};
 use super::common::{self, block_diag, congruence, cross, norm, scale, sub};
@@ -26,7 +26,7 @@ pub static B33: EulerBeam = EulerBeam { name: "B33", dim: 3 };
 
 pub static TYPES: &[&dyn ElementType] = &[&B23, &B33];
 
-/// Lokal styvhet för plan Euler–Bernoulli-balk, ordning [u1,v1,θ1,u2,v2,θ2].
+/// Local stiffness for a planar Euler–Bernoulli beam, ordering [u1,v1,θ1,u2,v2,θ2].
 fn local_2d(e: f64, a: f64, i: f64, l: f64) -> Vec<f64> {
     let ea = e * a / l;
     let k = e * i / l.powi(3);
@@ -51,8 +51,8 @@ fn local_2d(e: f64, a: f64, i: f64, l: f64) -> Vec<f64> {
     m
 }
 
-/// Lokal styvhet för 3D-balk, ordning per nod [u,v,w,θx,θy,θz].
-/// Lokal y = n1 (böjning kring y använder I11), lokal z = n2.
+/// Local stiffness for a 3D beam, ordering per node [u,v,w,θx,θy,θz].
+/// Local y = n1 (bending about y uses I11), local z = n2.
 fn local_3d(e: f64, g: f64, s: &BeamSection, l: f64) -> Vec<f64> {
     let mut m = vec![0.0; 144];
     let mut set = |r: usize, c: usize, v: f64| {
@@ -67,7 +67,7 @@ fn local_3d(e: f64, g: f64, s: &BeamSection, l: f64) -> Vec<f64> {
     set(3, 3, gj);
     set(3, 9, -gj);
     set(9, 9, gj);
-    // böjning i x-y-planet (v, θz), kring lokal z: I22
+    // bending in the x-y plane (v, θz), about local z: I22
     let a = e * s.i22 / l.powi(3);
     set(1, 1, 12.0 * a);
     set(1, 5, 6.0 * a * l);
@@ -79,7 +79,7 @@ fn local_3d(e: f64, g: f64, s: &BeamSection, l: f64) -> Vec<f64> {
     set(7, 7, 12.0 * a);
     set(7, 11, -6.0 * a * l);
     set(11, 11, 4.0 * a * l * l);
-    // böjning i x-z-planet (w, θy), kring lokal y: I11
+    // bending in the x-z plane (w, θy), about local y: I11
     let b = e * s.i11 / l.powi(3);
     set(2, 2, 12.0 * b);
     set(2, 4, -6.0 * b * l);
@@ -94,14 +94,14 @@ fn local_3d(e: f64, g: f64, s: &BeamSection, l: f64) -> Vec<f64> {
     m
 }
 
-/// Beräknade data för ett balkelement.
+/// Computed data for a beam element.
 pub struct BeamData {
-    /// Lokal styvhet och transformation global → lokal (n × n).
+    /// Local stiffness and transformation global → local (n × n).
     pub k_local: Vec<f64>,
     pub t: Vec<f64>,
     pub n: usize,
     pub l: f64,
-    /// Lokala axlar [t, n1, n2].
+    /// Local axes [t, n1, n2].
     pub axes: [[f64; 3]; 3],
     pub area: f64,
     pub density: f64,
@@ -111,20 +111,20 @@ impl EulerBeam {
     pub fn data(&self, ctx: &ElemCtx) -> Result<BeamData> {
         let sec = ctx.section(self.name)?;
         let Some(b) = sec.beam() else {
-            return fail(format!("element {} ({}) kräver *BEAM SECTION eller *BEAM GENERAL SECTION", ctx.label, self.name));
+            return fail(format!("element {} ({}) requires *BEAM SECTION or *BEAM GENERAL SECTION", ctx.label, self.name));
         };
         if b.i12 != 0.0 {
-            return not_implemented("I12 ≠ 0 (osymmetriskt tvärsnitt)", self.name);
+            return not_implemented("I12 ≠ 0 (unsymmetric section)", self.name);
         }
         let (e, g) = match b.moduli {
             Some(m) => m,
             None => {
                 let mat = ctx.material(self.name)?;
                 if !mat.is_linear() {
-                    return not_implemented(&format!("olinjärt material ({})", mat.name()), self.name);
+                    return not_implemented(&format!("nonlinear material ({})", mat.name()), self.name);
                 }
                 let Some((e, nu)) = mat.elastic_moduli() else {
-                    return fail(format!("{} kräver isotrop linjärelastisk material", self.name));
+                    return fail(format!("{} requires an isotropic linear elastic material", self.name));
                 };
                 (e, e / (2.0 * (1.0 + nu)))
             }
@@ -132,7 +132,7 @@ impl EulerBeam {
         let d = sub(ctx.x[1], ctx.x[0]);
         let l = norm(d);
         if l == 0.0 {
-            return fail(format!("element {} ({}) har ingen längd", ctx.label, self.name));
+            return fail(format!("element {} ({}) has zero length", ctx.label, self.name));
         }
         let t = scale(d, 1.0 / l);
         let density = if b.density > 0.0 { b.density } else { ctx.density };
@@ -154,7 +154,7 @@ impl EulerBeam {
             let ln2 = norm(n2);
             if ln2 < 1e-8 * norm(n1a).max(1e-300) {
                 return fail(format!(
-                    "element {} (B33) är parallellt med tvärsnittets n1-riktning – ange n1 på tvärsnittets andra datarad",
+                    "element {} (B33) is parallel to the section n1 direction – give n1 on the second data line of the section",
                     ctx.label
                 ));
             }
@@ -172,8 +172,8 @@ impl EulerBeam {
         }
     }
 
-    /// Snittkrafter i lokala koordinater: k_lokal · T · u.
-    /// B23: [N1,V1,M1,N2,V2,M2], B33: [N,Vy,Vz,T,My,Mz] per nod.
+    /// Section forces in local coordinates: k_local · T · u.
+    /// B23: [N1,V1,M1,N2,V2,M2], B33: [N,Vy,Vz,T,My,Mz] per node.
     pub fn end_forces(&self, ctx: &ElemCtx, u: &[f64]) -> Result<Vec<f64>> {
         let d = self.data(ctx)?;
         let ul = common::matvec(&d.t, u);
@@ -202,7 +202,7 @@ impl ElementType for EulerBeam {
     }
 
     fn stiffness(&self, ctx: &ElemCtx) -> Result<Vec<f64>> {
-        // område beams3: initialt krökt när nodnormalerna lutar (beam_eb_curved.rs)
+        // area beams3: initially curved when the nodal normals are inclined (beam_eb_curved.rs)
         if let Some(c) = super::beam_eb_curved::Curved::of(self, ctx)? {
             return Ok(c.condensed());
         }
@@ -212,7 +212,7 @@ impl ElementType for EulerBeam {
 
     fn internal_force(&self, ctx: &ElemCtx, u: &[f64], _du: &[f64], _so: &[f64], _sn: &mut Vec<f64>, tangent: bool) -> Result<ElemResponse> {
         if ctx.nlgeom {
-            // område nlgeom: korotationell formulering
+            // area nlgeom: corotational formulation
             return crate::kinematics::beam::response(self, ctx, u, _so, _sn, tangent);
         }
         let k = self.stiffness(ctx)?;
@@ -228,8 +228,8 @@ impl ElementType for EulerBeam {
     }
 
     fn output(&self, _ctx: &ElemCtx, _u: &[f64], _state: &[f64]) -> Result<Vec<IpField>> {
-        // område beams2: snittkrafter SF/SM per integrationspunkt
-        // (område beams3: krökta element i beam_eb_curved.rs)
+        // area beams2: section forces SF/SM per integration point
+        // (area beams3: curved elements in beam_eb_curved.rs)
         if let Some(c) = super::beam_eb_curved::Curved::of(self, _ctx)? {
             return Ok(super::beam_eb_curved::output(&c, self.dim, _u));
         }
@@ -238,7 +238,7 @@ impl ElementType for EulerBeam {
 
     fn distributed_load(&self, ctx: &ElemCtx, load: &DistLoad, _u: &[f64]) -> Result<Vec<f64>> {
         let d = self.data(ctx)?;
-        // last per längdenhet i globala koordinater
+        // load per unit length in global coordinates
         let q = match load.kind.as_str() {
             "PX" => [load.magnitude, 0.0, 0.0],
             "PY" => [0.0, load.magnitude, 0.0],
@@ -247,19 +247,19 @@ impl ElementType for EulerBeam {
                 let b = common::body_load_vector("GRAV", load.magnitude, &load.extra, d.density, self.name)?.unwrap();
                 scale(b, d.area)
             }
-            _ => return not_implemented(&format!("lasttypen {}", load.kind), self.name),
+            _ => return not_implemented(&format!("load type {}", load.kind), self.name),
         };
         if self.dim == 2 && q[2] != 0.0 {
-            return fail(format!("{}: last i z-led på en plan balk", self.name));
+            return fail(format!("{}: load in the z direction on a planar beam", self.name));
         }
-        // område beams3: krökt element
+        // area beams3: curved element
         if let Some(c) = super::beam_eb_curved::Curved::of(self, ctx)? {
             return Ok(c.load(q));
         }
         let ql = [0, 1, 2].map(|i| common::dot(d.axes[i], q));
         let l = d.l;
         let fl: Vec<f64> = if self.dim == 2 {
-            // lokal y är [-s, c]
+            // local y is [-s, c]
             let qy = common::dot(d.axes[2], q);
             vec![ql[0] * l / 2.0, qy * l / 2.0, qy * l * l / 12.0, ql[0] * l / 2.0, qy * l / 2.0, -qy * l * l / 12.0]
         } else {
@@ -280,7 +280,7 @@ impl ElementType for EulerBeam {
                 -qy * m,
             ]
         };
-        // global = Tᵀ lokal
+        // global = Tᵀ local
         let n = d.n;
         Ok((0..n).map(|j| (0..n).map(|i| d.t[i * n + j] * fl[i]).sum()).collect())
     }

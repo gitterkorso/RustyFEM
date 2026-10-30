@@ -1,9 +1,9 @@
-//! App-API för RustyFEM (se PLAN.md, Fas 1).
+//! App API for RustyFEM (see PLAN.md, Phase 1).
 //!
-//! En `Session` är en öppen modell: källan (`.rusty`-skript eller `.inp`), den
-//! byggda `FeModel`, ångra/gör om, visningsgeometri och senaste resultat.
-//! Körningen (`run_analysis`) görs av anroparen på en egen tråd, med framsteg
-//! och avbrott via `rustyfem::progress`. Inget här ändrar motorns resultat.
+//! A `Session` is an open model: the source (`.rusty` script or `.inp`), the
+//! built `FeModel`, undo/redo, display geometry and the latest results.
+//! The run (`run_analysis`) is done by the caller on its own thread, with progress
+//! and cancellation via `rustyfem::progress`. Nothing here changes the engine's results.
 
 pub mod edit;
 pub mod fields;
@@ -32,22 +32,22 @@ use std::time::Instant;
 
 pub type Res<T> = Result<T, String>;
 
-/// Modellens källa.
+/// The model's source.
 #[derive(Debug, Clone, Serialize, Type)]
 pub struct SessionInfo {
     pub kind: String,
     pub path: Option<String>,
     pub name: String,
     pub units: UnitSystem,
-    /// Enhetssymbolerna för `units` (tomma när inget enhetssystem är angivet).
+    /// Unit symbols for `units` (empty when no unit system is specified).
     pub unit_symbols: UnitSymbols,
-    /// Aktuellt `.rusty`-skript (bara för `.rusty`-sessioner).
+    /// Current `.rusty` script (only for `.rusty` sessions).
     pub script: Option<String>,
-    /// Skriptets dimension (2 eller 3; bara för `.rusty`-sessioner). Gäller
-    /// även en tom modell, där `FeModel` saknar element att avgöra den av.
+    /// The script's dimension (2 or 3; only for `.rusty` sessions). Also applies
+    /// to an empty model, where `FeModel` has no elements to determine it from.
     pub script_dim: Option<u32>,
-    /// Varför modellen inte går att lösa än (t.ex. inga element, eller ett
-    /// stöd som inte träffar några noder). `None` när modellen är komplett.
+    /// Why the model cannot be solved yet (e.g. no elements, or a
+    /// support that hits no nodes). `None` when the model is complete.
     pub problem: Option<String>,
     pub undo: Option<String>,
     pub redo: Option<String>,
@@ -59,7 +59,7 @@ pub struct SessionInfo {
 pub struct Session {
     pub kind: SourceKind,
     pub path: Option<PathBuf>,
-    /// Ursprunglig källtext (för `.rusty` den aktuella texten efter redigeringar).
+    /// Original source text (for `.rusty`, the current text after edits).
     original: String,
     text: String,
     included: Vec<(String, Vec<u8>)>,
@@ -75,8 +75,8 @@ pub struct Session {
     pub dirty: bool,
 }
 
-/// Mall för en ny modell.
-pub const NEW_MODEL: &str = "# Ny modell – verktygen i appen lägger till rader här.\n\
+/// Template for a new model.
+pub const NEW_MODEL: &str = "# New model – the tools in the app add lines here.\n\
 model 2d\n\
 material steel E=210e9 nu=0.3\n\
 plate x=0..2 y=0..0.2 t=0.01 size=0.05\n\
@@ -84,22 +84,22 @@ fix x=0\n\
 load x=2 fy=-1000\n";
 
 
-/// Tom modell att bygga från grunden.
-pub const EMPTY_2D: &str = "# Ny modell – verktygen i appen lägger till rader här.\nmodel 2d\n";
-pub const EMPTY_3D: &str = "# Ny modell – verktygen i appen lägger till rader här.\nmodel 3d\n";
+/// Empty model to build from scratch.
+pub const EMPTY_2D: &str = "# New model – the tools in the app add lines here.\nmodel 2d\n";
+pub const EMPTY_3D: &str = "# New model – the tools in the app add lines here.\nmodel 3d\n";
 
-/// En `FeModel` byggd från ett `.rusty`-skript.
+/// A `FeModel` built from a `.rusty` script.
 struct Built {
     model: FeModel,
     dim: u32,
-    /// Varför modellen inte går att lösa än.
+    /// Why the model cannot be solved yet.
     problem: Option<String>,
 }
 
-/// Bygger en `FeModel` från ett `.rusty`-skript. Fel i skriptet (syntax,
-/// okända kommandon, material utan E) avvisas. En modell som är riktig men
-/// ofullständig – inga element än, eller stöd och laster som inte träffar
-/// några noder – byggs utan steg, så att man kan bygga den rad för rad.
+/// Builds a `FeModel` from a `.rusty` script. Errors in the script (syntax,
+/// unknown commands, material without E) are rejected. A model that is valid but
+/// incomplete – no elements yet, or supports and loads that hit no
+/// nodes – is built without steps, so it can be built line by line.
 fn build_script(text: &str) -> Res<Built> {
     let m = rustyfem::script::parse(text).map_err(|e| e.0)?;
     let dim = if m.dim == rustyfem::model::Dim::Two { 2 } else { 3 };
@@ -121,7 +121,7 @@ impl Session {
     }
 
     fn from_model(kind: SourceKind, path: Option<PathBuf>, text: String, included: Vec<(String, Vec<u8>)>, model: FeModel) -> Session {
-        // .rusty-skripten använder SI (standardmaterialen är i Pa); en .inp gissas ur materialen
+        // .rusty scripts use SI (the default materials are in Pa); an .inp is guessed from its materials
         let units = if kind == SourceKind::Rusty { UnitSystem::Si } else { UnitSystem::guess(&model) };
         let mesh = Arc::new(mesh::extract(&model));
         Session {
@@ -143,21 +143,21 @@ impl Session {
         }
     }
 
-    /// Ny `.rusty`-modell från text.
+    /// New `.rusty` model from text.
     pub fn new_fem(text: &str) -> Res<Session> {
         Ok(Session::from_script(None, text.to_string(), build_script(text)?))
     }
 
-    /// `.inp`-text; relativa `*INCLUDE` tolkas från `dir`.
+    /// `.inp` text; relative `*INCLUDE` paths are resolved from `dir`.
     pub fn from_inp_text(text: &str, dir: &Path) -> Res<Session> {
         let r = rustyfem::inp::read_str(text, dir).map_err(|e| e.0)?;
         Ok(Session::from_model(SourceKind::Inp, None, text.to_string(), Vec::new(), r.model))
     }
 
-    /// Öppnar `.inp`, `.rusty` eller `.rustyproj`.
+    /// Opens `.inp`, `.rusty` or `.rustyproj`.
     pub fn open(path: &Path) -> Res<Session> {
         let ext = path.extension().map(|e| e.to_string_lossy().to_lowercase()).unwrap_or_default();
-        let read = |p: &Path| std::fs::read(p).map_err(|e| format!("kunde inte läsa {}: {e}", p.display()));
+        let read = |p: &Path| std::fs::read(p).map_err(|e| format!("could not read {}: {e}", p.display()));
         match ext.as_str() {
             "rustyproj" => Session::from_project(Project::from_bytes(&read(path)?)?, Some(path.to_path_buf())),
             "rusty" => {
@@ -185,8 +185,8 @@ impl Session {
         let mut s = match p.kind {
             SourceKind::Rusty => Session::from_script(None, p.text.clone(), build_script(&p.text)?),
             SourceKind::Inp => {
-                // *INCLUDE läses ur projektfilen via en filresolver (fungerar även i iOS-sandlådan)
-                let root = Path::new("projekt");
+                // *INCLUDE is read from the project file via a file resolver (also works in the iOS sandbox)
+                let root = Path::new("project");
                 let files = &p.included;
                 let resolve = |path: &Path| -> rustyfem::Result<Vec<u8>> {
                     let rel = path.strip_prefix(root).unwrap_or(path).to_string_lossy().replace('\\', "/");
@@ -194,7 +194,7 @@ impl Session {
                         .iter()
                         .find(|(n, _)| *n == rel)
                         .map(|(_, b)| b.clone())
-                        .ok_or_else(|| rustyfem::FemError(format!("projektfilen saknar den inkluderade filen {rel}")))
+                        .ok_or_else(|| rustyfem::FemError(format!("the project file does not contain the included file {rel}")))
                 };
                 let r = rustyfem::inp::read_str_with(&p.text, root, &resolve).map_err(|e| e.0)?;
                 Session::from_model(SourceKind::Inp, None, p.text.clone(), p.included.clone(), r.model)
@@ -204,7 +204,7 @@ impl Session {
             s.apply(e.clone())?;
         }
         s.path = path;
-        // äldre projektfiler sparade alltid "SI (m, N, Pa)"; då gäller standardvalet ovan
+        // older project files always saved "SI (m, N, Pa)"; then the default choice above applies
         if p.units != units::LEGACY_LABEL {
             s.units = UnitSystem::parse(&p.units);
         }
@@ -214,7 +214,7 @@ impl Session {
         Ok(s)
     }
 
-    /// Projektfilens innehåll.
+    /// Contents of the project file.
     pub fn to_project(&self) -> Vec<u8> {
         Project {
             kind: self.kind,
@@ -236,13 +236,13 @@ impl Session {
         &self.mesh
     }
 
-    /// Varför modellen inte går att lösa än (`None` när den är komplett).
+    /// Why the model cannot be solved yet (`None` when it is complete).
     pub fn problem(&self) -> Option<&str> {
         self.problem.as_deref()
     }
 
     pub fn info(&self) -> SessionInfo {
-        let name = self.path.as_ref().and_then(|p| p.file_name()).map(|s| s.to_string_lossy().into_owned()).unwrap_or_else(|| "Namnlös".into());
+        let name = self.path.as_ref().and_then(|p| p.file_name()).map(|s| s.to_string_lossy().into_owned()).unwrap_or_else(|| "Untitled".into());
         SessionInfo {
             kind: match self.kind {
                 SourceKind::Rusty => "rusty".into(),
@@ -263,12 +263,12 @@ impl Session {
         }
     }
 
-    /// Utför en ändring. Returnerar `true` om geometrin ändrades.
+    /// Performs an edit. Returns `true` if the geometry changed.
     fn exec(&mut self, e: &Edit) -> Res<(Edit, bool)> {
         match e {
             Edit::FemText { text } => {
                 if self.kind != SourceKind::Rusty {
-                    return Err("skripttext kan bara ändras i en .rusty-modell".into());
+                    return Err("script text can only be changed in a .rusty model".into());
                 }
                 let b = build_script(text)?;
                 let old = std::mem::replace(&mut self.text, text.clone());
@@ -285,7 +285,7 @@ impl Session {
         }
     }
 
-    /// Utför en ändring och lägger den i ångra-historiken.
+    /// Performs an edit and adds it to the undo history.
     pub fn apply(&mut self, e: Edit) -> Res<bool> {
         let (inv, geom) = self.exec(&e)?;
         self.undo.push((e, inv));
@@ -324,7 +324,7 @@ impl Session {
         }
     }
 
-    /// Byter enhetssystem. Bara etiketterna ändras; inga värden räknas om.
+    /// Changes the unit system. Only the labels change; no values are converted.
     pub fn set_units(&mut self, u: UnitSystem) {
         if u != self.units {
             self.units = u;
@@ -345,7 +345,7 @@ impl Session {
         self.dirty = true;
     }
 
-    /// Resultatkatalogen med fältens enheter (`None` utan resultat).
+    /// The results catalog with the fields' units (`None` without results).
     pub fn catalog(&self) -> Option<Vec<StepResultInfo>> {
         let mut cat = fields::catalog(self.results.as_ref()?);
         for f in cat.iter_mut().flat_map(|s| s.fields.iter_mut()) {
@@ -355,14 +355,14 @@ impl Session {
     }
 
     fn frame(&self, step: usize, frame: usize) -> Res<&rustyfem::fem::output::FrameData> {
-        let r = self.results.as_ref().ok_or("inga resultat – lös modellen först")?;
-        r.steps.get(step).and_then(|s| s.frames.get(frame)).ok_or_else(|| format!("steg {} frame {} finns inte", step + 1, frame))
+        let r = self.results.as_ref().ok_or("no results – solve the model first")?;
+        r.steps.get(step).and_then(|s| s.frames.get(frame)).ok_or_else(|| format!("step {} frame {} does not exist", step + 1, frame))
     }
 
-    /// Nodvärden för ett fält: `f32` per nod, sist min och max (f32).
+    /// Nodal values for a field: `f32` per node, followed by min and max (f32).
     pub fn field_values(&self, step: usize, frame: usize, field: &str, comp: &str) -> Res<Vec<u8>> {
         let fr = self.frame(step, frame)?;
-        let fi = fields::frame_fields(fr).into_iter().find(|f| f.name == field).ok_or_else(|| format!("fältet {field} finns inte i framen"))?;
+        let fi = fields::frame_fields(fr).into_iter().find(|f| f.name == field).ok_or_else(|| format!("field {field} does not exist in the frame"))?;
         let (v, lo, hi) = fields::node_values(fr, &self.mesh, self.model.nodes.len(), &fi, comp);
         let mut b = Vec::with_capacity(v.len() * 4 + 8);
         for x in v {
@@ -373,46 +373,46 @@ impl Session {
         Ok(b)
     }
 
-    /// Förskjutningar (f32 ×3 per nod).
+    /// Displacements (f32 ×3 per node).
     pub fn displacement(&self, step: usize, frame: usize) -> Res<Vec<u8>> {
         let fr = self.frame(step, frame)?;
         Ok(fields::displacement(fr, self.model.nodes.len()).into_iter().flat_map(|x| x.to_le_bytes()).collect())
     }
 
-    /// Min och max av ett fält (nodvärden, elementfält utjämnade) med noderna där de finns.
+    /// Min and max of a field (nodal values, element fields averaged) with the nodes where they occur.
     pub fn field_stats(&self, step: usize, frame: usize, field: &str, comp: &str) -> Res<FieldStats> {
         let fr = self.frame(step, frame)?;
-        let fi = fields::frame_fields(fr).into_iter().find(|f| f.name == field).ok_or_else(|| format!("fältet {field} finns inte i framen"))?;
+        let fi = fields::frame_fields(fr).into_iter().find(|f| f.name == field).ok_or_else(|| format!("field {field} does not exist in the frame"))?;
         let comp = if comp.is_empty() { fi.components[0].clone() } else { comp.to_string() };
         if !fi.components.contains(&comp) {
-            return Err(format!("{field} har komponenterna {}", fi.components.join(", ")));
+            return Err(format!("{field} has the components {}", fi.components.join(", ")));
         }
         let (v, lo, hi) = fields::node_values(fr, &self.mesh, self.model.nodes.len(), &fi, &comp);
         let at = |x: f64| v.iter().position(|&y| y.is_finite() && (y as f64 - x).abs() <= 1e-6 * x.abs().max(1e-30)).map(|n| self.model.node_name(n));
         Ok(FieldStats { field: field.into(), unit: self.units.field_unit(field), component: comp, min: lo, max: hi, min_at: at(lo), max_at: at(hi) })
     }
 
-    /// Nod- eller elementindex från "INSTANS.nummer" eller bara "nummer".
+    /// Node or element index from "INSTANCE.number" or just "number".
     pub fn lookup(&self, what: &str, element: bool) -> Res<usize> {
         let m = &self.model;
         let (inst, label) = match what.rsplit_once('.') {
-            Some((i, l)) => (m.instance_index(&i.to_uppercase()).ok_or_else(|| format!("instansen {i} finns inte"))?, l),
+            Some((i, l)) => (m.instance_index(&i.to_uppercase()).ok_or_else(|| format!("instance {i} does not exist"))?, l),
             None => (m.instance_index(rustyfem::fem::model::FLAT_INSTANCE).or_else(|| m.instance_index(rustyfem::fem::model::ASSEMBLY_INSTANCE)).unwrap_or(0), what),
         };
-        let label: i64 = label.trim().parse().map_err(|_| format!("'{what}' är inget nod-/elementnummer"))?;
+        let label: i64 = label.trim().parse().map_err(|_| format!("'{what}' is not a node/element number"))?;
         let found = if element { m.element(inst, label) } else { m.node(inst, label) };
-        found.ok_or_else(|| format!("{} {what} finns inte", if element { "elementet" } else { "noden" }))
+        found.ok_or_else(|| format!("{} {what} does not exist", if element { "element" } else { "node" }))
     }
 
     pub fn history(&self, step: usize, index: usize) -> Res<Vec<(f64, f64)>> {
-        let r = self.results.as_ref().ok_or("inga resultat")?;
-        r.steps.get(step).and_then(|s| s.history.get(index)).map(|h| h.2.clone()).ok_or_else(|| "history-utdata finns inte".to_string())
+        let r = self.results.as_ref().ok_or("no results")?;
+        r.steps.get(step).and_then(|s| s.history.get(index)).map(|h| h.2.clone()).ok_or_else(|| "history output does not exist".to_string())
     }
 
-    /// Uppgifter om ett element (och dess resultat i en frame).
+    /// Information about an element (and its results in a frame).
     pub fn element_info(&self, e: usize, at: Option<(usize, usize)>) -> Res<PickInfo> {
         let m = &self.model;
-        let el = m.elements.get(e).ok_or("elementet finns inte")?;
+        let el = m.elements.get(e).ok_or("the element does not exist")?;
         let section = el.section.and_then(|s| m.sections.get(s));
         let mut values = Vec::new();
         if let Some((s, f)) = at {
@@ -436,19 +436,19 @@ impl Session {
             name: m.elem_name(e),
             index: e as u32,
             details: vec![
-                ("Typ".into(), el.etype.name().into()),
-                ("Noder".into(), el.nodes.iter().take(el.etype.n_connectivity()).map(|&n| m.node_label[n].to_string()).collect::<Vec<_>>().join(", ")),
-                ("Tvärsnitt".into(), section.map(|s| s.elset.clone()).unwrap_or_else(|| "–".into())),
+                ("Type".into(), el.etype.name().into()),
+                ("Nodes".into(), el.nodes.iter().take(el.etype.n_connectivity()).map(|&n| m.node_label[n].to_string()).collect::<Vec<_>>().join(", ")),
+                ("Section".into(), section.map(|s| s.elset.clone()).unwrap_or_else(|| "–".into())),
                 ("Material".into(), section.map(|s| s.material.clone()).filter(|s| !s.is_empty()).unwrap_or_else(|| "–".into())),
             ],
             values,
         })
     }
 
-    /// Uppgifter om en nod.
+    /// Information about a node.
     pub fn node_info(&self, n: usize, at: Option<(usize, usize)>) -> Res<PickInfo> {
         let m = &self.model;
-        let p = m.nodes.get(n).ok_or("noden finns inte")?;
+        let p = m.nodes.get(n).ok_or("the node does not exist")?;
         let mut values = Vec::new();
         if let Some((s, f)) = at {
             if let Ok(fr) = self.frame(s, f) {
@@ -467,7 +467,7 @@ impl Session {
             name: m.node_name(n),
             index: n as u32,
             details: vec![(
-                "Koordinater".into(),
+                "Coordinates".into(),
                 format!("{:.6e}, {:.6e}, {:.6e}{}", p[0], p[1], p[2], Some(self.units.symbols().length).filter(|l| !l.is_empty()).map(|l| format!(" {l}")).unwrap_or_default()),
             )],
             values,
@@ -479,7 +479,7 @@ impl Session {
 pub struct FieldStats {
     pub field: String,
     pub component: String,
-    /// Fältets enhet i modellens enhetssystem ("" om okänd eller dimensionslös).
+    /// The field's unit in the model's unit system ("" if unknown or dimensionless).
     pub unit: String,
     pub min: f64,
     pub max: f64,
@@ -493,11 +493,11 @@ pub struct PickInfo {
     pub name: String,
     pub index: u32,
     pub details: Vec<(String, String)>,
-    /// (namn, värde, enhet)
+    /// (name, value, unit)
     pub values: Vec<(String, f64, String)>,
 }
 
-/// Händelser under en körning.
+/// Events during a run.
 #[derive(Debug, Clone, Serialize, Type)]
 #[serde(tag = "type")]
 pub enum RunEvent {
@@ -508,9 +508,9 @@ pub enum RunEvent {
     Finished { ok: bool, cancelled: bool, seconds: f64, message: String },
 }
 
-/// Kör analysen på den aktuella tråden. `on` får framstegshändelser
-/// (iterationer högst ungefär 20 per sekund); `cancel` avbryter mellan
-/// iterationerna.
+/// Runs the analysis on the current thread. `on` receives progress events
+/// (iterations at most about 20 per second); `cancel` aborts between
+/// iterations.
 pub fn run_analysis(model: &FeModel, solver: Option<String>, all_frames: bool, cancel: Arc<AtomicBool>, mut on: impl FnMut(RunEvent) + 'static) -> Res<AnalysisOutput> {
     let opts = RunOptions { all_frames, verbose: false, solver, settings: None };
     let mut last = Instant::now();

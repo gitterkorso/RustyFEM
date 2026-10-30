@@ -1,29 +1,29 @@
-//! Område acoustics2: *EOS COMPACTION (P-α, Hermann 1968, Carroll–Holt 1972)
-//! för ett fast material med *EOS, TYPE=USUP eller TABULAR (inkluderas med
-//! `#[path]` från `eos.rs`):
+//! Feature area acoustics2: *EOS COMPACTION (P-α, Hermann 1968, Carroll–Holt 1972)
+//! for a solid material with *EOS, TYPE=USUP or TABULAR (included with
+//! `#[path]` from `eos.rs`):
 //!
-//! - Distensionen α = ρ_s/ρ ≥ 1, α₀ = 1/(1 − n₀) i jungfruligt tillstånd.
-//!   *DENSITY anger det fasta materialets densitet ρ_s0; det porösa
-//!   materialets densitet (massan) är ρ_s0/α₀ (`adjust_density`, anropas när
-//!   filen är läst).
-//! - Trycket p = p_s(ρ_s, Eₘ)/α med ρ_s = αρ, dvs. det fasta materialets
-//!   J_s = α₀ J/α (J relativt det porösa begynnelsetillståndet).
-//! - Plastisk kurva: P_pl(α) = p_S − (p_S − p_e) √((α − 1)/(α_e − 1)).
-//! - Elastiska kurvor (linjära, Wardlaw m.fl. 1996):
-//!   P_el(α, α_min) = P_pl(α_min) + (α − α_min)/A′(α_min) med Hermanns lutning
+//! - The distension α = ρ_s/ρ ≥ 1, α₀ = 1/(1 − n₀) in the virgin state.
+//!   *DENSITY gives the density ρ_s0 of the solid material; the porous
+//!   material's density (the mass) is ρ_s0/α₀ (`adjust_density`, called when
+//!   the file has been read).
+//! - The pressure p = p_s(ρ_s, Eₘ)/α with ρ_s = αρ, i.e. the solid material's
+//!   J_s = α₀ J/α (J relative to the porous initial state).
+//! - Plastic curve: P_pl(α) = p_S − (p_S − p_e) √((α − 1)/(α_e − 1)).
+//! - Elastic curves (linear, Wardlaw et al. 1996):
+//!   P_el(α, α_min) = P_pl(α_min) + (α − α_min)/A′(α_min) with Hermann's slope
 //!   A′(α) = α²/K₀ (1 − 1/h²(α)), h(α) = 1 + (c_e − c_s)(α − 1)/(c_s(α₀ − 1)),
-//!   K₀ = ρ_s0 c_s² (c_s = c₀ för USUP, √(K₀/ρ_s0) för TABULAR).
-//! - α_e (elastiska gränsen) bestäms så att den jungfruliga elastiska kurvan
-//!   går genom (p = 0, α₀): α_e − p_e A′(α_e) = α₀.
-//! - α_min (minsta α under plastisk kompaktering) är ett tillstånd; vid
-//!   p ≥ p_S är materialet helt kompakterat (α = 1 för alltid).
+//!   K₀ = ρ_s0 c_s² (c_s = c₀ for USUP, √(K₀/ρ_s0) for TABULAR).
+//! - α_e (the elastic limit) is determined so that the virgin elastic curve
+//!   passes through (p = 0, α₀): α_e − p_e A′(α_e) = α₀.
+//! - α_min (the smallest α during plastic compaction) is a state; at
+//!   p ≥ p_S the material is fully compacted (α = 1 forever).
 //!
-//! I varje inkrement löses α så att EOS-trycket (med energiekvationen över
-//! inkrementet, som i `eos.rs`) och P(α, α_min) sammanfaller (bisektion).
+//! In every increment α is solved so that the EOS pressure (with the energy equation over
+//! the increment, as in `eos.rs`) and P(α, α_min) coincide (bisection).
 
 use super::*;
 
-/// Platser efter det fasta materialets tillstånd.
+/// Slots after the solid material's state.
 const ALPHA: usize = 0;
 const ALPHA_MIN: usize = 1;
 
@@ -37,22 +37,22 @@ pub struct Compaction {
     ps: f64,
     k0: f64,
     cs: f64,
-    /// Det porösa materialets referensdensitet ρ_s0/α₀.
+    /// The porous material's reference density ρ_s0/α₀.
     rho_p: f64,
 }
 
-/// α₀ ur *EOS COMPACTION (n₀ på dataraden).
+/// α₀ from *EOS COMPACTION (n₀ on the data line).
 pub fn alpha0_of(kw: &RawKeyword) -> Result<f64> {
     let v = first(kw)?;
     let n0 = v.get(1).copied().unwrap_or(0.0);
     if !(0.0..1.0).contains(&n0) {
-        return kw.err("*EOS COMPACTION: porositeten n₀ ska ligga i [0, 1)");
+        return kw.err("*EOS COMPACTION: the porosity n₀ must lie in [0, 1)");
     }
     Ok(1.0 / (1.0 - n0))
 }
 
-/// Det porösa materialets densitet ρ_s0/α₀ för material med *EOS COMPACTION
-/// (anropas från `FeModel::finalize`; *DENSITY anger den fasta fasen).
+/// The porous material's density ρ_s0/α₀ for materials with *EOS COMPACTION
+/// (called from `FeModel::finalize`; *DENSITY gives the solid phase).
 pub fn adjust_density(m: &mut FeModel) -> Result<()> {
     for mat in m.materials.iter_mut() {
         let Some(kw) = mat.behavior("EOS COMPACTION") else { continue };
@@ -68,15 +68,15 @@ pub fn adjust_density(m: &mut FeModel) -> Result<()> {
 pub fn build(solid: Eos, kw: &RawKeyword) -> Result<Compaction> {
     let v = first(kw)?;
     if v.len() < 4 {
-        return kw.err("*EOS COMPACTION: ange c_e, n₀, p_e och p_S");
+        return kw.err("*EOS COMPACTION: give c_e, n₀, p_e and p_S");
     }
     let (ce, pe, ps) = (v[0], v[2], v[3]);
     let alpha0 = alpha0_of(kw)?;
     if !(ce > 0.0) || !(pe > 0.0) || !(ps > pe) {
-        return kw.err("*EOS COMPACTION: c_e > 0 och 0 < p_e < p_S krävs");
+        return kw.err("*EOS COMPACTION: c_e > 0 and 0 < p_e < p_S are required");
     }
     if !matches!(solid.form, Form::UsUp { .. } | Form::Tabular(_)) {
-        return kw.err("*EOS COMPACTION kräver *EOS, TYPE=USUP eller TYPE=TABULAR");
+        return kw.err("*EOS COMPACTION requires *EOS, TYPE=USUP or TYPE=TABULAR");
     }
     let k0 = solid.bulk();
     let cs = match solid.form {
@@ -85,7 +85,7 @@ pub fn build(solid: Eos, kw: &RawKeyword) -> Result<Compaction> {
     };
     let mut c = Compaction { solid, ce, alpha0, alphae: alpha0, pe, ps, k0, cs, rho_p: 0.0 };
     c.rho_p = c.solid.rho0 / alpha0;
-    // α_e − p_e A′(α_e) = α₀ (fixpunkt)
+    // α_e − p_e A′(α_e) = α₀ (fixed point)
     if alpha0 > 1.0 {
         let mut a = alpha0;
         for _ in 0..200 {
@@ -108,7 +108,7 @@ impl Compaction {
         }
         1.0 + (self.ce - self.cs) * (a - 1.0) / (self.cs * (self.alpha0 - 1.0))
     }
-    /// Hermanns lutning dA/dp (negativ för c_e < c_s).
+    /// Hermann's slope dA/dp (negative for c_e < c_s).
     fn slope(&self, a: f64) -> f64 {
         let h = self.h(a);
         a * a / self.k0 * (1.0 - 1.0 / (h * h))
@@ -148,12 +148,12 @@ impl MaterialModel for Compaction {
         let ns = self.solid.n_state();
         let a = state[ns + ALPHA];
         if a <= 1.0 + 1e-12 {
-            // helt kompakterat: det fasta materialets modul
+            // fully compacted: the solid material's modulus
             let mut s = state[..ns].to_vec();
             s[JAC] = self.alpha0 * state[JAC];
             return self.solid.current_bulk_modulus(&s);
         }
-        // elastisk/plastisk gren: minst den jungfruliga ρ c_e²
+        // elastic/plastic branch: at least the virgin ρ c_e²
         Some(self.rho_p * self.ce * self.ce)
     }
     fn explicit_full_integration(&self) -> bool {
@@ -195,7 +195,7 @@ impl MaterialModel for Compaction {
     fn update(&self, input: &MatInput, state_old: &[f64], state_new: &mut [f64]) -> Result<MatOutput> {
         let mode = input.mode;
         if !matches!(mode, StressMode::ThreeD | StressMode::PlaneStrain) {
-            return fail("*EOS COMPACTION stöds bara i 3D och plan töjning");
+            return fail("*EOS COMPACTION is only supported in 3D and plane strain");
         }
         let ns = self.solid.n_state();
         let n = mode.ncomp();
@@ -221,7 +221,7 @@ impl MaterialModel for Compaction {
         // Eₘ = A − ½ p ΔJ/ρ_p
         let a_en = em0 + wdev - 0.5 * p0 * dj / self.rho_p;
         let half = 0.5 * dj / self.rho_p;
-        // EOS-trycket vid distensionen α
+        // the EOS pressure at distension α
         let p_eos = |a: f64| -> f64 {
             let js = self.alpha0 * j1 / a;
             let (f, gam) = self.solid.linear_in_energy(js);
@@ -231,13 +231,13 @@ impl MaterialModel for Compaction {
         let (alpha, p1) = if compacted {
             (1.0, p_eos(1.0))
         } else {
-            // r(α) = p_eos(α) − P(α, α_min): r(1) < 0 (det fasta materialet
-            // sträckt, P = p_S) och r > 0 för stora α; bisektion på [1, α_hi]
+            // r(α) = p_eos(α) − P(α, α_min): r(1) < 0 (the solid material
+            // stretched, P = p_S) and r > 0 for large α; bisection on [1, α_hi]
             let r = |a: f64| p_eos(a) - self.p_curve(a, amin0);
             let mut lo = 1.0;
             let mut hi = (2.0 * self.alpha0).max(amin0 * 1.5);
             if r(lo) >= 0.0 {
-                // trycket når p_S: helt kompakterat
+                // the pressure reaches p_S: fully compacted
                 (1.0, p_eos(1.0))
             } else if r(hi) < 0.0 {
                 (hi, self.p_curve(hi, amin0))

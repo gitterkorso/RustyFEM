@@ -1,17 +1,17 @@
-//! Balkar, del 2 (område beams2): hybridbalkar, öppna tunnväggiga balkar
-//! med välvning, tvärsnittsbiblioteket och snittkrafter för B23/B33.
+//! Beams, part 2 (area beams2): hybrid beams, open thin-walled beams
+//! with warping, the section library and section forces for B23/B33.
 //!
-//! - Hybridbalkarna B21H, B22H, B31H, B32H (Timoshenko) har
-//!   normalkraft och tvärkrafter som egna variabler. Kondenserad är
-//!   elementmatrisen densamma som för B21 ... B32 utom att skjuvstyvheten
-//!   är (1 + 10⁻⁶) gånger större, vilket
-//!   `TimoBeam::shear_stiffness` gör för namn som slutar på H. B23H och B33H
-//!   (Euler–Bernoulli med normalkraften som variabel) är B23/B33.
-//! - Öppna balkar B31OS och B32OS (frihetsgrad 7 = välvningsamplitud) i
+//! - The hybrid beams B21H, B22H, B31H, B32H (Timoshenko) have
+//!   axial force and transverse shear forces as separate variables. Condensed, the
+//!   element matrix is the same as for B21 ... B32 except that the shear stiffness
+//!   is (1 + 10⁻⁶) times larger, which
+//!   `TimoBeam::shear_stiffness` does for names ending in H. B23H and B33H
+//!   (Euler–Bernoulli with the axial force as a variable) are B23/B33.
+//! - Open beams B31OS and B32OS (degree of freedom 7 = warping amplitude) in
 //!   `beams2_open.rs`.
-//! - Tvärsnitten HEX, TRAPEZOID, THICK PIPE, ARBITRARY, J för RECT
-//!   och välvningsstorheter i `beams2_sections.rs`.
-//! - Snittkrafter SF/SM för B23/B33 i `beams2_eb_output.rs`.
+//! - The sections HEX, TRAPEZOID, THICK PIPE, ARBITRARY, J for RECT
+//!   and warping quantities in `beams2_sections.rs`.
+//! - Section forces SF/SM for B23/B33 in `beams2_eb_output.rs`.
 
 use super::api::{ElemCtx, ElemResponse, ElementType, Family, IpField, MassKind};
 use super::beam_timoshenko::TimoBeam;
@@ -35,7 +35,7 @@ pub static B33H: Alias = Alias { name: "B33H", base: &super::beam_eb::B33 };
 
 pub static TYPES: &[&dyn ElementType] = &[&B21H, &B22H, &B31H, &B32H, &B23H, &B33H, &open::B31OS, &open::B32OS];
 
-/// Elementtyp med eget namn som i övrigt är en befintlig typ.
+/// Element type with its own name that is otherwise an existing type.
 pub struct Alias {
     name: &'static str,
     base: &'static dyn ElementType,

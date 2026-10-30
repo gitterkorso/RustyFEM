@@ -1,7 +1,7 @@
-//! Materialmodeller och deras register.
+//! Material models and their registry.
 //!
-//! Varje modul exporterar `pub static FACTORIES: &[MaterialFactory]`.
-//! Registrera en ny modul med EN rad i listan nedan (alfabetisk ordning).
+//! Each module exports `pub static FACTORIES: &[MaterialFactory]`.
+//! Register a new module with ONE line in the list below (alphabetical order).
 
 mod api;
 pub use api::*;
@@ -13,7 +13,7 @@ use std::sync::Arc;
 macro_rules! material_modules {
     ($($m:ident),* $(,)?) => {
         $(pub mod $m;)*
-        /// Alla registrerade materialfabriker.
+        /// All registered material factories.
         pub fn factories() -> Vec<&'static MaterialFactory> {
             let mut v = Vec::new();
             $(v.extend($m::FACTORIES.iter());)*
@@ -22,7 +22,7 @@ macro_rules! material_modules {
     };
 }
 
-// En rad per modul, i alfabetisk ordning.
+// One line per module, in alphabetical order.
 material_modules! {
     acoustic,
     anisotropic,
@@ -82,20 +82,20 @@ material_modules! {
     xfem_damage,
 }
 
-/// Beteenden som kärnan själv hanterar (förbrukas alltid).
+/// Behaviors that the core handles itself (always consumed).
 const CORE_BEHAVIORS: &[&str] = &["DENSITY"];
 
-/// Bygger materialmodellen för en materialdefinition.
+/// Builds the material model for a material definition.
 pub fn build(def: &MaterialDef) -> Result<Arc<dyn MaterialModel>> {
-    // *ELASTIC med ν = 0,5 (hybridelement): byggs om med ν = 0,4999999
+    // *ELASTIC with ν = 0.5 (hybrid elements): rebuilt with ν = 0.4999999
     if let Some(m) = incompressible_elastic::claim(def)? {
         return Ok(m);
     }
-    // fältberoende data (DEPENDENCIES=) och USDFLD löses upp i field_dependent.rs
+    // field-dependent data (DEPENDENCIES=) and USDFLD are resolved in field_dependent.rs
     if let Some(m) = field_dependent::claim(def)? {
         return Ok(m);
     }
-    // UHARD (*PLASTIC, HARDENING=USER) och UEXPAN (*EXPANSION, USER)
+    // UHARD (*PLASTIC, HARDENING=USER) and UEXPAN (*EXPANSION, USER)
     if let Some(m) = user_routines::claim(def)? {
         return Ok(m);
     }
@@ -112,7 +112,7 @@ pub fn build(def: &MaterialDef) -> Result<Arc<dyn MaterialModel>> {
     let Some((_, fac, model)) = best else {
         let names: Vec<&str> = def.behaviors.iter().map(|b| b.name.as_str()).collect();
         return fail(format!(
-            "material {}: ingen materialmodell i RustyFEM hanterar beteendena [{}] – se src/materials/",
+            "material {}: no material model in RustyFEM handles the behaviors [{}] – see src/materials/",
             def.name,
             names.join(", ")
         ));
@@ -123,7 +123,7 @@ pub fn build(def: &MaterialDef) -> Result<Arc<dyn MaterialModel>> {
             || all.iter().any(|f| f.build.is_none() && f.consumes.contains(&b.name.as_str()));
         if !used {
             return fail(format!(
-                "material {}: beteendet *{} stöds inte av materialmodellen {} ({})",
+                "material {}: behavior *{} is not supported by material model {} ({})",
                 def.name,
                 b.name,
                 fac.name,

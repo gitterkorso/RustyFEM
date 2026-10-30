@@ -1,4 +1,4 @@
-// Körpanelen: lösare, minne, framsteg, konvergens och meddelanden.
+// The run panel: solver, memory, progress, convergence and messages.
 
 import { useEffect, useRef } from "react";
 import { bytes, cancel, estimate, solve } from "../actions";
@@ -41,21 +41,21 @@ export function Dock() {
       <div className="dock-bar">
         <div className="dock-run">
           {run.running ? (
-            <button type="button" className="btn danger" onClick={cancel} title="Avbryt (Esc)">
-              <Icon name="stop" size={14} /> Avbryt
+            <button type="button" className="btn danger" onClick={cancel} title="Cancel (Esc)">
+              <Icon name="stop" size={14} /> Cancel
             </button>
           ) : (
-            <button type="button" className="btn primary" onClick={solve} disabled={id === null} title="Lös (F5)">
-              <Icon name="play" size={14} /> Lös
+            <button type="button" className="btn primary" onClick={solve} disabled={id === null} title="Solve (F5)">
+              <Icon name="play" size={14} /> Solve
             </button>
           )}
-          <div className="progress" aria-label="Framsteg">
+          <div className="progress" aria-label="Progress">
             <div className={`progress-fill${run.running ? " live" : ""}`} style={{ width: `${pct}%` }} />
           </div>
           <span className="mono small">{run.running || pct > 0 ? `${pct} %` : ""}</span>
           {run.running && (
             <span className="muted small ellipsis">
-              steg {run.stepIndex + 1}/{run.steps} {run.stepName} · inkrement {run.increment}
+              step {run.stepIndex + 1}/{run.steps} {run.stepName} · increment {run.increment}
             </span>
           )}
           {run.running && <Sparkline values={run.residuals} />}
@@ -63,24 +63,24 @@ export function Dock() {
         <div className="dock-opts">
           <Select
             value={run.solver ?? ""}
-            options={[{ value: "", label: "Lösare: automatisk" }, ...solvers.map((s) => ({ value: s, label: s }))]}
+            options={[{ value: "", label: "Solver: automatic" }, ...solvers.map((s) => ({ value: s, label: s }))]}
             onChange={(v) => set((s) => ({ run: { ...s.run, solver: v || null } }))}
             disabled={run.running}
           />
-          <Toggle checked={run.allFrames} onChange={(v) => set((s) => ({ run: { ...s.run, allFrames: v } }))} label="Alla inkrement" hint="Spara en frame per inkrement (för animering och kurvor)" />
+          <Toggle checked={run.allFrames} onChange={(v) => set((s) => ({ run: { ...s.run, allFrames: v } }))} label="All increments" hint="Save one frame per increment (for animation and curves)" />
           {est && (
             <span className={`mem${est.fits ? "" : " over"}`} title={est.note}>
               {bytes(est.solver.startsWith("iterative") ? est.iterative_bytes : est.direct_bytes)} / {bytes(est.budget_bytes)}
             </span>
           )}
-          <IconButton icon="close" title="Rensa meddelanden" onClick={() => set({ log: [] })} />
+          <IconButton icon="close" title="Clear messages" onClick={() => set({ log: [] })} />
         </div>
       </div>
       <div className="log" ref={ref} role="log">
-        {logLines.length === 0 && <div className="muted">Meddelanden från motorn visas här.</div>}
+        {logLines.length === 0 && <div className="muted">Messages from the engine are shown here.</div>}
         {logLines.map((l, i) => (
           <div key={i} className={`ll ${l.kind}`}>
-            <span className="ts">{new Date(l.t).toLocaleTimeString("sv")}</span>
+            <span className="ts">{new Date(l.t).toLocaleTimeString("en-GB")}</span>
             <span>{l.text}</span>
           </div>
         ))}

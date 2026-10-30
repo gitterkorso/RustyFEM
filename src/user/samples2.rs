@@ -1,62 +1,62 @@
-//! Exempel på användarrutinerna i `routines.rs` (registrerade från start).
-//! Varje exempel väljs med ett namn som börjar med `EXEMPEL_` och har en
-//! inbyggd motsvarighet, så att regressionsfallen i `tests/cases/user2/`
-//! kan jämföras med en modell utan användarrutiner.
+//! Examples of the user subroutines in `routines.rs` (registered from the start).
+//! Each example is selected by a name starting with `EXAMPLE_` and has a
+//! built-in counterpart, so that the regression cases in `tests/cases/user2/`
+//! can be compared with a model without user subroutines.
 //!
-//! | Rutin | Namn | Innehåll |
+//! | Routine | Name | Content |
 //! |---|---|---|
-//! | DLOAD | elset `EXEMPEL_DLOAD*` | tryck F·(1 + x + y + z) (F = storleken på dataraden) |
-//! | DISP | nset `EXEMPEL_DISP*` | U = v·(1 + x)·stegtid (v = värdet på dataraden) |
-//! | UAMP | amplitud `EXEMPEL_SINUS*` | A = A0 + B sin(ω t), PROPS = A0, ω, B |
-//! | USDFLD | material `EXEMPEL_USDFLD*` | FIELD(1) = 0,1·NOEL |
-//! | UFIELD | nset `EXEMPEL_UFIELD*` | FIELD(KFIELD) = (1 + x)·total tid |
-//! | UHARD | material `EXEMPEL_UHARD*` | σy = σ0 + H ε̄p (PROPS = σ0, H) eller med tre PROPS σy = σ0 + Q(1 − e^(−b ε̄p)) |
-//! | SIGINI | elset `EXEMPEL_SIGINI*` | σ11 = −100, σ22 = −200, σ33 = −50 |
-//! | UEXPAN | material `EXEMPEL_UEXPAN*` | sekantkoefficient α(T) = 1e-5 + 1e-8 T (θ0 = 0), isotrop |
-//! | CREEP | material `EXEMPEL_CREEP*` | tidshårdnande Δε̄cr = A q̃ⁿ tᵐ Δt med A = 1e-12, n = 3, m = 0 |
-//! | HETVAL | material `EXEMPEL_HETVAL*` | värmegenerering 1000 per volym |
-//! | FILM | elset `EXEMPEL_FILM*` | h = 25, omgivningstemperatur 20 |
-//! | UMATHT | material `EXEMPEL_UMATHT*` | linjär värmeledning, PROPS = k, c (ρ från *DENSITY) |
+//! | DLOAD | elset `EXAMPLE_DLOAD*` | pressure F·(1 + x + y + z) (F = the magnitude on the data line) |
+//! | DISP | nset `EXAMPLE_DISP*` | U = v·(1 + x)·step time (v = the value on the data line) |
+//! | UAMP | amplitude `EXAMPLE_SINE*` | A = A0 + B sin(ω t), PROPS = A0, ω, B |
+//! | USDFLD | material `EXAMPLE_USDFLD*` | FIELD(1) = 0.1·NOEL |
+//! | UFIELD | nset `EXAMPLE_UFIELD*` | FIELD(KFIELD) = (1 + x)·total time |
+//! | UHARD | material `EXAMPLE_UHARD*` | σy = σ0 + H ε̄p (PROPS = σ0, H) or with three PROPS σy = σ0 + Q(1 − e^(−b ε̄p)) |
+//! | SIGINI | elset `EXAMPLE_SIGINI*` | σ11 = −100, σ22 = −200, σ33 = −50 |
+//! | UEXPAN | material `EXAMPLE_UEXPAN*` | secant coefficient α(T) = 1e-5 + 1e-8 T (θ0 = 0), isotropic |
+//! | CREEP | material `EXAMPLE_CREEP*` | time hardening Δε̄cr = A q̃ⁿ tᵐ Δt with A = 1e-12, n = 3, m = 0 |
+//! | HETVAL | material `EXAMPLE_HETVAL*` | heat generation 1000 per volume |
+//! | FILM | elset `EXAMPLE_FILM*` | h = 25, ambient temperature 20 |
+//! | UMATHT | material `EXAMPLE_UMATHT*` | linear heat conduction, PROPS = k, c (ρ from *DENSITY) |
 
 use super::routines::*;
 use crate::model::Result;
 use std::sync::Arc;
 
 pub fn dloads() -> Vec<(String, Arc<dyn Dload>)> {
-    vec![("EXEMPEL_DLOAD".into(), Arc::new(ExDload))]
+    vec![("EXAMPLE_DLOAD".into(), Arc::new(ExDload))]
 }
 pub fn disps() -> Vec<(String, Arc<dyn Disp>)> {
-    vec![("EXEMPEL_DISP".into(), Arc::new(ExDisp))]
+    vec![("EXAMPLE_DISP".into(), Arc::new(ExDisp))]
 }
 pub fn uamps() -> Vec<(String, Arc<dyn Uamp>)> {
-    vec![("EXEMPEL_SINUS".into(), Arc::new(ExUamp))]
+    vec![("EXAMPLE_SINE".into(), Arc::new(ExUamp))]
 }
 pub fn usdflds() -> Vec<(String, Arc<dyn Usdfld>)> {
-    vec![("EXEMPEL_USDFLD".into(), Arc::new(ExUsdfld))]
+    vec![("EXAMPLE_USDFLD".into(), Arc::new(ExUsdfld))]
 }
 pub fn ufields() -> Vec<(String, Arc<dyn Ufield>)> {
-    vec![("EXEMPEL_UFIELD".into(), Arc::new(ExUfield))]
+    vec![("EXAMPLE_UFIELD".into(), Arc::new(ExUfield))]
 }
 pub fn uhards() -> Vec<(String, Arc<dyn Uhard>)> {
-    vec![("EXEMPEL_UHARD".into(), Arc::new(ExUhard))]
+    vec![("EXAMPLE_UHARD".into(), Arc::new(ExUhard))]
 }
 pub fn siginis() -> Vec<(String, Arc<dyn Sigini>)> {
-    vec![("EXEMPEL_SIGINI".into(), Arc::new(ExSigini))]
+    vec![("EXAMPLE_SIGINI".into(), Arc::new(ExSigini))]
 }
 pub fn uexpans() -> Vec<(String, Arc<dyn Uexpan>)> {
-    vec![("EXEMPEL_UEXPAN".into(), Arc::new(ExUexpan))]
+    vec![("EXAMPLE_UEXPAN".into(), Arc::new(ExUexpan))]
 }
 pub fn creeps() -> Vec<(String, Arc<dyn Creep>)> {
-    vec![("EXEMPEL_CREEP".into(), Arc::new(ExCreep))]
+    vec![("EXAMPLE_CREEP".into(), Arc::new(ExCreep))]
 }
 pub fn hetvals() -> Vec<(String, Arc<dyn Hetval>)> {
-    vec![("EXEMPEL_HETVAL".into(), Arc::new(ExHetval))]
+    vec![("EXAMPLE_HETVAL".into(), Arc::new(ExHetval))]
 }
 pub fn films() -> Vec<(String, Arc<dyn Film>)> {
-    vec![("EXEMPEL_FILM".into(), Arc::new(ExFilm))]
+    vec![("EXAMPLE_FILM".into(), Arc::new(ExFilm))]
 }
 pub fn umathts() -> Vec<(String, Arc<dyn Umatht>)> {
-    vec![("EXEMPEL_UMATHT".into(), Arc::new(ExUmatht))]
+    vec![("EXAMPLE_UMATHT".into(), Arc::new(ExUmatht))]
 }
 
 struct ExDload;
@@ -91,7 +91,7 @@ impl Uamp for ExUamp {
 struct ExUsdfld;
 impl Usdfld for ExUsdfld {
     fn usdfld(&self, a: &mut UsdfldArgs) -> Result<()> {
-        // elementvis konstant (så att en likvärdig modell kan köras utan rutinen)
+        // constant per element (so that an equivalent model can be run without the routine)
         if let Some(f) = a.field.first_mut() {
             *f = 0.1 * a.noel as f64;
         }
@@ -129,7 +129,7 @@ impl Uhard for ExUhard {
 struct ExSigini;
 impl Sigini for ExSigini {
     fn sigini(&self, a: &mut SiginiArgs) -> Result<()> {
-        // konstant (samma begynnelsespänning kan ges med TYPE=STRESS)
+        // constant (the same initial stress can be given with TYPE=STRESS)
         a.sigma.iter_mut().for_each(|s| *s = 0.0);
         a.sigma[0] = -100.0;
         if a.sigma.len() > 1 {

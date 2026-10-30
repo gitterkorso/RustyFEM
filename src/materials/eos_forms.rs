@@ -1,4 +1,4 @@
-//! Område gaps1: fler tillståndsekvationer för `eos.rs` (inkluderas därifrån).
+//! Area gaps1: additional equations of state for `eos.rs` (included from there).
 //!
 //! ```text
 //! TYPE=TABULAR (data f₁, f₂, ε_vol i fallande ε_vol):
@@ -7,24 +7,24 @@
 //!   p_JWL = A (1 − ω/(R₁ J)) e^(−R₁ J) + B (1 − ω/(R₂ J)) e^(−R₂ J) + (ω ρ₀/J) Eₘ
 //! ```
 //!
-//! TABULAR: styckvis linjär mellan punkterna, utanför tabellen extrapolerad
-//! med den sista lutningen.
+//! TABULAR: piecewise linear between the points, extrapolated outside the table
+//! with the last slope.
 //!
-//! JWL (programmerad förbränning): detonationsvågen når materialpunkten vid
-//! t_d = min_N [t_dN + |x − x_dN| / C_d] (total tid, `init_at_point` med
-//! integrationspunktens läge). Före t_d räknas trycket ur volymtöjningen med
-//! K_pd, p = −K_pd ln J; därefter p = F_b p_JWL med förbränningsandelen
-//! F_b = min(1, (t − t_d) C_d / (B_s l_e)), B_s = 2,5 och l_e elementets
-//! karakteristiska längd. Den specifika energin börjar på E₀
-//! (*INITIAL CONDITIONS, TYPE=SPECIFIC ENERGY skriver över).
+//! JWL (programmed burn): the detonation wave reaches the material point at
+//! t_d = min_N [t_dN + |x − x_dN| / C_d] (total time, `init_at_point` with
+//! the integration point position). Before t_d the pressure is computed from the volumetric strain with
+//! K_pd, p = −K_pd ln J; thereafter p = F_b p_JWL with the burn fraction
+//! F_b = min(1, (t − t_d) C_d / (B_s l_e)), B_s = 2.5 and l_e the element's
+//! characteristic length. The specific energy starts at E₀
+//! (*INITIAL CONDITIONS, TYPE=SPECIFIC ENERGY overrides it).
 
 use crate::fem::model::{MaterialDef, RawKeyword};
 use crate::model::Result;
 
-/// Standardtolerans för regularisering av tabelldata i explicit analys.
+/// Default tolerance for regularization of table data in explicit analysis.
 const RTOL: f64 = 0.03;
 
-/// Tabellerad tillståndsekvation: (ε_vol, f₁, f₂) i stigande ε_vol.
+/// Tabulated equation of state: (ε_vol, f₁, f₂) in ascending ε_vol.
 #[derive(Debug, Clone)]
 pub struct Tabular {
     pts: Vec<(f64, f64, f64)>,
@@ -41,24 +41,24 @@ impl Tabular {
             pts.push((v.get(2).copied().unwrap_or(0.0), v[0], v.get(1).copied().unwrap_or(0.0)));
         }
         if pts.len() < 2 {
-            return kw.err("*EOS, TYPE=TABULAR: ange minst två rader (f₁, f₂, ε_vol)");
+            return kw.err("*EOS, TYPE=TABULAR: give at least two lines (f₁, f₂, ε_vol)");
         }
         if pts.windows(2).any(|w| !(w[1].0 < w[0].0)) {
-            return kw.err("*EOS, TYPE=TABULAR: volymtöjningarna ska stå i fallande ordning");
+            return kw.err("*EOS, TYPE=TABULAR: the volumetric strains must be in descending order");
         }
         pts.reverse();
         if !pts.iter().any(|p| p.0 == 0.0) {
-            return kw.err("*EOS, TYPE=TABULAR: tabellen ska ha en rad för ε_vol = 0");
+            return kw.err("*EOS, TYPE=TABULAR: the table must have a line for ε_vol = 0");
         }
         let user = Tabular { pts };
         Ok(user.regularized(RTOL))
     }
 
-    /// Explicit analys regulariserar tabellen till lika intervall
-    /// (tests/cases/gaps1/eos_tabular_*): intervallet är h = (ε_max − ε_min)/n
-    /// med n = antalet användarintervall, nätet går genom ε_vol = 0, och n ökas
-    /// tills felet i alla användarpunkter är högst RTOL gånger f₁:s (och f₂:s)
-    /// variationsbredd (RTOL = 0,03, *MATERIAL, RTOL= läses inte).
+    /// Explicit analysis regularizes the table to equal intervals
+    /// (tests/cases/gaps1/eos_tabular_*): the interval is h = (ε_max − ε_min)/n
+    /// with n = the number of user intervals, the grid passes through ε_vol = 0, and n is increased
+    /// until the error at all user points is at most RTOL times the range of f₁ (and f₂)
+    /// (RTOL = 0.03, *MATERIAL, RTOL= is not read).
     fn regularized(&self, rtol: f64) -> Tabular {
         let p = &self.pts;
         let (x0, x1) = (p[0].0, p[p.len() - 1].0);
@@ -67,8 +67,8 @@ impl Tabular {
                 let v = if k == 1 { q.1 } else { q.2 };
                 (a.min(v), b.max(v))
             });
-            // f₂ ≈ konstant ger liten variationsbredd: samma nät som för f₁
-            // godtas ändå, så måttet är minst största |värdet|
+            // f₂ ≈ constant gives a small range: the same grid as for f₁
+            // is accepted anyway, so the measure is at least the largest |value|
             (hi - lo).max(hi.abs().max(lo.abs()))
         };
         let (r1, r2) = (range(1), range(2));
@@ -96,7 +96,7 @@ impl Tabular {
         self.clone()
     }
 
-    /// (f₁, f₂, f₁′, f₂′) vid ε_vol.
+    /// (f₁, f₂, f₁′, f₂′) at ε_vol.
     pub fn eval(&self, ev: f64) -> (f64, f64, f64, f64) {
         let p = &self.pts;
         let n = p.len();
@@ -115,7 +115,7 @@ impl Tabular {
     }
 }
 
-/// JWL med detonationspunkter (x, y, z, fördröjning).
+/// JWL with detonation points (x, y, z, delay).
 #[derive(Debug, Clone)]
 pub struct Jwl {
     pub cd: f64,
@@ -129,7 +129,7 @@ pub struct Jwl {
     points: Vec<[f64; 4]>,
 }
 
-/// Förbränningsvågens bredd B_s.
+/// Width B_s of the burn wave.
 const BS: f64 = 2.5;
 
 impl Jwl {
@@ -138,10 +138,10 @@ impl Jwl {
         let g = |i: usize| v.get(i).copied().unwrap_or(0.0);
         let j = Jwl { cd: g(0), a: g(1), b: g(2), w: g(3), r1: g(4), r2: g(5), e0: g(6), kpd: g(7), points: Vec::new() };
         if !(j.cd > 0.0 && j.r1 > 0.0 && j.r2 > 0.0) {
-            return kw.err("*EOS, TYPE=JWL: ange C_d, A, B, ω, R₁, R₂ (C_d, R₁, R₂ > 0), E₀ och K_pd");
+            return kw.err("*EOS, TYPE=JWL: give C_d, A, B, ω, R₁, R₂ (C_d, R₁, R₂ > 0), E₀ and K_pd");
         }
         let Some(dp) = def.behavior("DETONATION POINT") else {
-            return kw.err("*EOS, TYPE=JWL kräver *DETONATION POINT");
+            return kw.err("*EOS, TYPE=JWL requires *DETONATION POINT");
         };
         let mut j = j;
         for d in dp.records() {
@@ -153,12 +153,12 @@ impl Jwl {
             j.points.push([g(0), g(1), g(2), g(3)]);
         }
         if j.points.is_empty() {
-            return dp.err("*DETONATION POINT: ange minst en punkt");
+            return dp.err("*DETONATION POINT: give at least one point");
         }
         Ok(j)
     }
 
-    /// Detonationsvågens ankomsttid till punkten `x`.
+    /// Arrival time of the detonation wave at point `x`.
     pub fn arrival(&self, x: [f64; 3]) -> f64 {
         self.points
             .iter()
@@ -166,7 +166,7 @@ impl Jwl {
             .fold(f64::INFINITY, f64::min)
     }
 
-    /// Förbränningsandelen vid tiden `t` (0 före ankomsten).
+    /// Burn fraction at time `t` (0 before arrival).
     pub fn burn(&self, t: f64, td: f64, le: f64) -> f64 {
         if t < td {
             return 0.0;
@@ -184,7 +184,7 @@ impl Jwl {
         (f, self.w * rho0 / j)
     }
 
-    /// Isentropisk kompressionsmodul ρc² = −J dp/dJ|_s för p_JWL (dEₘ = −p dJ/ρ₀).
+    /// Isentropic bulk modulus ρc² = −J dp/dJ|_s for p_JWL (dEₘ = −p dJ/ρ₀).
     pub fn bulk(&self, j: f64, em: f64, rho0: f64) -> f64 {
         let h = 1e-6 * j.max(1e-3);
         let (f1, g1) = self.linear_in_energy(j + h, rho0);

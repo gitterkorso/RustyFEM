@@ -1,35 +1,35 @@
-//! Skal- och membranelement: S4R, S4, M3D4, M3D3 och (i `shell_tri.rs`) S3, S3R.
+//! Shell and membrane elements: S4R, S4, M3D4, M3D3 and (in `shell_tri.rs`) S3, S3R.
 //!
-//! Plana fasettelement med sex frihetsgrader per nod (U1–U3, UR1–UR3) i ett
-//! lokalt system per element: n = elementets normal (x,ξ × x,η i mitten), lokal
-//! 1-axel = projektionen av global X på planet (global Z om normalen ligger
-//! inom 0,1° från X), 2-axel = n × 1-axeln.
+//! Flat facet elements with six degrees of freedom per node (U1–U3, UR1–UR3) in a
+//! local system per element: n = the element normal (x,ξ × x,η at the center), local
+//! 1-axis = the projection of global X onto the plane (global Z if the normal lies
+//! within 0.1° of X), 2-axis = n × the 1-axis.
 //!
-//! Formulering (Mindlin–Reissner, se Bathe kap. 5.4, Hughes kap. 5,
-//! Belytschko–Liu–Moran kap. 9):
+//! Formulation (Mindlin–Reissner, see Bathe ch. 5.4, Hughes ch. 5,
+//! Belytschko–Liu–Moran ch. 9):
 //!
-//! - Membran: bilinjär fyrhörning. S4R: enpunktsintegrering och
-//!   Flanagan–Belytschko-stabilisering av de två membrana nollenergimoderna
-//!   (stabiliseringsstyvhet 0,005·G·t·A·Σbᵢ·bᵢ/16 per mod). S4: enpunkts-
-//!   integrering plus en antagen töjning för de böjande moderna (ren böjning i
-//!   planet med tvärkontraktion ν̄ = 0,29, utan skjuvning – ger ren böjning utan
-//!   skjuvlåsning).
-//! - Böjning: S4R enpunktsintegrering plus stabilisering av de två
-//!   rotationsmoderna (0,01125·G·t³/12·A·Σbᵢ·bᵢ/16 per mod); S4 full 2×2.
-//! - Tvärskjuvning: antagen skjuvtöjning från kanternas mittpunkter (Bathe–
-//!   Dvorkin/MITC4). Det konstanta skjuvfältet integreras i mitten; de två
-//!   "timglas"-kombinationerna av kanttöjningarna får egna styvheter
-//!   (α = ks·8/3·(|x,ξ|² + |x,η|²)/A för (Δξ + Δη) och 0,004·α för (Δξ − Δη)).
-//!   ks = 5/6·G·t skalad med 1/(1 + 0,25·10⁻⁴·A/t²).
-//! - Rotation kring normalen (drill): straff på skillnaden mellan nodens
-//!   rotation och membranets rotation ½(v,x − u,y) i noden, styvhet
-//!   kᵢ = G·t·det(Jᵢ)/(6 + 0,6·A/t²).
+//! - Membrane: bilinear quadrilateral. S4R: one-point integration and
+//!   Flanagan–Belytschko stabilization of the two membrane zero-energy modes
+//!   (stabilization stiffness 0.005·G·t·A·Σbᵢ·bᵢ/16 per mode). S4: one-point
+//!   integration plus an assumed strain for the bending modes (pure in-plane bending
+//!   with lateral contraction ν̄ = 0.29, without shear – gives pure bending without
+//!   shear locking).
+//! - Bending: S4R one-point integration plus stabilization of the two
+//!   rotation modes (0.01125·G·t³/12·A·Σbᵢ·bᵢ/16 per mode); S4 full 2×2.
+//! - Transverse shear: assumed shear strain from the edge midpoints (Bathe–
+//!   Dvorkin/MITC4). The constant shear field is integrated at the center; the two
+//!   "hourglass" combinations of the edge strains get their own stiffnesses
+//!   (α = ks·8/3·(|x,ξ|² + |x,η|²)/A for (Δξ + Δη) and 0.004·α for (Δξ − Δη)).
+//!   ks = 5/6·G·t scaled by 1/(1 + 0.25·10⁻⁴·A/t²).
+//! - Rotation about the normal (drill): penalty on the difference between the node's
+//!   rotation and the membrane rotation ½(v,x − u,y) at the node, stiffness
+//!   kᵢ = G·t·det(Jᵢ)/(6 + 0.6·A/t²).
 //!
-//! Begränsningar för allmänt förvrängda fyrhörningar beskrivs i docs/REFERENS.md.
+//! Limitations for generally distorted quadrilaterals are described in docs/REFERENCE.md.
 //!
-//! Tvärsnitt: *SHELL SECTION och *SHELL GENERAL SECTION (homogena, isotropt
-//! linjärelastiskt material). Utdata: S (S11, S22, S12) i sektionspunkterna 1
-//! (SNEG) och n (SPOS), SF (SF1–SF6) och SM (SM1–SM3) per integrationspunkt.
+//! Sections: *SHELL SECTION and *SHELL GENERAL SECTION (homogeneous, isotropic
+//! linear elastic material). Output: S (S11, S22, S12) at section points 1
+//! (SNEG) and n (SPOS), SF (SF1–SF6) and SM (SM1–SM3) per integration point.
 
 #[path = "shell_tri.rs"]
 pub mod tri;
@@ -44,14 +44,14 @@ use crate::fem::dof::{Dof, U1, U2, U3, UR1, UR2, UR3};
 use crate::fem::model::{DistLoad, SectionKind};
 use crate::model::{fail, Result};
 
-/// Tvärkontraktion i S4:s antagna böjtöjning i planet.
+/// Lateral contraction in the assumed in-plane bending strain of S4.
 const NU_BAR: f64 = 0.29;
 
 // ---------------------------------------------------------------------------
-// Små täta matrishjälpare (radvisa)
+// Small dense matrix helpers (row-wise)
 // ---------------------------------------------------------------------------
 
-/// K += w · aᵀ C b för a, b med `r` rader och `n` kolumner, C r×r.
+/// K += w · aᵀ C b for a, b with `r` rows and `n` columns, C r×r.
 pub fn add_btcb(k: &mut [f64], n: usize, a: &[f64], c: &[f64], b: &[f64], r: usize, w: f64) {
     let mut cb = vec![0.0; r * n];
     for i in 0..r {
@@ -93,7 +93,7 @@ fn inv2(j: [[f64; 2]; 2]) -> ([[f64; 2]; 2], f64) {
     ([[j[1][1] / det, -j[0][1] / det], [-j[1][0] / det, j[0][0] / det]], det)
 }
 
-/// Invers av en liten n×n-matris (Gauss–Jordan med pivotering).
+/// Inverse of a small n×n matrix (Gauss–Jordan with pivoting).
 pub fn inv_n(a: &[f64], n: usize) -> Option<Vec<f64>> {
     let mut m = a.to_vec();
     let mut inv = vec![0.0; n * n];
@@ -130,19 +130,19 @@ pub fn inv_n(a: &[f64], n: usize) -> Option<Vec<f64>> {
 }
 
 // ---------------------------------------------------------------------------
-// Lokalt system och tvärsnitt
+// Local system and section
 // ---------------------------------------------------------------------------
 
-/// Elementets lokala system: R (rader e1, e2, n) och plana nodkoordinater.
+/// The element's local system: R (rows e1, e2, n) and planar nodal coordinates.
 pub struct Local {
     pub r: [[f64; 3]; 3],
     pub xl: Vec<[f64; 2]>,
 }
 
-/// Lokala standardaxlar för ett skal med normalen `n`.
+/// Default local axes for a shell with the normal `n`.
 pub fn shell_axes(n: [f64; 3]) -> [[f64; 3]; 3] {
     let n = scale(n, 1.0 / norm(n));
-    // 1-axel: projektion av global X, eller av global Z om normalen ligger inom 0,1° från X
+    // 1-axis: projection of global X, or of global Z if the normal lies within 0.1° of X
     let g = if n[0].abs() > (0.1f64.to_radians()).cos() { [0.0, 0.0, 1.0] } else { [1.0, 0.0, 0.0] };
     let p = sub(g, scale(n, dot(g, n)));
     let e1 = scale(p, 1.0 / norm(p));
@@ -154,7 +154,7 @@ pub fn local_frame(x: &[[f64; 3]], label: i64, name: &str) -> Result<Local> {
     let nc = if x.len() == 3 || x.len() == 6 { 3 } else { 4 };
     let n = if nc == 3 { cross(sub(x[1], x[0]), sub(x[2], x[0])) } else { cross(sub(x[2], x[0]), sub(x[3], x[1])) };
     if norm(n) == 0.0 {
-        return fail(format!("element {label} ({name}) har ingen area"));
+        return fail(format!("element {label} ({name}) has zero area"));
     }
     let r = shell_axes(n);
     let c = common::centroid(&x[..nc]);
@@ -165,27 +165,27 @@ pub fn local_frame(x: &[[f64; 3]], label: i64, name: &str) -> Result<Local> {
     Ok(Local { r, xl })
 }
 
-/// Homogent skaltvärsnitt.
+/// Homogeneous shell section.
 #[derive(Debug, Clone)]
 pub struct ShellSec {
     pub t: f64,
     pub e: f64,
     pub nu: f64,
     pub g: f64,
-    /// Plan spänning D (3×3, radvis).
+    /// Plane stress D (3×3, row-wise).
     pub d: [f64; 9],
     pub rho: f64,
-    /// Antal sektionspunkter (Simpson) för utdata, 0 = *SHELL GENERAL SECTION.
+    /// Number of section points (Simpson) for output, 0 = *SHELL GENERAL SECTION.
     pub n_int: usize,
-    /// Tvärskjuvstyvhet (K11, K22, K12) från *TRANSVERSE SHEAR STIFFNESS.
+    /// Transverse shear stiffness (K11, K22, K12) from *TRANSVERSE SHEAR STIFFNESS.
     pub tss: Option<[f64; 3]>,
 }
 
 impl ShellSec {
     pub fn get(ctx: &ElemCtx, name: &str) -> Result<ShellSec> {
         let sec = ctx.section(name)?;
-        // område struct_nonlin: *SHELL SECTION integreras genom tjockleken
-        // (shell_section.rs) för olinjära material och skiktade tvärsnitt
+        // area struct_nonlin: *SHELL SECTION is integrated through the thickness
+        // (shell_section.rs) for nonlinear materials and layered sections
         let shell_section = sec.raw.name == "SHELL SECTION";
         let (t, n_int) = match &sec.kind {
             SectionKind::Shell { thickness, n_int } => (*thickness, *n_int),
@@ -194,40 +194,40 @@ impl ShellSec {
                 let v = sec.raw.first_floats()?;
                 (v.first().copied().filter(|&t| t != 0.0).unwrap_or(1.0), 1)
             }
-            _ => return fail(format!("element {} ({name}) kräver *SHELL SECTION (homogent) eller *MEMBRANE SECTION", ctx.label)),
+            _ => return fail(format!("element {} ({name}) requires *SHELL SECTION (homogeneous) or *MEMBRANE SECTION", ctx.label)),
         };
         if !(t > 0.0) {
-            return fail(format!("element {} ({name}): skaltjockleken måste vara positiv", ctx.label));
+            return fail(format!("element {} ({name}): the shell thickness must be positive", ctx.label));
         }
         let mat = ctx.material(name)?;
         if !mat.is_linear() && !shell_section {
-            return not_implemented(&format!("olinjärt material ({})", mat.name()), name);
+            return not_implemented(&format!("nonlinear material ({})", mat.name()), name);
         }
         let (e, nu, d) = match mat.elastic_moduli() {
             Some((e, nu)) => {
                 let f = e / (1.0 - nu * nu);
                 (e, nu, [f, f * nu, 0.0, f * nu, f, 0.0, 0.0, 0.0, f * (1.0 - nu) / 2.0])
             }
-            // anisotropt material (t.ex. LAMINA) i *SHELL SECTION: materialets
-            // plana spänningsmatris för stabilisering och drill
+            // anisotropic material (e.g. LAMINA) in *SHELL SECTION: the material's
+            // plane stress matrix for stabilization and drill
             None if shell_section => {
                 let dm = mat.tangent_linear(crate::materials::StressMode::PlaneStress)?;
                 let nu = dm[1] / dm[0];
                 (dm[0] * (1.0 - nu * nu), nu, std::array::from_fn(|i| dm[i]))
             }
-            None => return fail(format!("{name} kräver isotropt linjärelastiskt material")),
+            None => return fail(format!("{name} requires an isotropic linear elastic material")),
         };
         let tss = sec.raw.param(super::beam_timoshenko::section::TSS_PARAM).map(|s| {
             let v: Vec<f64> = s.split(',').map(|x| crate::fem::model::parse_f64(x).unwrap_or(0.0)).collect();
             [v.first().copied().unwrap_or(0.0), v.get(1).copied().unwrap_or(0.0), v.get(2).copied().unwrap_or(0.0)]
         });
-        // *SHELL GENERAL SECTION: spänningar redovisas i sektionspunkterna 1 och 3 (under- och översida)
+        // *SHELL GENERAL SECTION: stresses are reported at section points 1 and 3 (bottom and top)
         let n_int = if sec.raw.name == "SHELL GENERAL SECTION" { 3 } else { n_int };
         let g = if mat.elastic_moduli().is_some() { e / (2.0 * (1.0 + nu)) } else { d[8] };
         Ok(ShellSec { t, e, nu, g, d, rho: ctx.density, n_int, tss })
     }
 
-    /// Skalad tvärskjuvstyvhet (isotrop del) för ett element med arean `a`.
+    /// Scaled transverse shear stiffness (isotropic part) for an element with the area `a`.
     pub fn ks(&self, a: f64) -> f64 {
         let fp = 1.0 / (1.0 + 0.25e-4 * a / (self.t * self.t));
         match self.tss {
@@ -236,7 +236,7 @@ impl ShellSec {
         }
     }
 
-    /// Sektionspunkternas z (Simpson, n punkter genom tjockleken).
+    /// z of the section points (Simpson, n points through the thickness).
     pub fn section_z(&self, sp: usize) -> f64 {
         let n = self.n_int.max(1);
         if n == 1 {
@@ -247,13 +247,13 @@ impl ShellSec {
 }
 
 // ---------------------------------------------------------------------------
-// Bilinjär fyrhörning
+// Bilinear quadrilateral
 // ---------------------------------------------------------------------------
 
 const NAT4: [[f64; 2]; 4] = [[-1.0, -1.0], [1.0, -1.0], [1.0, 1.0], [-1.0, 1.0]];
 const GP4: [(f64, f64); 4] = [(-G2, -G2), (G2, -G2), (-G2, G2), (G2, G2)];
 
-/// Formfunktioner, naturliga derivator, J = [[x,ξ y,ξ],[x,η y,η]].
+/// Shape functions, natural derivatives, J = [[x,ξ y,ξ],[x,η y,η]].
 pub struct Q4Pt {
     pub n: [f64; 4],
     pub ds: [f64; 4],
@@ -292,10 +292,10 @@ pub fn q4pt(x: &[[f64; 2]], s: f64, t: f64) -> Q4Pt {
     Q4Pt { n, ds, dt, j, det, bx, by }
 }
 
-/// Lokala frihetsgrader per nod i skalen: [u, v, w, θx, θy, θz].
+/// Local degrees of freedom per node in the shells: [u, v, w, θx, θy, θz].
 const ND: usize = 6;
 
-/// Membran-B (3 × 6nn) för dN/dx, dN/dy.
+/// Membrane B (3 × 6nn) for dN/dx, dN/dy.
 fn bmem(bx: &[f64], by: &[f64]) -> Vec<f64> {
     let nn = bx.len();
     let n = ND * nn;
@@ -309,7 +309,7 @@ fn bmem(bx: &[f64], by: &[f64]) -> Vec<f64> {
     b
 }
 
-/// Böj-B (3 × 6nn): κ = [θy,x, −θx,y, θy,y − θx,x].
+/// Bending B (3 × 6nn): κ = [θy,x, −θx,y, θy,y − θx,x].
 fn bbend(bx: &[f64], by: &[f64]) -> Vec<f64> {
     let nn = bx.len();
     let n = ND * nn;
@@ -323,7 +323,7 @@ fn bbend(bx: &[f64], by: &[f64]) -> Vec<f64> {
     b
 }
 
-/// Kovariant tvärskjuvtöjning e_ξ (dir = 0) eller e_η (dir = 1) i (s, t).
+/// Covariant transverse shear strain e_ξ (dir = 0) or e_η (dir = 1) at (s, t).
 fn cov_shear(x: &[[f64; 2]], s: f64, t: f64, dir: usize) -> Vec<f64> {
     let p = q4pt(x, s, t);
     let d = if dir == 0 { p.ds } else { p.dt };
@@ -337,7 +337,7 @@ fn cov_shear(x: &[[f64; 2]], s: f64, t: f64, dir: usize) -> Vec<f64> {
     g
 }
 
-/// Timglasvektorn γ = h − (h·x) bx − (h·y) by (Flanagan–Belytschko, onormerad).
+/// The hourglass vector γ = h − (h·x) bx − (h·y) by (Flanagan–Belytschko, unnormalized).
 fn hourglass(x: &[[f64; 2]], p0: &Q4Pt) -> [f64; 4] {
     let h = [1.0, -1.0, 1.0, -1.0];
     let hx: f64 = (0..4).map(|i| h[i] * x[i][0]).sum();
@@ -345,8 +345,8 @@ fn hourglass(x: &[[f64; 2]], p0: &Q4Pt) -> [f64; 4] {
     [0, 1, 2, 3].map(|i| h[i] - hx * p0.bx[i] - hy * p0.by[i])
 }
 
-/// Tvärskjuvningens kanttöjningar (4 × 24) och koefficientmatris (4 × 4),
-/// samt matrisen M (2 × 4) som ger det konstanta skjuvfältet γ0 = M·s.
+/// The transverse shear edge strains (4 × 24) and coefficient matrix (4 × 4),
+/// and the matrix M (2 × 4) that gives the constant shear field γ0 = M·s.
 struct ShearModel {
     s: Vec<f64>,
     c: [f64; 16],
@@ -357,9 +357,9 @@ fn shear_model(x: &[[f64; 2]], ks: f64) -> ShearModel {
     shear_model_k(x, [ks, ks, 0.0])
 }
 
-/// Som `shear_model` med en riktningsberoende tvärskjuvstyvhet [K11, K22, K12]
-/// i elementets lokala axlar (område struct_nonlin: skiktade tvärsnitt);
-/// timglasdelen använder medelvärdet (K11 + K22)/2.
+/// Like `shear_model` with a direction-dependent transverse shear stiffness [K11, K22, K12]
+/// in the element's local axes (area struct_nonlin: layered sections);
+/// the hourglass part uses the mean (K11 + K22)/2.
 fn shear_model_k(x: &[[f64; 2]], kk: [f64; 3]) -> ShearModel {
     let ks = 0.5 * (kk[0] + kk[1]);
     let rows = [cov_shear(x, 0.0, -1.0, 0), cov_shear(x, -1.0, 0.0, 1), cov_shear(x, 0.0, 1.0, 0), cov_shear(x, 1.0, 0.0, 1)];
@@ -375,10 +375,10 @@ fn shear_model_k(x: &[[f64; 2]], kk: [f64; 3]) -> ShearModel {
         [0.5 * ji[0][0], 0.5 * ji[0][1], 0.5 * ji[0][0], 0.5 * ji[0][1]],
         [0.5 * ji[1][0], 0.5 * ji[1][1], 0.5 * ji[1][0], 0.5 * ji[1][1]],
     ];
-    // område normals: timglasdelen delas upp med kanternas egna tangenter
-    // x,ξ(0, ∓1), x,η(∓1, 0) (för parallellogram = mittens); för
-    // trapetser blir felet i böj-/skjuvblocket av andra ordningen
-    // i förvrängningen
+    // area normals: the hourglass part is split using the edges' own tangents
+    // x,ξ(0, ∓1), x,η(∓1, 0) (for a parallelogram = the center's); for
+    // trapezoids the error in the bending/shear block is of second order
+    // in the distortion
     let et = [q4pt(x, 0.0, -1.0).j[0], q4pt(x, -1.0, 0.0).j[1], q4pt(x, 0.0, 1.0).j[0], q4pt(x, 1.0, 0.0).j[1]];
     let mut c = [0.0; 16];
     for i in 0..4 {
@@ -386,7 +386,7 @@ fn shear_model_k(x: &[[f64; 2]], kk: [f64; 3]) -> ShearModel {
             c[i * 4 + j] = a * (kk[0] * m[0][i] * m[0][j] + kk[1] * m[1][i] * m[1][j] + kk[2] * (m[0][i] * m[1][j] + m[1][i] * m[0][j]));
         }
     }
-    // timglasdelen: [T Q2]⁻¹, T = kanternas tangenter, Q2 = [(-1,-1,1,1), (-1,1,1,-1)]
+    // the hourglass part: [T Q2]⁻¹, T = the edge tangents, Q2 = [(-1,-1,1,1), (-1,1,1,-1)]
     let xs = p0.j[0];
     let xt = p0.j[1];
     let tq = [
@@ -410,10 +410,10 @@ fn shear_model_k(x: &[[f64; 2]], kk: [f64; 3]) -> ShearModel {
     ShearModel { s, c, m }
 }
 
-/// Drillstyvhet: Σ kᵢ (θzᵢ − ωᵢ)², ωᵢ = ½(v,x − u,y) i nod i.
+/// Drill stiffness: Σ kᵢ (θzᵢ − ωᵢ)², ωᵢ = ½(v,x − u,y) at node i.
 fn add_drill(k: &mut [f64], x: &[[f64; 2]], sec: &ShellSec, a: f64) {
     let n = ND * 4;
-    // = G·t/(6 + 0,6·A/t²) för homogena tvärsnitt; följer tvärskjuvstyvheten
+    // = G·t/(6 + 0.6·A/t²) for homogeneous sections; follows the transverse shear stiffness
     let kts = sec.tss.map(|k| k[0]).unwrap_or(5.0 / 6.0 * sec.g * sec.t);
     let kfac = 0.2 * kts / (1.0 + 0.1 * a / (sec.t * sec.t));
     for i in 0..4 {
@@ -428,7 +428,7 @@ fn add_drill(k: &mut [f64], x: &[[f64; 2]], sec: &ShellSec, a: f64) {
     }
 }
 
-/// Plan spänning D·t (membran) och D·t³/12 (böjning) som 6×6 för [ε; κ].
+/// Plane stress D·t (membrane) and D·t³/12 (bending) as 6×6 for [ε; κ].
 fn section_c(sec: &ShellSec) -> [f64; 36] {
     let mut c = [0.0; 36];
     let tb = sec.t.powi(3) / 12.0;
@@ -462,7 +462,7 @@ pub static S4R: ShellQuad = ShellQuad { name: "S4R", kind: QuadKind::S4R };
 pub static S4: ShellQuad = ShellQuad { name: "S4", kind: QuadKind::S4 };
 
 impl ShellQuad {
-    /// Lokal styvhet (24 × 24) i [u, v, w, θx, θy, θz] per nod.
+    /// Local stiffness (24 × 24) in [u, v, w, θx, θy, θz] per node.
     fn local_k(&self, x: &[[f64; 2]], sec: &ShellSec) -> Vec<f64> {
         let n = 24;
         let mut k = vec![0.0; n * n];
@@ -488,7 +488,7 @@ impl ShellQuad {
                 }
             }
             QuadKind::S4 => {
-                // membran: enpunkt + antagen böjtöjning i planet
+                // membrane: one point + assumed in-plane bending strain
                 let mut cm3 = [0.0; 9];
                 for i in 0..9 {
                     cm3[i] = sec.d[i] * sec.t;
@@ -510,7 +510,7 @@ impl ShellQuad {
                         }
                     }
                 }
-                // böjning: full 2×2
+                // bending: full 2×2
                 let mut cb3 = [0.0; 9];
                 let tb = sec.t.powi(3) / 12.0;
                 for i in 0..9 {
@@ -540,9 +540,9 @@ impl ShellQuad {
         Ok((loc, ShellSec::get(ctx, self.name)?))
     }
 
-    /// Kinematik för integrering genom tjockleken (område struct_nonlin,
-    /// shell_section.rs): B för [ε; κ] per integrationspunkt och den elastiska
-    /// resten (tvärskjuvning, drill och för S4R timglasstabilisering).
+    /// Kinematics for integration through the thickness (area struct_nonlin,
+    /// shell_section.rs): B for [ε; κ] per integration point and the elastic
+    /// remainder (transverse shear, drill and for S4R hourglass stabilization).
     fn kin(&self, ctx: &ElemCtx) -> Result<section::Kin> {
         let (loc, mut sec) = self.setup(ctx)?;
         let x = &loc.xl;
@@ -577,8 +577,8 @@ impl ShellQuad {
                 vec![(stack(&bm0, &bbend(&p0.bx, &p0.by)), a)]
             }
             QuadKind::S4 => {
-                // membranet: enpunktsdelen plus den antagna böjtöjningen i
-                // integrationspunkten (samma töjning som `strains`)
+                // the membrane: the one-point part plus the assumed bending strain at
+                // the integration point (the same strain as `strains`)
                 let gam = hourglass(x, &p0);
                 let (ji, _) = inv2(p0.j);
                 let grads = [[ji[0][0], ji[1][0]], [ji[0][1], ji[1][1]]];
@@ -614,13 +614,13 @@ impl ShellQuad {
         Ok(section::Kin { loc, sec, ips, rest, shear: vec![gs; nip], kshear: kk, rule: nlgeom::MemRule::Center })
     }
 
-    /// Lokala förskjutningar ur globala.
+    /// Local displacements from global ones.
     fn local_u(loc: &Local, u: &[f64], nn: usize) -> Vec<f64> {
         let t = common::block_diag(&loc.r, 2 * nn);
         common::matvec(&t, u)
     }
 
-    /// Generaliserade töjningar [ε(3), κ(3), γ(2)] i integrationspunkterna.
+    /// Generalized strains [ε(3), κ(3), γ(2)] at the integration points.
     fn strains(&self, x: &[[f64; 2]], sec: &ShellSec, ul: &[f64]) -> Vec<[f64; 8]> {
         let p0 = q4pt(x, 0.0, 0.0);
         let a = 4.0 * p0.det;
@@ -636,7 +636,7 @@ impl ShellQuad {
             }
             QuadKind::S4 => {
                 let e0 = mv(&bmem(&p0.bx, &p0.by));
-                // timglasamplituder q = γ·u/4 och den antagna böjtöjningen
+                // hourglass amplitudes q = γ·u/4 and the assumed bending strain
                 let gam = hourglass(x, &p0);
                 let qx: f64 = (0..4).map(|i| gam[i] * ul[i * ND]).sum::<f64>() / 4.0;
                 let qy: f64 = (0..4).map(|i| gam[i] * ul[i * ND + 1]).sum::<f64>() / 4.0;
@@ -667,20 +667,20 @@ impl ShellQuad {
     }
 }
 
-/// Global matris ur lokal (6 frihetsgrader per nod).
+/// Global matrix from a local one (6 degrees of freedom per node).
 pub fn to_global(kl: &[f64], r: &[[f64; 3]; 3], nn: usize) -> Vec<f64> {
     let t = common::block_diag(r, 2 * nn);
     common::congruence(kl, &t, ND * nn)
 }
 
-/// Global vektor ur lokal: f = Tᵀ fl.
+/// Global vector from a local one: f = Tᵀ fl.
 pub fn vec_to_global(fl: &[f64], r: &[[f64; 3]; 3], blocks: usize) -> Vec<f64> {
     let t = common::block_diag(r, blocks);
     let n = 3 * blocks;
     (0..n).map(|j| (0..n).map(|i| t[i * n + j] * fl[i]).sum()).collect()
 }
 
-/// Utdata för skal från generaliserade töjningar per integrationspunkt.
+/// Output for shells from generalized strains per integration point.
 pub fn shell_output(sec: &ShellSec, strains: &[[f64; 8]], ks: f64) -> Vec<IpField> {
     let mut s = IpField::new("S", &["S11", "S22", "S12"]);
     let mut sf = IpField::new("SF", &["SF1", "SF2", "SF3", "SF4", "SF5", "SF6"]);
@@ -712,7 +712,7 @@ pub fn shell_output(sec: &ShellSec, strains: &[[f64; 8]], ks: f64) -> Vec<IpFiel
     out
 }
 
-/// Konsistent eller diagonal massa (24 × 24) för en fyrhörning i lokala dof.
+/// Consistent or diagonal mass (24 × 24) for a quadrilateral in local dofs.
 fn quad_mass(x: &[[f64; 2]], sec: &ShellSec, lumped: bool) -> Vec<f64> {
     let n = 24;
     let mut m = vec![0.0; n * n];
@@ -731,8 +731,8 @@ fn quad_mass(x: &[[f64; 2]], sec: &ShellSec, lumped: bool) -> Vec<f64> {
                     m[(ri * ND + d) * n + cj * ND + d] += f * mr;
                 }
                 if lumped {
-                    // område struct_nonlin: diagonal massa (*DYNAMIC) har samma
-                    // rotationströghet kring normalen som kring planets axlar
+                    // area struct_nonlin: diagonal mass (*DYNAMIC) has the same
+                    // rotary inertia about the normal as about the in-plane axes
                     m[(ri * ND + 5) * n + cj * ND + 5] += f * mr;
                 }
             }
@@ -741,7 +741,7 @@ fn quad_mass(x: &[[f64; 2]], sec: &ShellSec, lumped: bool) -> Vec<f64> {
     m
 }
 
-/// Ekvivalenta nodkrafter (lokala, 3 per nod) för last per area `q` (lokal riktning).
+/// Equivalent nodal forces (local, 3 per node) for a load per area `q` (local direction).
 fn quad_area_load(x: &[[f64; 2]], q: [f64; 3]) -> Vec<f64> {
     let mut f = vec![0.0; 12];
     for &(s, t) in &GP4 {
@@ -755,10 +755,10 @@ fn quad_area_load(x: &[[f64; 2]], q: [f64; 3]) -> Vec<f64> {
     f
 }
 
-/// Last per ytenhet i globala koordinater för P, GRAV, BX/BY/BZ.
+/// Load per unit area in global coordinates for P, GRAV, BX/BY/BZ.
 pub fn area_load_vector(load: &DistLoad, normal: [f64; 3], sec: &ShellSec, name: &str) -> Result<Option<[f64; 3]>> {
     match load.kind.as_str() {
-        // positivt tryck P verkar i normalens riktning
+        // positive pressure P acts in the direction of the normal
         "P" => Ok(Some(scale(normal, load.magnitude))),
         _ => match common::body_load_vector(&load.kind, load.magnitude, &load.extra, sec.rho, name)? {
             Some(b) => Ok(Some(scale(b, sec.t))),
@@ -803,7 +803,7 @@ impl ElementType for ShellQuad {
 
     fn stiffness(&self, ctx: &ElemCtx) -> Result<Vec<f64>> {
         if section::is_general(ctx) {
-            // område struct_nonlin: tvärsnittets elastiska styvhet ur sektionspunkterna
+            // area struct_nonlin: the elastic section stiffness from the section points
             let kin = self.kin(ctx)?;
             return kin.stiffness(&section::Layup::new(ctx, self.name, &kin.loc)?);
         }
@@ -813,7 +813,7 @@ impl ElementType for ShellQuad {
 
     fn internal_force(&self, ctx: &ElemCtx, u: &[f64], _du: &[f64], _so: &[f64], _sn: &mut Vec<f64>, tangent: bool) -> Result<ElemResponse> {
         if section::is_general(ctx) {
-            // område struct_nonlin: integrering genom tjockleken (shell_section.rs)
+            // area struct_nonlin: integration through the thickness (shell_section.rs)
             let kin = self.kin(ctx)?;
             let lay = section::Layup::new(ctx, self.name, &kin.loc)?;
             if ctx.nlgeom {
@@ -822,7 +822,7 @@ impl ElementType for ShellQuad {
             return kin.response(ctx, &lay, u, _so, _sn, tangent);
         }
         if ctx.nlgeom {
-            // område nlgeom_struct: korotationell formulering (shell_nlgeom.rs)
+            // area nlgeom_struct: corotational formulation (shell_nlgeom.rs)
             let k0 = self.stiffness(ctx)?;
             return nlgeom::response(ctx, self.name, &k0, u, nlgeom::MemRule::Center, tangent);
         }
@@ -837,12 +837,12 @@ impl ElementType for ShellQuad {
 
     fn geometric_stiffness(&self, ctx: &ElemCtx, u: &[f64], _state: &[f64]) -> Result<Vec<f64>> {
         if section::is_general(ctx) {
-            return not_implemented("geometrisk styvhet med integrering genom tjockleken", self.name);
+            return not_implemented("geometric stiffness with integration through the thickness", self.name);
         }
         let (loc, sec) = self.setup(ctx)?;
         let ul = Self::local_u(&loc, u, 4);
         let eps = self.strains(&loc.xl, &sec, &ul);
-        // membrankrafter i mitten (medel av integrationspunkterna)
+        // membrane forces at the center (mean of the integration points)
         let mut nm = [0.0; 3];
         for e in &eps {
             for i in 0..3 {
@@ -850,7 +850,7 @@ impl ElementType for ShellQuad {
             }
         }
         if self.kind == QuadKind::S4R {
-            // område nlgeom_struct: S4R integrerar spänningsstyvheten i en punkt
+            // area nlgeom_struct: S4R integrates the stress stiffness at one point
             return Ok(to_global(&nlgeom::geometric_s4r(&loc.xl, nm), &loc.r, 4));
         }
         Ok(to_global(&geometric_q4(&loc.xl, nm), &loc.r, 4))
@@ -859,7 +859,7 @@ impl ElementType for ShellQuad {
     fn distributed_load(&self, ctx: &ElemCtx, load: &DistLoad, _u: &[f64]) -> Result<Vec<f64>> {
         let (loc, sec) = self.setup(ctx)?;
         let Some(q) = area_load_vector(load, loc.r[2], &sec, self.name)? else {
-            return not_implemented(&format!("lasttypen {}", load.kind), self.name);
+            return not_implemented(&format!("load type {}", load.kind), self.name);
         };
         let ql = [dot(loc.r[0], q), dot(loc.r[1], q), dot(loc.r[2], q)];
         let fl = quad_area_load(&loc.xl, ql);
@@ -885,7 +885,7 @@ impl ElementType for ShellQuad {
             return kin.output(ctx, self.name, &lay, u, _state);
         }
         let (loc, sec) = self.setup(ctx)?;
-        // NLGEOM: deformationella förskjutningar i det medföljande systemet
+        // NLGEOM: deformational displacements in the co-rotating frame
         let u_tot = u;
         let d;
         let u = if ctx.nlgeom {
@@ -900,8 +900,8 @@ impl ElementType for ShellQuad {
         if !ctx.nlgeom {
             return Ok(shell_output(&sec, &eps, sec.ks(a)));
         }
-        // område nlgeom_struct: logaritmisk membrantöjning (mitten) i stället för
-        // den linjära, och membrankrafter med aktuell tjocklek
+        // area nlgeom_struct: logarithmic membrane strain (center) instead of
+        // the linear one, and membrane forces with the current thickness
         let p0 = q4pt(&loc.xl, 0.0, 0.0);
         let bm0 = bmem(&p0.bx, &p0.by);
         let lin: Vec<f64> = (0..3).map(|r| (0..24).map(|q| bm0[r * 24 + q] * ul[q]).sum()).collect();
@@ -917,8 +917,8 @@ impl ElementType for ShellQuad {
     }
 }
 
-/// Geometrisk styvhet för plattböjning: ∫ ∇wᵀ N ∇w dA (membrankrafter N),
-/// samma för u och v (fullständig plan spänningsstyvhet).
+/// Geometric stiffness for plate bending: ∫ ∇wᵀ N ∇w dA (membrane forces N),
+/// the same for u and v (full plane stress stiffness).
 pub fn geometric_q4(x: &[[f64; 2]], nm: [f64; 3]) -> Vec<f64> {
     let n = 24;
     let mut k = vec![0.0; n * n];
@@ -937,7 +937,7 @@ pub fn geometric_q4(x: &[[f64; 2]], nm: [f64; 3]) -> Vec<f64> {
 }
 
 // ---------------------------------------------------------------------------
-// Membran M3D4 och M3D3
+// Membranes M3D4 and M3D3
 // ---------------------------------------------------------------------------
 
 pub struct Membrane {
@@ -949,7 +949,7 @@ pub static M3D4: Membrane = Membrane { name: "M3D4", nn: 4 };
 pub static M3D3: Membrane = Membrane { name: "M3D3", nn: 3 };
 
 impl Membrane {
-    /// Integrationspunkter (dN/dx, dN/dy, N, vikt) i lokala koordinater.
+    /// Integration points (dN/dx, dN/dy, N, weight) in local coordinates.
     fn ips(&self, x: &[[f64; 2]]) -> Vec<(Vec<f64>, Vec<f64>, Vec<f64>, f64)> {
         if self.nn == 4 {
             GP4.iter().map(|&(s, t)| {
@@ -1031,7 +1031,7 @@ impl ElementType for Membrane {
     fn internal_force(&self, ctx: &ElemCtx, u: &[f64], _du: &[f64], _so: &[f64], _sn: &mut Vec<f64>, tangent: bool) -> Result<ElemResponse> {
         let k = self.stiffness(ctx)?;
         if ctx.nlgeom {
-            // område nlgeom_struct: korotationell formulering (shell_nlgeom.rs)
+            // area nlgeom_struct: corotational formulation (shell_nlgeom.rs)
             let rule = if self.nn == 4 { nlgeom::MemRule::Gauss4 } else { nlgeom::MemRule::Tri };
             return nlgeom::response(ctx, self.name, &k, u, rule, tangent);
         }
@@ -1096,7 +1096,7 @@ impl ElementType for Membrane {
     fn distributed_load(&self, ctx: &ElemCtx, load: &DistLoad, _u: &[f64]) -> Result<Vec<f64>> {
         let (loc, sec) = self.setup(ctx)?;
         let Some(q) = area_load_vector(load, loc.r[2], &sec, self.name)? else {
-            return not_implemented(&format!("lasttypen {}", load.kind), self.name);
+            return not_implemented(&format!("load type {}", load.kind), self.name);
         };
         let ql = [dot(loc.r[0], q), dot(loc.r[1], q), dot(loc.r[2], q)];
         let mut f = vec![0.0; 3 * self.nn];
@@ -1127,7 +1127,7 @@ impl ElementType for Membrane {
     fn output(&self, ctx: &ElemCtx, u: &[f64], _state: &[f64]) -> Result<Vec<IpField>> {
         let (loc, sec) = self.setup(ctx)?;
         if ctx.nlgeom {
-            // område nlgeom_struct: logaritmisk töjning LE och spänning S = D·LE
+            // area nlgeom_struct: logarithmic strain LE and stress S = D·LE
             let rule = if self.nn == 4 { nlgeom::MemRule::Gauss4 } else { nlgeom::MemRule::Tri };
             let el = nlgeom::membrane_strains(ctx, self.name, u, rule)?;
             let mut s = IpField::new("S", &["S11", "S22", "S12"]);

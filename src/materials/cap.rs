@@ -1,29 +1,29 @@
-//! Modifierad Drucker–Prager Cap (*CAP PLASTICITY med *CAP HARDENING) och
-//! linjär elasticitet (*ELASTIC).
+//! Modified Drucker–Prager Cap (*CAP PLASTICITY with *CAP HARDENING) and
+//! linear elasticity (*ELASTIC).
 //!
-//! Modifierad Drucker–Prager/Cap-modell för geologiska material:
-//! med p, q, t (K) som i `invariant_return.rs` och c = 1 + α − α/cos β är
+//! Modified Drucker–Prager/Cap model for geological materials:
+//! with p, q, t (K) as in `invariant_return.rs` and c = 1 + α − α/cos β, we have
 //!
-//! - skjuvbrottytan Fs = t − p tan β − d = 0 (idealplastisk),
-//! - kappan Fc = √((p − pa)² + (R t/c)²) − R (d + pa tan β) = 0 för p ≥ pa,
-//! - övergångsytan Ft = √((p − pa)² + (t − (1 − α/cos β)(d + pa tan β))²)
-//!   − α (d + pa tan β) = 0 mellan skjuvytan (där den tangerar den, vid
-//!   p = pa − α (d + pa tan β) sin β) och pa,
+//! - the shear failure surface Fs = t − p tan β − d = 0 (perfectly plastic),
+//! - the cap Fc = √((p − pa)² + (R t/c)²) − R (d + pa tan β) = 0 for p ≥ pa,
+//! - the transition surface Ft = √((p − pa)² + (t − (1 − α/cos β)(d + pa tan β))²)
+//!   − α (d + pa tan β) = 0 between the shear surface (where it is tangent to it, at
+//!   p = pa − α (d + pa tan β) sin β) and pa,
 //!
-//! pa = (pb − R d)/(1 + R tan β) och pb(ε_vol^in|0 + ε_vol) från
-//! *CAP HARDENING (pb mot volymetrisk inelastisk töjning, kompaktion positiv).
-//! Flödet är associativt på kappan, Gc = √((p − pa)² + (R t/c)²), och
-//! icke-associativt på skjuv- och övergångsytorna,
-//! Gs = √(((pa − p) tan β)² + (t/c)²); ε̇_vol = −tr ε̇ᵖ (kompaktion härdar
-//! kappan, dilatation på skjuvytan mjukar upp den).
+//! pa = (pb − R d)/(1 + R tan β) and pb(ε_vol^in|0 + ε_vol) from
+//! *CAP HARDENING (pb versus volumetric inelastic strain, compaction positive).
+//! The flow is associated on the cap, Gc = √((p − pa)² + (R t/c)²), and
+//! non-associated on the shear and transition surfaces,
+//! Gs = √(((pa − p) tan β)² + (t/c)²); ε̇_vol = −tr ε̇ᵖ (compaction hardens
+//! the cap, dilatation on the shear surface softens it).
 //!
-//! Integrationen är bakåt Euler med den gemensamma returalgoritmen
-//! (`invariant_return.rs`), där den aktiva ytan väljs efter p relativt pa;
-//! ytan är kontinuerligt deriverbar när α > 0. Tangenten är numerisk
-//! (centraldifferens) och osymmetrisk; den används helt med *STEP,
-//! UNSYMM=YES och annars som symmetrisk del.
+//! The integration is backward Euler with the shared return-mapping algorithm
+//! (`invariant_return.rs`), where the active surface is chosen from p relative to pa;
+//! the surface is continuously differentiable when α > 0. The tangent is numerical
+//! (central difference) and unsymmetric; it is used in full with *STEP,
+//! UNSYMM=YES and otherwise as its symmetric part.
 //!
-//! Utdata: PEEQ = kappans läge pb, PE = plastisk töjning.
+//! Output: PEEQ = cap position pb, PE = plastic strain.
 
 use super::invariant_return::{return_map, Inv, Surface};
 use super::plasticity::{iso_d6, mv6, pe_labels, rotate_v6, update_reduced, Hardening, M6, V6};
@@ -54,11 +54,11 @@ pub struct Cap {
     eps0: f64,
     alpha: f64,
     k: f64,
-    /// pb mot volymetrisk inelastisk töjning.
+    /// pb versus volumetric inelastic strain.
     pb: Hardening,
 }
 
-/// Tillstånd: [ε_vol (kompaktion), εᵖ (6), ε 3D (6)].
+/// State: [ε_vol (compaction), εᵖ (6), ε 3D (6)].
 const EV: usize = 0;
 const EP: usize = 1;
 const EPS3: usize = 7;
@@ -68,76 +68,76 @@ fn build(def: &MaterialDef) -> Result<Option<Arc<dyn MaterialModel>>> {
     let Some(kw) = def.behavior("CAP PLASTICITY") else { return Ok(None) };
     let Some(el) = def.behavior("ELASTIC") else {
         if def.behavior("POROUS ELASTIC").is_some() {
-            return kw.err("*CAP PLASTICITY med *POROUS ELASTIC stöds inte ännu (använd *ELASTIC)");
+            return kw.err("*CAP PLASTICITY with *POROUS ELASTIC is not supported yet (use *ELASTIC)");
         }
-        return kw.err("*CAP PLASTICITY kräver *ELASTIC");
+        return kw.err("*CAP PLASTICITY requires *ELASTIC");
     };
     if el.param_upper("TYPE").is_some_and(|t| t != "ISOTROPIC") || el.data.len() > 1 {
-        return el.err("Drucker–Prager Cap kräver isotrop, temperaturoberoende elasticitet");
+        return el.err("Drucker–Prager Cap requires isotropic, temperature-independent elasticity");
     }
     let ev = el.first_floats()?;
     let (e, nu) = (ev.first().copied().unwrap_or(0.0), ev.get(1).copied().unwrap_or(0.0));
     if !(e > 0.0 && nu > -1.0 && nu < 0.5) {
-        return el.err("E ska vara positivt och ν mellan −1 och 0,5");
+        return el.err("E must be positive and ν between −1 and 0.5");
     }
     if kw.data.len() > 1 || kw.has("DEPENDENCIES") {
-        return kw.err("temperatur- eller fältberoende kappaparametrar stöds inte ännu");
+        return kw.err("temperature- or field-dependent cap parameters are not supported yet");
     }
     let v = kw.first_floats()?;
     let g = |i: usize| v.get(i).copied().unwrap_or(0.0);
     let (d, beta, r, eps0, alpha) = (g(0), g(1), g(2), g(3), g(4));
     let k = v.get(5).copied().filter(|&x| x != 0.0).unwrap_or(1.0);
     if v.len() > 6 && v[6..].iter().any(|&x| x != 0.0) {
-        return kw.err("temperaturberoende kappaparametrar stöds inte ännu");
+        return kw.err("temperature-dependent cap parameters are not supported yet");
     }
     if !(d >= 0.0) || !(0.0..90.0).contains(&beta) {
-        return kw.err("kohesionen d ska vara icke-negativ och β mellan 0 och 90 grader");
+        return kw.err("the cohesion d must be non-negative and β between 0 and 90 degrees");
     }
     if !(r > 0.0) {
-        return kw.err("kappans excentricitet R ska vara positiv");
+        return kw.err("the cap eccentricity R must be positive");
     }
     if !(alpha >= 0.0 && alpha < 1.0) {
-        return kw.err("övergångsytans parameter α ska ligga mellan 0 och 1");
+        return kw.err("the transition surface parameter α must lie between 0 and 1");
     }
     if !(0.778 - 1e-9..=1.0).contains(&k) {
-        return kw.err("K ska ligga mellan 0,778 och 1");
+        return kw.err("K must lie between 0.778 and 1");
     }
     let Some(hk) = def.behavior("CAP HARDENING") else {
-        return kw.err("*CAP PLASTICITY kräver *CAP HARDENING");
+        return kw.err("*CAP PLASTICITY requires *CAP HARDENING");
     };
     if hk.has("DEPENDENCIES") {
-        return hk.err("fältberoende kapphårdnande stöds inte ännu");
+        return hk.err("field-dependent cap hardening is not supported yet");
     }
     let scale = match hk.param("SCALESTRESS") {
-        Some(s) => crate::fem::model::parse_f64(s).ok_or_else(|| crate::model::FemError(format!("{}: SCALESTRESS ska vara ett tal", hk.location())))?,
+        Some(s) => crate::fem::model::parse_f64(s).ok_or_else(|| crate::model::FemError(format!("{}: SCALESTRESS must be a number", hk.location())))?,
         None => 1.0,
     };
     let mut t: Vec<(f64, f64)> = Vec::new();
     for dl in &hk.data {
         let v = hk.floats(dl)?;
         if v.len() > 2 && v[2..].iter().any(|&x| x != 0.0) {
-            return hk.err_at(dl.line, "temperaturberoende kapphårdnande stöds inte ännu");
+            return hk.err_at(dl.line, "temperature-dependent cap hardening is not supported yet");
         }
         let (pb, ev) = (scale * v.first().copied().unwrap_or(0.0), v.get(1).copied().unwrap_or(0.0));
         if !(pb > 0.0) {
-            return hk.err_at(dl.line, "pb ska vara positivt");
+            return hk.err_at(dl.line, "pb must be positive");
         }
         if let Some(&(e0, p0)) = t.last() {
             if !(ev > e0) || !(pb >= p0) {
-                return hk.err_at(dl.line, "den volymetriska töjningen ska öka och pb får inte minska");
+                return hk.err_at(dl.line, "the volumetric strain must increase and pb must not decrease");
             }
         }
         t.push((ev, pb));
     }
     if t.is_empty() {
-        return hk.err("hårdnandekurvan saknas");
+        return hk.err("the hardening curve is missing");
     }
     let br = beta.to_radians();
     let gm = e / (2.0 * (1.0 + nu));
     let kb = e / (3.0 * (1.0 - 2.0 * nu));
     let m = Cap { e, nu, g: gm, kb, ce: iso_d6(e, nu), d, tan_beta: br.tan(), cos_beta: br.cos(), sin_beta: br.sin(), r, eps0, alpha, k, pb: Hardening::Table(t) };
     if !(m.pa(0.0) > -m.d / m.tan_beta.max(1e-300)) {
-        return kw.err("kappans startläge pa ligger utanför skjuvytans spets (för litet pb vid ε_vol^in|0)");
+        return kw.err("the initial cap position pa lies beyond the apex of the shear surface (pb too small at ε_vol^in|0)");
     }
     Ok(Some(Arc::new(m)))
 }
@@ -157,7 +157,7 @@ impl Cap {
         let ee: V6 = std::array::from_fn(|i| eps[i] - st[EP + i]);
         let sig_tr = mv6(&self.ce, &ee);
         let res = match return_map(self, self.g, self.kb, &sig_tr, st[EV]) {
-            // hörnet mellan skjuvytan och kappan (α = 0): retur med två plastiska multiplikatorer
+            // the corner between the shear surface and the cap (α = 0): return with two plastic multipliers
             Err(e) => match self.fixed_return(&sig_tr, st[EV]).or_else(|| self.corner(&sig_tr, st[EV])) {
                 Some(r) => Ok(Some(r)),
                 None => Err(e),
@@ -177,8 +177,8 @@ impl Cap {
         }
     }
 
-    /// Retur till en yta i taget (kappa, övergångsyta, skjuvyta); den första
-    /// lösningen som ligger i sin egen region godtas.
+    /// Return to one surface at a time (cap, transition surface, shear surface); the first
+    /// solution that lies in its own region is accepted.
     fn fixed_return(&self, sig_tr: &V6, h_n: f64) -> Option<super::invariant_return::Return> {
         let tol = 1e-9 * self.stress_scale(h_n);
         for region in [CAP, TRANS, SHEAR] {
@@ -202,16 +202,16 @@ impl Cap {
         None
     }
 
-    /// Retur till hörnet där skjuvytan och kappan (eller övergångsytan) möts:
-    /// Fs = 0 och Fc = 0 med flödet λs ∂Gs/∂σ + λc ∂Gc/∂σ (Koiter). `None` om
-    /// Newton inte konvergerar eller en multiplikator blir negativ.
+    /// Return to the corner where the shear surface and the cap (or the transition surface) meet:
+    /// Fs = 0 and Fc = 0 with the flow λs ∂Gs/∂σ + λc ∂Gc/∂σ (Koiter). `None` if
+    /// Newton does not converge or a multiplier becomes negative.
     fn corner(&self, sig_tr: &V6, h_n: f64) -> Option<super::invariant_return::Return> {
         use super::invariant_return::{invariants, newton_fd, DP};
         let sc = self.stress_scale(h_n).max(sig_tr.iter().fold(0.0f64, |m, x| m.max(x.abs())));
         let et = sc / (2.0 * self.g);
         let c = self.c();
         let (tb, r) = (self.tan_beta, self.r);
-        // flödesriktningar och ytor i hörnet (skjuvformen, respektive kappformen)
+        // flow directions and surfaces at the corner (shear form and cap form, respectively)
         let parts = |x: &[f64]| {
             let sig: V6 = std::array::from_fn(|i| x[i] * sc);
             let h = x[8];
@@ -297,13 +297,13 @@ impl Cap {
     }
 }
 
-/// Kappa (0), övergångsyta (1) eller skjuvyta (2).
+/// Cap (0), transition surface (1) or shear surface (2).
 const CAP: u8 = 0;
 const TRANS: u8 = 1;
 const SHEAR: u8 = 2;
 
 impl Cap {
-    /// Aktiv yta för p vid hårdnandet h.
+    /// Active surface for p at hardening h.
     fn region(&self, p: f64, h: f64) -> u8 {
         let pa = self.pa(h);
         let da = self.d + pa * self.tan_beta;
@@ -327,20 +327,20 @@ impl Cap {
                 if s <= 0.0 {
                     return (-c * da, 0.0, 0.0);
                 }
-                // skalad med c/R så att F och ∂F är kontinuerliga vid p = pa
+                // scaled by c/R so that F and ∂F are continuous at p = pa
                 let k = c / self.r;
                 (k * (s - self.r * da), k * (p - pa) / s, y / s)
             }
             TRANS => {
-                // övergångsytan är cirkelns övre båge; under medelpunkten
-                // (t < tc) är punkten elastisk (F < 0, kontinuerligt vid t = tc)
+                // the transition surface is the upper arc of the circle; below the center
+                // (t < tc) the point is elastic (F < 0, continuous at t = tc)
                 let y = t - (1.0 - self.alpha / self.cos_beta) * da;
                 let yp = y.max(0.0);
                 let s = ((p - pa).powi(2) + yp * yp).sqrt().max(1e-300);
                 (s - self.alpha * da + y.min(0.0), (p - pa) / s, if y > 0.0 { y / s } else { 1.0 })
             }
             _ => {
-                // skalad med cos β så att F och ∂F är kontinuerliga mot övergångsytan
+                // scaled by cos β so that F and ∂F are continuous towards the transition surface
                 let cb = self.cos_beta;
                 (cb * (t - p * self.tan_beta - self.d), -cb * self.tan_beta, cb)
             }
@@ -356,7 +356,7 @@ impl Cap {
             if s <= 0.0 {
                 return (1.0 / self.r, 0.0);
             }
-            // Gc/R: samma riktning, kontinuerlig storlek mot Gs vid p = pa
+            // Gc/R: same direction, continuous magnitude towards Gs at p = pa
             ((p - pa) / (self.r * s), y / (c * s))
         } else {
             let x = (pa - p) * self.tan_beta;
@@ -370,8 +370,8 @@ impl Cap {
     }
 }
 
-/// Ytan låst till en region (reserv när returen med automatiskt regionval
-/// pendlar mellan ytorna, t.ex. vid p ≈ pa).
+/// Surface locked to one region (fallback when the return with automatic region selection
+/// oscillates between the surfaces, e.g. at p ≈ pa).
 struct Fixed<'a> {
     cap: &'a Cap,
     region: u8,
@@ -409,7 +409,7 @@ impl Surface for Cap {
     }
 
     fn hardening_rate(&self, _sig: &V6, _inv: &Inv, n: &V6, _h: f64, _h_n: f64) -> f64 {
-        // kompaktion: −tr ε̇ᵖ/λ̇
+        // compaction: −tr ε̇ᵖ/λ̇
         -(n[0] + n[1] + n[2])
     }
 

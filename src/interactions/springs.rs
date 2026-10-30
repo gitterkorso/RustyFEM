@@ -1,15 +1,15 @@
-//! Fjädrar (*SPRING för SPRING1/SPRING2/SPRINGA), dämpare (*DASHPOT),
-//! punktmassor (*MASS) och rotationströghet (*ROTARY INERTIA).
+//! Springs (*SPRING for SPRING1/SPRING2/SPRINGA), dashpots (*DASHPOT),
+//! point masses (*MASS) and rotary inertia (*ROTARY INERTIA).
 //!
-//! Dataraderna för *SPRING och *DASHPOT: först en rad med frihetsgraderna
-//! (SPRING1: en, SPRING2: två, SPRINGA: tom eller utelämnad), sedan en rad
-//! med styvheten/dämpningskoefficienten.
+//! Data lines for *SPRING and *DASHPOT: first a line with the degrees of freedom
+//! (SPRING1: one, SPRING2: two, SPRINGA: empty or omitted), then a line
+//! with the stiffness/damping coefficient.
 //!
-//! - SPRING1: kraft k·u_i mot marken.
-//! - SPRING2: kraft k·(u_i(a) − u_j(b)) mellan två noders valda frihetsgrader.
-//! - SPRINGA: axiell fjäder längs linjen mellan noderna. Små förskjutningar:
-//!   K = k n nᵀ. Med NLGEOM verkar kraften k (l − L) längs aktuell linje och
-//!   tangenten får det geometriska tillskottet k (l − L)/l (I − n nᵀ).
+//! - SPRING1: force k·u_i to ground.
+//! - SPRING2: force k·(u_i(a) − u_j(b)) between selected degrees of freedom of two nodes.
+//! - SPRINGA: axial spring along the line between the nodes. Small displacements:
+//!   K = k n nᵀ. With NLGEOM the force k (l − L) acts along the current line and
+//!   the tangent gets the geometric contribution k (l − L)/l (I − n nᵀ).
 
 use super::geom;
 use super::{Interaction, InteractionCtx, InteractionFactory, TangentSink};
@@ -27,11 +27,11 @@ pub static FACTORIES: &[InteractionFactory] = &[
 
 #[derive(Debug, Clone)]
 enum Kind {
-    /// (nod, frihetsgrad) mot marken.
+    /// (node, degree of freedom) to ground.
     One(usize, Dof),
-    /// (nod a, frihetsgrad i, nod b, frihetsgrad j).
+    /// (node a, degree of freedom i, node b, degree of freedom j).
     Two(usize, Dof, usize, Dof),
-    /// Axiell mellan noderna, med enhetsvektorn a → b i referensläget.
+    /// Axial between the nodes, with the unit vector a → b in the reference configuration.
     Axial(usize, usize, [f64; 3]),
 }
 
@@ -39,33 +39,33 @@ pub struct Springs {
     name: String,
     items: Vec<(Kind, f64)>,
     dim: usize,
-    /// Dämpare i stället för fjädrar (bidrar bara med dämpning).
+    /// Dashpots instead of springs (contribute only damping).
     damper: bool,
 }
 
-/// Elementen i ELSET= och (frihetsgrader, koefficient) från dataraderna.
+/// The elements in ELSET= and (degrees of freedom, coefficient) from the data lines.
 fn parse(m: &FeModel, kw: &RawKeyword) -> Result<(Vec<usize>, Vec<Dof>, f64)> {
     if kw.has("ORIENTATION") {
-        return kw.err("ORIENTATION= stöds inte ännu");
+        return kw.err("ORIENTATION= is not supported yet");
     }
     if kw.has("NONLINEAR") {
-        return kw.err("NONLINEAR stöds inte ännu");
+        return kw.err("NONLINEAR is not supported yet");
     }
     let elset = crate::inp::required(kw, "ELSET")?;
     let elems = geom::elem_ref(m, kw, elset)?;
     let mut lines: Vec<Vec<String>> = kw.data.iter().map(|d| d.fields.iter().map(|s| s.trim().to_string()).filter(|s| !s.is_empty()).collect()).collect();
-    // sista raden är koefficienten, raden före (om den finns) frihetsgraderna
+    // the last line is the coefficient, the line before it (if any) the degrees of freedom
     while lines.last().is_some_and(|l| l.is_empty()) {
         lines.pop();
     }
-    let Some(last) = lines.pop() else { return kw.err("datarad med styvhet/koefficient saknas") };
-    let c = crate::fem::model::parse_f64(&last[0]).ok_or_else(|| crate::model::FemError(format!("{}: '{}' är inget tal", kw.location(), last[0])))?;
+    let Some(last) = lines.pop() else { return kw.err("data line with stiffness/coefficient is missing") };
+    let c = crate::fem::model::parse_f64(&last[0]).ok_or_else(|| crate::model::FemError(format!("{}: '{}' is not a number", kw.location(), last[0])))?;
     let mut dofs = Vec::new();
     if let Some(l) = lines.last() {
         for s in l {
             match crate::inp::parse_label(s) {
                 Some(d @ 1..=6) => dofs.push(d as Dof),
-                _ => return kw.err(format!("'{s}' är ingen frihetsgrad")),
+                _ => return kw.err(format!("'{s}' is not a degree of freedom")),
             }
         }
     }
@@ -80,12 +80,12 @@ fn build_items(m: &FeModel, kw: &RawKeyword, damper: bool) -> Result<Springs> {
         let ty = el.etype.name();
         let k = match (ty, damper) {
             ("SPRING1", false) | ("DASHPOT1", true) => {
-                let Some(&d) = dofs.first() else { return kw.err("frihetsgrad saknas för SPRING1/DASHPOT1") };
+                let Some(&d) = dofs.first() else { return kw.err("degree of freedom missing for SPRING1/DASHPOT1") };
                 Kind::One(el.nodes[0], d)
             }
             ("SPRING2", false) | ("DASHPOT2", true) => {
                 if dofs.len() < 2 {
-                    return kw.err("två frihetsgrader krävs för SPRING2/DASHPOT2");
+                    return kw.err("two degrees of freedom are required for SPRING2/DASHPOT2");
                 }
                 Kind::Two(el.nodes[0], dofs[0], el.nodes[1], dofs[1])
             }
@@ -94,11 +94,11 @@ fn build_items(m: &FeModel, kw: &RawKeyword, damper: bool) -> Result<Springs> {
                 let d = sub(m.nodes[b], m.nodes[a]);
                 let l = norm(d);
                 if l == 0.0 {
-                    return kw.err(format!("elementet {} har noll längd", el.label));
+                    return kw.err(format!("element {} has zero length", el.label));
                 }
                 Kind::Axial(a, b, [d[0] / l, d[1] / l, d[2] / l])
             }
-            _ => return kw.err(format!("elementet {} ({ty}) passar inte *{}", el.label, kw.name)),
+            _ => return kw.err(format!("element {} ({ty}) does not match *{}", el.label, kw.name)),
         };
         items.push((k, c));
     }
@@ -114,7 +114,7 @@ fn dashpot(m: &FeModel, kw: &RawKeyword) -> Result<Vec<Box<dyn Interaction>>> {
 }
 
 impl Springs {
-    /// Matrisbidrag (nod, frihetsgrad, nod, frihetsgrad, värde) för små förskjutningar.
+    /// Matrix contributions (node, dof, node, dof, value) for small displacements.
     fn matrix(&self) -> Vec<(usize, Dof, usize, Dof, f64)> {
         let mut v = Vec::new();
         for (k, c) in &self.items {
@@ -194,7 +194,7 @@ impl Interaction for Springs {
         for (kind, c) in &self.items {
             match *kind {
                 Kind::Axial(a, b, _) if ctx.nlgeom => {
-                    // stor förskjutning: kraft längs aktuell linje
+                    // large displacement: force along the current line
                     let x0 = sub(m.nodes[b], m.nodes[a]);
                     let l0 = norm(x0);
                     let mut d = x0;
@@ -237,18 +237,18 @@ impl Interaction for Springs {
 
     fn damping(&self) -> Vec<(usize, Dof, usize, Dof, f64)> {
         if self.damper {
-            // dämparna har samma struktur som fjädrarna, med c i stället för k
+            // the dashpots have the same structure as the springs, with c instead of k
             return self.matrix();
         }
         Vec::new()
     }
 }
 
-// ---------------------------------------------------------------- massor
+// ---------------------------------------------------------------- masses
 
 pub struct Masses {
     name: String,
-    /// (nod, frihetsgrad, nod, frihetsgrad, värde)
+    /// (node, dof, node, dof, value)
     entries: Vec<(usize, Dof, usize, Dof, f64)>,
 }
 
@@ -282,7 +282,7 @@ fn mass(m: &FeModel, kw: &RawKeyword) -> Result<Vec<Box<dyn Interaction>>> {
 
 fn rotary(m: &FeModel, kw: &RawKeyword) -> Result<Vec<Box<dyn Interaction>>> {
     if kw.has("ORIENTATION") {
-        return kw.err("ORIENTATION= stöds inte ännu");
+        return kw.err("ORIENTATION= is not supported yet");
     }
     let elset = crate::inp::required(kw, "ELSET")?;
     let elems = geom::elem_ref(m, kw, elset)?;

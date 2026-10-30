@@ -1,7 +1,7 @@
-//! Interaktioner och villkor med register.
+//! Interactions and constraints with a registry.
 //!
-//! Varje modul exporterar `pub static FACTORIES: &[InteractionFactory]`.
-//! Registrera en ny modul med EN rad i listan nedan (alfabetisk ordning).
+//! Each module exports `pub static FACTORIES: &[InteractionFactory]`.
+//! Register a new module with ONE line in the list below (alphabetical order).
 
 mod api;
 pub mod geom;
@@ -13,7 +13,7 @@ use crate::model::Result;
 macro_rules! interaction_modules {
     ($($m:ident),* $(,)?) => {
         $(pub mod $m;)*
-        /// Alla registrerade interaktionsfabriker.
+        /// All registered interaction factories.
         pub fn factories() -> Vec<&'static InteractionFactory> {
             let mut v = Vec::new();
             $(v.extend($m::FACTORIES.iter());)*
@@ -22,7 +22,7 @@ macro_rules! interaction_modules {
     };
 }
 
-// En rad per modul, i alfabetisk ordning.
+// One line per module, in alphabetical order.
 interaction_modules! {
     acoustic,
     analytical,
@@ -40,7 +40,7 @@ interaction_modules! {
     xfem,
 }
 
-/// Bygger alla interaktioner i modellen från `FeModel::extra`.
+/// Builds all interactions in the model from `FeModel::extra`.
 pub fn build_all(model: &FeModel) -> Result<Vec<Box<dyn Interaction>>> {
     let facs = factories();
     let mut out = Vec::new();

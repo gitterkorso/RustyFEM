@@ -1,15 +1,15 @@
-//! Hyperelasticitet: Van der Waals (*HYPERELASTIC, VAN DER WAALS), Kilian
+//! Hyperelasticity: Van der Waals (*HYPERELASTIC, VAN DER WAALS), Kilian
 //! (1981):
 //!
 //!   U = μ { −(λm² − 3)[ln(1 − η) + η] − ⅔ a ((Ĩ − 3)/2)^(3/2) } + (1/D)((J² − 1)/2 − ln J)
 //!
-//! med Ĩ = (1 − β) Ī1 + β Ī2 och η = √((Ĩ − 3)/(λm² − 3)). Data: μ, λm, a, β, D.
-//! Initial skjuvmodul μ0 = μ, kompressionsmodul K0 = 2/D (D = 0: helt
-//! inkompressibelt, hybridelement).
+//! with Ĩ = (1 − β) Ī1 + β Ī2 and η = √((Ĩ − 3)/(λm² − 3)). Data: μ, λm, a, β, D.
+//! Initial shear modulus μ0 = μ, bulk modulus K0 = 2/D (D = 0: fully
+//! incompressible, hybrid elements).
 //!
-//! Med U_Ĩ = ∂U/∂Ĩ = μ [1/(2(1 − η)) − (a/2)√((Ĩ − 3)/2)] blir U1 = (1 − β) U_Ĩ och
-//! U2 = β U_Ĩ, och den deviatoriska Kirchhoffspänningen är som för
-//! polynomformerna τ_dev = 2 dev[(U1 + Ī1 U2) b̄ − U2 b̄²].
+//! With U_Ĩ = ∂U/∂Ĩ = μ [1/(2(1 − η)) − (a/2)√((Ĩ − 3)/2)], U1 = (1 − β) U_Ĩ and
+//! U2 = β U_Ĩ, and the deviatoric Kirchhoff stress is, as for
+//! the polynomial forms, τ_dev = 2 dev[(U1 + Ī1 U2) b̄ − U2 b̄²].
 
 use super::hyperelastic_ogden::update_hyper;
 use super::hyperelastic_split::HyperModel;
@@ -21,7 +21,7 @@ use crate::model::{fail, Result};
 use std::sync::Arc;
 
 pub static FACTORIES: &[MaterialFactory] =
-    &[MaterialFactory { name: "hyperelasticitet (Van der Waals)", consumes: &["HYPERELASTIC"], priority: 10, build: Some(build) }];
+    &[MaterialFactory { name: "hyperelasticity (Van der Waals)", consumes: &["HYPERELASTIC"], priority: 10, build: Some(build) }];
 
 #[derive(Debug, Clone)]
 pub struct VanDerWaals {
@@ -43,49 +43,49 @@ fn build(def: &MaterialDef) -> Result<Option<Arc<dyn MaterialModel>>> {
     Ok(Some(Arc::new(parse(def)?)))
 }
 
-/// Läser *HYPERELASTIC, VAN DER WAALS.
+/// Reads *HYPERELASTIC, VAN DER WAALS.
 pub fn parse(def: &MaterialDef) -> Result<VanDerWaals> {
-    let Some(kw) = def.behavior("HYPERELASTIC") else { return fail(format!("material {}: *HYPERELASTIC saknas", def.name)) };
+    let Some(kw) = def.behavior("HYPERELASTIC") else { return fail(format!("material {}: *HYPERELASTIC is missing", def.name)) };
     if def.behavior("ELASTIC").is_some() {
-        return kw.err("*HYPERELASTIC och *ELASTIC i samma material stöds inte");
+        return kw.err("*HYPERELASTIC and *ELASTIC in the same material are not supported");
     }
     for p in ["TEST DATA INPUT", "USER", "TYPE", "PROPERTIES"] {
         if kw.has(p) {
-            return kw.err(format!("parametern {p} stöds inte ännu för VAN DER WAALS"));
+            return kw.err(format!("parameter {p} is not yet supported for VAN DER WAALS"));
         }
     }
     if kw.has("MODULI") && kw.param_upper("MODULI").as_deref() != Some("LONG TERM") {
-        return kw.err("MODULI stöds bara som LONG TERM");
+        return kw.err("MODULI is only supported as LONG TERM");
     }
     let mut v = Vec::new();
     for d in kw.records() {
         v.extend(kw.floats(&d)?);
     }
     if v.len() < 5 {
-        return kw.err(format!("VAN DER WAALS kräver 5 konstanter (μ, λm, a, β, D), {} angivna", v.len()));
+        return kw.err(format!("VAN DER WAALS requires 5 constants (μ, λm, a, β, D), {} given", v.len()));
     }
     if v[5..].iter().any(|&x| x != 0.0) {
-        return kw.err("temperaturberoende konstanter (flera datarader) stöds inte ännu");
+        return kw.err("temperature-dependent constants (several data lines) are not yet supported");
     }
     let m = VanDerWaals { mu: v[0], lm: v[1], a: v[2], beta: v[3], d: v[4] };
     if !(m.mu > 0.0) {
-        return kw.err("VAN DER WAALS: μ ska vara positiv");
+        return kw.err("VAN DER WAALS: μ must be positive");
     }
     if !(m.lm * m.lm > 3.0) {
-        return kw.err("VAN DER WAALS: låsningssträckningen λm ska vara större än √3");
+        return kw.err("VAN DER WAALS: the locking stretch λm must be greater than √3");
     }
     if !(0.0..=1.0).contains(&m.beta) || m.d < 0.0 {
-        return kw.err("VAN DER WAALS: β ska ligga i [0, 1] och D ≥ 0");
+        return kw.err("VAN DER WAALS: β must lie in [0, 1] and D ≥ 0");
     }
     Ok(m)
 }
 
 impl VanDerWaals {
-    /// (Ī1, Ī2, b̄) för F.
+    /// (Ī1, Ī2, b̄) for F.
     fn inv(f: &M3) -> Result<(f64, f64, M3)> {
         let j = t::det(f);
         if !(j > 0.0) {
-            return fail("hyperelastiskt material: J ≤ 0 (elementet har vänts ut och in)");
+            return fail("hyperelastic material: J ≤ 0 (the element has been turned inside out)");
         }
         let bb = t::scale(&t::mul_bt(f, f), j.powf(-2.0 / 3.0));
         let b2 = t::mul(&bb, &bb);
@@ -97,12 +97,12 @@ impl VanDerWaals {
     fn eta(&self, it: f64) -> Result<f64> {
         let e = ((it - 3.0).max(0.0) / (self.lm * self.lm - 3.0)).sqrt();
         if !(e < 1.0) {
-            return fail("VAN DER WAALS: låsningssträckningen λm är överskriden (η ≥ 1)");
+            return fail("VAN DER WAALS: the locking stretch λm has been exceeded (η ≥ 1)");
         }
         Ok(e)
     }
 
-    /// Deviatorisk energi.
+    /// Deviatoric energy.
     pub fn energy_dev(&self, f: &M3) -> Result<f64> {
         let (i1, i2, _) = Self::inv(f)?;
         let it = (1.0 - self.beta) * i1 + self.beta * i2;
@@ -170,7 +170,7 @@ impl MaterialModel for VanDerWaals {
 
     fn tangent_linear(&self, mode: StressMode) -> Result<Vec<f64>> {
         if self.incompressible() {
-            return fail("*HYPERELASTIC med D = 0 (helt inkompressibelt) kräver hybridelement (C3D8H, CPE4H, ...)");
+            return fail("*HYPERELASTIC with D = 0 (fully incompressible) requires hybrid elements (C3D8H, CPE4H, ...)");
         }
         Ok(isotropic_tangent(self.mu0(), self.k0(), mode))
     }

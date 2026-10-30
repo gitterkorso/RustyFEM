@@ -1,28 +1,28 @@
-//! Elementvis stabilitetsgräns för explicit dynamik
+//! Element-by-element stability limit for explicit dynamics
 //! (`ELEMENT BY ELEMENT`, `IMPROVED DT METHOD=NO`).
 //!
-//! Δtₑ = Lₑ/c_d · (√(1+ξ²) − ξ), där c_d = √(D₁₁/ρ) (D = materialets elastiska
-//! tangent: λ+2μ för solider och plan töjning, E/(1−ν²) för plan spänning,
-//! skal och membran) och ξ den kritiska dämpningskvoten i högsta moden från
-//! volymviskositeten (ξ = b₁ − b₂² Lₑ/c_d · min(0, ε̇_vol)) och Rayleigh-β/α.
-//! Den karakteristiska längden Lₑ med bᵢ = ∫∇Nᵢ dV (kontrollerad med fältet EDT
-//! för fria element med olika former):
+//! Δtₑ = Lₑ/c_d · (√(1+ξ²) − ξ), where c_d = √(D₁₁/ρ) (D = the elastic tangent of the
+//! material: λ+2μ for solids and plane strain, E/(1−ν²) for plane stress,
+//! shells and membranes) and ξ the critical damping ratio in the highest mode from
+//! the bulk viscosity (ξ = b₁ − b₂² Lₑ/c_d · min(0, ε̇_vol)) and Rayleigh β/α.
+//! The characteristic length Lₑ with bᵢ = ∫∇Nᵢ dV (checked with the field EDT
+//! for free elements of different shapes):
 //!
 //! | Element | Lₑ |
 //! |---|---|
-//! | 3D-solider (C3D8, C3D8R, C3D4, ...) | V / √(2 Σᵢ\|bᵢ\|²) |
-//! | fyrhörningar (CPE4, CPS4R, S4R, M3D4R, ...) | A / √(Σᵢ\|bᵢ\|²) = A / √((d₁² + d₂²)/2) (d = diagonaler) |
-//! | trianglar (CPE3, S3R, M3D3, ...) | 4A / √(3 Σ lₖ²) (l = kanter) |
-//! | stänger | 0,99 L |
+//! | 3D solids (C3D8, C3D8R, C3D4, ...) | V / √(2 Σᵢ\|bᵢ\|²) |
+//! | quadrilaterals (CPE4, CPS4R, S4R, M3D4R, ...) | A / √(Σᵢ\|bᵢ\|²) = A / √((d₁² + d₂²)/2) (d = diagonals) |
+//! | triangles (CPE3, S3R, M3D3, ...) | 4A / √(3 Σ lₖ²) (l = edges) |
+//! | trusses | 0.99 L |
 //!
-//! Standardmetoden (`IMPROVED DT METHOD=YES`) används för skal och
-//! membran (`improved_plane_stress`: √0,92 respektive √0,97 gånger den exakta
-//! högsta egenfrekvensen för konstant töjning). För 3D-solider används
-//! formlerna ovan även med metoden, vilket är på den säkra sidan. Plan
-//! töjning (CPE3, CPE4R) påverkas inte av metoden.
-//! Balkar och element som saknas i tabellen får elementets högsta
-//! egenfrekvens med diagonal massa (potensiteration); för balkar är det
-//! en konservativ gräns.
+//! The default method (`IMPROVED DT METHOD=YES`) is used for shells and
+//! membranes (`improved_plane_stress`: √0.92 and √0.97 times the exact
+//! highest eigenfrequency for constant strain, respectively). For 3D solids the
+//! formulas above are used even with the method, which is on the safe side. Plane
+//! strain (CPE3, CPE4R) is not affected by the method.
+//! Beams and elements missing from the table get the element's highest
+//! eigenfrequency with diagonal mass (power iteration); for beams this is
+//! a conservative limit.
 
 use crate::elements::common::{cross, dot, norm, sub};
 use crate::elements::{ElemCtx, Family};
@@ -30,16 +30,16 @@ use crate::fem::assembly::Prepared;
 use crate::materials::StressMode;
 use crate::model::Result;
 
-/// Elementets geometri för stabilitet och volymviskositet: bᵢ = ∫∇Nᵢ dV
-/// (utan tjocklek för plana element och skal) och volymen (arean).
+/// Element geometry for stability and bulk viscosity: bᵢ = ∫∇Nᵢ dV
+/// (without thickness for planar elements and shells) and the volume (area).
 pub struct ElemGeom {
     pub b: Vec<[f64; 3]>,
     pub vol: f64,
-    /// Karakteristisk längd.
+    /// Characteristic length.
     pub lchar: f64,
 }
 
-/// Stångens karakteristiska längd relativt L (se modulens dokumentation).
+/// Characteristic length of the truss relative to L (see the module documentation).
 pub const TRUSS_LE: f64 = 0.99;
 
 fn hex8_b(x: &[[f64; 3]]) -> Option<(Vec<[f64; 3]>, f64)> {
@@ -83,12 +83,12 @@ fn tet4_b(x: &[[f64; 3]]) -> Option<(Vec<[f64; 3]>, f64)> {
     if v6 <= 0.0 {
         return None;
     }
-    // ∫∇Nᵢ dV = (yta motsatt nod i) · (utåtriktad normal) / 3 med tecken
+    // ∫∇Nᵢ dV = (face opposite node i) · (outward normal) / 3 with sign
     let faces = [[1, 2, 3], [0, 3, 2], [0, 1, 3], [0, 2, 1]];
     let mut b = vec![[0.0; 3]; 4];
     for (i, f) in faces.iter().enumerate() {
         let n = cross(sub(x[f[1]], x[f[0]]), sub(x[f[2]], x[f[0]]));
-        // n pekar ut från tetraedern för ytan motsatt nod i; ∇Nᵢ pekar inåt
+        // n points out of the tetrahedron for the face opposite node i; ∇Nᵢ points inwards
         for c in 0..3 {
             b[i][c] = -n[c] / 6.0;
         }
@@ -96,8 +96,8 @@ fn tet4_b(x: &[[f64; 3]]) -> Option<(Vec<[f64; 3]>, f64)> {
     Some((b, v6 / 6.0))
 }
 
-/// Plana koordinater (2D) för ett plant element i 3D (skal, membran) och
-/// planets basvektorer e₁, e₂.
+/// Planar coordinates (2D) for a planar element in 3D (shell, membrane) and
+/// the basis vectors e₁, e₂ of the plane.
 fn planar(x: &[[f64; 3]]) -> (Vec<[f64; 3]>, [f64; 3], [f64; 3]) {
     let n = if x.len() == 4 { cross(sub(x[2], x[0]), sub(x[3], x[1])) } else { cross(sub(x[1], x[0]), sub(x[2], x[0])) };
     let nl = norm(n);
@@ -116,8 +116,8 @@ fn planar(x: &[[f64; 3]]) -> (Vec<[f64; 3]>, [f64; 3], [f64; 3]) {
     (xp, e1, e2)
 }
 
-/// Plana koordinater för `family` (oförändrade för plana kontinuumelement)
-/// och en funktion som för bᵢ tillbaka till globala axlar.
+/// Planar coordinates for `family` (unchanged for planar continuum elements)
+/// and a function that maps bᵢ back to global axes.
 fn plane_of(family: Family, x: &[[f64; 3]]) -> (Vec<[f64; 3]>, [f64; 3], [f64; 3]) {
     if family == Family::Continuum2D {
         (x.to_vec(), [1.0, 0.0, 0.0], [0.0, 1.0, 0.0])
@@ -150,8 +150,8 @@ fn tri3_b(x: &[[f64; 3]]) -> (Vec<[f64; 3]>, f64) {
     (b, a)
 }
 
-/// Geometri för element med känd karakteristisk längd (se tabellen), i
-/// konfigurationen `x`. `None` för övriga element.
+/// Geometry for elements with a known characteristic length (see the table), in
+/// the configuration `x`. `None` for other elements.
 pub fn geometry(family: Family, name: &str, x: &[[f64; 3]]) -> Option<ElemGeom> {
     let nn = x.len();
     let len2 = |a: [f64; 3], b: [f64; 3]| {
@@ -195,7 +195,7 @@ pub fn geometry(family: Family, name: &str, x: &[[f64; 3]]) -> Option<ElemGeom> 
     }
 }
 
-/// Materialets dilatationsvåghastighet c_d = √(D₁₁/ρ) för elementets spänningstillstånd.
+/// Dilatational wave speed of the material c_d = √(D₁₁/ρ) for the element's stress state.
 pub fn wave_speed(ctx: &ElemCtx, family: Family, name: &str) -> Result<Option<f64>> {
     let Some(mat) = ctx.material else { return Ok(None) };
     if ctx.density <= 0.0 {
@@ -218,13 +218,13 @@ pub fn wave_speed(ctx: &ElemCtx, family: Family, name: &str) -> Result<Option<f6
     Ok(Some((d11 / ctx.density).sqrt()))
 }
 
-/// Högsta egenvärdet ω² av M⁻¹K för ett element (diagonal massa), med potensiteration.
+/// Highest eigenvalue ω² of M⁻¹K for an element (diagonal mass), with power iteration.
 pub fn element_omega2(k: &[f64], m: &[f64]) -> f64 {
     let n = m.len();
     if n == 0 {
         return 0.0;
     }
-    // symmetrisk form D^{-1/2} K D^{-1/2}
+    // symmetric form D^{-1/2} K D^{-1/2}
     let d: Vec<f64> = m.iter().map(|&x| if x > 0.0 { 1.0 / x.sqrt() } else { 0.0 }).collect();
     let a: Vec<f64> = (0..n * n).map(|ij| d[ij / n] * k[ij] * d[ij % n]).collect();
     let mut x: Vec<f64> = (0..n).map(|i| 1.0 + 0.1 * i as f64 * if i % 2 == 0 { 1.0 } else { -1.0 }).collect();
@@ -245,9 +245,9 @@ pub fn element_omega2(k: &[f64], m: &[f64]) -> f64 {
     lam
 }
 
-/// Odämpad stabilitetsgräns för element `e` i konfigurationen `x`:
-/// (2/ωₑ, Lₑ, c_d). `mdiag` är elementets diagonala massa (för
-/// potensiterationen), `None` för element utan massa eller styvhet.
+/// Undamped stability limit for element `e` in the configuration `x`:
+/// (2/ωₑ, Lₑ, c_d). `mdiag` is the element's diagonal mass (for
+/// the power iteration), `None` for elements without mass or stiffness.
 pub fn element_limit(p: &Prepared, e: usize, ctx: &ElemCtx, x: &[[f64; 3]], mdiag: &[f64]) -> Result<Option<(f64, f64, f64)>> {
     let el = &p.model.elements[e];
     let fam = el.etype.family();
@@ -271,19 +271,19 @@ pub fn element_limit(p: &Prepared, e: usize, ctx: &ElemCtx, x: &[[f64; 3]], mdia
     Ok(Some((2.0 / w, 0.0, 0.0)))
 }
 
-/// Förbättrad stabilitetsgräns (`IMPROVED DT METHOD=YES`, standard)
-/// för skal och membran: Lₑ = max(Lₑ,konv, k·L_exakt), där L_exakt = 2c/ω är
-/// den exakta högsta egenfrekvensen för elementets konstanta töjningsfält med
-/// diagonal massa och plan spänning,
+/// Improved stability limit (`IMPROVED DT METHOD=YES`, default)
+/// for shells and membranes: Lₑ = max(Lₑ,conv, k·L_exact), where L_exact = 2c/ω is
+/// the exact highest eigenfrequency for the element's constant strain field with
+/// diagonal mass and plane stress,
 ///
 /// ```text
 /// ω² = (n/ρ) · max(E′/2 [(s₁+s₂) + √((s₁−s₂)² + 4ν² s₁s₂)],  G (s₁+s₂))
 /// ```
 ///
-/// (n = antal noder, s₁, s₂ = egenvärdena av Σᵢ bᵢ⊗bᵢ / A², E′ = E/(1−ν²)),
-/// och k² = 0,92 för fyrhörningar, 0,97 för trianglar (empiriska faktorer,
-/// kontrollerade för kvadrater, rektanglar 1×2 och 1×3 och parallellogram med
-/// ν = 0,3 och 0,45 samt räta och liksidiga trianglar).
+/// (n = number of nodes, s₁, s₂ = the eigenvalues of Σᵢ bᵢ⊗bᵢ / A², E′ = E/(1−ν²)),
+/// and k² = 0.92 for quadrilaterals, 0.97 for triangles (empirical factors,
+/// checked for squares, 1×2 and 1×3 rectangles and parallelograms with
+/// ν = 0.3 and 0.45 as well as right and equilateral triangles).
 pub fn improved_plane_stress(family: Family, x: &[[f64; 3]], nu: f64) -> Option<f64> {
     if !matches!(family, Family::Shell | Family::Membrane) || !(x.len() == 3 || x.len() == 4) {
         return None;
@@ -303,7 +303,7 @@ pub fn improved_plane_stress(family: Family, x: &[[f64; 3]], nu: f64) -> Option<
     let m = 0.5 * (sxx + syy);
     let r = (0.25 * (sxx - syy).powi(2) + sxy * sxy).sqrt();
     let (s1, s2) = (m + r, m - r);
-    // i enheter av E′: normaldelen och skjuvdelen G = E′(1 − ν)/2
+    // in units of E′: the normal part and the shear part G = E′(1 − ν)/2
     let normal = 0.5 * ((s1 + s2) + ((s1 - s2).powi(2) + 4.0 * nu * nu * s1 * s2).sqrt());
     let shear = 0.5 * (1.0 - nu) * (s1 + s2);
     let lam = normal.max(shear);
@@ -315,7 +315,7 @@ pub fn improved_plane_stress(family: Family, x: &[[f64; 3]], nu: f64) -> Option<
     Some((k2 * 4.0 / (n * lam)).sqrt())
 }
 
-/// Dämpningsfaktorn √(1+ξ²) − ξ.
+/// The damping factor √(1+ξ²) − ξ.
 pub fn damping_factor(xi: f64) -> f64 {
     (1.0 + xi * xi).sqrt() - xi
 }

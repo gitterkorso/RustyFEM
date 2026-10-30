@@ -1,34 +1,34 @@
-//! Kontinuumskal SC8R (8 noder, hexaeder) och SC6R (6 noder, kil) med
-//! reducerad integrering och bara förskjutningsfrihetsgrader.
+//! Continuum shells SC8R (8 nodes, hexahedron) and SC6R (6 nodes, wedge) with
+//! reduced integration and displacement degrees of freedom only.
 //!
-//! Noderna 1–4 (1–3) ligger på undersidan och 5–8 (4–6) på översidan;
-//! tjockleksriktningen ges av nodordningen. Elementet räknas som ett skal på
-//! mittytan xᵢ = ½(x_undersida + x_översida) med direktörerna dᵢ = x_ö − x_u
-//! (tjocklek hᵢ = |dᵢ|, t = medelvärdet):
+//! Nodes 1–4 (1–3) lie on the bottom face and 5–8 (4–6) on the top face;
+//! the thickness direction is given by the node order. The element is computed as a shell on
+//! the midsurface xᵢ = ½(x_bottom + x_top) with the directors dᵢ = x_t − x_b
+//! (thickness hᵢ = |dᵢ|, t = the mean):
 //!
-//! - Mittytans förskjutning uᵢ = ½(u_u + u_ö), "rotationerna" ur
-//!   Δᵢ = u_ö − u_u vinkelrätt mot direktören: θy = e1′·Δ/h, θx = −e2′·Δ/h
-//!   (e1′, e2′ = de lokala axlarna projicerade vinkelrätt mot dᵢ), och
-//!   tjocklekstöjningen ε33,ᵢ = dᵢ·Δᵢ/|dᵢ|².
-//! - Membran, böjning, timglasstyrning och tvärskjuvning exakt som S4R
-//!   (SC8R) respektive S3R (SC6R) i `shell.rs`/`shell_tri.rs`, men utan drill.
-//! - Tjockleksriktningen: straff med tjockleksmodulen E_t (standard 2G) på
-//!   den effektiva tjocklekstöjningen, ε33 − ε33,P där Poissontöjningen
-//!   ε33,P = −(ε11 + ε22) (tvärsnittets standardvärde POISSON = 0,5):
-//!   Φ = ½ E_t t [A (ε̄33 + ε11 + ε22)² + Σ Aᵢ (ε33,ᵢ − ε̄33)²], med
-//!   Aᵢ = ∫Nᵢ dA, ε̄33 = Σ Aᵢ ε33,ᵢ / A och membrantöjningen i mitten.
+//! - The midsurface displacement uᵢ = ½(u_b + u_t), the "rotations" from
+//!   Δᵢ = u_t − u_b perpendicular to the director: θy = e1′·Δ/h, θx = −e2′·Δ/h
+//!   (e1′, e2′ = the local axes projected perpendicular to dᵢ), and
+//!   the thickness strain ε33,ᵢ = dᵢ·Δᵢ/|dᵢ|².
+//! - Membrane, bending, hourglass control and transverse shear exactly as S4R
+//!   (SC8R) and S3R (SC6R), respectively, in `shell.rs`/`shell_tri.rs`, but without drill.
+//! - Thickness direction: penalty with the thickness modulus E_t (default 2G) on
+//!   the effective thickness strain, ε33 − ε33,P where the Poisson strain
+//!   ε33,P = −(ε11 + ε22) (the section default POISSON = 0.5):
+//!   Φ = ½ E_t t [A (ε̄33 + ε11 + ε22)² + Σ Aᵢ (ε33,ᵢ − ε̄33)²], with
+//!   Aᵢ = ∫Nᵢ dA, ε̄33 = Σ Aᵢ ε33,ᵢ / A and the membrane strain at the center.
 //!   SF6 = E_t t (ε̄33 + ε11 + ε22).
-//! - Massa: i normalens riktning diagonal ρV/8
-//!   per nod; i planet för mittytans förskjutningar ρV(1/16 + C_m/144000) och
-//!   för Δ ρVt(C_Δ + c·C_h)/2304, där C_m, C_Δ och C_h är cirkulanta 4×4-
-//!   matriser med första raden (7, −1, −5, −1), (5, 3, 1, 3) och (1, −1, 1, −1)
-//!   och c = 1/3000 (SC8R) respektive 1/3 (SC6R). V = mittytans area gånger
-//!   direktörernas medelprojektion på normalen. SC6R räknas som en kollapsad
-//!   SC8R (nod 4 = nod 1). Matrisen för Δ är inte dimensionsriktig (∝ ρVt);
-//!   rotationströgheten är liten för tunna skal.
+//! - Mass: in the normal direction diagonal ρV/8
+//!   per node; in the plane for the midsurface displacements ρV(1/16 + C_m/144000) and
+//!   for Δ ρVt(C_Δ + c·C_h)/2304, where C_m, C_Δ and C_h are circulant 4×4
+//!   matrices with the first rows (7, −1, −5, −1), (5, 3, 1, 3) and (1, −1, 1, −1)
+//!   and c = 1/3000 (SC8R) and 1/3 (SC6R), respectively. V = the midsurface area times
+//!   the mean projection of the directors onto the normal. SC6R is computed as a collapsed
+//!   SC8R (node 4 = node 1). The matrix for Δ is not dimensionally consistent (∝ ρVt);
+//!   the rotary inertia is small for thin shells.
 //!
-//! För allmänt förvrängda fyrhörningar gäller samma begränsningar som för
-//! S4R (docs/REFERENS.md).
+//! For generally distorted quadrilaterals the same limitations apply as for
+//! S4R (docs/REFERENCE.md).
 
 use super::super::api::{not_implemented, ElemCtx, ElemResponse, ElementType, Family, IpField, MassKind};
 use super::super::common::{self, cross, dot, norm, scale, sub};
@@ -37,7 +37,7 @@ use crate::fem::dof::{Dof, U1, U2, U3};
 use crate::fem::model::DistLoad;
 use crate::model::{fail, Result};
 
-/// Lokala frihetsgrader per nod i det underliggande skalet: [u, v, w, θx, θy, θz].
+/// Local degrees of freedom per node in the underlying shell: [u, v, w, θx, θy, θz].
 const ND: usize = 6;
 const NAT4: [[f64; 2]; 4] = [[-1.0, -1.0], [1.0, -1.0], [1.0, 1.0], [-1.0, 1.0]];
 
@@ -49,7 +49,7 @@ fn inv2(j: [[f64; 2]; 2]) -> ([[f64; 2]; 2], f64) {
     ([[j[1][1] / det, -j[0][1] / det], [-j[1][0] / det, j[0][0] / det]], det)
 }
 
-/// Bilinjär fyrhörning: N, dN/dξ, dN/dη, J, det J, dN/dx, dN/dy.
+/// Bilinear quadrilateral: N, dN/dξ, dN/dη, J, det J, dN/dx, dN/dy.
 struct Q4 {
     n: [f64; 4],
     ds: [f64; 4],
@@ -83,14 +83,14 @@ fn q4(x: &[[f64; 2]], s: f64, t: f64) -> Q4 {
     Q4 { n, ds, dt, j, det, bx, by }
 }
 
-/// Linjär triangel: dN/dx, dN/dy och arean.
+/// Linear triangle: dN/dx, dN/dy and the area.
 fn cst(x: &[[f64; 2]]) -> ([f64; 3], [f64; 3], f64) {
     let (x1, y1, x2, y2, x3, y3) = (x[0][0], x[0][1], x[1][0], x[1][1], x[2][0], x[2][1]);
     let det = (x2 - x1) * (y3 - y1) - (x3 - x1) * (y2 - y1);
     ([(y2 - y3) / det, (y3 - y1) / det, (y1 - y2) / det], [(x3 - x2) / det, (x1 - x3) / det, (x2 - x1) / det], 0.5 * det)
 }
 
-/// Membran-B (3 × 6nc).
+/// Membrane B (3 × 6nc).
 fn bmem(bx: &[f64], by: &[f64]) -> Vec<f64> {
     let nc = bx.len();
     let n = ND * nc;
@@ -104,7 +104,7 @@ fn bmem(bx: &[f64], by: &[f64]) -> Vec<f64> {
     b
 }
 
-/// Böj-B (3 × 6nc): κ = [θy,x, −θx,y, θy,y − θx,x].
+/// Bending B (3 × 6nc): κ = [θy,x, −θx,y, θy,y − θx,x].
 fn bbend(bx: &[f64], by: &[f64]) -> Vec<f64> {
     let nc = bx.len();
     let n = ND * nc;
@@ -118,7 +118,7 @@ fn bbend(bx: &[f64], by: &[f64]) -> Vec<f64> {
     b
 }
 
-/// Kovariant tvärskjuvtöjning (S4R) e_ξ (dir = 0) eller e_η (dir = 1) i (s, t).
+/// Covariant transverse shear strain (S4R) e_ξ (dir = 0) or e_η (dir = 1) at (s, t).
 fn cov_shear(x: &[[f64; 2]], s: f64, t: f64, dir: usize) -> Vec<f64> {
     let p = q4(x, s, t);
     let d = if dir == 0 { p.ds } else { p.dt };
@@ -132,8 +132,8 @@ fn cov_shear(x: &[[f64; 2]], s: f64, t: f64, dir: usize) -> Vec<f64> {
     g
 }
 
-/// Tvärskjuvningen som i S4R: kanttöjningar s (4 × 24), koefficientmatris c
-/// (4 × 4) och M (2 × 4) med det konstanta fältet γ0 = M s.
+/// The transverse shear as in S4R: edge strains s (4 × 24), coefficient matrix c
+/// (4 × 4) and M (2 × 4) with the constant field γ0 = M s.
 fn shear_q4(x: &[[f64; 2]], ks: [f64; 4]) -> (Vec<f64>, [f64; 16], [[f64; 4]; 2]) {
     let rows = [cov_shear(x, 0.0, -1.0, 0), cov_shear(x, -1.0, 0.0, 1), cov_shear(x, 0.0, 1.0, 0), cov_shear(x, 1.0, 0.0, 1)];
     let mut s = vec![0.0; 4 * 24];
@@ -150,7 +150,7 @@ fn shear_q4(x: &[[f64; 2]], ks: [f64; 4]) -> (Vec<f64>, [f64; 16], [[f64; 4]; 2]
     let mut c = [0.0; 16];
     for i in 0..4 {
         for j in 0..4 {
-            // γ0ᵀ C γ0 med C = [[K11, K12], [K12, K22]]
+            // γ0ᵀ C γ0 with C = [[K11, K12], [K12, K22]]
             let mut v = 0.0;
             for r in 0..2 {
                 for q in 0..2 {
@@ -160,7 +160,7 @@ fn shear_q4(x: &[[f64; 2]], ks: [f64; 4]) -> (Vec<f64>, [f64; 16], [[f64; 4]; 2]
             c[i * 4 + j] = a * v;
         }
     }
-    // timglasdelen: [T Q2]⁻¹ med T = [x,ξ; x,η; x,ξ; x,η], Q2 = [(−1,−1,1,1), (−1,1,1,−1)]
+    // the hourglass part: [T Q2]⁻¹ with T = [x,ξ; x,η; x,ξ; x,η], Q2 = [(−1,−1,1,1), (−1,1,1,−1)]
     let xs = p0.j[0];
     let xt = p0.j[1];
     let tq = [xs[0], xs[1], -1.0, -1.0, xt[0], xt[1], -1.0, 1.0, xs[0], xs[1], 1.0, 1.0, xt[0], xt[1], 1.0, -1.0];
@@ -178,7 +178,7 @@ fn shear_q4(x: &[[f64; 2]], ks: [f64; 4]) -> (Vec<f64>, [f64; 16], [[f64; 4]; 2]
     (s, c, m)
 }
 
-/// Invers av en 4×4-matris (Gauss–Jordan med pivotering).
+/// Inverse of a 4×4 matrix (Gauss–Jordan with pivoting).
 fn inv4(a: &[f64; 16]) -> Option<[f64; 16]> {
     let n = 4;
     let mut m = *a;
@@ -215,7 +215,7 @@ fn inv4(a: &[f64; 16]) -> Option<[f64; 16]> {
     Some(inv)
 }
 
-/// Tvärskjuvningen som i S3R: konstant fält B0 (2 × 18), cirkulationen ρ (18) och kantlängderna.
+/// The transverse shear as in S3R: constant field B0 (2 × 18), the circulation ρ (18) and the edge lengths.
 fn shear_tri(x: &[[f64; 2]]) -> (Vec<f64>, Vec<f64>, [f64; 3]) {
     let n = 3 * ND;
     let edges = [(0usize, 1usize), (1, 2), (2, 0)];
@@ -262,29 +262,29 @@ fn shear_tri(x: &[[f64; 2]]) -> (Vec<f64>, Vec<f64>, [f64; 3]) {
 
 pub struct ContShell {
     name: &'static str,
-    /// Hörn per yta (4 = SC8R, 3 = SC6R).
+    /// Corners per face (4 = SC8R, 3 = SC6R).
     nc: usize,
 }
 
 pub static SC8R: ContShell = ContShell { name: "SC8R", nc: 4 };
 pub static SC6R: ContShell = ContShell { name: "SC6R", nc: 3 };
 
-/// Geometri: lokalt system, plana mittytekoordinater, direktörer.
+/// Geometry: local system, planar midsurface coordinates, directors.
 pub struct Geo {
-    /// Lokala axlar (rader e1, e2, n) i mittytans mitt.
+    /// Local axes (rows e1, e2, n) at the midsurface center.
     pub r: [[f64; 3]; 3],
     pub xl: Vec<[f64; 2]>,
-    /// Direktörer dᵢ = x_ö − x_u.
+    /// Directors dᵢ = x_t − x_b.
     pub d: Vec<[f64; 3]>,
     pub h: Vec<f64>,
-    /// Medeltjocklek.
+    /// Mean thickness.
     pub t: f64,
-    /// Mittytans area och nodareor ∫Nᵢ dA.
+    /// The midsurface area and the nodal areas ∫Nᵢ dA.
     pub area: f64,
     pub ai: Vec<f64>,
 }
 
-/// Tvärsnitt och tjockleksmodul.
+/// Section and thickness modulus.
 pub struct Setup {
     pub geo: Geo,
     pub sec: Sec,
@@ -300,7 +300,7 @@ impl ContShell {
         let h: Vec<f64> = d.iter().map(|v| norm(*v)).collect();
         let n = if nc == 4 { cross(sub(xm[2], xm[0]), sub(xm[3], xm[1])) } else { cross(sub(xm[1], xm[0]), sub(xm[2], xm[0])) };
         if norm(n) == 0.0 || h.iter().any(|&v| !(v > 0.0)) {
-            return fail(format!("element {} ({}) har ingen area eller tjocklek", ctx.label, self.name));
+            return fail(format!("element {} ({}) has zero area or thickness", ctx.label, self.name));
         }
         let c = common::centroid(&xm);
         let r = axes(ctx, n, c);
@@ -308,10 +308,10 @@ impl ContShell {
             let q = sub(*p, c);
             [dot(r[0], q), dot(r[1], q)]
         }).collect();
-        // direktörerna ska peka åt samma håll som mittytans normal (undersida → översida)
+        // the directors must point in the same direction as the midsurface normal (bottom → top)
         if d.iter().any(|v| dot(*v, r[2]) <= 0.0) {
             return fail(format!(
-                "element {} ({}): noderna 1–{} ska ligga på undersidan och {}–{} på översidan med normalen uppåt",
+                "element {} ({}): nodes 1–{} must lie on the bottom face and {}–{} on the top face with the normal pointing up",
                 ctx.label,
                 self.name,
                 nc,
@@ -347,7 +347,7 @@ impl ContShell {
     pub fn setup(&self, ctx: &ElemCtx) -> Result<Setup> {
         let geo = self.geo(ctx)?;
         let mut sec = Sec::get(ctx, self.name)?;
-        // tjockleken ges av noderna; tvärsnittets tjocklek används inte
+        // the thickness is given by the nodes; the section thickness is not used
         let t0 = sec.t;
         sec.t = geo.t;
         if sec.ks[0] > 0.0 && ctx.section.map(|s| s.raw.param(super::super::beam_timoshenko::section::TSS_PARAM).is_none()).unwrap_or(true) {
@@ -358,22 +358,22 @@ impl ContShell {
         let raw = &ctx.section(self.name)?.raw;
         if let Some(v) = raw.param("POISSON") {
             if crate::fem::model::parse_f64(v) != Some(0.5) {
-                return fail(format!("element {} ({}): *SHELL SECTION, POISSON={v} stöds inte (bara standardvärdet 0,5)", ctx.label, self.name));
+                return fail(format!("element {} ({}): *SHELL SECTION, POISSON={v} is not supported (only the default value 0.5)", ctx.label, self.name));
             }
         }
         let et = match raw.param("THICKNESS MODULUS") {
             Some(v) => match crate::fem::model::parse_f64(v) {
                 Some(e) if e > 0.0 => e,
-                _ => return fail(format!("element {} ({}): THICKNESS MODULUS={v} stöds inte (ange ett positivt tal)", ctx.label, self.name)),
+                _ => return fail(format!("element {} ({}): THICKNESS MODULUS={v} is not supported (give a positive number)", ctx.label, self.name)),
             },
             None => 2.0 * sec.g,
         };
         Ok(Setup { geo, sec, et })
     }
 
-    /// Transformation från elementets frihetsgrader (3 per nod) till det
-    /// underliggande skalets lokala (6 per hörn), samt tjocklekstöjningarna
-    /// (en rad per hörn).
+    /// Transformation from the element's degrees of freedom (3 per node) to the
+    /// underlying shell's local ones (6 per corner), plus the thickness strains
+    /// (one row per corner).
     fn transform(&self, g: &Geo) -> (Vec<f64>, Vec<f64>) {
         let nc = self.nc;
         let n = 3 * 2 * nc;
@@ -404,7 +404,7 @@ impl ContShell {
         (t, te)
     }
 
-    /// Mittytans membran-B (konstant/mitten).
+    /// The midsurface membrane B (constant/center).
     fn bm0(&self, g: &Geo) -> Vec<f64> {
         if self.nc == 4 {
             let p = q4(&g.xl, 0.0, 0.0);
@@ -415,7 +415,7 @@ impl ContShell {
         }
     }
 
-    /// Det underliggande skalets lokala styvhet (6nc × 6nc) utan drill.
+    /// The local stiffness of the underlying shell (6nc × 6nc) without drill.
     fn shell_k(&self, g: &Geo, sec: &Sec) -> Vec<f64> {
         let nc = self.nc;
         let n = ND * nc;
@@ -434,7 +434,7 @@ impl ContShell {
             let a = 4.0 * p0.det;
             let b = stack(&bmem(&p0.bx, &p0.by), &bbend(&p0.bx, &p0.by));
             add_btcb(&mut k, n, &b, &c6, &b, 6, a);
-            // Flanagan–Belytschko-stabilisering som S4R
+            // Flanagan–Belytschko stabilization like S4R
             let hv = [1.0, -1.0, 1.0, -1.0];
             let hx: f64 = (0..4).map(|i| hv[i] * g.xl[i][0]).sum();
             let hy: f64 = (0..4).map(|i| hv[i] * g.xl[i][1]).sum();
@@ -463,7 +463,7 @@ impl ContShell {
         k
     }
 
-    /// Tjockleksstraffets vektorer: (Aᵢ, ε33,ᵢ) samt ε̄33 + ε11 + ε22 (rader i elementets frihetsgrader).
+    /// The thickness penalty vectors: (Aᵢ, ε33,ᵢ) and ε̄33 + ε11 + ε22 (rows in the element's degrees of freedom).
     fn thickness_rows(&self, g: &Geo, t: &[f64], te: &[f64]) -> Vec<f64> {
         let n = 6 * self.nc;
         let ns = ND * self.nc;
@@ -504,11 +504,11 @@ impl ContShell {
         }
         add_outer(&mut k, n, em, -f * g.area);
         add_outer(&mut k, n, ev, f * g.area);
-        // till globala koordinater: elementets frihetsgrader är redan globala
+        // to global coordinates: the element's degrees of freedom are already global
         k
     }
 
-    /// Generaliserade töjningar (en integrationspunkt) ur förskjutningarna.
+    /// Generalized strains (one integration point) from the displacements.
     fn gen_strain(&self, su: &Setup, u: &[f64]) -> GenStrain {
         let g = &su.geo;
         let nc = self.nc;
@@ -539,7 +539,7 @@ impl ContShell {
         GenStrain { eps, kap, gam, shear_c, sf6: su.et * g.t * evol }
     }
 
-    /// dN/dx och dN/dy för mittytan i mitten.
+    /// dN/dx and dN/dy for the midsurface at the center.
     fn center_grad(&self, g: &Geo) -> (Vec<f64>, Vec<f64>) {
         if self.nc == 4 {
             let p = q4(&g.xl, 0.0, 0.0);
@@ -550,8 +550,8 @@ impl ContShell {
         }
     }
 
-    /// Membranets integrationspunkt (mitten) för NLGEOM: u,α för mittytans
-    /// förskjutning ½(u_u + u_ö) i globala komponenter.
+    /// The membrane integration point (the center) for NLGEOM: u,α for the midsurface
+    /// displacement ½(u_b + u_t) in global components.
     pub fn membrane_ops(&self, su: &Setup) -> Vec<super::nlgeom::QuadGroup> {
         let g = &su.geo;
         let nc = self.nc;
@@ -581,8 +581,8 @@ impl ContShell {
             c[i] = su.sec.d[i] * su.sec.t;
         }
         let mem = super::nlgeom::QuadGroup::membrane(bm, a, c, g.area);
-        // tjockleksriktningen: e = [ε33,1 … ε33,nc, ε11 + ε22] med Green-termerna
-        // ½|Δᵢ|²/hᵢ² respektive membranets, C enligt modulkommentaren
+        // the thickness direction: e = [ε33,1 … ε33,nc, ε11 + ε22] with the Green terms
+        // ½|Δᵢ|²/hᵢ² and the membrane's, respectively, C according to the module comment
         let (_, te) = self.transform(g);
         let m = nc + 1;
         let mut l = vec![0.0; m * n];
@@ -596,7 +596,7 @@ impl ContShell {
             let h2 = g.h[i] * g.h[i];
             let (b, tp) = (3 * i, 3 * (i + nc));
             for c in 0..3 {
-                // Δ = u_ö − u_u
+                // Δ = u_t − u_b
                 for (p1, s1) in [(tp + c, 1.0), (b + c, -1.0)] {
                     for (p2, s2) in [(tp + c, 1.0), (b + c, -1.0)] {
                         qi[p1 * n + p2] += s1 * s2 / h2;
@@ -623,21 +623,21 @@ impl ContShell {
         vec![mem, super::nlgeom::QuadGroup { l, q, c: cm, w: 1.0 }]
     }
 
-    /// Massmatrisen (se modulkommentaren).
+    /// The mass matrix (see the module comment).
     fn mass_of(&self, su: &Setup, kind: MassKind) -> Vec<f64> {
         let g = &su.geo;
         let nc = self.nc;
         let n = 6 * nc;
-        // elementets volym: mittytans area gånger direktörernas projektion på normalen
+        // the element volume: the midsurface area times the projection of the directors onto the normal
         let hn = g.d.iter().map(|d| dot(*d, g.r[2])).sum::<f64>() / nc as f64;
         let m = su.sec.rho * g.area * hn;
         let r = &g.r;
         let mut out = vec![0.0; n * n];
-        // kvadratens matriser (b/ö-noder), kollapsas för SC6R: nod 4 = nod 1
+        // the matrices of the square (b/t nodes), collapsed for SC6R: node 4 = node 1
         let map: Vec<usize> = if nc == 4 { vec![0, 1, 2, 3] } else { vec![0, 1, 2, 0] };
         let circ = |v: [f64; 4], i: usize, j: usize| v[(j + 4 - i) % 4];
         let lumped = kind == MassKind::Lumped;
-        // normalriktningen (och vid diagonal massa alla riktningar): ρV/8 per nod i kvadraten
+        // the normal direction (and with diagonal mass all directions): ρV/8 per node in the square
         for qa in 0..8 {
             let a = map[qa % 4] + if qa < 4 { 0 } else { nc };
             for c in 0..3 {
@@ -650,15 +650,15 @@ impl ContShell {
         if lumped {
             return out;
         }
-        // i planet: mittyta och Δ, uttryckt i under-/översidans noder; Δ-delens
-        // timglasterm har faktorn 1/3000 för SC8R och 1/3 för SC6R
+        // in the plane: midsurface and Δ, expressed in the bottom/top face nodes; the hourglass
+        // term of the Δ part has the factor 1/3000 for SC8R and 1/3 for SC6R
         let t = g.t;
         let hg = if nc == 4 { 1.0 / 3000.0 } else { 1.0 / 3.0 };
         for i in 0..4 {
             for j in 0..4 {
                 let mm = m * (1.0 / 16.0 + circ([7.0, -1.0, -5.0, -1.0], i, j) / 144000.0);
                 let md = m * t * (circ([5.0, 3.0, 1.0, 3.0], i, j) + circ([1.0, -1.0, 1.0, -1.0], i, j) * hg) / 2304.0;
-                // u_u = u_m − Δ/2, u_ö = u_m + Δ/2 ⇒ M_uu = M_m/4 + M_Δ, M_uö = M_m/4 − M_Δ
+                // u_b = u_m − Δ/2, u_t = u_m + Δ/2 ⇒ M_bb = M_m/4 + M_Δ, M_bt = M_m/4 − M_Δ
                 for (si, sj, v) in [(0, 0, mm / 4.0 + md), (1, 1, mm / 4.0 + md), (0, 1, mm / 4.0 - md), (1, 0, mm / 4.0 - md)] {
                     let a = map[i] + si * nc;
                     let b = map[j] + sj * nc;
@@ -711,15 +711,15 @@ impl ElementType for ContShell {
         let su = self.setup(ctx)?;
         let k = self.stiffness_of(&su);
         if ctx.nlgeom {
-            // korotationell formulering (shell2_nlgeom.rs)
+            // corotational formulation (shell2_nlgeom.rs)
             return super::nlgeom::response_sc(ctx, self.name, &k, &self.membrane_ops(&su), u, tangent);
         }
         Ok(ElemResponse { fint: common::matvec(&k, u), k: tangent.then_some(k) })
     }
 
     fn geometric_stiffness(&self, ctx: &ElemCtx, u: &[f64], _state: &[f64]) -> Result<Vec<f64>> {
-        // membrankrafterna i mitten: ∫ N_αβ u,α·u,β dA för mittytans förskjutning
-        // (alla tre komponenterna, se
+        // the membrane forces at the center: ∫ N_αβ u,α·u,β dA for the midsurface displacement
+        // (all three components, see
         // tests/cases/shells2/sc8r_buckle_panel)
         let su = self.setup(ctx)?;
         let mut groups = self.membrane_ops(&su);
@@ -738,7 +738,7 @@ impl ElementType for ContShell {
         }
         let su = self.setup(ctx)?;
         let Some(b) = common::body_load_vector(&load.kind, load.magnitude, &load.extra, su.sec.rho, self.name)? else {
-            return not_implemented(&format!("lasttypen {}", load.kind), self.name);
+            return not_implemented(&format!("load type {}", load.kind), self.name);
         };
         let w = self.volume_weights(ctx)?;
         let mut f = vec![0.0; 3 * w.len()];

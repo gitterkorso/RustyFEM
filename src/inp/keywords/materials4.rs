@@ -1,9 +1,9 @@
-//! Område materials4: nyckelord som påverkar resultatet men inte stöds ännu
-//! och därför ger fel i stället för att ignoreras med en varning.
+//! Area materials4: keywords that affect the result but are not supported yet
+//! and therefore give an error instead of being ignored with a warning.
 //!
-//! - *CONCRETE FAILURE (elementborttagning för betong med skadeplasticitet i
-//!   explicit analys),
-//! - *PRESSURE PENETRATION (tryck som tränger in i en kontaktspalt).
+//! - *CONCRETE FAILURE (element deletion for concrete with damaged plasticity in
+//!   explicit analysis),
+//! - *PRESSURE PENETRATION (pressure penetrating into a contact gap).
 
 use crate::fem::model::RawKeyword;
 use crate::inp::{InpCtx, Keyword, Kind};
@@ -15,5 +15,5 @@ pub static KEYWORDS: &[Keyword] = &[
 ];
 
 fn unsupported(_ctx: &mut InpCtx, kw: &RawKeyword) -> Result<()> {
-    kw.err(format!("*{} stöds inte ännu (se docs/REFERENS.md, Begränsningar)", kw.name))
+    kw.err(format!("*{} is not supported yet (see docs/REFERENCE.md, Limitations)", kw.name))
 }

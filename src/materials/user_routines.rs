@@ -1,17 +1,17 @@
-//! Material med användarrutiner (`user::routines`):
+//! Materials with user routines (`user::routines`):
 //!
-//! - UHARD: `*PLASTIC, HARDENING=USER, PROPERTIES=n` (PROPS på dataraderna)
-//!   med isotrop elasticitet: von Mises-plasticitet med isotropt hårdnande där
-//!   flytspänningen σy(ε̄p) och HARD(1) = dσy/dε̄p ges av UHARD. Radiell
-//!   återföring (Newton i Δε̄p) och sluten konsistent tangent; plan spänning
-//!   och stänger med 3D-algoritmen och kondensation
-//!   (`plasticity::update_reduced`). STATEV från *DEPVAR (utdata SDV1..).
-//! - UEXPAN: `*EXPANSION, USER`: termiska töjningsinkrement från UEXPAN
-//!   (1 värde isotropt, 3 ortotropt, 6 anisotropt med tensorskjuvning) dras av
-//!   från töjningen innan det underliggande materialet uppdateras.
+//! - UHARD: `*PLASTIC, HARDENING=USER, PROPERTIES=n` (PROPS on the data lines)
+//!   with isotropic elasticity: von Mises plasticity with isotropic hardening where
+//!   the yield stress σy(ε̄p) and HARD(1) = dσy/dε̄p are given by UHARD. Radial
+//!   return (Newton in Δε̄p) and closed-form consistent tangent; plane stress
+//!   and beams/trusses with the 3D algorithm and condensation
+//!   (`plasticity::update_reduced`). STATEV from *DEPVAR (output SDV1..).
+//! - UEXPAN: `*EXPANSION, USER`: thermal strain increments from UEXPAN
+//!   (1 value isotropic, 3 orthotropic, 6 anisotropic with tensor shear) are subtracted
+//!   from the strain before the underlying material is updated.
 //!
-//! Båda väljs före det vanliga registret (`materials::build` anropar
-//! `claim`), eftersom de vanliga fabrikerna avvisar HARDENING=USER och USER.
+//! Both are selected before the regular registry (`materials::build` calls
+//! `claim`), since the regular factories reject HARDENING=USER and USER.
 
 use super::plasticity::{dev, iso_d6, mises, mv6, pe_labels, rotate_v6, update_reduced, M6, V6};
 use super::{MatInput, MatOutput, MaterialFactory, MaterialModel, StressMode};
@@ -19,25 +19,25 @@ use crate::fem::model::MaterialDef;
 use crate::model::{fail, Result};
 use std::sync::Arc;
 
-/// *HEAT GENERATION läses av värmeledningen (HETVAL, `user/loads.rs`).
+/// *HEAT GENERATION is read by the heat conduction (HETVAL, `user/loads.rs`).
 pub static FACTORIES: &[MaterialFactory] =
-    &[MaterialFactory { name: "värmegenerering (HETVAL, läses av värmeledningen)", consumes: &["HEAT GENERATION"], priority: 0, build: None }];
+    &[MaterialFactory { name: "heat generation (HETVAL, read by the heat conduction)", consumes: &["HEAT GENERATION"], priority: 0, build: None }];
 
-/// Modellen om materialet använder UHARD eller UEXPAN.
+/// The model if the material uses UHARD or UEXPAN.
 pub fn claim(def: &MaterialDef) -> Result<Option<Arc<dyn MaterialModel>>> {
-    // UMATHT (*USER MATERIAL, TYPE=THERMAL): bara värmeledning (steps/heat.rs)
+    // UMATHT (*USER MATERIAL, TYPE=THERMAL): heat conduction only (steps/heat.rs)
     if crate::user::loads::heat_user(def).0 {
         return Ok(Some(Arc::new(ThermalUser { name: def.name.clone() })));
     }
     if let Some(k) = def.behavior("EXPANSION").filter(|k| k.has("USER")) {
         let Some(routine) = crate::user::routines::find_uexpan(&def.name)? else {
-            return crate::user::routines::missing("UEXPAN", "materialet", &def.name);
+            return crate::user::routines::missing("UEXPAN", "material", &def.name);
         };
         let ncomp = match k.param_upper("TYPE").as_deref().unwrap_or("ISO") {
             "ISO" => 1,
             "ORTHO" => 3,
             "ANISO" => 6,
-            o => return k.err(format!("TYPE={o} stöds inte (ISO, ORTHO, ANISO)")),
+            o => return k.err(format!("TYPE={o} is not supported (ISO, ORTHO, ANISO)")),
         };
         let mut rest = def.clone();
         rest.behaviors.retain(|b| b.name != "EXPANSION");
@@ -46,28 +46,28 @@ pub fn claim(def: &MaterialDef) -> Result<Option<Arc<dyn MaterialModel>>> {
     }
     let Some(pk) = def.behavior("PLASTIC").filter(|k| k.param_upper("HARDENING").as_deref() == Some("USER")) else { return Ok(None) };
     if def.behavior("EXPANSION").is_some() {
-        // termisk töjning ovanpå (thermal.rs bygger det inre materialet, som då når hit)
-        let build = super::thermal::FACTORIES[0].build.expect("thermal har en fabrik");
+        // thermal strain on top (thermal.rs builds the inner material, which then gets here)
+        let build = super::thermal::FACTORIES[0].build.expect("thermal has a factory");
         return build(def);
     }
     for b in &def.behaviors {
         if !matches!(b.name.as_str(), "ELASTIC" | "PLASTIC" | "DEPVAR" | "DENSITY") {
-            return b.err("*PLASTIC, HARDENING=USER kan bara kombineras med *ELASTIC, *DEPVAR, *DENSITY och *EXPANSION");
+            return b.err("*PLASTIC, HARDENING=USER can only be combined with *ELASTIC, *DEPVAR, *DENSITY and *EXPANSION");
         }
     }
     let Some(routine) = crate::user::routines::find_uhard(&def.name)? else {
-        return crate::user::routines::missing("UHARD", "materialet", &def.name);
+        return crate::user::routines::missing("UHARD", "material", &def.name);
     };
     let Some(ek) = def.behavior("ELASTIC") else {
-        return pk.err("*PLASTIC kräver *ELASTIC");
+        return pk.err("*PLASTIC requires *ELASTIC");
     };
     if ek.param_upper("TYPE").is_some_and(|t| t != "ISOTROPIC") || ek.data.len() > 1 || ek.has("DEPENDENCIES") {
-        return ek.err("HARDENING=USER kräver konstant isotrop elasticitet");
+        return ek.err("HARDENING=USER requires constant isotropic elasticity");
     }
     let v = ek.first_floats()?;
     let (e, nu) = (v.first().copied().unwrap_or(0.0), v.get(1).copied().unwrap_or(0.0));
     if !(e > 0.0) || !(nu > -1.0 && nu < 0.5) {
-        return ek.err("E ska vara positivt och ν mellan −1 och 0,5");
+        return ek.err("E must be positive and ν between −1 and 0.5");
     }
     let mut props = Vec::new();
     for d in pk.records() {
@@ -96,7 +96,7 @@ pub struct UserHardening {
     routine: Arc<dyn crate::user::routines::Uhard>,
 }
 
-/// Tillstånd: [ε̄p, εp (6), ε 3D (6), STATEV].
+/// State: [ε̄p, εp (6), ε 3D (6), STATEV].
 const P: usize = 0;
 const EP: usize = 1;
 const EPS3: usize = 7;
@@ -110,7 +110,7 @@ struct Pt<'a> {
 }
 
 impl UserHardening {
-    /// σy och dσy/dε̄p vid ε̄p = `p` (UHARD), STATEV uppdateras i `statev`.
+    /// σy and dσy/dε̄p at ε̄p = `p` (UHARD), STATEV is updated in `statev`.
     fn hard(&self, c: &Pt, p: f64, dp: f64, statev: &mut [f64]) -> Result<(f64, f64)> {
         let (f, fo) = crate::user::context::point_fields();
         let dpred: Vec<f64> = f.iter().zip(&fo).map(|(a, b)| a - b).collect();
@@ -138,7 +138,7 @@ impl UserHardening {
         };
         self.routine.uhard(&mut a)?;
         if !(a.syield > 0.0) {
-            return fail(format!("UHARD för {} gav flytspänningen {} (ska vara positiv)", self.name, a.syield));
+            return fail(format!("UHARD for {} gave the yield stress {} (must be positive)", self.name, a.syield));
         }
         Ok((a.syield, a.hard[0]))
     }
@@ -175,7 +175,7 @@ impl UserHardening {
             }
         }
         if !conv {
-            return fail(format!("UHARD-plasticitet för {}: returalgoritmen konvergerade inte", self.name));
+            return fail(format!("UHARD plasticity for {}: the return algorithm did not converge", self.name));
         }
         sv.copy_from_slice(&st[SV..SV + ns]);
         let (_, hh) = self.hard(c, p_n + dp, dp, &mut sv)?;
@@ -191,7 +191,7 @@ impl UserHardening {
             stn[EP + i] = st[EP + i] + dp * nhat[i] * if i < 3 { 1.0 } else { 2.0 };
         }
         stn[SV..SV + ns].copy_from_slice(&sv);
-        // konsistent tangent: K 1⊗1 + 2Gθ P_dev − 2G θ̄ m⊗m, m = s/|s|
+        // consistent tangent: K 1⊗1 + 2Gθ P_dev − 2G θ̄ m⊗m, m = s/|s|
         let k = self.e / (3.0 * (1.0 - 2.0 * self.nu));
         let snorm = (s_tr[0] * s_tr[0] + s_tr[1] * s_tr[1] + s_tr[2] * s_tr[2] + 2.0 * (s_tr[3] * s_tr[3] + s_tr[4] * s_tr[4] + s_tr[5] * s_tr[5])).sqrt();
         let m: V6 = std::array::from_fn(|i| s_tr[i] / snorm);
@@ -329,7 +329,7 @@ impl MaterialModel for UserExpansion {
             noel: pt.noel,
         };
         self.routine.uexpan(&mut a)?;
-        // inkrement av termisk töjning (ingenjörsskjuvning i tillståndet)
+        // increment of thermal strain (engineering shear in the state)
         let mut d = [0.0; 6];
         match self.ncomp {
             1 => {
@@ -393,8 +393,8 @@ impl MaterialModel for UserExpansion {
 
 // --------------------------------------------------------------------- UMATHT
 
-/// Material med *USER MATERIAL, TYPE=THERMAL: värmeledningen anropar UMATHT;
-/// i mekaniska element ger det fel.
+/// Material with *USER MATERIAL, TYPE=THERMAL: the heat conduction calls UMATHT;
+/// in mechanical elements it gives an error.
 pub struct ThermalUser {
     name: String,
 }
@@ -409,6 +409,6 @@ impl MaterialModel for ThermalUser {
     }
 
     fn update(&self, _input: &MatInput, _so: &[f64], _sn: &mut [f64]) -> Result<MatOutput> {
-        fail(format!("material {}: *USER MATERIAL, TYPE=THERMAL (UMATHT) används i ett mekaniskt element", self.name))
+        fail(format!("material {}: *USER MATERIAL, TYPE=THERMAL (UMATHT) is used in a mechanical element", self.name))
     }
 }

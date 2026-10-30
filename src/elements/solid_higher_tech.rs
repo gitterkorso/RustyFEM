@@ -1,6 +1,6 @@
-//! Elementtekniker för `Solid`: hourglass-stabilisering (C3D8R, CPS4R, CPE4R,
-//! CAX4R), inkompatibla moder (C3D8I, CPS4I, CPE4I), massmatriser och
-//! integrationspunkter för laster.
+//! Element techniques for `Solid`: hourglass stabilization (C3D8R, CPS4R, CPE4R,
+//! CAX4R), incompatible modes (C3D8I, CPS4I, CPE4I), mass matrices and
+//! integration points for loads.
 
 use super::shapes::Shape;
 use super::{ips_for, RuleKind, Solid};
@@ -10,11 +10,11 @@ use crate::materials::{MaterialModel, StressMode};
 use crate::model::{fail, Result};
 
 // ---------------------------------------------------------------------------
-// Små täta matrisoperationer
+// Small dense matrix operations
 // ---------------------------------------------------------------------------
 
-/// Löser A X = B (A n×n radvis, B n×m radvis) med gausselimination och
-/// partiell pivotering. Returnerar X.
+/// Solves A X = B (A n×n row-wise, B n×m row-wise) with Gaussian elimination and
+/// partial pivoting. Returns X.
 pub fn solve_dense(a: &[f64], b: &[f64], n: usize, m: usize) -> Result<Vec<f64>> {
     let mut a = a.to_vec();
     let mut x = b.to_vec();
@@ -26,7 +26,7 @@ pub fn solve_dense(a: &[f64], b: &[f64], n: usize, m: usize) -> Result<Vec<f64>>
             }
         }
         if a[p * n + k].abs() < 1e-300 {
-            return fail("singulär elementmatris (inkompatibla moder)");
+            return fail("singular element matrix (incompatible modes)");
         }
         if p != k {
             for j in 0..n {
@@ -62,18 +62,18 @@ pub fn solve_dense(a: &[f64], b: &[f64], n: usize, m: usize) -> Result<Vec<f64>>
 }
 
 // ---------------------------------------------------------------------------
-// Massa och laster
+// Mass and loads
 // ---------------------------------------------------------------------------
 
-/// Integrationspunkter för volymkrafter och volymvikter.
+/// Integration points for body forces and volume weights.
 pub fn load_ips(el: &Solid, ctx: &ElemCtx) -> Result<Vec<Ip>> {
     el.ips_exact(ctx)
 }
 
-/// Regel för konsistent massa. Andra ordningens element integreras med
-/// 3×3(×3) gauss för C3D20/CPS8,
-/// 6 punkter för 6-nodstrianglar, 6×3 för C3D15 och 15 punkter (Keast) för
-/// C3D10. Första ordningens element integreras exakt.
+/// Rule for consistent mass. Second-order elements are integrated with
+/// 3×3(×3) Gauss for C3D20/CPS8,
+/// 6 points for 6-node triangles, 6×3 for C3D15 and 15 points (Keast) for
+/// C3D10. First-order elements are integrated exactly.
 pub fn mass_rule(el: &Solid) -> RuleKind {
     match el.shape {
         Shape::Hex20 | Shape::Quad8 => RuleKind::Gauss(3),
@@ -88,10 +88,10 @@ pub fn mass_rule(el: &Solid) -> RuleKind {
     }
 }
 
-/// Massmatris. Konsistent: ∫ρNᵀN dV. Diagonal: se `lumped_mass`.
+/// Mass matrix. Consistent: ∫ρNᵀN dV. Diagonal: see `lumped_mass`.
 ///
-/// Standard är diagonal massa för första ordningens
-/// element och konsistent massa för andra ordningens element.
+/// The default is diagonal mass for first-order
+/// elements and consistent mass for second-order elements.
 pub fn mass(el: &Solid, ctx: &ElemCtx, kind: MassKind) -> Result<Vec<f64>> {
     let t = el.thickness(ctx)?;
     let ips = ips_for(el.shape, el.mode, &ctx.x, &mass_rule(el).points(el.pdim()), t)?;
@@ -102,9 +102,9 @@ pub fn mass(el: &Solid, ctx: &ElemCtx, kind: MassKind) -> Result<Vec<f64>> {
     }
 }
 
-/// Diagonal massa. Första ordningens element: radsumma. Andra ordningens
-/// element: diagonalskalning (HRZ) så att totalmassan bevaras och ingen nod
-/// får negativ massa.
+/// Diagonal mass. First-order elements: row sum. Second-order
+/// elements: diagonal scaling (HRZ) so that the total mass is preserved and no node
+/// gets negative mass.
 pub fn lumped_mass(el: &Solid, ips: &[Ip], rho: f64) -> Vec<f64> {
     let nd = el.ndim();
     let nn = ips[0].n.len();
@@ -138,11 +138,11 @@ pub fn lumped_mass(el: &Solid, ips: &[Ip], rho: f64) -> Vec<f64> {
 }
 
 // ---------------------------------------------------------------------------
-// Inkompatibla moder
+// Incompatible modes
 // ---------------------------------------------------------------------------
 
-/// Antal inkompatibla frihetsgrader: C3D8I 13 (9 gradientmoder + 4
-/// volymmoder), CPS4I/CPE4I 4, CAX4I och CPEG4I 5 (4 gradientmoder + 1 volymmod).
+/// Number of incompatible degrees of freedom: C3D8I 13 (9 gradient modes + 4
+/// volumetric modes), CPS4I/CPE4I 4, CAX4I and CPEG4I 5 (4 gradient modes + 1 volumetric mode).
 pub fn n_incompatible(el: &Solid) -> usize {
     match (el.shape, el.mode) {
         (Shape::Hex8, _) => 13,
@@ -152,13 +152,13 @@ pub fn n_incompatible(el: &Solid) -> usize {
     }
 }
 
-/// Har elementet volymmoden ξη i ε11+ε22 (CAX4I och CPEG4I; CPS4I/CPE4I har
-/// den inte)?
+/// Does the element have the volumetric mode ξη in ε11+ε22 (CAX4I and CPEG4I; CPS4I/CPE4I do
+/// not)?
 fn planar_volume_mode(el: &Solid) -> bool {
     el.mode == StressMode::Axisymmetric || el.name.starts_with("CPEG")
 }
 
-/// Jacobianens invers och determinant i elementets mitt.
+/// The inverse and determinant of the Jacobian at the element center.
 fn center_jacobian(el: &Solid, x: &[[f64; 3]]) -> Result<([[f64; 3]; 3], f64)> {
     let (_, dn) = super::shapes::shape(el.shape, [0.0; 3]);
     let dim = el.pdim();
@@ -178,17 +178,17 @@ fn center_jacobian(el: &Solid, x: &[[f64; 3]]) -> Result<([[f64; 3]; 3], f64)> {
     Ok((ji, det))
 }
 
-/// Förstärkta B-matriser G (ncomp × nα) per integrationspunkt (förstärkt
-/// töjning, Simo–Rifai):
+/// Enhanced B matrices G (ncomp × nα) per integration point (enhanced
+/// strain, Simo–Rifai):
 ///
-/// - gradientmoder: φₖ = 1 − ξₖ² för varje förskjutningskomponent, med
-///   gradienten tagen med Jacobianen J₀ i elementets mitt,
-/// - volymmoder (3D: ξη, ηζ, ζξ, ξηζ i ε11+ε22+ε33; axisymmetri: ξη i
-///   εrr+εzz; generaliserad plan töjning: ξη i ε11+ε22),
+/// - gradient modes: φₖ = 1 − ξₖ² for each displacement component, with
+///   the gradient taken with the Jacobian J₀ at the element center,
+/// - volumetric modes (3D: ξη, ηζ, ζξ, ξηζ in ε11+ε22+ε33; axisymmetry: ξη in
+///   εrr+εzz; generalized plane strain: ξη in ε11+ε22),
 ///
-/// alla skalade med det J₀ / det J (axisymmetri: r₀ det J₀ / (r det J)) så att
-/// ∫G dV = 0 och elementet klarar patchtestet. Moduppsättningen:
-/// C3D8I 13 moder, CPS4I/CPE4I 4, CAX4I 5.
+/// all scaled by det J₀ / det J (axisymmetry: r₀ det J₀ / (r det J)) so that
+/// ∫G dV = 0 and the element passes the patch test. The mode set:
+/// C3D8I 13 modes, CPS4I/CPE4I 4, CAX4I 5.
 fn incompatible_bmats(el: &Solid, ctx: &ElemCtx, ips: &[Ip]) -> Result<Vec<Vec<f64>>> {
     let (ji0, det0) = center_jacobian(el, &ctx.x)?;
     let dim = el.pdim();
@@ -226,7 +226,7 @@ fn incompatible_bmats(el: &Solid, ctx: &ElemCtx, ips: &[Ip]) -> Result<Vec<Vec<f
             g.push(d);
         }
         let bg = match el.mode {
-            // ringtöjningen får inget bidrag från gradientmoderna
+            // the hoop strain gets no contribution from the gradient modes
             StressMode::Axisymmetric => crate::elements::axisym::bmat_axi(&vec![0.0; g.len()], &g, 1.0),
             _ => common::bmat(el.mode, &g),
         };
@@ -253,7 +253,7 @@ fn incompatible_bmats(el: &Solid, ctx: &ElemCtx, ips: &[Ip]) -> Result<Vec<Vec<f
     Ok(out)
 }
 
-/// [B | G] radvis (ncomp × (nd + nα)).
+/// [B | G] row-wise (ncomp × (nd + nα)).
 fn extend(b: &[f64], g: &[f64], ns: usize) -> Vec<f64> {
     let nd = b.len() / ns;
     let na = g.len() / ns;
@@ -265,9 +265,9 @@ fn extend(b: &[f64], g: &[f64], ns: usize) -> Vec<f64> {
     e
 }
 
-/// Lägger till kolumner sist i varje B-matris med värdena `vals[q]` i
-/// ε33-raden (rad 2) och noll i övriga rader (punkt q). Används för
-/// referensnodens frihetsgrader vid generaliserad plan töjning
+/// Appends columns to each B matrix with the values `vals[q]` in
+/// the ε33 row (row 2) and zero in the other rows (point q). Used for
+/// the reference node degrees of freedom in generalized plane strain
 /// (`solid_higher_gps.rs`).
 pub fn append_eps33(bs: &mut [Vec<f64>], ns: usize, vals: &[[f64; 3]]) {
     for (b, v) in bs.iter_mut().zip(vals) {
@@ -281,7 +281,7 @@ pub fn append_eps33(bs: &mut [Vec<f64>], ns: usize, vals: &[[f64; 3]]) {
     }
 }
 
-/// ε33-raderna för `append_eps33` i elementets integrationspunkter.
+/// The ε33 rows for `append_eps33` at the element's integration points.
 pub type Eps33Rows<'a> = &'a dyn Fn(&[Ip]) -> Vec<[f64; 3]>;
 
 fn extended_bmats(el: &Solid, ctx: &ElemCtx, eps33: Option<Eps33Rows>) -> Result<(Vec<Ip>, Vec<Vec<f64>>, usize, usize)> {
@@ -298,7 +298,7 @@ fn extended_bmats(el: &Solid, ctx: &ElemCtx, eps33: Option<Eps33Rows>) -> Result
     Ok((ips, be, nd, na))
 }
 
-/// Statisk kondensering: K = Kuu − Kuα Kαα⁻¹ Kαu och Kαα⁻¹ Kαu.
+/// Static condensation: K = Kuu − Kuα Kαα⁻¹ Kαu and Kαα⁻¹ Kαu.
 fn condense(k: &[f64], nd: usize, na: usize) -> Result<(Vec<f64>, Vec<f64>)> {
     let n = nd + na;
     let kaa: Vec<f64> = (0..na).flat_map(|i| (0..na).map(move |j| (i, j))).map(|(i, j)| k[(nd + i) * n + nd + j]).collect();
@@ -321,15 +321,15 @@ pub fn incompatible_stiffness(el: &Solid, ctx: &ElemCtx, mat: &dyn MaterialModel
     incompatible_stiffness_x(el, ctx, mat, None)
 }
 
-/// Som `incompatible_stiffness` med extra ε33-kolumner (se `append_eps33`).
+/// Like `incompatible_stiffness` with extra ε33 columns (see `append_eps33`).
 pub fn incompatible_stiffness_x(el: &Solid, ctx: &ElemCtx, mat: &dyn MaterialModel, eps33: Option<Eps33Rows>) -> Result<Vec<f64>> {
     let (ips, be, nd, na) = extended_bmats(el, ctx, eps33)?;
     let k = common::stiffness(el.mode, &ips, &be, mat)?;
     Ok(condense(&k, nd, na)?.0)
 }
 
-/// Inre kraft med lokal Newton-iteration för de inkompatibla frihetsgraderna
-/// (exakt efter en iteration för linjära material). α lagras sist i tillståndet.
+/// Internal force with local Newton iteration for the incompatible degrees of freedom
+/// (exact after one iteration for linear materials). α is stored last in the state.
 #[allow(clippy::too_many_arguments)]
 pub fn incompatible_response(
     el: &Solid,
@@ -344,7 +344,7 @@ pub fn incompatible_response(
     incompatible_response_x(el, ctx, mat, u, du, so, sn, tangent, None)
 }
 
-/// Som `incompatible_response` med extra ε33-kolumner (se `append_eps33`).
+/// Like `incompatible_response` with extra ε33 columns (see `append_eps33`).
 #[allow(clippy::too_many_arguments)]
 pub fn incompatible_response_x(
     el: &Solid,
@@ -395,13 +395,13 @@ pub fn incompatible_response_x(
     Ok(ElemResponse { fint, k })
 }
 
-/// Utdata med de inkompatibla modernas töjningsbidrag. För linjära material
-/// räknas α om från förskjutningen (oberoende av lagrat tillstånd).
+/// Output with the strain contribution of the incompatible modes. For linear materials
+/// α is recomputed from the displacement (independent of the stored state).
 pub fn incompatible_output(el: &Solid, ctx: &ElemCtx, mat: &dyn MaterialModel, u: &[f64], state: &[f64]) -> Result<Vec<IpField>> {
     incompatible_output_x(el, ctx, mat, u, state, None)
 }
 
-/// Som `incompatible_output` med extra ε33-kolumner (se `append_eps33`).
+/// Like `incompatible_output` with extra ε33 columns (see `append_eps33`).
 pub fn incompatible_output_x(
     el: &Solid,
     ctx: &ElemCtx,
@@ -425,7 +425,7 @@ pub fn incompatible_output_x(
     ext_u.extend_from_slice(&alpha);
     let st = if state.len() >= nip { &state[..nip] } else { state };
     if mat.is_linear() {
-        // spänningen direkt ur töjningen (tillståndet kan vara från början av steget)
+        // the stress directly from the strain (the state may be from the start of the step)
         let d = mat.tangent_linear(el.mode)?;
         let ns = el.mode.ncomp();
         let mut s = Vec::with_capacity(nip);
@@ -439,13 +439,13 @@ pub fn incompatible_output_x(
 }
 
 // ---------------------------------------------------------------------------
-// Hourglass-stabilisering
+// Hourglass stabilization
 // ---------------------------------------------------------------------------
 
-/// Kinematik för reducerat integrerade element med en punkt: B-matrisen är
-/// volymmedelvärdet B̄ = (1/V)∫B dV ("uniform strain", Flanagan–Belytschko),
-/// integrerad med 2×2(×2) punkter. Punkten får vikten V och läget i
-/// volymens tyngdpunkt (COORD, även för CAX4R).
+/// Kinematics for one-point reduced-integration elements: the B matrix is
+/// the volume average B̄ = (1/V)∫B dV ("uniform strain", Flanagan–Belytschko),
+/// integrated with 2×2(×2) points. The point gets the weight V and the position at
+/// the volume centroid (COORD, also for CAX4R).
 pub fn uniform_strain(el: &Solid, ctx: &ElemCtx) -> Result<(Vec<Ip>, Vec<Vec<f64>>)> {
     let t = el.thickness(ctx)?;
     let full = ips_for(el.shape, el.mode, &ctx.x, &RuleKind::Gauss(2).points(el.pdim()), t)?;
@@ -472,12 +472,12 @@ pub fn uniform_strain(el: &Solid, ctx: &ElemCtx) -> Result<(Vec<Ip>, Vec<Vec<f64
     Ok((vec![Ip { n, dndx, w: vol }], vec![b]))
 }
 
-/// Skjuvmodul för hourglass-styvheten (för NLGEOM-varianten i `solid_higher_nlgeom.rs`).
+/// Shear modulus for the hourglass stiffness (for the NLGEOM variant in `solid_higher_nlgeom.rs`).
 pub fn shear_modulus_of(el: &Solid, mat: &dyn MaterialModel) -> Result<f64> {
     shear_modulus(el, mat)
 }
 
-/// Skjuvmodul ur materialets elastiska tangent (för hourglass-styvheten).
+/// Shear modulus from the material's elastic tangent (for the hourglass stiffness).
 fn shear_modulus(el: &Solid, mat: &dyn MaterialModel) -> Result<f64> {
     if let Some((e, nu)) = mat.elastic_moduli() {
         return Ok(e / (2.0 * (1.0 + nu)));
@@ -487,16 +487,16 @@ fn shear_modulus(el: &Solid, mat: &dyn MaterialModel) -> Result<f64> {
     Ok(d[(ns - 1) * ns + ns - 1])
 }
 
-/// Hourglass-styvhet enligt standardmetoden (styvhetsmetoden).
+/// Hourglass stiffness according to the default method (the stiffness method).
 ///
-/// Hourglass-vektorerna γₐ = hₐ − (hₐ·x) b̄ (Flanagan–Belytschko) med
-/// hₐ = ξη (plana) respektive ξη, ηζ, ζξ, ξηζ (3D) i hörnnoderna, och
-/// K = Σₐ γₐγₐᵀ ⊗ S där S beror på skjuvmodulen G, volymen V och b̄:
-/// - plana/axisymmetriska: S = 0,005/16 · G V Σᵢ|b̄ᵢ|² · I
-/// - 3D: S = diag(s₁, s₂, s₃), s_d = 0,0011785 · G V Σᵢ b̄ᵢd²
+/// The hourglass vectors γₐ = hₐ − (hₐ·x) b̄ (Flanagan–Belytschko) with
+/// hₐ = ξη (planar) and ξη, ηζ, ζξ, ξηζ (3D), respectively, at the corner nodes, and
+/// K = Σₐ γₐγₐᵀ ⊗ S where S depends on the shear modulus G, the volume V and b̄:
+/// - planar/axisymmetric: S = 0.005/16 · G V Σᵢ|b̄ᵢ|² · I
+/// - 3D: S = diag(s₁, s₂, s₃), s_d = 0.0011785 · G V Σᵢ b̄ᵢd²
 ///
-/// Konstanterna motsvarar standardvärdet för hourglass-styvheten. Styvheten är linjär
-/// och bygger på den elastiska skjuvmodulen även för olinjära material.
+/// The constants correspond to the default value of the hourglass stiffness. The stiffness is linear
+/// and is based on the elastic shear modulus also for nonlinear materials.
 pub fn hourglass_matrix(el: &Solid, ctx: &ElemCtx, mat: &dyn MaterialModel) -> Result<Vec<f64>> {
     let (ips, _) = uniform_strain(el, ctx)?;
     let ip = &ips[0];
@@ -587,21 +587,21 @@ pub fn hourglass_output(el: &Solid, ctx: &ElemCtx, mat: &dyn MaterialModel, u: &
 }
 
 impl Solid {
-    /// Antal frihetsgrader i elementet.
+    /// Number of degrees of freedom in the element.
     pub fn n_nodes_dofs(&self) -> usize {
         self.shape.n_nodes() * self.ndim()
     }
 }
 
 // ---------------------------------------------------------------------------
-// Geometrisk styvhet
+// Geometric stiffness
 // ---------------------------------------------------------------------------
 
-/// Geometrisk styvhet (spänningsstyvhet) Kσ = ∫ ∇Nᵢ·σ·∇Nⱼ dV · I från
-/// spänningarna i elementets tillstånd (små töjningar, referensgeometri).
-/// Axisymmetri får även ringtermen σθθ NᵢNⱼ / r² för u_r. Reducerat
-/// integrerade element använder B̄ och punktens spänning (ingen
-/// hourglass-del); för inkompatibla moder används bara nodförskjutningarna.
+/// Geometric stiffness (stress stiffness) Kσ = ∫ ∇Nᵢ·σ·∇Nⱼ dV · I from
+/// the stresses in the element state (small strains, reference geometry).
+/// Axisymmetry also gets the hoop term σθθ NᵢNⱼ / r² for u_r. Reduced-
+/// integration elements use B̄ and the stress at the point (no
+/// hourglass part); for incompatible modes only the nodal displacements are used.
 pub fn geometric_stiffness(el: &Solid, ctx: &ElemCtx, mat: &dyn MaterialModel, state: &[f64]) -> Result<Vec<f64>> {
     let ips = match el.tech {
         super::Tech::Hourglass => uniform_strain(el, ctx)?.0,
@@ -614,7 +614,7 @@ pub fn geometric_stiffness(el: &Solid, ctx: &ElemCtx, mat: &dyn MaterialModel, s
     let mut k = vec![0.0; n * n];
     for (q, ip) in ips.iter().enumerate() {
         let s = if state.len() >= (q + 1) * stride { &state[q * stride..q * stride + el.mode.ncomp()] } else { continue };
-        // σ som 3×3 (in-plane delen för plana element) och ringspänning
+        // σ as 3×3 (the in-plane part for plane elements) and hoop stress
         let (sig, hoop): ([[f64; 3]; 3], f64) = match el.mode {
             StressMode::ThreeD => ([[s[0], s[3], s[4]], [s[3], s[1], s[5]], [s[4], s[5], s[2]]], 0.0),
             StressMode::PlaneStress => ([[s[0], s[2], 0.0], [s[2], s[1], 0.0], [0.0; 3]], 0.0),

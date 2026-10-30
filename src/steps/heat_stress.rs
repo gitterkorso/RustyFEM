@@ -1,18 +1,18 @@
-//! Termisk töjning i den kopplade analysen (`steps/heat_coupled.rs`) och
-//! *TEMPERATURE, FILE=jobb.
+//! Thermal strain in the coupled analysis (`steps/heat_coupled.rs`) and
+//! *TEMPERATURE, FILE=job.
 //!
-//! Den sekventiellt kopplade termiska spänningen (*STATIC med *TEMPERATURE)
-//! löses av de vanliga mekaniska stegen: temperaturfältet byggs av
-//! `materials::thermal::TemperatureField` och den termiska töjningen dras av i
-//! materialet (`materials::thermal::Thermal`, *EXPANSION). Här finns
-//! jämviktssystemet för den mekaniska delen av *COUPLED
-//! TEMPERATURE-DISPLACEMENT, där nodtemperaturerna vid inkrementets början och
-//! slut i stället kommer från värmeledningsdelen och sätts i elementkontexten
-//! (`ElemCtx::temp`, `temp_old`). Materialet hanterar sedan den termiska
-//! töjningen på samma sätt (medeltemperaturen i första ordningens element).
+//! The sequentially coupled thermal stress (*STATIC with *TEMPERATURE)
+//! is solved by the ordinary mechanical steps: the temperature field is built by
+//! `materials::thermal::TemperatureField` and the thermal strain is subtracted in
+//! the material (`materials::thermal::Thermal`, *EXPANSION). This module holds
+//! the equilibrium system for the mechanical part of *COUPLED
+//! TEMPERATURE-DISPLACEMENT, where the nodal temperatures at the start and
+//! end of the increment instead come from the heat transfer part and are set in the element context
+//! (`ElemCtx::temp`, `temp_old`). The material then handles the thermal
+//! strain in the same way (the mean temperature in first-order elements).
 //!
-//! `temperatures_from_job` kör värmeanalysen för *TEMPERATURE, FILE=jobb
-//! (värmeanalysens indatafil körs med RustyFEM).
+//! `temperatures_from_job` runs the heat analysis for *TEMPERATURE, FILE=job
+//! (the input file of the heat analysis is run with RustyFEM).
 
 use super::newton::{NonlinearSystem, Residual};
 use super::heat::TS;
@@ -27,11 +27,11 @@ use crate::model::{FemError, Result};
 use crate::solver::{LinearSolver, SystemMatrix};
 use std::collections::BTreeMap;
 
-/// Inga egna steg-typer: *STATIC med *TEMPERATURE körs av de vanliga
-/// mekaniska stegen (modulen står i registret för `ThermoSystem` och FILE=).
+/// No step types of its own: *STATIC with *TEMPERATURE is run by the ordinary
+/// mechanical steps (the module is in the registry for `ThermoSystem` and FILE=).
 pub static STEP_TYPES: &[&dyn super::api::StepType] = &[];
 
-/// Jämvikt med termisk töjning.
+/// Equilibrium with thermal strain.
 pub(crate) struct ThermoSystem<'p, 'm> {
     p: &'p Prepared<'m>,
     loads: &'p StepLoads,
@@ -48,14 +48,14 @@ pub(crate) struct ThermoSystem<'p, 'm> {
     t0: f64,
     t1: f64,
     linear: bool,
-    /// Nodtemperaturer vid inkrementets början och slut från
-    /// värmeledningsdelen (sätts av `heat_coupled.rs` före varje inkrement).
+    /// Nodal temperatures at the start and end of the increment from
+    /// the heat transfer part (set by `heat_coupled.rs` before each increment).
     pub(crate) coupled: (Vec<f64>, Vec<f64>),
 }
 
 impl<'p, 'm> ThermoSystem<'p, 'm> {
-    /// Elementkontext med nodtemperaturerna från värmeledningsdelen. Med
-    /// `output` gäller sluttemperaturen både i början och slutet.
+    /// Element context with the nodal temperatures from the heat transfer part. With
+    /// `output` the end temperature applies both at the start and the end.
     fn with_temps<'a>(&self, e: usize, base: ElemCtx<'a>, output: bool) -> ElemCtx<'a> {
         let nodes = &self.p.model.elements[e].nodes;
         let (a, b) = &self.coupled;
@@ -110,7 +110,7 @@ impl<'p, 'm> ThermoSystem<'p, 'm> {
             }
             state_new.push(sn);
         }
-        // kontakt och andra interaktioner i den kopplade analysen (område contact3)
+        // contact and other interactions in the coupled analysis (area contact3)
         if !self.p.interactions.is_empty() {
             let ictx = crate::interactions::InteractionCtx { model: m, time, dt, nlgeom: false };
             for it in &self.p.interactions {
@@ -247,8 +247,8 @@ impl NonlinearSystem for ThermoSystem<'_, '_> {
 }
 
 impl<'p, 'm> ThermoSystem<'p, 'm> {
-    /// Bygger jämviktssystemet för steget. `lock_temperature`: temperaturens
-    /// frihetsgrader (kopplade element) låses och sätts av anroparen.
+    /// Builds the equilibrium system for the step. `lock_temperature`: the temperature
+    /// degrees of freedom (coupled elements) are locked and set by the caller.
     pub(crate) fn new(
         prep: &'p Prepared<'m>,
         loads: &'p StepLoads,
@@ -261,7 +261,7 @@ impl<'p, 'm> ThermoSystem<'p, 'm> {
         let nn = model.nodes.len();
         let mut constrained = loads.constrained();
         if lock_temperature {
-            // kopplad analys: temperaturerna löses av värmeledningsdelen
+            // coupled analysis: the temperatures are solved by the heat transfer part
             for (n, &a) in prep.active.iter().enumerate() {
                 if a & (1 << TS) != 0 {
                     constrained.insert((n, TS));
@@ -270,7 +270,7 @@ impl<'p, 'm> ThermoSystem<'p, 'm> {
         }
         let (dm, mat) = assembly::dofmap(prep, &constrained, solver)?;
         if !dm.mpc.is_empty() {
-            return Err(FemError("linjära villkor (tie, MPC, kopplingselement med låsta komponenter) i *COUPLED TEMPERATURE-DISPLACEMENT stöds inte ännu".into()));
+            return Err(FemError("linear constraints (tie, MPC, connector elements with locked components) in *COUPLED TEMPERATURE-DISPLACEMENT are not supported yet".into()));
         }
         Ok(ThermoSystem {
             p: prep,
@@ -287,49 +287,49 @@ impl<'p, 'm> ThermoSystem<'p, 'm> {
             period,
             t0: 0.0,
             t1: 0.0,
-            // temperaturen är given i den mekaniska delen: termisk töjning på
-            // linjära material ger ett linjärt delsystem
+            // the temperature is given in the mechanical part: thermal strain on
+            // linear materials gives a linear subsystem
             linear: prep.materials.iter().flatten().all(|m| m.is_linear_at_given_temperature()) && prep.interactions.iter().all(|i| i.is_linear()),
             coupled: (Vec::new(), Vec::new()),
         })
     }
 }
 
-/// Temperaturer (nodindex, T) från en tidigare värmeanalys för *TEMPERATURE,
-/// FILE=jobb. Värmeanalysen `jobb.inp`
-/// (i samma katalog som indatafilen) körs med RustyFEM. Temperaturerna tas från
-/// sista inkrementet i steg ESTEP (standard = BSTEP = 1), eller inkrement EINC.
-/// Noderna paras ihop via (instans, nodnummer).
+/// Temperatures (node index, T) from a previous heat analysis for *TEMPERATURE,
+/// FILE=job. The heat analysis `job.inp`
+/// (in the same directory as the input file) is run with RustyFEM. The temperatures are taken from
+/// the last increment in step ESTEP (default = BSTEP = 1), or increment EINC.
+/// The nodes are matched via (instance, node number).
 pub fn temperatures_from_job(ctx: &InpCtx, kw: &RawKeyword, file: &str) -> Result<Vec<(usize, f64)>> {
     let name = file.trim().trim_matches('"');
-    // en eventuell filändelse i FILE= ignoreras; värmeanalysen är alltid jobb.inp
+    // a possible file extension in FILE= is ignored; the heat analysis is always job.inp
     let stem = name.rsplit_once('.').filter(|(_, ext)| !ext.contains(['/', '\\'])).map_or(name, |(s, _)| s);
     let dir = ctx.dir.clone().unwrap_or_else(|| std::path::PathBuf::from("."));
     let path = dir.join(format!("{stem}.inp"));
     if !path.exists() {
         return kw.err(format!(
-            "FILE={name}: värmeanalysen {} körs med RustyFEM – filen finns inte",
+            "FILE={name}: the heat analysis {} is run with RustyFEM – the file does not exist",
             path.display()
         ));
     }
     let int_param = |key: &str| -> Result<Option<usize>> {
         match kw.param(key) {
-            Some(v) => crate::inp::parse_label(v).filter(|&x| x >= 0).map(|x| Some(x as usize)).ok_or_else(|| FemError(format!("{}: {key}={v} ska vara ett heltal", kw.location()))),
+            Some(v) => crate::inp::parse_label(v).filter(|&x| x >= 0).map(|x| Some(x as usize)).ok_or_else(|| FemError(format!("{}: {key}={v} must be an integer", kw.location()))),
             None => Ok(None),
         }
     };
     let bstep = int_param("BSTEP")?.unwrap_or(1);
     let estep = int_param("ESTEP")?.unwrap_or(bstep);
     let einc = int_param("EINC")?;
-    let m = crate::inp::read_file(&path).map_err(|e| FemError(format!("{}: värmeanalysen {}: {e}", kw.location(), path.display())))?;
+    let m = crate::inp::read_file(&path).map_err(|e| FemError(format!("{}: the heat analysis {}: {e}", kw.location(), path.display())))?;
     let opts = crate::steps::RunOptions { all_frames: einc.is_some(), ..Default::default() };
-    let (out, _) = crate::steps::run(&m.model, &opts).map_err(|e| FemError(format!("{}: värmeanalysen {}: {e}", kw.location(), path.display())))?;
+    let (out, _) = crate::steps::run(&m.model, &opts).map_err(|e| FemError(format!("{}: the heat analysis {}: {e}", kw.location(), path.display())))?;
     let Some(st) = out.steps.get(estep.wrapping_sub(1)) else {
-        return kw.err(format!("värmeanalysen har {} steg, ESTEP={estep} finns inte", out.steps.len()));
+        return kw.err(format!("the heat analysis has {} steps, ESTEP={estep} does not exist", out.steps.len()));
     };
     let fr = match einc {
-        Some(i) => st.frames.get(i).ok_or_else(|| FemError(format!("{}: inkrement EINC={i} finns inte i värmeanalysen", kw.location())))?,
-        None => st.frames.last().ok_or_else(|| FemError(format!("{}: värmeanalysen saknar resultat", kw.location())))?,
+        Some(i) => st.frames.get(i).ok_or_else(|| FemError(format!("{}: increment EINC={i} does not exist in the heat analysis", kw.location())))?,
+        None => st.frames.last().ok_or_else(|| FemError(format!("{}: the heat analysis has no results", kw.location())))?,
     };
     let hm = &m.model;
     let mesh = &ctx.model;
@@ -345,12 +345,12 @@ pub fn temperatures_from_job(ctx: &InpCtx, kw: &RawKeyword, file: &str) -> Resul
         }
     }
     if vals.is_empty() {
-        return kw.err(format!("inga noder i {} motsvarar noderna i den här modellen", path.display()));
+        return kw.err(format!("no nodes in {} correspond to the nodes in this model", path.display()));
     }
     Ok(vals)
 }
 
-/// Tangentbidrag från interaktioner till ekvationerna (undre triangeln).
+/// Tangent contributions from interactions to the equations (lower triangle).
 struct EqSink<'a> {
     eq: &'a [[usize; SLOTS]],
     k: &'a mut dyn SystemMatrix,

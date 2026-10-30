@@ -1,59 +1,59 @@
-//! Tidsberoende materialbeteende (krypning och viskoelasticitet): vilket
-//! beteende som är aktivt i ett steg och övervakning av tidsintegrationen.
+//! Time-dependent material behavior (creep and viscoelasticity): which
+//! behavior is active in a step and monitoring of the time integration.
 //!
-//! Regler:
-//! - *CREEP är aktivt i *VISCO. I *STATIC och *DYNAMIC ignoreras krypningen.
-//! - *VISCOELASTIC är aktivt i *VISCO och *DYNAMIC. I *STATIC ignoreras det och
-//!   svaret är det momentana (instantana moduler, viskösa töjningar oförändrade);
-//!   *STATIC, LONG TERM ger den fullt relaxerade lösningen.
-//! - Krypning integreras i geometriskt linjära *VISCO-steg explicit (framåt
-//!   Euler, "integration scheme 1") och byter till implicit (bakåt Euler) när
-//!   plasticitet är aktiv eller stabilitetsgränsen begränsar inkrementet nio
-//!   gånger i följd. Med NLGEOM används alltid implicit integration.
-//!   CREEP=EXPLICIT på *VISCO tvingar explicit integration.
+//! Rules:
+//! - *CREEP is active in *VISCO. In *STATIC and *DYNAMIC the creep is ignored.
+//! - *VISCOELASTIC is active in *VISCO and *DYNAMIC. In *STATIC it is ignored and
+//!   the response is the instantaneous one (instantaneous moduli, viscous strains unchanged);
+//!   *STATIC, LONG TERM gives the fully relaxed solution.
+//! - Creep is integrated explicitly in geometrically linear *VISCO steps (forward
+//!   Euler, "integration scheme 1") and switches to implicit (backward Euler) when
+//!   plasticity is active or the stability limit restricts the increment nine
+//!   times in a row. With NLGEOM implicit integration is always used.
+//!   CREEP=EXPLICIT on *VISCO forces explicit integration.
 //!
-//! Materialen är delade (`Arc`) och oföränderliga under analysen, så läget och
-//! övervakningen ligger i atomära fält (`TimeDependence`) som materialet äger.
-//! Elementen anropar materialen parallellt; felmåttet samlas med `fetch_max`
-//! (icke-negativa f64 har samma ordning som sina bitmönster).
+//! The materials are shared (`Arc`) and immutable during the analysis, so the mode and
+//! the monitoring live in atomic fields (`TimeDependence`) owned by the material.
+//! The elements call the materials in parallel; the error measure is collected with `fetch_max`
+//! (non-negative f64 have the same ordering as their bit patterns).
 
 use super::MaterialModel;
 use crate::fem::model::{FeModel, StepDef};
 use std::sync::atomic::{AtomicU64, AtomicU8, Ordering};
 use std::sync::Arc;
 
-/// Inga fabriker här: modulen är gemensam för `creep.rs` och `viscoelastic.rs`.
+/// No factories here: the module is shared by `creep.rs` and `viscoelastic.rs`.
 pub static FACTORIES: &[super::MaterialFactory] = &[];
 
-/// Krypning av.
+/// Creep off.
 pub const CREEP_OFF: u8 = 0;
-/// Explicit (framåt Euler) krypintegration.
+/// Explicit (forward Euler) creep integration.
 pub const CREEP_EXPLICIT: u8 = 1;
-/// Implicit (bakåt Euler) krypintegration.
+/// Implicit (backward Euler) creep integration.
 pub const CREEP_IMPLICIT: u8 = 2;
 
-/// Viskoelasticitet ignoreras: momentant svar med instantana moduler.
+/// Viscoelasticity ignored: instantaneous response with instantaneous moduli.
 pub const VISCO_INSTANT: u8 = 0;
-/// Viskoelasticitet integreras i tiden.
+/// Viscoelasticity integrated in time.
 pub const VISCO_ACTIVE: u8 = 1;
-/// Fullt relaxerat svar (*STATIC, LONG TERM).
+/// Fully relaxed response (*STATIC, LONG TERM).
 pub const VISCO_LONG_TERM: u8 = 2;
 
-/// Läge och integrationsövervakning för ett tidsberoende material.
+/// Mode and integration monitoring for a time-dependent material.
 #[derive(Debug)]
 pub struct TimeDependence {
     creep: AtomicU8,
     visco: AtomicU8,
-    /// Största felmått i senaste utvärderingen (f64-bitar).
+    /// Largest error measure in the latest evaluation (f64 bits).
     err: AtomicU64,
-    /// Minsta stabila tidsinkrement för explicit krypning (f64-bitar).
+    /// Smallest stable time increment for explicit creep (f64 bits).
     dts: AtomicU64,
-    /// Absoluta nollpunkten θZ från *PHYSICAL CONSTANTS, ABSOLUTE ZERO= (f64-bitar, NaN om den saknas).
+    /// Absolute zero θZ from *PHYSICAL CONSTANTS, ABSOLUTE ZERO= (f64 bits, NaN if missing).
     zero: AtomicU64,
-    /// Explicit krypning med temperaturen vid inkrementets början (kopplade
-    /// temperatur–förskjutningssteg, där temperaturen är en obekant).
+    /// Explicit creep with the temperature at the start of the increment (coupled
+    /// temperature–displacement steps, where the temperature is an unknown).
     temp_start: AtomicU8,
-    /// Allmänna gaskonstanten R från *PHYSICAL CONSTANTS (f64-bitar, NaN om den saknas).
+    /// Universal gas constant R from *PHYSICAL CONSTANTS (f64 bits, NaN if missing).
     gas: AtomicU64,
 }
 
@@ -81,20 +81,20 @@ impl TimeDependence {
         self.creep.store(creep, Ordering::Relaxed);
     }
 
-    /// Nollställer felmåttet och stabilitetsgränsen (före en utvärdering).
+    /// Resets the error measure and the stability limit (before an evaluation).
     pub fn reset(&self) {
         self.err.store(0, Ordering::Relaxed);
         self.dts.store(f64::INFINITY.to_bits(), Ordering::Relaxed);
     }
 
-    /// Felmått i en integrationspunkt (CETOL-jämförelse).
+    /// Error measure at an integration point (CETOL comparison).
     pub fn record_error(&self, e: f64) {
         if e.is_finite() && e > 0.0 {
             self.err.fetch_max(e.to_bits(), Ordering::Relaxed);
         }
     }
 
-    /// Stabilt tidsinkrement i en integrationspunkt (explicit krypning).
+    /// Stable time increment at an integration point (explicit creep).
     pub fn record_stable_dt(&self, dt: f64) {
         if dt.is_finite() && dt > 0.0 {
             self.dts.fetch_min(dt.to_bits(), Ordering::Relaxed);
@@ -109,24 +109,24 @@ impl TimeDependence {
         f64::from_bits(self.dts.load(Ordering::Relaxed))
     }
 
-    /// Allmänna gaskonstanten (NaN om *PHYSICAL CONSTANTS, UNIVERSAL GAS CONSTANT= saknas).
+    /// Universal gas constant (NaN if *PHYSICAL CONSTANTS, UNIVERSAL GAS CONSTANT= is missing).
     pub fn gas_constant(&self) -> f64 {
         f64::from_bits(self.gas.load(Ordering::Relaxed))
     }
 
-    /// Explicit krypning ska använda temperaturen vid inkrementets början
+    /// Explicit creep should use the temperature at the start of the increment
     /// (*COUPLED TEMPERATURE-DISPLACEMENT).
     pub fn explicit_temp_at_start(&self) -> bool {
         self.temp_start.load(Ordering::Relaxed) != 0
     }
 
-    /// Absoluta nollpunkten (NaN om *PHYSICAL CONSTANTS, ABSOLUTE ZERO= saknas).
+    /// Absolute zero (NaN if *PHYSICAL CONSTANTS, ABSOLUTE ZERO= is missing).
     pub fn absolute_zero(&self) -> f64 {
         f64::from_bits(self.zero.load(Ordering::Relaxed))
     }
 }
 
-/// UNIVERSAL GAS CONSTANT= från *PHYSICAL CONSTANTS (NaN om den saknas).
+/// UNIVERSAL GAS CONSTANT= from *PHYSICAL CONSTANTS (NaN if missing).
 pub fn gas_constant(model: &FeModel) -> f64 {
     model
         .extra
@@ -136,7 +136,7 @@ pub fn gas_constant(model: &FeModel) -> f64 {
         .unwrap_or(f64::NAN)
 }
 
-/// ABSOLUTE ZERO= från *PHYSICAL CONSTANTS (NaN om den saknas).
+/// ABSOLUTE ZERO= from *PHYSICAL CONSTANTS (NaN if missing).
 pub fn absolute_zero(model: &FeModel) -> f64 {
     model
         .extra
@@ -146,7 +146,7 @@ pub fn absolute_zero(model: &FeModel) -> f64 {
         .unwrap_or(f64::NAN)
 }
 
-/// Lägen (krypning, viskoelasticitet) för ett steg enligt reglerna ovan.
+/// Modes (creep, viscoelasticity) for a step according to the rules above.
 pub fn modes_for(step: &StepDef, nlgeom: bool) -> (u8, u8) {
     let p = step.procedure.as_ref();
     match step.procedure_name() {
@@ -162,8 +162,8 @@ pub fn modes_for(step: &StepDef, nlgeom: bool) -> (u8, u8) {
             (creep, VISCO_ACTIVE)
         }
         "DYNAMIC" => (CREEP_OFF, VISCO_ACTIVE),
-        // krypning och viskoelasticitet i transienta kopplade steg
-        // (integrationsschema 1/3 som i *VISCO; CREEP=NONE stänger av båda)
+        // creep and viscoelasticity in transient coupled steps
+        // (integration scheme 1/3 as in *VISCO; CREEP=NONE turns off both)
         "COUPLED TEMPERATURE-DISPLACEMENT" => match p.and_then(|k| k.param_upper("CREEP")).as_deref() {
             _ if p.is_some_and(|k| k.has("STEADY STATE")) => (CREEP_OFF, VISCO_INSTANT),
             Some("NONE") => (CREEP_OFF, VISCO_INSTANT),
@@ -175,10 +175,10 @@ pub fn modes_for(step: &StepDef, nlgeom: bool) -> (u8, u8) {
     }
 }
 
-/// Anropas före varje steg (`steps::run`): sätter läget i alla tidsberoende
-/// material. Perturbationssteg ändrar inget (tillståndet återställs ändå).
+/// Called before each step (`steps::run`): sets the mode in all time-dependent
+/// materials. Perturbation steps change nothing (the state is restored anyway).
 pub fn begin_step(model: &FeModel, materials: &[Option<Arc<dyn MaterialModel>>], step: &StepDef, nlgeom: bool) {
-    // fysikaliska konstanter (även för perturbationssteg, t.ex. *TRS i
+    // physical constants (also for perturbation steps, e.g. *TRS in
     // *STEADY STATE DYNAMICS)
     let (z0, r0) = (absolute_zero(model), gas_constant(model));
     for m in materials.iter().flatten() {
@@ -201,23 +201,23 @@ pub fn begin_step(model: &FeModel, materials: &[Option<Arc<dyn MaterialModel>>],
     }
 }
 
-/// Alla tidsberoende material i modellen.
+/// All time-dependent materials in the model.
 pub fn all(materials: &[Option<Arc<dyn MaterialModel>>]) -> Vec<&TimeDependence> {
     materials.iter().flatten().filter_map(|m| m.time_dependence()).collect()
 }
 
-/// Nollställer övervakningen i alla material.
+/// Resets the monitoring in all materials.
 pub fn reset_all(tds: &[&TimeDependence]) {
     tds.iter().for_each(|t| t.reset());
 }
 
-/// (största felmått, minsta stabila tidsinkrement) över alla material.
+/// (largest error measure, smallest stable time increment) over all materials.
 pub fn monitor(tds: &[&TimeDependence]) -> (f64, f64) {
     tds.iter().fold((0.0f64, f64::INFINITY), |(e, d), t| (e.max(t.error()), d.min(t.stable_dt())))
 }
 
-/// *VISCO utan AMPLITUDE= på *STEP: laster och fördefinierade fält verkar
-/// direkt (STEP), föreskrivna förskjutningar rampas (kvasistatisk analys).
+/// *VISCO without AMPLITUDE= on *STEP: loads and predefined fields act
+/// immediately (STEP), prescribed displacements are ramped (quasi-static analysis).
 pub fn default_step_amplitude(step: &StepDef) -> bool {
     step.procedure_name() == "VISCO" && step.header.param("AMPLITUDE").is_none()
 }

@@ -1,28 +1,28 @@
-//! Fysiskt minne och minnesbudget per plattform (se PLAN.md, "Minnestak och lösarval").
+//! Physical memory and memory budget per platform (see PLAN.md, "Memory cap and solver choice").
 //!
-//! | Plattform | Budget |
+//! | Platform | Budget |
 //! |---|---|
-//! | iOS | 50 % av `os_proc_available_memory()`, läst före varje körning; gäller alltid |
-//! | macOS, Windows, Linux | 80 % av det fysiska minnet; användaren kan köra ändå |
+//! | iOS | 50 % of `os_proc_available_memory()`, read before each run; always applies |
+//! | macOS, Windows, Linux | 80 % of physical memory; the user can run anyway |
 
-/// Fysiskt minne i byte (0 om okänt).
+/// Physical memory in bytes (0 if unknown).
 pub fn total() -> f64 {
     imp::total()
 }
 
-/// Budgeten är ett hårt tak (iOS stänger appen vid för högt minne).
+/// The budget is a hard cap (iOS closes the app when memory use is too high).
 pub const HARD_BUDGET: bool = cfg!(target_os = "ios");
 
-/// Plattformens namn ("windows", "macos", "linux", "ios").
+/// The platform's name ("windows", "macos", "linux", "ios").
 pub fn name() -> &'static str {
     std::env::consts::OS
 }
 
-/// Budget för en körning (byte).
+/// Budget for a run (bytes).
 pub fn budget() -> f64 {
     #[cfg(target_os = "ios")]
     {
-        // SAFETY: os_proc_available_memory är trådsäker och saknar argument.
+        // SAFETY: os_proc_available_memory is thread-safe and takes no arguments.
         let avail = unsafe { ios::os_proc_available_memory() } as f64;
         if avail > 0.0 {
             return 0.5 * avail;
@@ -35,7 +35,7 @@ pub fn budget() -> f64 {
 #[cfg(target_os = "ios")]
 mod ios {
     extern "C" {
-        /// libSystem (iOS 13+): minne som processen får använda innan systemet stänger den.
+        /// libSystem (iOS 13+): memory the process may use before the system terminates it.
         pub fn os_proc_available_memory() -> usize;
     }
 }
@@ -72,7 +72,7 @@ mod imp {
             avail_virtual: 0,
             avail_extended_virtual: 0,
         };
-        // SAFETY: bufferten har rätt storlek och `length` är satt enligt API:t.
+        // SAFETY: the buffer has the right size and `length` is set as the API requires.
         if unsafe { GlobalMemoryStatusEx(&mut m) } != 0 { m.total_phys as f64 } else { 0.0 }
     }
 }
@@ -97,7 +97,7 @@ mod imp {
     pub fn total() -> f64 {
         let mut v: u64 = 0;
         let mut len = std::mem::size_of::<u64>();
-        // SAFETY: namnet är nollterminerat och bufferten är en u64.
+        // SAFETY: the name is null-terminated and the buffer is a u64.
         let r = unsafe { sysctlbyname(c"hw.memsize".as_ptr(), &mut v as *mut u64 as *mut _, &mut len, std::ptr::null_mut(), 0) };
         if r == 0 { v as f64 } else { 0.0 }
     }

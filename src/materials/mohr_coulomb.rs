@@ -1,41 +1,41 @@
-//! Mohr–Coulomb-plasticitet (*MOHR COULOMB, *MOHR COULOMB HARDENING) med
-//! isotrop linjär elasticitet.
+//! Mohr–Coulomb plasticity (*MOHR COULOMB, *MOHR COULOMB HARDENING) with
+//! isotropic linear elasticity.
 //!
-//! Flytvillkor (p = −tr σ/3, q = von Mises-spänning, Θ deviatorvinkeln med
-//! cos 3Θ = (r/q)³, Θ = 0 vid enaxligt drag och π/3 vid enaxligt tryck):
+//! Yield condition (p = −tr σ/3, q = von Mises stress, Θ the deviatoric angle with
+//! cos 3Θ = (r/q)³, Θ = 0 in uniaxial tension and π/3 in uniaxial compression):
 //!
 //!   F = R_mc(Θ, φ) q − p tan φ − c(ε̄p) = 0,
 //!   R_mc(Θ, φ) = sin(Θ + π/3)/(√3 cos φ) + cos(Θ + π/3) tan φ/3,
 //!
-//! dvs. (σ1 − σ3) + (σ1 + σ3) sin φ = 2c cos φ. Vinkeln begränsas till
-//! δ ≤ Θ ≤ π/3 − δ med 1 − cos 3δ = 1,4·10⁻⁷ (δ ≈ 0,0101°), vilket syns som en
-//! relativ skillnad 1,8·10⁻⁴ i flytytan precis i hörnen (triaxialt tryck och
-//! drag).
+//! i.e. (σ1 − σ3) + (σ1 + σ3) sin φ = 2c cos φ. The angle is limited to
+//! δ ≤ Θ ≤ π/3 − δ with 1 − cos 3δ = 1.4·10⁻⁷ (δ ≈ 0.0101°), which shows up as a
+//! relative difference of 1.8·10⁻⁴ in the yield surface right at the corners (triaxial compression and
+//! tension).
 //!
-//! Flödespotentialen är Menétrey–Willams släta hyperboliska yta
+//! The flow potential is the smooth hyperbolic surface of Menétrey–Willam
 //!
 //!   G = √((ε c|₀ tan ψ)² + (R_mw(Θ, e) q)²) − p tan ψ,
 //!   R_mw = [4(1−e²)cos²Θ + (2e−1)²] / [2(1−e²)cos Θ + (2e−1)√(4(1−e²)cos²Θ + 5e² − 4e)] · R_mc(π/3, φ),
 //!
-//! med meridionell excentricitet ε = 0,1 (fast, ingen parameter i indata) och
-//! deviatorisk excentricitet e (DEVIATORIC ECCENTRICITY, standard
-//! (3 − sin φ)/(3 + sin φ)). G är slät överallt (även i spetsen och hörnen), så
-//! flödesriktningen ∂G/∂σ är entydig även där flytytan har hörn.
-//! Hårdnandevariabeln är ε̄̇p = σ:ε̇p / c (plastiskt arbete per kohesion,
-//! redovisas som PEEQ).
+//! with meridional eccentricity ε = 0.1 (fixed, no input parameter) and
+//! deviatoric eccentricity e (DEVIATORIC ECCENTRICITY, default
+//! (3 − sin φ)/(3 + sin φ)). G is smooth everywhere (also at the apex and the corners), so
+//! the flow direction ∂G/∂σ is unique even where the yield surface has corners.
+//! The hardening variable is ε̄̇p = σ:ε̇p / c (plastic work per cohesion,
+//! reported as PEEQ).
 //!
-//! Implicit Euler i huvudspänningsrummet (isotropi: prövospänningens
-//! huvudriktningar behålls): för givet Δλ löses σ = σ_tr − Δλ D ∂G/∂σ(σ) med
-//! Newton (slät, eftersom G är slät) och ε̄p ur hårdnandelagen; den skalära
-//! funktionen F(Δλ) nollställs sedan med innesluten sekantmetod. Hörn och spets
-//! i flytytan kräver därmed ingen särbehandling. Den konsistenta tangenten är
-//! numerisk (framåtdifferens av hela returalgoritmen) och osymmetrisk när
-//! ψ ≠ φ; med *STEP, UNSYMM=YES assembleras hela, annars den symmetriska delen.
+//! Implicit Euler in principal stress space (isotropy: the trial stress's
+//! principal directions are kept): for a given Δλ, σ = σ_tr − Δλ D ∂G/∂σ(σ) is solved with
+//! Newton (smooth, since G is smooth) and ε̄p from the hardening law; the scalar
+//! function F(Δλ) is then zeroed with a bracketed secant method. Corners and apex
+//! of the yield surface therefore need no special treatment. The consistent tangent is
+//! numerical (forward difference of the whole return algorithm) and unsymmetric when
+//! ψ ≠ φ; with *STEP, UNSYMM=YES the full matrix is assembled, otherwise the symmetric part.
 //!
-//! *TENSION CUTOFF (Rankine-yta σ_max = σt) ger modellen i
-//! `mohr_coulomb_cutoff.rs` (område geomaterials).
+//! *TENSION CUTOFF (Rankine surface σ_max = σt) gives the model in
+//! `mohr_coulomb_cutoff.rs` (feature area geomaterials).
 //!
-//! Utdata: PEEQ (ε̄p) och PE (plastisk töjning).
+//! Output: PEEQ (ε̄p) and PE (plastic strain).
 
 use super::plasticity::{iso_d6, mv6, update_reduced, Hardening, M6, V6};
 use super::principal::{fd_tangent, fold_theta, from_principal, grad_pq_theta, pq_theta, principal, root_from_zero};
@@ -46,17 +46,17 @@ use std::f64::consts::FRAC_PI_3;
 use std::sync::Arc;
 
 pub static FACTORIES: &[MaterialFactory] = &[MaterialFactory {
-    name: "Mohr–Coulomb-plasticitet",
+    name: "Mohr–Coulomb plasticity",
     consumes: &["ELASTIC", "MOHR COULOMB", "MOHR COULOMB HARDENING", "TENSION CUTOFF"],
     priority: 10,
     build: Some(build),
 }];
 
-// område geomaterials: dragbegränsning (*TENSION CUTOFF)
+// feature area geomaterials: tension cutoff (*TENSION CUTOFF)
 #[path = "mohr_coulomb_cutoff.rs"]
 mod cutoff;
 
-/// Begränsning av deviatorvinkeln vid hörnen: 1 − cos 3δ = 1,4e−7.
+/// Limit on the deviatoric angle at the corners: 1 − cos 3δ = 1.4e−7.
 fn corner_delta() -> f64 {
     (1.0 - 1.4e-7f64).acos() / 3.0
 }
@@ -71,16 +71,16 @@ pub struct MohrCoulomb {
     pub tan_phi: f64,
     pub cos_phi: f64,
     pub tan_psi: f64,
-    /// Deviatorisk excentricitet e (1/2 < e ≤ 1).
+    /// Deviatoric eccentricity e (1/2 < e ≤ 1).
     pub ecc: f64,
-    /// ε c|₀ tan ψ (hyperbelns asymptotavstånd i meridianplanet).
+    /// ε c|₀ tan ψ (the hyperbola's asymptote distance in the meridional plane).
     pub a: f64,
-    /// Kohesion c(ε̄p).
+    /// Cohesion c(ε̄p).
     pub hard: Hardening,
     delta: f64,
 }
 
-/// Tillståndslayout: [ε̄p, εp (6), ε 3D (6)].
+/// State layout: [ε̄p, εp (6), ε 3D (6)].
 const P: usize = 0;
 const EP: usize = 1;
 const EPS3: usize = 7;
@@ -91,35 +91,35 @@ fn cohesion_table(kw: &RawKeyword) -> Result<Vec<(f64, f64)>> {
     for d in &kw.data {
         let v = kw.floats(d)?;
         if v.len() > 2 && v[2..].iter().any(|&x| x != 0.0) {
-            return kw.err_at(d.line, "hastighets- eller temperaturberoende kohesion stöds inte ännu");
+            return kw.err_at(d.line, "rate- or temperature-dependent cohesion is not supported yet");
         }
         let (c, p) = (v.first().copied().unwrap_or(0.0), v.get(1).copied().unwrap_or(0.0));
         if !(c > 0.0) {
-            return kw.err_at(d.line, "kohesionen ska vara positiv");
+            return kw.err_at(d.line, "the cohesion must be positive");
         }
         match t.last() {
-            Some(&(pl, _)) if !(p > pl) => return kw.err_at(d.line, "den plastiska töjningen ska öka"),
-            None if p != 0.0 => return kw.err_at(d.line, "första punkten ska ha plastisk töjning 0"),
+            Some(&(pl, _)) if !(p > pl) => return kw.err_at(d.line, "the plastic strain must increase"),
+            None if p != 0.0 => return kw.err_at(d.line, "the first point must have plastic strain 0"),
             _ => {}
         }
         t.push((p, c));
     }
     if t.is_empty() {
-        return kw.err("kohesion saknas");
+        return kw.err("cohesion is missing");
     }
     Ok(t)
 }
 
-/// (E, ν) ur *ELASTIC (isotrop, temperaturoberoende).
+/// (E, ν) from *ELASTIC (isotropic, temperature-independent).
 pub fn iso_elastic(def: &MaterialDef, who: &RawKeyword, what: &str) -> Result<(f64, f64)> {
-    let Some(el) = def.behavior("ELASTIC") else { return who.err(format!("*{} kräver *ELASTIC", who.name)) };
+    let Some(el) = def.behavior("ELASTIC") else { return who.err(format!("*{} requires *ELASTIC", who.name)) };
     if el.param_upper("TYPE").is_some_and(|t| t != "ISOTROPIC") || el.data.len() > 1 || el.has("DEPENDENCIES") {
-        return el.err(format!("{what} kräver isotrop, temperaturoberoende elasticitet"));
+        return el.err(format!("{what} requires isotropic, temperature-independent elasticity"));
     }
     let ev = el.first_floats()?;
     let (e, nu) = (ev.first().copied().unwrap_or(0.0), ev.get(1).copied().unwrap_or(0.0));
     if !(e > 0.0 && nu > -1.0 && nu < 0.5) {
-        return el.err("E ska vara positivt och ν mellan −1 och 0,5");
+        return el.err("E must be positive and ν between −1 and 0.5");
     }
     Ok((e, nu))
 }
@@ -128,32 +128,32 @@ fn build(def: &MaterialDef) -> Result<Option<Arc<dyn MaterialModel>>> {
     let Some(kw) = def.behavior("MOHR COULOMB") else { return Ok(None) };
     let (e, nu) = iso_elastic(def, kw, "Mohr–Coulomb")?;
     if kw.data.len() > 1 || kw.has("DEPENDENCIES") {
-        return kw.err("temperaturberoende parametrar stöds inte ännu");
+        return kw.err("temperature-dependent parameters are not supported yet");
     }
     let v = kw.first_floats()?;
     let phi = v.first().copied().unwrap_or(0.0);
     let psi = v.get(1).copied().unwrap_or(0.0);
     if v.get(2).is_some_and(|&t| t != 0.0) {
-        return kw.err("temperaturberoende parametrar stöds inte ännu");
+        return kw.err("temperature-dependent parameters are not supported yet");
     }
     if !(0.0..90.0).contains(&phi) || !(0.0..90.0).contains(&psi) || psi > phi {
-        return kw.err("φ och ψ ska ligga mellan 0 och 90 grader med ψ ≤ φ");
+        return kw.err("φ and ψ must lie between 0 and 90 degrees with ψ ≤ φ");
     }
     let (sp, cp) = (phi.to_radians().sin(), phi.to_radians().cos());
     let ecc = match kw.param("DEVIATORIC ECCENTRICITY") {
-        Some(s) => s.trim().parse::<f64>().map_err(|_| crate::model::FemError(format!("{}: ogiltig DEVIATORIC ECCENTRICITY", kw.location())))?,
+        Some(s) => s.trim().parse::<f64>().map_err(|_| crate::model::FemError(format!("{}: invalid DEVIATORIC ECCENTRICITY", kw.location())))?,
         None => (3.0 - sp) / (3.0 + sp),
     };
     if !(ecc > 0.5 && ecc <= 1.0) {
-        return kw.err("DEVIATORIC ECCENTRICITY ska ligga i (0,5, 1]");
+        return kw.err("DEVIATORIC ECCENTRICITY must lie in (0.5, 1]");
     }
-    // meridionell excentricitet: fast 0,1 (ingen parameter i indata)
+    // meridional eccentricity: fixed at 0.1 (no input parameter)
     let mer = 0.1;
     let Some(hk) = def.behavior("MOHR COULOMB HARDENING") else {
-        return kw.err("*MOHR COULOMB kräver *MOHR COULOMB HARDENING");
+        return kw.err("*MOHR COULOMB requires *MOHR COULOMB HARDENING");
     };
     if hk.has("RATE") || hk.has("DEPENDENCIES") {
-        return hk.err("hastighets- eller temperaturberoende hårdnande stöds inte ännu");
+        return hk.err("rate- or temperature-dependent hardening is not supported yet");
     }
     let tab = cohesion_table(hk)?;
     let c0 = tab[0].1;
@@ -181,13 +181,13 @@ fn build(def: &MaterialDef) -> Result<Option<Arc<dyn MaterialModel>>> {
 }
 
 impl MohrCoulomb {
-    /// R_mc(Θ, φ) med begränsningen av Θ vid hörnen.
+    /// R_mc(Θ, φ) with the limit on Θ at the corners.
     fn r_mc(&self, th: f64) -> f64 {
         let t = th.clamp(self.delta, FRAC_PI_3 - self.delta);
         (t + FRAC_PI_3).sin() / (3f64.sqrt() * self.cos_phi) + (t + FRAC_PI_3).cos() * self.tan_phi / 3.0
     }
 
-    /// R_mw(Θ, e) och dR_mw/dΘ.
+    /// R_mw(Θ, e) and dR_mw/dΘ.
     fn r_mw(&self, th: f64) -> (f64, f64) {
         let e = self.ecc;
         let r60 = (FRAC_PI_3 + FRAC_PI_3).sin() / (3f64.sqrt() * self.cos_phi) + (FRAC_PI_3 + FRAC_PI_3).cos() * self.tan_phi / 3.0;
@@ -202,7 +202,7 @@ impl MohrCoulomb {
         (a / b * r60, (da * b - a * db) / (b * b) * r60)
     }
 
-    /// ∂G/∂σ i huvudspänningsrummet.
+    /// ∂G/∂σ in principal stress space.
     fn flow(&self, s: &[f64; 3]) -> [f64; 3] {
         let (_, q, th) = pq_theta(s);
         let (tf, sgn) = fold_theta(th);
@@ -217,7 +217,7 @@ impl MohrCoulomb {
         std::array::from_fn(|i| self.k * tr + 2.0 * self.g * (n[i] - tr / 3.0))
     }
 
-    /// σ(Δλ): löser σ = σ_tr − Δλ D ∂G/∂σ(σ) med Newton (startvärde i `s`).
+    /// σ(Δλ): solves σ = σ_tr − Δλ D ∂G/∂σ(σ) with Newton (initial value in `s`).
     fn stress_at(&self, str_: &[f64; 3], dl: f64, s: &mut [f64; 3]) -> Result<()> {
         let scale = str_.iter().fold(0.0f64, |m, x| m.max(x.abs())).max(self.hard.initial());
         let res = |s: &[f64; 3]| -> [f64; 3] {
@@ -230,7 +230,7 @@ impl MohrCoulomb {
             if nr <= 1e-14 * scale {
                 return Ok(());
             }
-            // Jacobian I + Δλ D H med H = ∂²G/∂σ² numeriskt (centraldifferens)
+            // Jacobian I + Δλ D H with H = ∂²G/∂σ² numerically (central difference)
             let h = 1e-6 * scale;
             let mut j = [[0.0; 3]; 3];
             for c in 0..3 {
@@ -246,9 +246,9 @@ impl MohrCoulomb {
             }
             let jv: Vec<f64> = j.iter().flatten().copied().collect();
             let Some(d) = super::anisotropic::solve_dense(&jv, &r) else {
-                return fail("Mohr–Coulomb: singulär jacobian i returalgoritmen");
+                return fail("Mohr–Coulomb: singular Jacobian in the return algorithm");
             };
-            // dämpat steg om residualen inte minskar
+            // damped step if the residual does not decrease
             let mut t = 1.0;
             loop {
                 let sn: [f64; 3] = std::array::from_fn(|i| s[i] - t * d[i]);
@@ -266,10 +266,10 @@ impl MohrCoulomb {
         if nr <= 1e-10 * scale {
             return Ok(());
         }
-        fail("Mohr–Coulomb: returalgoritmen (spänning för givet Δλ) konvergerade inte")
+        fail("Mohr–Coulomb: the return algorithm (stress for given Δλ) did not converge")
     }
 
-    /// ε̄p vid inkrementets slut: (ε̄p − ε̄p_n) c(ε̄p) = Δλ σ:∂G/∂σ.
+    /// ε̄p at the end of the increment: (ε̄p − ε̄p_n) c(ε̄p) = Δλ σ:∂G/∂σ.
     fn peeq_at(&self, pn: f64, dl: f64, w: f64) -> f64 {
         let mut p = pn + dl * w / self.hard.eval(pn).0;
         for _ in 0..60 {
@@ -347,8 +347,8 @@ impl MaterialModel for MohrCoulomb {
     }
 
     fn init_state(&self, state: &mut [f64]) {
-        // PEEQ för Mohr–Coulomb startar på 2,22e−16 (syns i resultaten även
-        // före plastisk flytning)
+        // PEEQ for Mohr–Coulomb starts at 2.22e−16 (visible in the results even
+        // before plastic yielding)
         state[P] = 2.22e-16;
     }
 

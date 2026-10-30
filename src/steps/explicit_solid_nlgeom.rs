@@ -1,27 +1,27 @@
-//! Område explicit_adv: explicit hourglass-kontroll för reducerat
-//! integrerade kontinuumelement (C3D8R, CPE4R, CPS4R) med NLGEOM.
+//! Area explicit_adv: explicit hourglass control for reduced-integration
+//! continuum elements (C3D8R, CPE4R, CPS4R) with NLGEOM.
 //!
-//! Elementets spänningsdel räknas som tidigare (`kinematics::continuum`,
-//! töjningsinkrementet i slutkonfigurationen och Jaumann-termen), men
-//! Standard-elementets hourglass-styvhet (totalform i referensläget,
-//! `elements/solid_higher_nlgeom.rs`) stängs av (`skip_standard`) och ersätts
-//! av en inkrementell form: hourglass-förskjutningens ökning
-//! Δqₐ = Σᵢ γₐᵢ Δuᵢ med Flanagan–Belytschkos γ i den aktuella geometrin,
-//! styvheten c = 0,0125·(2/n)·G·V·Σᵢ|∇Nᵢ|² (som utan NLGEOM, aktuell geometri)
-//! och relaxationsformen (RELAX STIFFNESS, standard) eller ren styvhet:
+//! The element's stress part is computed as before (`kinematics::continuum`,
+//! the strain increment in the final configuration and the Jaumann term), but
+//! the implicit element's hourglass stiffness (total form in the reference configuration,
+//! `elements/solid_higher_nlgeom.rs`) is switched off (`skip_standard`) and replaced
+//! by an incremental form: the increment of the hourglass displacement
+//! Δqₐ = Σᵢ γₐᵢ Δuᵢ with the Flanagan–Belytschko γ in the current geometry,
+//! the stiffness c = 0.0125·(2/n)·G·V·Σᵢ|∇Nᵢ|² (as without NLGEOM, current geometry)
+//! and the relaxation form (RELAX STIFFNESS, default) or pure stiffness:
 //!
 //! ```text
 //! Qₑ ← Qₑ + c Δq,   Qᵥ ← Qᵥ e^{−1/τ} + (1 − α) c Δq e^{−1/(2τ)},   Q = α Qₑ + Qᵥ
 //! ```
 //!
-//! (hourglass-delen av det inkrementella förskjutningsfältet; α och τ som i
+//! (the hourglass part of the incremental displacement field; α and τ as in
 //! `explicit_solid.rs`).
-//! Hourglass-krafterna fᵢ = γₐᵢ Q och ALLAE = Σ ½(Qₙ + Qₙ₊₁) Δq. Tillståndet
-//! (Qₑ, Qᵥ, Q) vrids med elementets spinn ΔW före ökningen (Q ← Q + ΔW Q).
-//! Kontrollerat med en C3D8R (fast botten, föreskriven hourglass-mod,
-//! skjuvning med fria ovannoder, 10 % hoptryckning med och utan plasticitet).
+//! The hourglass forces fᵢ = γₐᵢ Q and ALLAE = Σ ½(Qₙ + Qₙ₊₁) Δq. The state
+//! (Qₑ, Qᵥ, Q) is rotated with the element spin ΔW before the increment (Q ← Q + ΔW Q).
+//! Checked with a C3D8R (fixed bottom, prescribed hourglass mode,
+//! shear with free top nodes, 10 % compression with and without plasticity).
 //!
-//! Explicit-tillståndet per element är [Qₑ, Qᵥ, Q] för alla (mod, riktning).
+//! The explicit state per element is [Qₑ, Qᵥ, Q] for all (mode, direction).
 
 use super::dt::geometry;
 use super::shell::Hourglass;
@@ -33,8 +33,8 @@ thread_local! {
     static SKIP: Cell<bool> = const { Cell::new(false) };
 }
 
-/// Standard-elementets hourglass-styvhet vid NLGEOM stängs av i den aktuella
-/// tråden (explicit-hourglass läggs till här i stället).
+/// The implicit element's hourglass stiffness with NLGEOM is switched off in the current
+/// thread (explicit hourglass is added here instead).
 pub fn set_skip_standard(on: bool) {
     SKIP.with(|c| c.set(on));
 }
@@ -57,29 +57,29 @@ fn base_vectors(nn: usize) -> Vec<Vec<f64>> {
     }
 }
 
-/// Lägger till explicit-hourglass i `fint` (elementets frihetsgrader, nd per
-/// nod) för slutläget `u` och inkrementet `du`. Returnerar (nytt tillstånd, ΔALLAE).
+/// Adds explicit hourglass to `fint` (the element's degrees of freedom, nd per
+/// node) for the final state `u` and the increment `du`. Returns (new state, ΔALLAE).
 #[allow(clippy::too_many_arguments)]
 pub fn hourglass_force(ctx: &ElemCtx, el: &crate::elements::solid_higher::Solid, family: Family, fint: &mut [f64], u: &[f64], du: &[f64], old: &[f64], mode: Hourglass) -> Result<(Vec<f64>, f64)> {
     let mat = ctx.material(el.name)?;
     let nn = ctx.x.len();
     let nd = if nn == 8 { 3 } else { 2 };
     if u.len() != nn * nd {
-        return fail(format!("element {} ({}): oväntat antal frihetsgrader för hourglass", ctx.label, el.name));
+        return fail(format!("element {} ({}): unexpected number of degrees of freedom for hourglass", ctx.label, el.name));
     }
-    // aktuell geometri vid inkrementets slut
+    // current geometry at the end of the increment
     let x: Vec<[f64; 3]> = (0..nn).map(|i| std::array::from_fn(|k| ctx.x[i][k] + if k < nd { u[i * nd + k] } else { 0.0 })).collect();
     let Some(g) = geometry(family, el.name, &x) else {
-        return fail(format!("element {} ({}): kan inte beräkna hourglass-vektorerna", ctx.label, el.name));
+        return fail(format!("element {} ({}): cannot compute the hourglass vectors", ctx.label, el.name));
     };
     let thick = if nd == 2 { ctx.section.map_or(1.0, |s| s.solid_thickness()) } else { 1.0 };
     let grad: Vec<[f64; 3]> = g.b.iter().map(|b| [b[0] / g.vol, b[1] / g.vol, b[2] / g.vol]).collect();
     let sbb: f64 = grad.iter().map(|v| v[0] * v[0] + v[1] * v[1] + v[2] * v[2]).sum();
     let gmod = crate::elements::solid_higher::tech::shear_modulus_of(el, mat)?;
     let c = 0.0125 * (2.0 / nd as f64) * gmod * g.vol * thick * sbb;
-    // elementets spinn ΔW = skew(Σ Δuᵢ ⊗ ∇Nᵢ): hourglass-krafterna vrids med
-    // elementet (avläst: skjuvning med fria ovannoder 4e-2 → 3e-2, stor
-    // hoptryckning 5e-3)
+    // the element spin ΔW = skew(Σ Δuᵢ ⊗ ∇Nᵢ): the hourglass forces rotate with
+    // the element (observed: shear with free top nodes 4e-2 → 3e-2, large
+    // compression 5e-3)
     let mut w = [[0.0f64; 3]; 3];
     for i in 0..nn {
         for a in 0..nd {
@@ -108,7 +108,7 @@ pub fn hourglass_force(ctx: &ElemCtx, el: &crate::elements::solid_higher::Solid,
     let alpha = super::shell::RELAX_ALPHA;
     let tau = super::solid::RELAX_TAU_SOLID;
     for (a, h) in hs.iter().enumerate() {
-        // γ = h − (h·x) ∇N (Flanagan–Belytschko, aktuell geometri)
+        // γ = h − (h·x) ∇N (Flanagan–Belytschko, current geometry)
         let hx: [f64; 3] = std::array::from_fn(|k| (0..nn).map(|i| h[i] * x[i][k]).sum());
         let gam: Vec<f64> = (0..nn).map(|i| h[i] - (0..nd).map(|k| hx[k] * grad[i][k]).sum::<f64>()).collect();
         for d in 0..nd {

@@ -1,22 +1,22 @@
-# Tredjepartslicenser
+# Third-party licenses
 
-RustyFEM-appen innehåller programvara från tredje part enligt nedan.
-Filen genereras med `python scripts/third_party_licenses.py`; ändra den inte för hand.
+The RustyFEM app contains third-party software as listed below.
+This file is generated with `python scripts/third_party_licenses.py`; do not edit it by hand.
 
-Crates under MPL-2.0 (cssparser, selectors m.fl.) används oförändrade; deras
-källkod finns på crates.io och i respektive arkiv.
+Crates under MPL-2.0 (cssparser, selectors and others) are used unmodified; their
+source code is available on crates.io and in the respective repositories.
 
 ## Rust (367 crates)
 
 ### Inflector 0.11.4
 
-Licens: BSD-2-Clause  
-Källkod: https://github.com/whatisinternet/inflector
+License: BSD-2-Clause  
+Source code: https://github.com/whatisinternet/inflector
 
 ### adler2 2.0.1
 
-Licens: 0BSD OR MIT OR Apache-2.0  
-Källkod: https://github.com/oyvindln/adler2
+License: 0BSD OR MIT OR Apache-2.0  
+Source code: https://github.com/oyvindln/adler2
 
 <details><summary>LICENSE-0BSD</summary>
 
@@ -277,8 +277,8 @@ DEALINGS IN THE SOFTWARE.
 
 ### aho-corasick 1.1.5
 
-Licens: Unlicense OR MIT  
-Källkod: https://github.com/BurntSushi/aho-corasick
+License: Unlicense OR MIT  
+Source code: https://github.com/BurntSushi/aho-corasick
 
 <details><summary>COPYING</summary>
 
@@ -351,8 +351,8 @@ For more information, please refer to <http://unlicense.org/>
 
 ### alloc-no-stdlib 3.0.0
 
-Licens: BSD-3-Clause  
-Källkod: https://github.com/dropbox/rust-alloc-no-stdlib
+License: BSD-3-Clause  
+Source code: https://github.com/dropbox/rust-alloc-no-stdlib
 
 <details><summary>LICENSE</summary>
 
@@ -375,13 +375,13 @@ THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND 
 
 ### alloc-stdlib 0.3.0
 
-Licens: BSD-3-Clause  
-Källkod: https://github.com/dropbox/rust-alloc-no-stdlib
+License: BSD-3-Clause  
+Source code: https://github.com/dropbox/rust-alloc-no-stdlib
 
 ### anyhow 1.0.104
 
-Licens: MIT OR Apache-2.0  
-Källkod: https://github.com/dtolnay/anyhow
+License: MIT OR Apache-2.0  
+Source code: https://github.com/dtolnay/anyhow
 
 <details><summary>LICENSE-APACHE</summary>
 
@@ -598,8 +598,8 @@ DEALINGS IN THE SOFTWARE.
 
 ### atk 0.18.2
 
-Licens: MIT  
-Källkod: https://github.com/gtk-rs/gtk3-rs
+License: MIT  
+Source code: https://github.com/gtk-rs/gtk3-rs
 
 <details><summary>LICENSE</summary>
 
@@ -627,8 +627,8 @@ SOFTWARE.
 
 ### atk-sys 0.18.2
 
-Licens: MIT  
-Källkod: https://github.com/gtk-rs/gtk3-rs
+License: MIT  
+Source code: https://github.com/gtk-rs/gtk3-rs
 
 <details><summary>LICENSE</summary>
 
@@ -656,8 +656,8 @@ SOFTWARE.
 
 ### atomic-waker 1.1.2
 
-Licens: Apache-2.0 OR MIT  
-Källkod: https://github.com/smol-rs/atomic-waker
+License: Apache-2.0 OR MIT  
+Source code: https://github.com/smol-rs/atomic-waker
 
 <details><summary>LICENSE-APACHE</summary>
 
@@ -951,8 +951,8 @@ DEALINGS IN THE SOFTWARE.
 
 ### base64 0.21.7
 
-Licens: MIT OR Apache-2.0  
-Källkod: https://github.com/marshallpierce/rust-base64
+License: MIT OR Apache-2.0  
+Source code: https://github.com/marshallpierce/rust-base64
 
 <details><summary>LICENSE-APACHE</summary>
 
@@ -1192,8 +1192,8 @@ THE SOFTWARE.
 
 ### base64 0.23.1
 
-Licens: MIT OR Apache-2.0  
-Källkod: https://github.com/marshallpierce/rust-base64
+License: MIT OR Apache-2.0  
+Source code: https://github.com/marshallpierce/rust-base64
 
 <details><summary>LICENSE-APACHE</summary>
 
@@ -1433,8 +1433,8 @@ THE SOFTWARE.
 
 ### bit-set 0.8.0
 
-Licens: Apache-2.0 OR MIT  
-Källkod: https://github.com/contain-rs/bit-set
+License: Apache-2.0 OR MIT  
+Source code: https://github.com/contain-rs/bit-set
 
 <details><summary>LICENSE-APACHE</summary>
 
@@ -1678,8 +1678,8 @@ DEALINGS IN THE SOFTWARE.
 
 ### bit-vec 0.8.0
 
-Licens: Apache-2.0 OR MIT  
-Källkod: https://github.com/contain-rs/bit-vec
+License: Apache-2.0 OR MIT  
+Source code: https://github.com/contain-rs/bit-vec
 
 <details><summary>LICENSE-APACHE</summary>
 
@@ -1923,8 +1923,8 @@ DEALINGS IN THE SOFTWARE.
 
 ### bitflags 1.3.2
 
-Licens: MIT/Apache-2.0  
-Källkod: https://github.com/bitflags/bitflags
+License: MIT/Apache-2.0  
+Source code: https://github.com/bitflags/bitflags
 
 <details><summary>LICENSE-APACHE</summary>
 
@@ -2168,8 +2168,8 @@ DEALINGS IN THE SOFTWARE.
 
 ### bitflags 2.13.2
 
-Licens: MIT OR Apache-2.0  
-Källkod: https://github.com/bitflags/bitflags
+License: MIT OR Apache-2.0  
+Source code: https://github.com/bitflags/bitflags
 
 <details><summary>LICENSE-APACHE</summary>
 
@@ -2413,8 +2413,8 @@ DEALINGS IN THE SOFTWARE.
 
 ### block-buffer 0.10.4
 
-Licens: MIT OR Apache-2.0  
-Källkod: https://github.com/RustCrypto/utils
+License: MIT OR Apache-2.0  
+Source code: https://github.com/RustCrypto/utils
 
 <details><summary>LICENSE-APACHE</summary>
 
@@ -2658,13 +2658,13 @@ DEALINGS IN THE SOFTWARE.
 
 ### block2 0.6.2
 
-Licens: MIT  
-Källkod: https://github.com/madsmtm/objc2
+License: MIT  
+Source code: https://github.com/madsmtm/objc2
 
 ### brotli 9.1.1
 
-Licens: BSD-3-Clause AND MIT  
-Källkod: https://github.com/dropbox/rust-brotli
+License: BSD-3-Clause AND MIT  
+Source code: https://github.com/dropbox/rust-brotli
 
 <details><summary>LICENSE.BSD-3-Clause</summary>
 
@@ -2713,8 +2713,8 @@ THE SOFTWARE.
 
 ### brotli-decompressor 6.2.0
 
-Licens: BSD-3-Clause/MIT  
-Källkod: https://github.com/dropbox/rust-brotli-decompressor
+License: BSD-3-Clause/MIT  
+Source code: https://github.com/dropbox/rust-brotli-decompressor
 
 <details><summary>LICENSE</summary>
 
@@ -2737,8 +2737,8 @@ THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND 
 
 ### bumpalo 3.20.3
 
-Licens: MIT OR Apache-2.0  
-Källkod: https://github.com/fitzgen/bumpalo
+License: MIT OR Apache-2.0  
+Source code: https://github.com/fitzgen/bumpalo
 
 <details><summary>LICENSE-APACHE</summary>
 
@@ -2982,8 +2982,8 @@ DEALINGS IN THE SOFTWARE.
 
 ### bytemuck 1.25.2
 
-Licens: Zlib OR Apache-2.0 OR MIT  
-Källkod: https://github.com/Lokathor/bytemuck
+License: Zlib OR Apache-2.0 OR MIT  
+Source code: https://github.com/Lokathor/bytemuck
 
 <details><summary>LICENSE-APACHE</summary>
 
@@ -3089,8 +3089,8 @@ Permission is granted to anyone to use this software for any purpose, including 
 
 ### byteorder 1.5.0
 
-Licens: Unlicense OR MIT  
-Källkod: https://github.com/BurntSushi/byteorder
+License: Unlicense OR MIT  
+Source code: https://github.com/BurntSushi/byteorder
 
 <details><summary>COPYING</summary>
 
@@ -3163,8 +3163,8 @@ For more information, please refer to <http://unlicense.org/>
 
 ### bytes 1.12.1
 
-Licens: MIT  
-Källkod: https://github.com/tokio-rs/bytes
+License: MIT  
+Source code: https://github.com/tokio-rs/bytes
 
 <details><summary>LICENSE</summary>
 
@@ -3200,8 +3200,8 @@ DEALINGS IN THE SOFTWARE.
 
 ### cairo-rs 0.18.5
 
-Licens: MIT  
-Källkod: https://github.com/gtk-rs/gtk-rs-core
+License: MIT  
+Source code: https://github.com/gtk-rs/gtk-rs-core
 
 <details><summary>LICENSE</summary>
 
@@ -3229,8 +3229,8 @@ SOFTWARE.
 
 ### cairo-sys-rs 0.18.2
 
-Licens: MIT  
-Källkod: https://github.com/gtk-rs/gtk-rs-core
+License: MIT  
+Source code: https://github.com/gtk-rs/gtk-rs-core
 
 <details><summary>LICENSE</summary>
 
@@ -3258,8 +3258,8 @@ SOFTWARE.
 
 ### camino 1.2.6
 
-Licens: MIT OR Apache-2.0  
-Källkod: https://github.com/camino-rs/camino
+License: MIT OR Apache-2.0  
+Source code: https://github.com/camino-rs/camino
 
 <details><summary>LICENSE-APACHE</summary>
 
@@ -3501,8 +3501,8 @@ DEALINGS IN THE SOFTWARE.
 
 ### cargo-platform 0.1.9
 
-Licens: MIT OR Apache-2.0  
-Källkod: https://github.com/rust-lang/cargo
+License: MIT OR Apache-2.0  
+Source code: https://github.com/rust-lang/cargo
 
 <details><summary>LICENSE-APACHE</summary>
 
@@ -3744,8 +3744,8 @@ DEALINGS IN THE SOFTWARE.
 
 ### cargo_metadata 0.19.2
 
-Licens: MIT  
-Källkod: https://github.com/oli-obk/cargo_metadata
+License: MIT  
+Source code: https://github.com/oli-obk/cargo_metadata
 
 <details><summary>LICENSE-MIT</summary>
 
@@ -3779,13 +3779,13 @@ DEALINGS IN THE SOFTWARE.
 
 ### cesu8 1.1.0
 
-Licens: Apache-2.0/MIT  
-Källkod: https://github.com/emk/cesu8-rs
+License: Apache-2.0/MIT  
+Source code: https://github.com/emk/cesu8-rs
 
 ### cfb 0.14.0
 
-Licens: MIT  
-Källkod: https://github.com/mdsteele/rust-cfb
+License: MIT  
+Source code: https://github.com/mdsteele/rust-cfb
 
 <details><summary>LICENSE</summary>
 
@@ -3817,8 +3817,8 @@ SOFTWARE.
 
 ### cfg-if 1.0.5
 
-Licens: MIT OR Apache-2.0  
-Källkod: https://github.com/rust-lang/cfg-if
+License: MIT OR Apache-2.0  
+Source code: https://github.com/rust-lang/cfg-if
 
 <details><summary>LICENSE-APACHE</summary>
 
@@ -4062,8 +4062,8 @@ DEALINGS IN THE SOFTWARE.
 
 ### combine 4.6.9
 
-Licens: MIT  
-Källkod: https://github.com/Marwes/combine
+License: MIT  
+Source code: https://github.com/Marwes/combine
 
 <details><summary>LICENSE</summary>
 
@@ -4095,8 +4095,8 @@ THE SOFTWARE.
 
 ### cookie 0.18.2
 
-Licens: MIT OR Apache-2.0  
-Källkod: https://github.com/SergioBenitez/cookie-rs
+License: MIT OR Apache-2.0  
+Source code: https://github.com/SergioBenitez/cookie-rs
 
 <details><summary>LICENSE-APACHE</summary>
 
@@ -4342,8 +4342,8 @@ DEALINGS IN THE SOFTWARE.
 
 ### core-foundation 0.10.1
 
-Licens: MIT OR Apache-2.0  
-Källkod: https://github.com/servo/core-foundation-rs
+License: MIT OR Apache-2.0  
+Source code: https://github.com/servo/core-foundation-rs
 
 <details><summary>LICENSE-APACHE</summary>
 
@@ -4587,8 +4587,8 @@ DEALINGS IN THE SOFTWARE.
 
 ### core-foundation-sys 0.8.7
 
-Licens: MIT OR Apache-2.0  
-Källkod: https://github.com/servo/core-foundation-rs
+License: MIT OR Apache-2.0  
+Source code: https://github.com/servo/core-foundation-rs
 
 <details><summary>LICENSE-APACHE</summary>
 
@@ -4832,8 +4832,8 @@ DEALINGS IN THE SOFTWARE.
 
 ### core-graphics 0.25.0
 
-Licens: MIT OR Apache-2.0  
-Källkod: https://github.com/servo/core-foundation-rs
+License: MIT OR Apache-2.0  
+Source code: https://github.com/servo/core-foundation-rs
 
 <details><summary>LICENSE-APACHE</summary>
 
@@ -5077,8 +5077,8 @@ DEALINGS IN THE SOFTWARE.
 
 ### core-graphics-types 0.2.0
 
-Licens: MIT OR Apache-2.0  
-Källkod: https://github.com/servo/core-foundation-rs
+License: MIT OR Apache-2.0  
+Source code: https://github.com/servo/core-foundation-rs
 
 <details><summary>LICENSE-APACHE</summary>
 
@@ -5322,8 +5322,8 @@ DEALINGS IN THE SOFTWARE.
 
 ### cpufeatures 0.2.17
 
-Licens: MIT OR Apache-2.0  
-Källkod: https://github.com/RustCrypto/utils
+License: MIT OR Apache-2.0  
+Source code: https://github.com/RustCrypto/utils
 
 <details><summary>LICENSE-APACHE</summary>
 
@@ -5567,8 +5567,8 @@ DEALINGS IN THE SOFTWARE.
 
 ### crc32fast 1.5.3
 
-Licens: MIT OR Apache-2.0  
-Källkod: https://github.com/srijs/rust-crc32fast
+License: MIT OR Apache-2.0  
+Source code: https://github.com/srijs/rust-crc32fast
 
 <details><summary>LICENSE-APACHE</summary>
 
@@ -5808,8 +5808,8 @@ SOFTWARE.
 
 ### crossbeam-channel 0.5.17
 
-Licens: MIT OR Apache-2.0  
-Källkod: https://github.com/crossbeam-rs/crossbeam
+License: MIT OR Apache-2.0  
+Source code: https://github.com/crossbeam-rs/crossbeam
 
 <details><summary>LICENSE-APACHE</summary>
 
@@ -6655,8 +6655,8 @@ limitations under the License.
 
 ### crossbeam-utils 0.8.23
 
-Licens: MIT OR Apache-2.0  
-Källkod: https://github.com/crossbeam-rs/crossbeam
+License: MIT OR Apache-2.0  
+Source code: https://github.com/crossbeam-rs/crossbeam
 
 <details><summary>LICENSE-APACHE</summary>
 
@@ -6902,8 +6902,8 @@ DEALINGS IN THE SOFTWARE.
 
 ### crypto-common 0.1.7
 
-Licens: MIT OR Apache-2.0  
-Källkod: https://github.com/RustCrypto/traits
+License: MIT OR Apache-2.0  
+Source code: https://github.com/RustCrypto/traits
 
 <details><summary>LICENSE-APACHE</summary>
 
@@ -7147,8 +7147,8 @@ DEALINGS IN THE SOFTWARE.
 
 ### cssparser 0.37.0
 
-Licens: MPL-2.0  
-Källkod: https://github.com/servo/rust-cssparser
+License: MPL-2.0  
+Source code: https://github.com/servo/rust-cssparser
 
 <details><summary>LICENSE</summary>
 
@@ -7532,8 +7532,8 @@ Exhibit B - "Incompatible With Secondary Licenses" Notice
 
 ### cssparser-macros 0.7.1
 
-Licens: MPL-2.0  
-Källkod: https://github.com/servo/rust-cssparser
+License: MPL-2.0  
+Source code: https://github.com/servo/rust-cssparser
 
 <details><summary>LICENSE</summary>
 
@@ -7917,8 +7917,8 @@ Exhibit B - "Incompatible With Secondary Licenses" Notice
 
 ### ctor 1.0.13
 
-Licens: Apache-2.0 OR MIT  
-Källkod: https://github.com/mmastrac/linktime
+License: Apache-2.0 OR MIT  
+Source code: https://github.com/mmastrac/linktime
 
 <details><summary>LICENSE-APACHE</summary>
 
@@ -8142,8 +8142,8 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 
 ### darling 0.24.1
 
-Licens: MIT  
-Källkod: https://github.com/TedDriggs/darling
+License: MIT  
+Source code: https://github.com/TedDriggs/darling
 
 <details><summary>LICENSE</summary>
 
@@ -8175,8 +8175,8 @@ SOFTWARE.
 
 ### darling_core 0.24.1
 
-Licens: MIT  
-Källkod: https://github.com/TedDriggs/darling
+License: MIT  
+Source code: https://github.com/TedDriggs/darling
 
 <details><summary>LICENSE</summary>
 
@@ -8208,8 +8208,8 @@ SOFTWARE.
 
 ### darling_macro 0.24.1
 
-Licens: MIT  
-Källkod: https://github.com/TedDriggs/darling
+License: MIT  
+Source code: https://github.com/TedDriggs/darling
 
 <details><summary>LICENSE</summary>
 
@@ -8241,8 +8241,8 @@ SOFTWARE.
 
 ### dbus 0.9.12
 
-Licens: Apache-2.0/MIT  
-Källkod: https://github.com/diwic/dbus-rs
+License: Apache-2.0/MIT  
+Source code: https://github.com/diwic/dbus-rs
 
 <details><summary>LICENSE-APACHE</summary>
 
@@ -8480,8 +8480,8 @@ SOFTWARE.
 
 ### deranged 0.5.9
 
-Licens: MIT OR Apache-2.0  
-Källkod: https://github.com/jhpratt/deranged
+License: MIT OR Apache-2.0  
+Source code: https://github.com/jhpratt/deranged
 
 <details><summary>LICENSE-Apache</summary>
 
@@ -8719,8 +8719,8 @@ SOFTWARE.
 
 ### derive_more 2.1.1
 
-Licens: MIT  
-Källkod: https://github.com/JelteF/derive_more
+License: MIT  
+Source code: https://github.com/JelteF/derive_more
 
 <details><summary>LICENSE</summary>
 
@@ -8752,8 +8752,8 @@ SOFTWARE.
 
 ### derive_more-impl 2.1.1
 
-Licens: MIT  
-Källkod: https://github.com/JelteF/derive_more
+License: MIT  
+Source code: https://github.com/JelteF/derive_more
 
 <details><summary>LICENSE</summary>
 
@@ -8785,8 +8785,8 @@ SOFTWARE.
 
 ### digest 0.10.7
 
-Licens: MIT OR Apache-2.0  
-Källkod: https://github.com/RustCrypto/traits
+License: MIT OR Apache-2.0  
+Source code: https://github.com/RustCrypto/traits
 
 <details><summary>LICENSE-APACHE</summary>
 
@@ -9030,8 +9030,8 @@ DEALINGS IN THE SOFTWARE.
 
 ### dirs 7.0.0
 
-Licens: MIT OR Apache-2.0  
-Källkod: https://codeberg.org/dirs/dirs-rs
+License: MIT OR Apache-2.0  
+Source code: https://codeberg.org/dirs/dirs-rs
 
 <details><summary>LICENSE-APACHE</summary>
 
@@ -9242,8 +9242,8 @@ SOFTWARE.
 
 ### dirs-sys 0.5.0
 
-Licens: MIT OR Apache-2.0  
-Källkod: https://github.com/dirs-dev/dirs-sys-rs
+License: MIT OR Apache-2.0  
+Source code: https://github.com/dirs-dev/dirs-sys-rs
 
 <details><summary>LICENSE-APACHE</summary>
 
@@ -9454,13 +9454,13 @@ SOFTWARE.
 
 ### dispatch2 0.3.1
 
-Licens: Zlib OR Apache-2.0 OR MIT  
-Källkod: https://github.com/madsmtm/objc2
+License: Zlib OR Apache-2.0 OR MIT  
+Source code: https://github.com/madsmtm/objc2
 
 ### displaydoc 0.2.7
 
-Licens: MIT OR Apache-2.0  
-Källkod: https://github.com/yaahc/displaydoc
+License: MIT OR Apache-2.0  
+Source code: https://github.com/yaahc/displaydoc
 
 <details><summary>LICENSE-APACHE</summary>
 
@@ -9702,18 +9702,18 @@ DEALINGS IN THE SOFTWARE.
 
 ### dlopen2 0.8.2
 
-Licens: MIT  
-Källkod: https://github.com/OpenByteDev/dlopen2
+License: MIT  
+Source code: https://github.com/OpenByteDev/dlopen2
 
 ### dlopen2_derive 0.4.3
 
-Licens: MIT  
-Källkod: https://github.com/OpenByteDev/dlopen2
+License: MIT  
+Source code: https://github.com/OpenByteDev/dlopen2
 
 ### dom_query 0.28.0
 
-Licens: MIT  
-Källkod: https://github.com/niklak/dom_query
+License: MIT  
+Source code: https://github.com/niklak/dom_query
 
 <details><summary>LICENSE</summary>
 
@@ -9751,8 +9751,8 @@ developed by Chen Jiaju, licensed under the MIT License and the Apache License 2
 
 ### dpi 0.1.2
 
-Licens: Apache-2.0 AND MIT  
-Källkod: https://github.com/rust-windowing/winit
+License: Apache-2.0 AND MIT  
+Source code: https://github.com/rust-windowing/winit
 
 <details><summary>LICENSE</summary>
 
@@ -10022,8 +10022,8 @@ have been licensed under extremely permissive terms.
 
 ### dtoa 1.0.11
 
-Licens: MIT OR Apache-2.0  
-Källkod: https://github.com/dtolnay/dtoa
+License: MIT OR Apache-2.0  
+Source code: https://github.com/dtolnay/dtoa
 
 <details><summary>LICENSE-APACHE</summary>
 
@@ -10240,8 +10240,8 @@ DEALINGS IN THE SOFTWARE.
 
 ### dtoa-short 0.3.5
 
-Licens: MPL-2.0  
-Källkod: https://github.com/upsuper/dtoa-short
+License: MPL-2.0  
+Source code: https://github.com/upsuper/dtoa-short
 
 <details><summary>LICENSE</summary>
 
@@ -10625,8 +10625,8 @@ Exhibit B - "Incompatible With Secondary Licenses" Notice
 
 ### dunce 1.0.5
 
-Licens: CC0-1.0 OR MIT-0 OR Apache-2.0  
-Källkod: https://gitlab.com/kornelski/dunce
+License: CC0-1.0 OR MIT-0 OR Apache-2.0  
+Source code: https://gitlab.com/kornelski/dunce
 
 <details><summary>LICENSE</summary>
 
@@ -10758,8 +10758,8 @@ express Statement of Purpose.
 
 ### dyn-clone 1.0.20
 
-Licens: MIT OR Apache-2.0  
-Källkod: https://github.com/dtolnay/dyn-clone
+License: MIT OR Apache-2.0  
+Source code: https://github.com/dtolnay/dyn-clone
 
 <details><summary>LICENSE-APACHE</summary>
 
@@ -10976,8 +10976,8 @@ DEALINGS IN THE SOFTWARE.
 
 ### embed_plist 1.2.2
 
-Licens: MIT OR Apache-2.0  
-Källkod: https://github.com/nvzqz/embed-plist-rs
+License: MIT OR Apache-2.0  
+Source code: https://github.com/nvzqz/embed-plist-rs
 
 <details><summary>LICENSE-APACHE</summary>
 
@@ -11217,8 +11217,8 @@ SOFTWARE.
 
 ### equivalent 1.0.3
 
-Licens: Apache-2.0 OR MIT  
-Källkod: https://github.com/indexmap-rs/equivalent
+License: Apache-2.0 OR MIT  
+Source code: https://github.com/indexmap-rs/equivalent
 
 <details><summary>LICENSE-APACHE</summary>
 
@@ -11462,8 +11462,8 @@ DEALINGS IN THE SOFTWARE.
 
 ### erased-serde 0.4.11
 
-Licens: MIT OR Apache-2.0  
-Källkod: https://github.com/dtolnay/erased-serde
+License: MIT OR Apache-2.0  
+Source code: https://github.com/dtolnay/erased-serde
 
 <details><summary>LICENSE-APACHE</summary>
 
@@ -11680,8 +11680,8 @@ DEALINGS IN THE SOFTWARE.
 
 ### fastrand 2.5.0
 
-Licens: Apache-2.0 OR MIT  
-Källkod: https://github.com/smol-rs/fastrand
+License: Apache-2.0 OR MIT  
+Source code: https://github.com/smol-rs/fastrand
 
 <details><summary>LICENSE-APACHE</summary>
 
@@ -11923,8 +11923,8 @@ DEALINGS IN THE SOFTWARE.
 
 ### fdeflate 0.3.7
 
-Licens: MIT OR Apache-2.0  
-Källkod: https://github.com/image-rs/fdeflate
+License: MIT OR Apache-2.0  
+Source code: https://github.com/image-rs/fdeflate
 
 <details><summary>LICENSE-APACHE</summary>
 
@@ -12143,8 +12143,8 @@ DEALINGS IN THE SOFTWARE.
 
 ### field-offset 0.3.6
 
-Licens: MIT OR Apache-2.0  
-Källkod: https://github.com/Diggsey/rust-field-offset
+License: MIT OR Apache-2.0  
+Source code: https://github.com/Diggsey/rust-field-offset
 
 <details><summary>LICENSE-APACHE</summary>
 
@@ -12359,8 +12359,8 @@ SOFTWARE.
 
 ### flate2 1.1.10
 
-Licens: MIT OR Apache-2.0  
-Källkod: https://github.com/rust-lang/flate2-rs
+License: MIT OR Apache-2.0  
+Source code: https://github.com/rust-lang/flate2-rs
 
 <details><summary>LICENSE-APACHE</summary>
 
@@ -12604,8 +12604,8 @@ DEALINGS IN THE SOFTWARE.
 
 ### fnv 1.0.7
 
-Licens: Apache-2.0 / MIT  
-Källkod: https://github.com/servo/rust-fnv
+License: Apache-2.0 / MIT  
+Source code: https://github.com/servo/rust-fnv
 
 <details><summary>LICENSE-APACHE</summary>
 
@@ -12849,8 +12849,8 @@ DEALINGS IN THE SOFTWARE.
 
 ### foldhash 0.2.0
 
-Licens: Zlib  
-Källkod: https://github.com/orlp/foldhash
+License: Zlib  
+Source code: https://github.com/orlp/foldhash
 
 <details><summary>LICENSE</summary>
 
@@ -12880,8 +12880,8 @@ the following restrictions:
 
 ### foreign-types 0.5.0
 
-Licens: MIT/Apache-2.0  
-Källkod: https://github.com/sfackler/foreign-types
+License: MIT/Apache-2.0  
+Source code: https://github.com/sfackler/foreign-types
 
 <details><summary>LICENSE-APACHE</summary>
 
@@ -13119,8 +13119,8 @@ SOFTWARE.
 
 ### foreign-types-macros 0.2.4
 
-Licens: MIT/Apache-2.0  
-Källkod: https://github.com/sfackler/foreign-types
+License: MIT/Apache-2.0  
+Source code: https://github.com/sfackler/foreign-types
 
 <details><summary>LICENSE-APACHE</summary>
 
@@ -13358,8 +13358,8 @@ SOFTWARE.
 
 ### foreign-types-shared 0.3.1
 
-Licens: MIT/Apache-2.0  
-Källkod: https://github.com/sfackler/foreign-types
+License: MIT/Apache-2.0  
+Source code: https://github.com/sfackler/foreign-types
 
 <details><summary>LICENSE-APACHE</summary>
 
@@ -13597,8 +13597,8 @@ SOFTWARE.
 
 ### form_urlencoded 1.2.2
 
-Licens: MIT OR Apache-2.0  
-Källkod: https://github.com/servo/rust-url
+License: MIT OR Apache-2.0  
+Source code: https://github.com/servo/rust-url
 
 <details><summary>LICENSE-APACHE</summary>
 
@@ -13842,8 +13842,8 @@ DEALINGS IN THE SOFTWARE.
 
 ### futures-channel 0.3.34
 
-Licens: MIT OR Apache-2.0  
-Källkod: https://github.com/rust-lang/futures-rs
+License: MIT OR Apache-2.0  
+Source code: https://github.com/rust-lang/futures-rs
 
 <details><summary>LICENSE-APACHE</summary>
 
@@ -14089,8 +14089,8 @@ DEALINGS IN THE SOFTWARE.
 
 ### futures-core 0.3.34
 
-Licens: MIT OR Apache-2.0  
-Källkod: https://github.com/rust-lang/futures-rs
+License: MIT OR Apache-2.0  
+Source code: https://github.com/rust-lang/futures-rs
 
 <details><summary>LICENSE-APACHE</summary>
 
@@ -14336,8 +14336,8 @@ DEALINGS IN THE SOFTWARE.
 
 ### futures-executor 0.3.34
 
-Licens: MIT OR Apache-2.0  
-Källkod: https://github.com/rust-lang/futures-rs
+License: MIT OR Apache-2.0  
+Source code: https://github.com/rust-lang/futures-rs
 
 <details><summary>LICENSE-APACHE</summary>
 
@@ -14583,8 +14583,8 @@ DEALINGS IN THE SOFTWARE.
 
 ### futures-io 0.3.34
 
-Licens: MIT OR Apache-2.0  
-Källkod: https://github.com/rust-lang/futures-rs
+License: MIT OR Apache-2.0  
+Source code: https://github.com/rust-lang/futures-rs
 
 <details><summary>LICENSE-APACHE</summary>
 
@@ -14830,8 +14830,8 @@ DEALINGS IN THE SOFTWARE.
 
 ### futures-macro 0.3.34
 
-Licens: MIT OR Apache-2.0  
-Källkod: https://github.com/rust-lang/futures-rs
+License: MIT OR Apache-2.0  
+Source code: https://github.com/rust-lang/futures-rs
 
 <details><summary>LICENSE-APACHE</summary>
 
@@ -15077,8 +15077,8 @@ DEALINGS IN THE SOFTWARE.
 
 ### futures-sink 0.3.34
 
-Licens: MIT OR Apache-2.0  
-Källkod: https://github.com/rust-lang/futures-rs
+License: MIT OR Apache-2.0  
+Source code: https://github.com/rust-lang/futures-rs
 
 <details><summary>LICENSE-APACHE</summary>
 
@@ -15324,8 +15324,8 @@ DEALINGS IN THE SOFTWARE.
 
 ### futures-task 0.3.34
 
-Licens: MIT OR Apache-2.0  
-Källkod: https://github.com/rust-lang/futures-rs
+License: MIT OR Apache-2.0  
+Source code: https://github.com/rust-lang/futures-rs
 
 <details><summary>LICENSE-APACHE</summary>
 
@@ -15571,8 +15571,8 @@ DEALINGS IN THE SOFTWARE.
 
 ### futures-util 0.3.34
 
-Licens: MIT OR Apache-2.0  
-Källkod: https://github.com/rust-lang/futures-rs
+License: MIT OR Apache-2.0  
+Source code: https://github.com/rust-lang/futures-rs
 
 <details><summary>LICENSE-APACHE</summary>
 
@@ -15818,8 +15818,8 @@ DEALINGS IN THE SOFTWARE.
 
 ### gdk 0.18.2
 
-Licens: MIT  
-Källkod: https://github.com/gtk-rs/gtk3-rs
+License: MIT  
+Source code: https://github.com/gtk-rs/gtk3-rs
 
 <details><summary>LICENSE</summary>
 
@@ -15847,8 +15847,8 @@ SOFTWARE.
 
 ### gdk-pixbuf 0.18.5
 
-Licens: MIT  
-Källkod: https://github.com/gtk-rs/gtk-rs-core
+License: MIT  
+Source code: https://github.com/gtk-rs/gtk-rs-core
 
 <details><summary>LICENSE</summary>
 
@@ -15876,8 +15876,8 @@ SOFTWARE.
 
 ### gdk-pixbuf-sys 0.18.0
 
-Licens: MIT  
-Källkod: https://github.com/gtk-rs/gtk-rs-core
+License: MIT  
+Source code: https://github.com/gtk-rs/gtk-rs-core
 
 <details><summary>LICENSE</summary>
 
@@ -15905,8 +15905,8 @@ SOFTWARE.
 
 ### gdk-sys 0.18.2
 
-Licens: MIT  
-Källkod: https://github.com/gtk-rs/gtk3-rs
+License: MIT  
+Source code: https://github.com/gtk-rs/gtk3-rs
 
 <details><summary>LICENSE</summary>
 
@@ -15934,8 +15934,8 @@ SOFTWARE.
 
 ### gdkwayland-sys 0.18.2
 
-Licens: MIT  
-Källkod: https://github.com/gtk-rs/gtk3-rs
+License: MIT  
+Source code: https://github.com/gtk-rs/gtk3-rs
 
 <details><summary>LICENSE</summary>
 
@@ -15963,8 +15963,8 @@ SOFTWARE.
 
 ### gdkx11 0.18.2
 
-Licens: MIT  
-Källkod: https://github.com/gtk-rs/gtk3-rs
+License: MIT  
+Source code: https://github.com/gtk-rs/gtk3-rs
 
 <details><summary>LICENSE</summary>
 
@@ -15992,8 +15992,8 @@ SOFTWARE.
 
 ### gdkx11-sys 0.18.2
 
-Licens: MIT  
-Källkod: https://github.com/gtk-rs/gtk3-rs
+License: MIT  
+Source code: https://github.com/gtk-rs/gtk3-rs
 
 <details><summary>LICENSE</summary>
 
@@ -16021,8 +16021,8 @@ SOFTWARE.
 
 ### generic-array 0.14.7
 
-Licens: MIT  
-Källkod: https://github.com/fizyk20/generic-array.git
+License: MIT  
+Source code: https://github.com/fizyk20/generic-array.git
 
 <details><summary>LICENSE</summary>
 
@@ -16054,8 +16054,8 @@ SOFTWARE.
 
 ### getrandom 0.3.4
 
-Licens: MIT OR Apache-2.0  
-Källkod: https://github.com/rust-random/getrandom
+License: MIT OR Apache-2.0  
+Source code: https://github.com/rust-random/getrandom
 
 <details><summary>LICENSE-APACHE</summary>
 
@@ -16300,8 +16300,8 @@ DEALINGS IN THE SOFTWARE.
 
 ### getrandom 0.4.3
 
-Licens: MIT OR Apache-2.0  
-Källkod: https://github.com/rust-random/getrandom
+License: MIT OR Apache-2.0  
+Source code: https://github.com/rust-random/getrandom
 
 <details><summary>LICENSE-APACHE</summary>
 
@@ -16546,8 +16546,8 @@ DEALINGS IN THE SOFTWARE.
 
 ### gio 0.18.4
 
-Licens: MIT  
-Källkod: https://github.com/gtk-rs/gtk-rs-core
+License: MIT  
+Source code: https://github.com/gtk-rs/gtk-rs-core
 
 <details><summary>LICENSE</summary>
 
@@ -16575,8 +16575,8 @@ SOFTWARE.
 
 ### gio-sys 0.18.1
 
-Licens: MIT  
-Källkod: https://github.com/gtk-rs/gtk-rs-core
+License: MIT  
+Source code: https://github.com/gtk-rs/gtk-rs-core
 
 <details><summary>LICENSE</summary>
 
@@ -16604,8 +16604,8 @@ SOFTWARE.
 
 ### glib 0.18.5
 
-Licens: MIT  
-Källkod: https://github.com/gtk-rs/gtk-rs-core
+License: MIT  
+Source code: https://github.com/gtk-rs/gtk-rs-core
 
 <details><summary>LICENSE</summary>
 
@@ -16633,8 +16633,8 @@ SOFTWARE.
 
 ### glib-macros 0.18.5
 
-Licens: MIT  
-Källkod: https://github.com/gtk-rs/gtk-rs-core
+License: MIT  
+Source code: https://github.com/gtk-rs/gtk-rs-core
 
 <details><summary>LICENSE</summary>
 
@@ -16662,8 +16662,8 @@ SOFTWARE.
 
 ### glib-sys 0.18.1
 
-Licens: MIT  
-Källkod: https://github.com/gtk-rs/gtk-rs-core
+License: MIT  
+Source code: https://github.com/gtk-rs/gtk-rs-core
 
 <details><summary>LICENSE</summary>
 
@@ -16691,8 +16691,8 @@ SOFTWARE.
 
 ### glob 0.3.4
 
-Licens: MIT OR Apache-2.0  
-Källkod: https://github.com/rust-lang/glob
+License: MIT OR Apache-2.0  
+Source code: https://github.com/rust-lang/glob
 
 <details><summary>LICENSE-APACHE</summary>
 
@@ -16936,8 +16936,8 @@ DEALINGS IN THE SOFTWARE.
 
 ### gobject-sys 0.18.0
 
-Licens: MIT  
-Källkod: https://github.com/gtk-rs/gtk-rs-core
+License: MIT  
+Source code: https://github.com/gtk-rs/gtk-rs-core
 
 <details><summary>LICENSE</summary>
 
@@ -16965,8 +16965,8 @@ SOFTWARE.
 
 ### gtk 0.18.2
 
-Licens: MIT  
-Källkod: https://github.com/gtk-rs/gtk3-rs
+License: MIT  
+Source code: https://github.com/gtk-rs/gtk3-rs
 
 <details><summary>LICENSE</summary>
 
@@ -16994,8 +16994,8 @@ SOFTWARE.
 
 ### gtk-sys 0.18.2
 
-Licens: MIT  
-Källkod: https://github.com/gtk-rs/gtk3-rs
+License: MIT  
+Source code: https://github.com/gtk-rs/gtk3-rs
 
 <details><summary>LICENSE</summary>
 
@@ -17023,8 +17023,8 @@ SOFTWARE.
 
 ### gtk3-macros 0.18.2
 
-Licens: MIT  
-Källkod: https://github.com/gtk-rs/gtk3-rs
+License: MIT  
+Source code: https://github.com/gtk-rs/gtk3-rs
 
 <details><summary>LICENSE</summary>
 
@@ -17052,8 +17052,8 @@ SOFTWARE.
 
 ### hashbrown 0.12.3
 
-Licens: MIT OR Apache-2.0  
-Källkod: https://github.com/rust-lang/hashbrown
+License: MIT OR Apache-2.0  
+Source code: https://github.com/rust-lang/hashbrown
 
 <details><summary>LICENSE-APACHE</summary>
 
@@ -17297,8 +17297,8 @@ DEALINGS IN THE SOFTWARE.
 
 ### hashbrown 0.17.1
 
-Licens: MIT OR Apache-2.0  
-Källkod: https://github.com/rust-lang/hashbrown
+License: MIT OR Apache-2.0  
+Source code: https://github.com/rust-lang/hashbrown
 
 <details><summary>LICENSE-APACHE</summary>
 
@@ -17542,8 +17542,8 @@ DEALINGS IN THE SOFTWARE.
 
 ### heck 0.4.1
 
-Licens: MIT OR Apache-2.0  
-Källkod: https://github.com/withoutboats/heck
+License: MIT OR Apache-2.0  
+Source code: https://github.com/withoutboats/heck
 
 <details><summary>LICENSE-APACHE</summary>
 
@@ -17787,8 +17787,8 @@ DEALINGS IN THE SOFTWARE.
 
 ### heck 0.5.0
 
-Licens: MIT OR Apache-2.0  
-Källkod: https://github.com/withoutboats/heck
+License: MIT OR Apache-2.0  
+Source code: https://github.com/withoutboats/heck
 
 <details><summary>LICENSE-APACHE</summary>
 
@@ -18032,8 +18032,8 @@ DEALINGS IN THE SOFTWARE.
 
 ### html5ever 0.39.0
 
-Licens: MIT OR Apache-2.0  
-Källkod: https://github.com/servo/html5ever
+License: MIT OR Apache-2.0  
+Source code: https://github.com/servo/html5ever
 
 <details><summary>LICENSE-APACHE</summary>
 
@@ -18277,8 +18277,8 @@ DEALINGS IN THE SOFTWARE.
 
 ### http 1.5.0
 
-Licens: MIT OR Apache-2.0  
-Källkod: https://github.com/hyperium/http
+License: MIT OR Apache-2.0  
+Source code: https://github.com/hyperium/http
 
 <details><summary>LICENSE-APACHE</summary>
 
@@ -18522,8 +18522,8 @@ DEALINGS IN THE SOFTWARE.
 
 ### http-body 1.1.0
 
-Licens: MIT  
-Källkod: https://github.com/hyperium/http-body
+License: MIT  
+Source code: https://github.com/hyperium/http-body
 
 <details><summary>LICENSE</summary>
 
@@ -18559,8 +18559,8 @@ DEALINGS IN THE SOFTWARE.
 
 ### http-body-util 0.1.5
 
-Licens: MIT  
-Källkod: https://github.com/hyperium/http-body
+License: MIT  
+Source code: https://github.com/hyperium/http-body
 
 <details><summary>LICENSE</summary>
 
@@ -18596,8 +18596,8 @@ DEALINGS IN THE SOFTWARE.
 
 ### httparse 1.10.1
 
-Licens: MIT OR Apache-2.0  
-Källkod: https://github.com/seanmonstar/httparse
+License: MIT OR Apache-2.0  
+Source code: https://github.com/seanmonstar/httparse
 
 <details><summary>LICENSE-APACHE</summary>
 
@@ -18835,8 +18835,8 @@ THE SOFTWARE.
 
 ### hyper 1.12.0
 
-Licens: MIT  
-Källkod: https://github.com/hyperium/hyper
+License: MIT  
+Source code: https://github.com/hyperium/hyper
 
 <details><summary>LICENSE</summary>
 
@@ -18866,8 +18866,8 @@ THE SOFTWARE.
 
 ### hyper-util 0.1.21
 
-Licens: MIT  
-Källkod: https://github.com/hyperium/hyper-util
+License: MIT  
+Source code: https://github.com/hyperium/hyper-util
 
 <details><summary>LICENSE</summary>
 
@@ -18897,8 +18897,8 @@ THE SOFTWARE.
 
 ### ico 0.6.0
 
-Licens: MIT  
-Källkod: https://github.com/mdsteele/rust-ico
+License: MIT  
+Source code: https://github.com/mdsteele/rust-ico
 
 <details><summary>LICENSE</summary>
 
@@ -18930,8 +18930,8 @@ SOFTWARE.
 
 ### icu_collections 2.4.0
 
-Licens: Unicode-3.0  
-Källkod: https://github.com/unicode-org/icu4x
+License: Unicode-3.0  
+Source code: https://github.com/unicode-org/icu4x
 
 <details><summary>LICENSE</summary>
 
@@ -18988,8 +18988,8 @@ ICU 1.8.1 to ICU 57.1 © 1995-2016 International Business Machines Corporation a
 
 ### icu_locale_core 2.4.0
 
-Licens: Unicode-3.0  
-Källkod: https://github.com/unicode-org/icu4x
+License: Unicode-3.0  
+Source code: https://github.com/unicode-org/icu4x
 
 <details><summary>LICENSE</summary>
 
@@ -19046,8 +19046,8 @@ ICU 1.8.1 to ICU 57.1 © 1995-2016 International Business Machines Corporation a
 
 ### icu_normalizer 2.4.0
 
-Licens: Unicode-3.0  
-Källkod: https://github.com/unicode-org/icu4x
+License: Unicode-3.0  
+Source code: https://github.com/unicode-org/icu4x
 
 <details><summary>LICENSE</summary>
 
@@ -19104,8 +19104,8 @@ ICU 1.8.1 to ICU 57.1 © 1995-2016 International Business Machines Corporation a
 
 ### icu_normalizer_data 2.4.0
 
-Licens: Unicode-3.0  
-Källkod: https://github.com/unicode-org/icu4x
+License: Unicode-3.0  
+Source code: https://github.com/unicode-org/icu4x
 
 <details><summary>LICENSE</summary>
 
@@ -19162,8 +19162,8 @@ ICU 1.8.1 to ICU 57.1 © 1995-2016 International Business Machines Corporation a
 
 ### icu_properties 2.4.0
 
-Licens: Unicode-3.0  
-Källkod: https://github.com/unicode-org/icu4x
+License: Unicode-3.0  
+Source code: https://github.com/unicode-org/icu4x
 
 <details><summary>LICENSE</summary>
 
@@ -19220,8 +19220,8 @@ ICU 1.8.1 to ICU 57.1 © 1995-2016 International Business Machines Corporation a
 
 ### icu_properties_data 2.4.0
 
-Licens: Unicode-3.0  
-Källkod: https://github.com/unicode-org/icu4x
+License: Unicode-3.0  
+Source code: https://github.com/unicode-org/icu4x
 
 <details><summary>LICENSE</summary>
 
@@ -19278,8 +19278,8 @@ ICU 1.8.1 to ICU 57.1 © 1995-2016 International Business Machines Corporation a
 
 ### icu_provider 2.4.0
 
-Licens: Unicode-3.0  
-Källkod: https://github.com/unicode-org/icu4x
+License: Unicode-3.0  
+Source code: https://github.com/unicode-org/icu4x
 
 <details><summary>LICENSE</summary>
 
@@ -19336,8 +19336,8 @@ ICU 1.8.1 to ICU 57.1 © 1995-2016 International Business Machines Corporation a
 
 ### ident_case 1.0.1
 
-Licens: MIT/Apache-2.0  
-Källkod: https://github.com/TedDriggs/ident_case
+License: MIT/Apache-2.0  
+Source code: https://github.com/TedDriggs/ident_case
 
 <details><summary>LICENSE</summary>
 
@@ -19367,8 +19367,8 @@ SOFTWARE.
 
 ### idna 1.1.0
 
-Licens: MIT OR Apache-2.0  
-Källkod: https://github.com/servo/rust-url/
+License: MIT OR Apache-2.0  
+Source code: https://github.com/servo/rust-url/
 
 <details><summary>LICENSE-APACHE</summary>
 
@@ -19612,8 +19612,8 @@ DEALINGS IN THE SOFTWARE.
 
 ### idna_adapter 1.2.2
 
-Licens: Apache-2.0 OR MIT  
-Källkod: https://github.com/hsivonen/idna_adapter
+License: Apache-2.0 OR MIT  
+Source code: https://github.com/hsivonen/idna_adapter
 
 <details><summary>LICENSE-APACHE</summary>
 
@@ -19857,8 +19857,8 @@ DEALINGS IN THE SOFTWARE.
 
 ### indexmap 1.9.3
 
-Licens: Apache-2.0 OR MIT  
-Källkod: https://github.com/bluss/indexmap
+License: Apache-2.0 OR MIT  
+Source code: https://github.com/bluss/indexmap
 
 <details><summary>LICENSE-APACHE</summary>
 
@@ -20102,8 +20102,8 @@ DEALINGS IN THE SOFTWARE.
 
 ### indexmap 2.14.2
 
-Licens: Apache-2.0 OR MIT  
-Källkod: https://github.com/indexmap-rs/indexmap
+License: Apache-2.0 OR MIT  
+Source code: https://github.com/indexmap-rs/indexmap
 
 <details><summary>LICENSE-APACHE</summary>
 
@@ -20347,8 +20347,8 @@ DEALINGS IN THE SOFTWARE.
 
 ### infer 0.22.0
 
-Licens: MIT  
-Källkod: https://github.com/bojand/infer
+License: MIT  
+Source code: https://github.com/bojand/infer
 
 <details><summary>LICENSE</summary>
 
@@ -20380,8 +20380,8 @@ SOFTWARE.
 
 ### ipnet 2.12.2
 
-Licens: MIT OR Apache-2.0  
-Källkod: https://github.com/krisprice/ipnet
+License: MIT OR Apache-2.0  
+Source code: https://github.com/krisprice/ipnet
 
 <details><summary>LICENSE-APACHE</summary>
 
@@ -20607,8 +20607,8 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 
 ### itoa 1.0.18
 
-Licens: MIT OR Apache-2.0  
-Källkod: https://github.com/dtolnay/itoa
+License: MIT OR Apache-2.0  
+Source code: https://github.com/dtolnay/itoa
 
 <details><summary>LICENSE-APACHE</summary>
 
@@ -20825,8 +20825,8 @@ DEALINGS IN THE SOFTWARE.
 
 ### javascriptcore-rs 1.1.2
 
-Licens: MIT  
-Källkod: https://github.com/tauri-apps/javascriptcore-rs
+License: MIT  
+Source code: https://github.com/tauri-apps/javascriptcore-rs
 
 <details><summary>LICENSE</summary>
 
@@ -20859,8 +20859,8 @@ SOFTWARE.
 
 ### javascriptcore-rs-sys 1.1.1
 
-Licens: MIT  
-Källkod: https://github.com/tauri-apps/javascriptcore-rs
+License: MIT  
+Source code: https://github.com/tauri-apps/javascriptcore-rs
 
 <details><summary>LICENSE</summary>
 
@@ -20892,8 +20892,8 @@ SOFTWARE.
 
 ### jni 0.21.1
 
-Licens: MIT/Apache-2.0  
-Källkod: https://github.com/jni-rs/jni-rs
+License: MIT/Apache-2.0  
+Source code: https://github.com/jni-rs/jni-rs
 
 <details><summary>LICENSE-APACHE</summary>
 
@@ -21133,8 +21133,8 @@ SOFTWARE.
 
 ### jni-sys 0.3.1
 
-Licens: MIT OR Apache-2.0  
-Källkod: https://github.com/jni-rs/jni-sys
+License: MIT OR Apache-2.0  
+Source code: https://github.com/jni-rs/jni-sys
 
 <details><summary>LICENSE-APACHE</summary>
 
@@ -21372,8 +21372,8 @@ SOFTWARE.
 
 ### jni-sys 0.4.1
 
-Licens: MIT OR Apache-2.0  
-Källkod: https://github.com/jni-rs/jni-sys
+License: MIT OR Apache-2.0  
+Source code: https://github.com/jni-rs/jni-sys
 
 <details><summary>LICENSE-APACHE</summary>
 
@@ -21611,13 +21611,13 @@ SOFTWARE.
 
 ### jni-sys-macros 0.4.1
 
-Licens: MIT OR Apache-2.0  
-Källkod: https://github.com/jni-rs/jni-sys
+License: MIT OR Apache-2.0  
+Source code: https://github.com/jni-rs/jni-sys
 
 ### js-sys 0.3.106
 
-Licens: MIT OR Apache-2.0  
-Källkod: https://github.com/wasm-bindgen/wasm-bindgen/tree/master/crates/js-sys
+License: MIT OR Apache-2.0  
+Source code: https://github.com/wasm-bindgen/wasm-bindgen/tree/master/crates/js-sys
 
 <details><summary>LICENSE-APACHE</summary>
 
@@ -21861,8 +21861,8 @@ DEALINGS IN THE SOFTWARE.
 
 ### json-patch 4.2.0
 
-Licens: MIT/Apache-2.0  
-Källkod: https://github.com/idubrov/json-patch
+License: MIT/Apache-2.0  
+Source code: https://github.com/idubrov/json-patch
 
 <details><summary>LICENSE-APACHE</summary>
 
@@ -22102,8 +22102,8 @@ SOFTWARE.
 
 ### jsonptr 0.7.1
 
-Licens: MIT OR Apache-2.0  
-Källkod: https://github.com/chanced/jsonptr
+License: MIT OR Apache-2.0  
+Source code: https://github.com/chanced/jsonptr
 
 <details><summary>LICENSE-APACHE</summary>
 
@@ -22343,8 +22343,8 @@ SOFTWARE.
 
 ### keyboard-types 0.8.3
 
-Licens: MIT OR Apache-2.0  
-Källkod: https://github.com/rust-windowing/keyboard-types
+License: MIT OR Apache-2.0  
+Source code: https://github.com/rust-windowing/keyboard-types
 
 <details><summary>LICENSE-APACHE</summary>
 
@@ -22582,8 +22582,8 @@ THE SOFTWARE.
 
 ### libc 0.2.191
 
-Licens: MIT OR Apache-2.0  
-Källkod: https://github.com/rust-lang/libc
+License: MIT OR Apache-2.0  
+Source code: https://github.com/rust-lang/libc
 
 <details><summary>LICENSE-APACHE</summary>
 
@@ -22802,8 +22802,8 @@ DEALINGS IN THE SOFTWARE.
 
 ### libdbus-sys 0.2.7
 
-Licens: Apache-2.0/MIT  
-Källkod: https://github.com/diwic/dbus-rs
+License: Apache-2.0/MIT  
+Source code: https://github.com/diwic/dbus-rs
 
 <details><summary>LICENSE-APACHE</summary>
 
@@ -23041,8 +23041,8 @@ SOFTWARE.
 
 ### libredox 0.1.25
 
-Licens: MIT  
-Källkod: https://gitlab.redox-os.org/redox-os/libredox.git
+License: MIT  
+Source code: https://gitlab.redox-os.org/redox-os/libredox.git
 
 <details><summary>LICENSE</summary>
 
@@ -23074,8 +23074,8 @@ SOFTWARE.
 
 ### litemap 0.8.3
 
-Licens: Unicode-3.0  
-Källkod: https://github.com/unicode-org/icu4x
+License: Unicode-3.0  
+Source code: https://github.com/unicode-org/icu4x
 
 <details><summary>LICENSE</summary>
 
@@ -23132,8 +23132,8 @@ ICU 1.8.1 to ICU 57.1 © 1995-2016 International Business Machines Corporation a
 
 ### lock_api 0.4.14
 
-Licens: MIT OR Apache-2.0  
-Källkod: https://github.com/Amanieu/parking_lot
+License: MIT OR Apache-2.0  
+Source code: https://github.com/Amanieu/parking_lot
 
 <details><summary>LICENSE-APACHE</summary>
 
@@ -23377,8 +23377,8 @@ DEALINGS IN THE SOFTWARE.
 
 ### log 0.4.34
 
-Licens: MIT OR Apache-2.0  
-Källkod: https://github.com/rust-lang/log
+License: MIT OR Apache-2.0  
+Source code: https://github.com/rust-lang/log
 
 <details><summary>LICENSE-APACHE</summary>
 
@@ -23622,8 +23622,8 @@ DEALINGS IN THE SOFTWARE.
 
 ### markup5ever 0.39.0
 
-Licens: MIT OR Apache-2.0  
-Källkod: https://github.com/servo/html5ever
+License: MIT OR Apache-2.0  
+Source code: https://github.com/servo/html5ever
 
 <details><summary>LICENSE-APACHE</summary>
 
@@ -23867,8 +23867,8 @@ DEALINGS IN THE SOFTWARE.
 
 ### memchr 2.8.3
 
-Licens: Unlicense OR MIT  
-Källkod: https://github.com/BurntSushi/memchr
+License: Unlicense OR MIT  
+Source code: https://github.com/BurntSushi/memchr
 
 <details><summary>COPYING</summary>
 
@@ -23941,8 +23941,8 @@ For more information, please refer to <http://unlicense.org/>
 
 ### memoffset 0.9.1
 
-Licens: MIT  
-Källkod: https://github.com/Gilnaa/memoffset
+License: MIT  
+Source code: https://github.com/Gilnaa/memoffset
 
 <details><summary>LICENSE</summary>
 
@@ -23972,8 +23972,8 @@ SOFTWARE.
 
 ### mime 0.3.17
 
-Licens: MIT OR Apache-2.0  
-Källkod: https://github.com/hyperium/mime
+License: MIT OR Apache-2.0  
+Source code: https://github.com/hyperium/mime
 
 <details><summary>LICENSE-APACHE</summary>
 
@@ -24211,8 +24211,8 @@ THE SOFTWARE.
 
 ### miniz_oxide 0.8.9
 
-Licens: MIT OR Zlib OR Apache-2.0  
-Källkod: https://github.com/Frommi/miniz_oxide/tree/master/miniz_oxide
+License: MIT OR Zlib OR Apache-2.0  
+Source code: https://github.com/Frommi/miniz_oxide/tree/master/miniz_oxide
 
 <details><summary>LICENSE</summary>
 
@@ -24483,8 +24483,8 @@ Permission is granted to anyone to use this software for any purpose, including 
 
 ### miniz_oxide 0.9.1
 
-Licens: MIT OR Zlib OR Apache-2.0  
-Källkod: https://github.com/Frommi/miniz_oxide/tree/master/miniz_oxide
+License: MIT OR Zlib OR Apache-2.0  
+Source code: https://github.com/Frommi/miniz_oxide/tree/master/miniz_oxide
 
 <details><summary>LICENSE</summary>
 
@@ -24755,8 +24755,8 @@ Permission is granted to anyone to use this software for any purpose, including 
 
 ### mio 1.2.4
 
-Licens: MIT  
-Källkod: https://github.com/tokio-rs/mio
+License: MIT  
+Source code: https://github.com/tokio-rs/mio
 
 <details><summary>LICENSE</summary>
 
@@ -24786,8 +24786,8 @@ THE SOFTWARE.
 
 ### muda 0.20.0
 
-Licens: Apache-2.0 OR MIT  
-Källkod: https://github.com/tauri-apps/muda
+License: Apache-2.0 OR MIT  
+Source code: https://github.com/tauri-apps/muda
 
 <details><summary>LICENSE-APACHE</summary>
 
@@ -25053,23 +25053,23 @@ Creator: Person: Daniel Thompson-Yvetot
 
 ### ndk 0.9.0
 
-Licens: MIT OR Apache-2.0  
-Källkod: https://github.com/rust-mobile/ndk
+License: MIT OR Apache-2.0  
+Source code: https://github.com/rust-mobile/ndk
 
 ### ndk-context 0.1.1
 
-Licens: MIT OR Apache-2.0  
-Källkod: https://github.com/rust-windowing/android-ndk-rs
+License: MIT OR Apache-2.0  
+Source code: https://github.com/rust-windowing/android-ndk-rs
 
 ### ndk-sys 0.6.0+11769913
 
-Licens: MIT OR Apache-2.0  
-Källkod: https://github.com/rust-mobile/ndk
+License: MIT OR Apache-2.0  
+Source code: https://github.com/rust-mobile/ndk
 
 ### new_debug_unreachable 1.0.6
 
-Licens: MIT  
-Källkod: https://github.com/mbrubeck/rust-debug-unreachable
+License: MIT  
+Source code: https://github.com/mbrubeck/rust-debug-unreachable
 
 <details><summary>LICENSE-MIT</summary>
 
@@ -25105,8 +25105,8 @@ DEALINGS IN THE SOFTWARE.
 
 ### num-conv 0.2.2
 
-Licens: MIT OR Apache-2.0  
-Källkod: https://github.com/jhpratt/num-conv
+License: MIT OR Apache-2.0  
+Source code: https://github.com/jhpratt/num-conv
 
 <details><summary>LICENSE-Apache</summary>
 
@@ -25319,8 +25319,8 @@ SOFTWARE.
 
 ### num_enum 0.7.6
 
-Licens: BSD-3-Clause OR MIT OR Apache-2.0  
-Källkod: https://github.com/illicitonion/num_enum
+License: BSD-3-Clause OR MIT OR Apache-2.0  
+Source code: https://github.com/illicitonion/num_enum
 
 <details><summary>LICENSE-APACHE</summary>
 
@@ -25571,8 +25571,8 @@ DEALINGS IN THE SOFTWARE.
 
 ### num_enum_derive 0.7.6
 
-Licens: BSD-3-Clause OR MIT OR Apache-2.0  
-Källkod: https://github.com/illicitonion/num_enum
+License: BSD-3-Clause OR MIT OR Apache-2.0  
+Source code: https://github.com/illicitonion/num_enum
 
 <details><summary>LICENSE-APACHE</summary>
 
@@ -25823,88 +25823,88 @@ DEALINGS IN THE SOFTWARE.
 
 ### objc2 0.6.5
 
-Licens: MIT  
-Källkod: https://github.com/madsmtm/objc2
+License: MIT  
+Source code: https://github.com/madsmtm/objc2
 
 ### objc2-app-kit 0.3.2
 
-Licens: Zlib OR Apache-2.0 OR MIT  
-Källkod: https://github.com/madsmtm/objc2
+License: Zlib OR Apache-2.0 OR MIT  
+Source code: https://github.com/madsmtm/objc2
 
 ### objc2-cloud-kit 0.3.2
 
-Licens: Zlib OR Apache-2.0 OR MIT  
-Källkod: https://github.com/madsmtm/objc2
+License: Zlib OR Apache-2.0 OR MIT  
+Source code: https://github.com/madsmtm/objc2
 
 ### objc2-core-data 0.3.2
 
-Licens: Zlib OR Apache-2.0 OR MIT  
-Källkod: https://github.com/madsmtm/objc2
+License: Zlib OR Apache-2.0 OR MIT  
+Source code: https://github.com/madsmtm/objc2
 
 ### objc2-core-foundation 0.3.2
 
-Licens: Zlib OR Apache-2.0 OR MIT  
-Källkod: https://github.com/madsmtm/objc2
+License: Zlib OR Apache-2.0 OR MIT  
+Source code: https://github.com/madsmtm/objc2
 
 ### objc2-core-graphics 0.3.2
 
-Licens: Zlib OR Apache-2.0 OR MIT  
-Källkod: https://github.com/madsmtm/objc2
+License: Zlib OR Apache-2.0 OR MIT  
+Source code: https://github.com/madsmtm/objc2
 
 ### objc2-core-image 0.3.2
 
-Licens: Zlib OR Apache-2.0 OR MIT  
-Källkod: https://github.com/madsmtm/objc2
+License: Zlib OR Apache-2.0 OR MIT  
+Source code: https://github.com/madsmtm/objc2
 
 ### objc2-core-location 0.3.2
 
-Licens: Zlib OR Apache-2.0 OR MIT  
-Källkod: https://github.com/madsmtm/objc2
+License: Zlib OR Apache-2.0 OR MIT  
+Source code: https://github.com/madsmtm/objc2
 
 ### objc2-core-text 0.3.2
 
-Licens: Zlib OR Apache-2.0 OR MIT  
-Källkod: https://github.com/madsmtm/objc2
+License: Zlib OR Apache-2.0 OR MIT  
+Source code: https://github.com/madsmtm/objc2
 
 ### objc2-encode 4.1.0
 
-Licens: MIT  
-Källkod: https://github.com/madsmtm/objc2
+License: MIT  
+Source code: https://github.com/madsmtm/objc2
 
 ### objc2-exception-helper 0.1.1
 
-Licens: Zlib OR Apache-2.0 OR MIT  
-Källkod: https://github.com/madsmtm/objc2
+License: Zlib OR Apache-2.0 OR MIT  
+Source code: https://github.com/madsmtm/objc2
 
 ### objc2-foundation 0.3.2
 
-Licens: MIT  
-Källkod: https://github.com/madsmtm/objc2
+License: MIT  
+Source code: https://github.com/madsmtm/objc2
 
 ### objc2-quartz-core 0.3.2
 
-Licens: Zlib OR Apache-2.0 OR MIT  
-Källkod: https://github.com/madsmtm/objc2
+License: Zlib OR Apache-2.0 OR MIT  
+Source code: https://github.com/madsmtm/objc2
 
 ### objc2-ui-kit 0.3.2
 
-Licens: Zlib OR Apache-2.0 OR MIT  
-Källkod: https://github.com/madsmtm/objc2
+License: Zlib OR Apache-2.0 OR MIT  
+Source code: https://github.com/madsmtm/objc2
 
 ### objc2-user-notifications 0.3.2
 
-Licens: Zlib OR Apache-2.0 OR MIT  
-Källkod: https://github.com/madsmtm/objc2
+License: Zlib OR Apache-2.0 OR MIT  
+Source code: https://github.com/madsmtm/objc2
 
 ### objc2-web-kit 0.3.2
 
-Licens: Zlib OR Apache-2.0 OR MIT  
-Källkod: https://github.com/madsmtm/objc2
+License: Zlib OR Apache-2.0 OR MIT  
+Source code: https://github.com/madsmtm/objc2
 
 ### once_cell 1.21.4
 
-Licens: MIT OR Apache-2.0  
-Källkod: https://github.com/matklad/once_cell
+License: MIT OR Apache-2.0  
+Source code: https://github.com/matklad/once_cell
 
 <details><summary>LICENSE-APACHE</summary>
 
@@ -26146,8 +26146,8 @@ DEALINGS IN THE SOFTWARE.
 
 ### option-ext 0.2.0
 
-Licens: MPL-2.0  
-Källkod: https://github.com/soc/option-ext.git
+License: MPL-2.0  
+Source code: https://github.com/soc/option-ext.git
 
 <details><summary>LICENSE.txt</summary>
 
@@ -26531,8 +26531,8 @@ Exhibit B - "Incompatible With Secondary Licenses" Notice
 
 ### pango 0.18.3
 
-Licens: MIT  
-Källkod: https://github.com/gtk-rs/gtk-rs-core
+License: MIT  
+Source code: https://github.com/gtk-rs/gtk-rs-core
 
 <details><summary>LICENSE</summary>
 
@@ -26560,8 +26560,8 @@ SOFTWARE.
 
 ### pango-sys 0.18.0
 
-Licens: MIT  
-Källkod: https://github.com/gtk-rs/gtk-rs-core
+License: MIT  
+Source code: https://github.com/gtk-rs/gtk-rs-core
 
 <details><summary>LICENSE</summary>
 
@@ -26589,8 +26589,8 @@ SOFTWARE.
 
 ### parking_lot 0.12.5
 
-Licens: MIT OR Apache-2.0  
-Källkod: https://github.com/Amanieu/parking_lot
+License: MIT OR Apache-2.0  
+Source code: https://github.com/Amanieu/parking_lot
 
 <details><summary>LICENSE-APACHE</summary>
 
@@ -26834,8 +26834,8 @@ DEALINGS IN THE SOFTWARE.
 
 ### parking_lot_core 0.9.12
 
-Licens: MIT OR Apache-2.0  
-Källkod: https://github.com/Amanieu/parking_lot
+License: MIT OR Apache-2.0  
+Source code: https://github.com/Amanieu/parking_lot
 
 <details><summary>LICENSE-APACHE</summary>
 
@@ -27079,8 +27079,8 @@ DEALINGS IN THE SOFTWARE.
 
 ### paste 1.0.15
 
-Licens: MIT OR Apache-2.0  
-Källkod: https://github.com/dtolnay/paste
+License: MIT OR Apache-2.0  
+Source code: https://github.com/dtolnay/paste
 
 <details><summary>LICENSE-APACHE</summary>
 
@@ -27297,8 +27297,8 @@ DEALINGS IN THE SOFTWARE.
 
 ### percent-encoding 2.3.2
 
-Licens: MIT OR Apache-2.0  
-Källkod: https://github.com/servo/rust-url/
+License: MIT OR Apache-2.0  
+Source code: https://github.com/servo/rust-url/
 
 <details><summary>LICENSE-APACHE</summary>
 
@@ -27542,8 +27542,8 @@ DEALINGS IN THE SOFTWARE.
 
 ### phf 0.13.1
 
-Licens: MIT  
-Källkod: https://github.com/rust-phf/rust-phf
+License: MIT  
+Source code: https://github.com/rust-phf/rust-phf
 
 <details><summary>LICENSE</summary>
 
@@ -27574,8 +27574,8 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 ### phf_generator 0.13.1
 
-Licens: MIT  
-Källkod: https://github.com/rust-phf/rust-phf
+License: MIT  
+Source code: https://github.com/rust-phf/rust-phf
 
 <details><summary>LICENSE</summary>
 
@@ -27606,8 +27606,8 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 ### phf_macros 0.13.1
 
-Licens: MIT  
-Källkod: https://github.com/rust-phf/rust-phf
+License: MIT  
+Source code: https://github.com/rust-phf/rust-phf
 
 <details><summary>LICENSE</summary>
 
@@ -27638,8 +27638,8 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 ### phf_shared 0.13.1
 
-Licens: MIT  
-Källkod: https://github.com/rust-phf/rust-phf
+License: MIT  
+Source code: https://github.com/rust-phf/rust-phf
 
 <details><summary>LICENSE</summary>
 
@@ -27670,8 +27670,8 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 ### pin-project-lite 0.2.17
 
-Licens: Apache-2.0 OR MIT  
-Källkod: https://github.com/taiki-e/pin-project-lite
+License: Apache-2.0 OR MIT  
+Source code: https://github.com/taiki-e/pin-project-lite
 
 <details><summary>LICENSE-APACHE</summary>
 
@@ -27888,8 +27888,8 @@ DEALINGS IN THE SOFTWARE.
 
 ### plist 1.10.3
 
-Licens: MIT  
-Källkod: https://github.com/ebarnard/rust-plist/
+License: MIT  
+Source code: https://github.com/ebarnard/rust-plist/
 
 <details><summary>LICENCE</summary>
 
@@ -27919,8 +27919,8 @@ SOFTWARE.
 
 ### png 0.18.1
 
-Licens: MIT OR Apache-2.0  
-Källkod: https://github.com/image-rs/image-png
+License: MIT OR Apache-2.0  
+Source code: https://github.com/image-rs/image-png
 
 <details><summary>LICENSE-APACHE</summary>
 
@@ -28164,8 +28164,8 @@ DEALINGS IN THE SOFTWARE.
 
 ### potential_utf 0.1.6
 
-Licens: Unicode-3.0  
-Källkod: https://github.com/unicode-org/icu4x
+License: Unicode-3.0  
+Source code: https://github.com/unicode-org/icu4x
 
 <details><summary>LICENSE</summary>
 
@@ -28222,8 +28222,8 @@ ICU 1.8.1 to ICU 57.1 © 1995-2016 International Business Machines Corporation a
 
 ### powerfmt 0.2.1
 
-Licens: MIT OR Apache-2.0  
-Källkod: https://github.com/jhpratt/powerfmt
+License: MIT OR Apache-2.0  
+Source code: https://github.com/jhpratt/powerfmt
 
 <details><summary>LICENSE-Apache</summary>
 
@@ -28461,8 +28461,8 @@ SOFTWARE.
 
 ### precomputed-hash 0.1.1
 
-Licens: MIT  
-Källkod: https://github.com/emilio/precomputed-hash
+License: MIT  
+Source code: https://github.com/emilio/precomputed-hash
 
 <details><summary>LICENSE</summary>
 
@@ -28494,8 +28494,8 @@ SOFTWARE.
 
 ### proc-macro-crate 1.3.1
 
-Licens: MIT OR Apache-2.0  
-Källkod: https://github.com/bkchr/proc-macro-crate
+License: MIT OR Apache-2.0  
+Source code: https://github.com/bkchr/proc-macro-crate
 
 <details><summary>LICENSE-APACHE</summary>
 
@@ -28737,8 +28737,8 @@ DEALINGS IN THE SOFTWARE.
 
 ### proc-macro-crate 2.0.2
 
-Licens: MIT OR Apache-2.0  
-Källkod: https://github.com/bkchr/proc-macro-crate
+License: MIT OR Apache-2.0  
+Source code: https://github.com/bkchr/proc-macro-crate
 
 <details><summary>LICENSE-APACHE</summary>
 
@@ -28980,8 +28980,8 @@ DEALINGS IN THE SOFTWARE.
 
 ### proc-macro-crate 3.5.0
 
-Licens: MIT OR Apache-2.0  
-Källkod: https://github.com/bkchr/proc-macro-crate
+License: MIT OR Apache-2.0  
+Source code: https://github.com/bkchr/proc-macro-crate
 
 <details><summary>LICENSE-APACHE</summary>
 
@@ -29223,8 +29223,8 @@ DEALINGS IN THE SOFTWARE.
 
 ### proc-macro-error 1.0.4
 
-Licens: MIT OR Apache-2.0  
-Källkod: https://gitlab.com/CreepySkeleton/proc-macro-error
+License: MIT OR Apache-2.0  
+Source code: https://gitlab.com/CreepySkeleton/proc-macro-error
 
 <details><summary>LICENSE-APACHE</summary>
 
@@ -29464,8 +29464,8 @@ SOFTWARE.
 
 ### proc-macro-error-attr 1.0.4
 
-Licens: MIT OR Apache-2.0  
-Källkod: https://gitlab.com/CreepySkeleton/proc-macro-error
+License: MIT OR Apache-2.0  
+Source code: https://gitlab.com/CreepySkeleton/proc-macro-error
 
 <details><summary>LICENSE-APACHE</summary>
 
@@ -29705,8 +29705,8 @@ SOFTWARE.
 
 ### proc-macro2 1.0.107
 
-Licens: MIT OR Apache-2.0  
-Källkod: https://github.com/dtolnay/proc-macro2
+License: MIT OR Apache-2.0  
+Source code: https://github.com/dtolnay/proc-macro2
 
 <details><summary>LICENSE-APACHE</summary>
 
@@ -29923,8 +29923,8 @@ DEALINGS IN THE SOFTWARE.
 
 ### quick-xml 0.42.0
 
-Licens: MIT  
-Källkod: https://github.com/tafia/quick-xml
+License: MIT  
+Source code: https://github.com/tafia/quick-xml
 
 <details><summary>LICENSE-MIT.md</summary>
 
@@ -29958,8 +29958,8 @@ THE SOFTWARE.
 
 ### quote 1.0.47
 
-Licens: MIT OR Apache-2.0  
-Källkod: https://github.com/dtolnay/quote
+License: MIT OR Apache-2.0  
+Source code: https://github.com/dtolnay/quote
 
 <details><summary>LICENSE-APACHE</summary>
 
@@ -30176,18 +30176,18 @@ DEALINGS IN THE SOFTWARE.
 
 ### r-efi 5.3.0
 
-Licens: MIT OR Apache-2.0 OR LGPL-2.1-or-later  
-Källkod: https://github.com/r-efi/r-efi
+License: MIT OR Apache-2.0 OR LGPL-2.1-or-later  
+Source code: https://github.com/r-efi/r-efi
 
 ### r-efi 6.0.0
 
-Licens: MIT OR Apache-2.0 OR LGPL-2.1-or-later  
-Källkod: https://github.com/r-efi/r-efi
+License: MIT OR Apache-2.0 OR LGPL-2.1-or-later  
+Source code: https://github.com/r-efi/r-efi
 
 ### raw-window-handle 0.6.2
 
-Licens: MIT OR Apache-2.0 OR Zlib  
-Källkod: https://github.com/rust-windowing/raw-window-handle
+License: MIT OR Apache-2.0 OR Zlib  
+Source code: https://github.com/rust-windowing/raw-window-handle
 
 <details><summary>LICENSE-APACHE.md</summary>
 
@@ -30420,8 +30420,8 @@ Permission is granted to anyone to use this software for any purpose, including 
 
 ### redox_syscall 0.5.18
 
-Licens: MIT  
-Källkod: https://gitlab.redox-os.org/redox-os/syscall
+License: MIT  
+Source code: https://gitlab.redox-os.org/redox-os/syscall
 
 <details><summary>LICENSE</summary>
 
@@ -30454,8 +30454,8 @@ WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 ### redox_users 0.5.3
 
-Licens: MIT  
-Källkod: https://gitlab.redox-os.org/redox-os/users
+License: MIT  
+Source code: https://gitlab.redox-os.org/redox-os/users
 
 <details><summary>LICENSE</summary>
 
@@ -30487,8 +30487,8 @@ SOFTWARE.
 
 ### regex 1.13.1
 
-Licens: MIT OR Apache-2.0  
-Källkod: https://github.com/rust-lang/regex
+License: MIT OR Apache-2.0  
+Source code: https://github.com/rust-lang/regex
 
 <details><summary>LICENSE-APACHE</summary>
 
@@ -30732,8 +30732,8 @@ DEALINGS IN THE SOFTWARE.
 
 ### regex-automata 0.4.18
 
-Licens: MIT OR Apache-2.0  
-Källkod: https://github.com/rust-lang/regex
+License: MIT OR Apache-2.0  
+Source code: https://github.com/rust-lang/regex
 
 <details><summary>LICENSE-APACHE</summary>
 
@@ -30977,8 +30977,8 @@ DEALINGS IN THE SOFTWARE.
 
 ### regex-syntax 0.8.11
 
-Licens: MIT OR Apache-2.0  
-Källkod: https://github.com/rust-lang/regex
+License: MIT OR Apache-2.0  
+Source code: https://github.com/rust-lang/regex
 
 <details><summary>LICENSE-APACHE</summary>
 
@@ -31222,8 +31222,8 @@ DEALINGS IN THE SOFTWARE.
 
 ### reqwest 0.13.5
 
-Licens: MIT OR Apache-2.0  
-Källkod: https://github.com/seanmonstar/reqwest
+License: MIT OR Apache-2.0  
+Source code: https://github.com/seanmonstar/reqwest
 
 <details><summary>LICENSE-APACHE</summary>
 
@@ -31461,8 +31461,8 @@ THE SOFTWARE.
 
 ### rfd 0.17.2
 
-Licens: MIT  
-Källkod: https://github.com/PolyMeilex/rfd
+License: MIT  
+Source code: https://github.com/PolyMeilex/rfd
 
 <details><summary>LICENSE</summary>
 
@@ -31494,8 +31494,8 @@ SOFTWARE.
 
 ### rustc-hash 2.1.3
 
-Licens: Apache-2.0 OR MIT  
-Källkod: https://github.com/rust-lang/rustc-hash
+License: Apache-2.0 OR MIT  
+Source code: https://github.com/rust-lang/rustc-hash
 
 <details><summary>LICENSE-APACHE</summary>
 
@@ -31712,8 +31712,8 @@ DEALINGS IN THE SOFTWARE.
 
 ### rustversion 1.0.23
 
-Licens: MIT OR Apache-2.0  
-Källkod: https://github.com/dtolnay/rustversion
+License: MIT OR Apache-2.0  
+Source code: https://github.com/dtolnay/rustversion
 
 <details><summary>LICENSE-APACHE</summary>
 
@@ -31930,8 +31930,8 @@ DEALINGS IN THE SOFTWARE.
 
 ### same-file 1.0.6
 
-Licens: Unlicense/MIT  
-Källkod: https://github.com/BurntSushi/same-file
+License: Unlicense/MIT  
+Source code: https://github.com/BurntSushi/same-file
 
 <details><summary>COPYING</summary>
 
@@ -32004,8 +32004,8 @@ For more information, please refer to <http://unlicense.org/>
 
 ### schemars 0.8.22
 
-Licens: MIT  
-Källkod: https://github.com/GREsau/schemars
+License: MIT  
+Source code: https://github.com/GREsau/schemars
 
 <details><summary>LICENSE</summary>
 
@@ -32037,8 +32037,8 @@ SOFTWARE.
 
 ### schemars_derive 0.8.22
 
-Licens: MIT  
-Källkod: https://github.com/GREsau/schemars
+License: MIT  
+Source code: https://github.com/GREsau/schemars
 
 <details><summary>LICENSE</summary>
 
@@ -32070,8 +32070,8 @@ SOFTWARE.
 
 ### scopeguard 1.2.0
 
-Licens: MIT OR Apache-2.0  
-Källkod: https://github.com/bluss/scopeguard
+License: MIT OR Apache-2.0  
+Source code: https://github.com/bluss/scopeguard
 
 <details><summary>LICENSE-APACHE</summary>
 
@@ -32315,13 +32315,13 @@ DEALINGS IN THE SOFTWARE.
 
 ### selectors 0.38.0
 
-Licens: MPL-2.0  
-Källkod: https://github.com/servo/stylo
+License: MPL-2.0  
+Source code: https://github.com/servo/stylo
 
 ### semver 1.0.28
 
-Licens: MIT OR Apache-2.0  
-Källkod: https://github.com/dtolnay/semver
+License: MIT OR Apache-2.0  
+Source code: https://github.com/dtolnay/semver
 
 <details><summary>LICENSE-APACHE</summary>
 
@@ -32538,8 +32538,8 @@ DEALINGS IN THE SOFTWARE.
 
 ### serde 1.0.229
 
-Licens: MIT OR Apache-2.0  
-Källkod: https://github.com/serde-rs/serde
+License: MIT OR Apache-2.0  
+Source code: https://github.com/serde-rs/serde
 
 <details><summary>LICENSE-APACHE</summary>
 
@@ -32756,8 +32756,8 @@ DEALINGS IN THE SOFTWARE.
 
 ### serde-untagged 0.1.9
 
-Licens: MIT OR Apache-2.0  
-Källkod: https://github.com/dtolnay/serde-untagged
+License: MIT OR Apache-2.0  
+Source code: https://github.com/dtolnay/serde-untagged
 
 <details><summary>LICENSE-APACHE</summary>
 
@@ -32974,8 +32974,8 @@ DEALINGS IN THE SOFTWARE.
 
 ### serde_core 1.0.229
 
-Licens: MIT OR Apache-2.0  
-Källkod: https://github.com/serde-rs/serde
+License: MIT OR Apache-2.0  
+Source code: https://github.com/serde-rs/serde
 
 <details><summary>LICENSE-APACHE</summary>
 
@@ -33192,8 +33192,8 @@ DEALINGS IN THE SOFTWARE.
 
 ### serde_derive 1.0.229
 
-Licens: MIT OR Apache-2.0  
-Källkod: https://github.com/serde-rs/serde
+License: MIT OR Apache-2.0  
+Source code: https://github.com/serde-rs/serde
 
 <details><summary>LICENSE-APACHE</summary>
 
@@ -33410,8 +33410,8 @@ DEALINGS IN THE SOFTWARE.
 
 ### serde_derive_internals 0.29.1
 
-Licens: MIT OR Apache-2.0  
-Källkod: https://github.com/serde-rs/serde
+License: MIT OR Apache-2.0  
+Source code: https://github.com/serde-rs/serde
 
 <details><summary>LICENSE-APACHE</summary>
 
@@ -33628,8 +33628,8 @@ DEALINGS IN THE SOFTWARE.
 
 ### serde_json 1.0.154
 
-Licens: MIT OR Apache-2.0  
-Källkod: https://github.com/serde-rs/json
+License: MIT OR Apache-2.0  
+Source code: https://github.com/serde-rs/json
 
 <details><summary>LICENSE-APACHE</summary>
 
@@ -33846,8 +33846,8 @@ DEALINGS IN THE SOFTWARE.
 
 ### serde_repr 0.1.21
 
-Licens: MIT OR Apache-2.0  
-Källkod: https://github.com/dtolnay/serde-repr
+License: MIT OR Apache-2.0  
+Source code: https://github.com/dtolnay/serde-repr
 
 <details><summary>LICENSE-APACHE</summary>
 
@@ -34064,8 +34064,8 @@ DEALINGS IN THE SOFTWARE.
 
 ### serde_spanned 0.6.9
 
-Licens: MIT OR Apache-2.0  
-Källkod: https://github.com/toml-rs/toml
+License: MIT OR Apache-2.0  
+Source code: https://github.com/toml-rs/toml
 
 <details><summary>LICENSE-APACHE</summary>
 
@@ -34303,8 +34303,8 @@ SOFTWARE.
 
 ### serde_spanned 1.1.2
 
-Licens: MIT OR Apache-2.0  
-Källkod: https://github.com/toml-rs/toml
+License: MIT OR Apache-2.0  
+Source code: https://github.com/toml-rs/toml
 
 <details><summary>LICENSE-APACHE</summary>
 
@@ -34542,8 +34542,8 @@ SOFTWARE.
 
 ### serde_with 3.24.0
 
-Licens: MIT OR Apache-2.0  
-Källkod: https://github.com/jonasbb/serde_with/
+License: MIT OR Apache-2.0  
+Source code: https://github.com/jonasbb/serde_with/
 
 <details><summary>LICENSE-APACHE</summary>
 
@@ -34787,8 +34787,8 @@ DEALINGS IN THE SOFTWARE.
 
 ### serde_with_macros 3.24.0
 
-Licens: MIT OR Apache-2.0  
-Källkod: https://github.com/jonasbb/serde_with/
+License: MIT OR Apache-2.0  
+Source code: https://github.com/jonasbb/serde_with/
 
 <details><summary>LICENSE-APACHE</summary>
 
@@ -35032,8 +35032,8 @@ DEALINGS IN THE SOFTWARE.
 
 ### serialize-to-javascript 0.1.2
 
-Licens: MIT OR Apache-2.0  
-Källkod: https://github.com/chippers/serialize-to-javascript
+License: MIT OR Apache-2.0  
+Source code: https://github.com/chippers/serialize-to-javascript
 
 <details><summary>LICENSE-APACHE</summary>
 
@@ -35273,8 +35273,8 @@ SOFTWARE.
 
 ### serialize-to-javascript-impl 0.1.2
 
-Licens: MIT OR Apache-2.0  
-Källkod: https://github.com/chippers/serialize-to-javascript
+License: MIT OR Apache-2.0  
+Source code: https://github.com/chippers/serialize-to-javascript
 
 <details><summary>LICENSE-APACHE</summary>
 
@@ -35514,8 +35514,8 @@ SOFTWARE.
 
 ### servo_arc 0.4.3
 
-Licens: MIT OR Apache-2.0  
-Källkod: https://github.com/servo/stylo
+License: MIT OR Apache-2.0  
+Source code: https://github.com/servo/stylo
 
 <details><summary>LICENSE-APACHE</summary>
 
@@ -35757,8 +35757,8 @@ DEALINGS IN THE SOFTWARE.
 
 ### sha2 0.10.9
 
-Licens: MIT OR Apache-2.0  
-Källkod: https://github.com/RustCrypto/hashes
+License: MIT OR Apache-2.0  
+Source code: https://github.com/RustCrypto/hashes
 
 <details><summary>LICENSE-APACHE</summary>
 
@@ -36004,8 +36004,8 @@ DEALINGS IN THE SOFTWARE.
 
 ### simd-adler32 0.3.10
 
-Licens: MIT  
-Källkod: https://github.com/mcountryman/simd-adler32
+License: MIT  
+Source code: https://github.com/mcountryman/simd-adler32
 
 <details><summary>LICENSE.md</summary>
 
@@ -36037,8 +36037,8 @@ SOFTWARE.
 
 ### siphasher 1.0.4
 
-Licens: MIT OR Apache-2.0  
-Källkod: https://github.com/jedisct1/rust-siphash
+License: MIT OR Apache-2.0  
+Source code: https://github.com/jedisct1/rust-siphash
 
 <details><summary>COPYING</summary>
 
@@ -36288,8 +36288,8 @@ SOFTWARE.
 
 ### slab 0.4.12
 
-Licens: MIT  
-Källkod: https://github.com/tokio-rs/slab
+License: MIT  
+Source code: https://github.com/tokio-rs/slab
 
 <details><summary>LICENSE</summary>
 
@@ -36325,8 +36325,8 @@ DEALINGS IN THE SOFTWARE.
 
 ### smallvec 1.16.4
 
-Licens: MIT OR Apache-2.0  
-Källkod: https://github.com/servo/rust-smallvec
+License: MIT OR Apache-2.0  
+Source code: https://github.com/servo/rust-smallvec
 
 <details><summary>LICENSE-APACHE</summary>
 
@@ -36570,8 +36570,8 @@ DEALINGS IN THE SOFTWARE.
 
 ### socket2 0.6.5
 
-Licens: MIT OR Apache-2.0  
-Källkod: https://github.com/rust-lang/socket2
+License: MIT OR Apache-2.0  
+Source code: https://github.com/rust-lang/socket2
 
 <details><summary>LICENSE-APACHE</summary>
 
@@ -36815,8 +36815,8 @@ DEALINGS IN THE SOFTWARE.
 
 ### softbuffer 0.4.8
 
-Licens: MIT OR Apache-2.0  
-Källkod: https://github.com/rust-windowing/softbuffer
+License: MIT OR Apache-2.0  
+Source code: https://github.com/rust-windowing/softbuffer
 
 <details><summary>LICENSE-APACHE</summary>
 
@@ -37054,8 +37054,8 @@ SOFTWARE.
 
 ### soup3 0.5.0
 
-Licens: MIT  
-Källkod: https://gitlab.gnome.org/World/Rust/soup3-rs
+License: MIT  
+Source code: https://gitlab.gnome.org/World/Rust/soup3-rs
 
 <details><summary>LICENSE</summary>
 
@@ -37087,8 +37087,8 @@ SOFTWARE.
 
 ### soup3-sys 0.5.0
 
-Licens: MIT  
-Källkod: https://gitlab.gnome.org/World/Rust/soup3-rs
+License: MIT  
+Source code: https://gitlab.gnome.org/World/Rust/soup3-rs
 
 <details><summary>LICENSE</summary>
 
@@ -37120,33 +37120,33 @@ SOFTWARE.
 
 ### specta 2.0.0-rc.26
 
-Licens: MIT  
-Källkod: https://github.com/specta-rs/specta
+License: MIT  
+Source code: https://github.com/specta-rs/specta
 
 ### specta-macros 2.0.0-rc.26
 
-Licens: MIT  
-Källkod: https://github.com/specta-rs/specta
+License: MIT  
+Source code: https://github.com/specta-rs/specta
 
 ### specta-serde 0.0.13
 
-Licens: MIT  
-Källkod: https://github.com/specta-rs/specta
+License: MIT  
+Source code: https://github.com/specta-rs/specta
 
 ### specta-typescript 0.0.13
 
-Licens: MIT  
-Källkod: https://github.com/specta-rs/specta
+License: MIT  
+Source code: https://github.com/specta-rs/specta
 
 ### specta-util 0.0.13
 
-Licens: MIT  
-Källkod: https://github.com/specta-rs/specta
+License: MIT  
+Source code: https://github.com/specta-rs/specta
 
 ### stable_deref_trait 1.2.1
 
-Licens: MIT OR Apache-2.0  
-Källkod: https://github.com/storyyeller/stable_deref_trait
+License: MIT OR Apache-2.0  
+Source code: https://github.com/storyyeller/stable_deref_trait
 
 <details><summary>LICENSE-APACHE</summary>
 
@@ -37390,8 +37390,8 @@ DEALINGS IN THE SOFTWARE.
 
 ### string_cache 0.9.0
 
-Licens: MIT OR Apache-2.0  
-Källkod: https://github.com/servo/string-cache
+License: MIT OR Apache-2.0  
+Source code: https://github.com/servo/string-cache
 
 <details><summary>LICENSE-APACHE</summary>
 
@@ -37635,8 +37635,8 @@ DEALINGS IN THE SOFTWARE.
 
 ### strsim 0.11.1
 
-Licens: MIT  
-Källkod: https://github.com/rapidfuzz/strsim-rs
+License: MIT  
+Source code: https://github.com/rapidfuzz/strsim-rs
 
 <details><summary>LICENSE</summary>
 
@@ -37670,8 +37670,8 @@ SOFTWARE.
 
 ### swift-rs 1.0.9
 
-Licens: MIT OR Apache-2.0  
-Källkod: https://github.com/Brendonovich/swift-rs
+License: MIT OR Apache-2.0  
+Source code: https://github.com/Brendonovich/swift-rs
 
 <details><summary>LICENSE-APACHE</summary>
 
@@ -37909,8 +37909,8 @@ SOFTWARE.
 
 ### syn 1.0.109
 
-Licens: MIT OR Apache-2.0  
-Källkod: https://github.com/dtolnay/syn
+License: MIT OR Apache-2.0  
+Source code: https://github.com/dtolnay/syn
 
 <details><summary>LICENSE-APACHE</summary>
 
@@ -38152,8 +38152,8 @@ DEALINGS IN THE SOFTWARE.
 
 ### syn 2.0.119
 
-Licens: MIT OR Apache-2.0  
-Källkod: https://github.com/dtolnay/syn
+License: MIT OR Apache-2.0  
+Source code: https://github.com/dtolnay/syn
 
 <details><summary>LICENSE-APACHE</summary>
 
@@ -38370,8 +38370,8 @@ DEALINGS IN THE SOFTWARE.
 
 ### syn 3.0.9
 
-Licens: MIT OR Apache-2.0  
-Källkod: https://github.com/dtolnay/syn
+License: MIT OR Apache-2.0  
+Source code: https://github.com/dtolnay/syn
 
 <details><summary>LICENSE-APACHE</summary>
 
@@ -38588,8 +38588,8 @@ DEALINGS IN THE SOFTWARE.
 
 ### sync_wrapper 1.0.2
 
-Licens: Apache-2.0  
-Källkod: https://github.com/Actyx/sync_wrapper
+License: Apache-2.0  
+Source code: https://github.com/Actyx/sync_wrapper
 
 <details><summary>LICENSE</summary>
 
@@ -38776,8 +38776,8 @@ Apache License
 
 ### synstructure 0.14.0
 
-Licens: MIT  
-Källkod: https://github.com/mystor/synstructure
+License: MIT  
+Source code: https://github.com/mystor/synstructure
 
 <details><summary>LICENSE</summary>
 
@@ -38795,8 +38795,8 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 
 ### tao 0.37.2
 
-Licens: Apache-2.0  
-Källkod: https://github.com/tauri-apps/tao
+License: Apache-2.0  
+Source code: https://github.com/tauri-apps/tao
 
 <details><summary>LICENSE</summary>
 
@@ -39033,8 +39033,8 @@ Creator: Person: Daniel Thompson-Yvetot
 
 ### tao-macros 0.1.4
 
-Licens: MIT OR Apache-2.0  
-Källkod: https://github.com/tauri-apps/tao
+License: MIT OR Apache-2.0  
+Source code: https://github.com/tauri-apps/tao
 
 <details><summary>LICENSE-APACHE</summary>
 
@@ -39300,8 +39300,8 @@ Creator: Person: Daniel Thompson-Yvetot
 
 ### tauri 2.12.5
 
-Licens: Apache-2.0 OR MIT  
-Källkod: https://github.com/tauri-apps/tauri
+License: Apache-2.0 OR MIT  
+Source code: https://github.com/tauri-apps/tauri
 
 <details><summary>LICENSE-APACHE-2.0</summary>
 
@@ -39516,8 +39516,8 @@ SOFTWARE.
 
 ### tauri-codegen 2.7.4
 
-Licens: Apache-2.0 OR MIT  
-Källkod: https://github.com/tauri-apps/tauri
+License: Apache-2.0 OR MIT  
+Source code: https://github.com/tauri-apps/tauri
 
 <details><summary>LICENSE-APACHE-2.0</summary>
 
@@ -39732,8 +39732,8 @@ SOFTWARE.
 
 ### tauri-macros 2.7.4
 
-Licens: Apache-2.0 OR MIT  
-Källkod: https://github.com/tauri-apps/tauri
+License: Apache-2.0 OR MIT  
+Source code: https://github.com/tauri-apps/tauri
 
 <details><summary>LICENSE-APACHE-2.0</summary>
 
@@ -39948,8 +39948,8 @@ SOFTWARE.
 
 ### tauri-plugin-dialog 2.8.4
 
-Licens: Apache-2.0 OR MIT  
-Källkod: https://github.com/tauri-apps/plugins-workspace
+License: Apache-2.0 OR MIT  
+Source code: https://github.com/tauri-apps/plugins-workspace
 
 <details><summary>LICENSE.spdx</summary>
 
@@ -40191,8 +40191,8 @@ SOFTWARE.
 
 ### tauri-plugin-fs 2.7.1
 
-Licens: Apache-2.0 OR MIT  
-Källkod: https://github.com/tauri-apps/plugins-workspace
+License: Apache-2.0 OR MIT  
+Source code: https://github.com/tauri-apps/plugins-workspace
 
 <details><summary>LICENSE.spdx</summary>
 
@@ -40434,8 +40434,8 @@ SOFTWARE.
 
 ### tauri-runtime 2.12.2
 
-Licens: Apache-2.0 OR MIT  
-Källkod: https://github.com/tauri-apps/tauri
+License: Apache-2.0 OR MIT  
+Source code: https://github.com/tauri-apps/tauri
 
 <details><summary>LICENSE-APACHE-2.0</summary>
 
@@ -40650,8 +40650,8 @@ SOFTWARE.
 
 ### tauri-runtime-wry 2.12.3
 
-Licens: Apache-2.0 OR MIT  
-Källkod: https://github.com/tauri-apps/tauri
+License: Apache-2.0 OR MIT  
+Source code: https://github.com/tauri-apps/tauri
 
 <details><summary>LICENSE-APACHE-2.0</summary>
 
@@ -40866,8 +40866,8 @@ SOFTWARE.
 
 ### tauri-specta 2.0.0-rc.26
 
-Licens: MIT  
-Källkod: https://github.com/specta-rs/tauri-specta
+License: MIT  
+Source code: https://github.com/specta-rs/tauri-specta
 
 <details><summary>LICENSE</summary>
 
@@ -40899,8 +40899,8 @@ SOFTWARE.
 
 ### tauri-specta-macros 2.0.0-rc.26
 
-Licens: MIT  
-Källkod: https://github.com/specta-rs/tauri-specta
+License: MIT  
+Source code: https://github.com/specta-rs/tauri-specta
 
 <details><summary>LICENSE</summary>
 
@@ -40932,8 +40932,8 @@ SOFTWARE.
 
 ### tauri-utils 2.10.2
 
-Licens: Apache-2.0 OR MIT  
-Källkod: https://github.com/tauri-apps/tauri
+License: Apache-2.0 OR MIT  
+Source code: https://github.com/tauri-apps/tauri
 
 <details><summary>LICENSE-APACHE-2.0</summary>
 
@@ -41148,8 +41148,8 @@ SOFTWARE.
 
 ### tendril 0.5.1
 
-Licens: MIT OR Apache-2.0  
-Källkod: https://github.com/servo/html5ever
+License: MIT OR Apache-2.0  
+Source code: https://github.com/servo/html5ever
 
 <details><summary>LICENSE-APACHE</summary>
 
@@ -41393,8 +41393,8 @@ DEALINGS IN THE SOFTWARE.
 
 ### thiserror 1.0.69
 
-Licens: MIT OR Apache-2.0  
-Källkod: https://github.com/dtolnay/thiserror
+License: MIT OR Apache-2.0  
+Source code: https://github.com/dtolnay/thiserror
 
 <details><summary>LICENSE-APACHE</summary>
 
@@ -41611,8 +41611,8 @@ DEALINGS IN THE SOFTWARE.
 
 ### thiserror 2.0.21
 
-Licens: MIT OR Apache-2.0  
-Källkod: https://github.com/dtolnay/thiserror
+License: MIT OR Apache-2.0  
+Source code: https://github.com/dtolnay/thiserror
 
 <details><summary>LICENSE-APACHE</summary>
 
@@ -41829,8 +41829,8 @@ DEALINGS IN THE SOFTWARE.
 
 ### thiserror-impl 1.0.69
 
-Licens: MIT OR Apache-2.0  
-Källkod: https://github.com/dtolnay/thiserror
+License: MIT OR Apache-2.0  
+Source code: https://github.com/dtolnay/thiserror
 
 <details><summary>LICENSE-APACHE</summary>
 
@@ -42047,8 +42047,8 @@ DEALINGS IN THE SOFTWARE.
 
 ### thiserror-impl 2.0.21
 
-Licens: MIT OR Apache-2.0  
-Källkod: https://github.com/dtolnay/thiserror
+License: MIT OR Apache-2.0  
+Source code: https://github.com/dtolnay/thiserror
 
 <details><summary>LICENSE-APACHE</summary>
 
@@ -42265,8 +42265,8 @@ DEALINGS IN THE SOFTWARE.
 
 ### time 0.3.55
 
-Licens: MIT OR Apache-2.0  
-Källkod: https://github.com/time-rs/time
+License: MIT OR Apache-2.0  
+Source code: https://github.com/time-rs/time
 
 <details><summary>LICENSE-Apache</summary>
 
@@ -42479,8 +42479,8 @@ SOFTWARE.
 
 ### time-core 0.1.9
 
-Licens: MIT OR Apache-2.0  
-Källkod: https://github.com/time-rs/time
+License: MIT OR Apache-2.0  
+Source code: https://github.com/time-rs/time
 
 <details><summary>LICENSE-Apache</summary>
 
@@ -42693,8 +42693,8 @@ SOFTWARE.
 
 ### time-macros 0.2.32
 
-Licens: MIT OR Apache-2.0  
-Källkod: https://github.com/time-rs/time
+License: MIT OR Apache-2.0  
+Source code: https://github.com/time-rs/time
 
 <details><summary>LICENSE-Apache</summary>
 
@@ -42907,8 +42907,8 @@ SOFTWARE.
 
 ### tinystr 0.8.5
 
-Licens: Unicode-3.0  
-Källkod: https://github.com/unicode-org/icu4x
+License: Unicode-3.0  
+Source code: https://github.com/unicode-org/icu4x
 
 <details><summary>LICENSE</summary>
 
@@ -42965,8 +42965,8 @@ ICU 1.8.1 to ICU 57.1 © 1995-2016 International Business Machines Corporation a
 
 ### tokio 1.54.1
 
-Licens: MIT  
-Källkod: https://github.com/tokio-rs/tokio
+License: MIT  
+Source code: https://github.com/tokio-rs/tokio
 
 <details><summary>LICENSE</summary>
 
@@ -42998,8 +42998,8 @@ SOFTWARE.
 
 ### tokio-util 0.7.20
 
-Licens: MIT  
-Källkod: https://github.com/tokio-rs/tokio
+License: MIT  
+Source code: https://github.com/tokio-rs/tokio
 
 <details><summary>LICENSE</summary>
 
@@ -43031,8 +43031,8 @@ SOFTWARE.
 
 ### toml 1.1.8+spec-1.1.0
 
-Licens: MIT OR Apache-2.0  
-Källkod: https://github.com/toml-rs/toml
+License: MIT OR Apache-2.0  
+Source code: https://github.com/toml-rs/toml
 
 <details><summary>LICENSE-APACHE</summary>
 
@@ -43270,8 +43270,8 @@ SOFTWARE.
 
 ### toml_datetime 0.6.3
 
-Licens: MIT OR Apache-2.0  
-Källkod: https://github.com/toml-rs/toml
+License: MIT OR Apache-2.0  
+Source code: https://github.com/toml-rs/toml
 
 <details><summary>LICENSE-APACHE</summary>
 
@@ -43515,8 +43515,8 @@ DEALINGS IN THE SOFTWARE.
 
 ### toml_datetime 1.1.2+spec-1.1.0
 
-Licens: MIT OR Apache-2.0  
-Källkod: https://github.com/toml-rs/toml
+License: MIT OR Apache-2.0  
+Source code: https://github.com/toml-rs/toml
 
 <details><summary>LICENSE-APACHE</summary>
 
@@ -43754,8 +43754,8 @@ SOFTWARE.
 
 ### toml_edit 0.19.15
 
-Licens: MIT OR Apache-2.0  
-Källkod: https://github.com/toml-rs/toml
+License: MIT OR Apache-2.0  
+Source code: https://github.com/toml-rs/toml
 
 <details><summary>LICENSE-APACHE</summary>
 
@@ -43993,8 +43993,8 @@ SOFTWARE.
 
 ### toml_edit 0.20.2
 
-Licens: MIT OR Apache-2.0  
-Källkod: https://github.com/toml-rs/toml
+License: MIT OR Apache-2.0  
+Source code: https://github.com/toml-rs/toml
 
 <details><summary>LICENSE-APACHE</summary>
 
@@ -44232,8 +44232,8 @@ SOFTWARE.
 
 ### toml_edit 0.25.17+spec-1.1.0
 
-Licens: MIT OR Apache-2.0  
-Källkod: https://github.com/toml-rs/toml
+License: MIT OR Apache-2.0  
+Source code: https://github.com/toml-rs/toml
 
 <details><summary>LICENSE-APACHE</summary>
 
@@ -44471,8 +44471,8 @@ SOFTWARE.
 
 ### toml_parser 1.1.5+spec-1.1.0
 
-Licens: MIT OR Apache-2.0  
-Källkod: https://github.com/toml-rs/toml
+License: MIT OR Apache-2.0  
+Source code: https://github.com/toml-rs/toml
 
 <details><summary>LICENSE-APACHE</summary>
 
@@ -44710,8 +44710,8 @@ SOFTWARE.
 
 ### toml_writer 1.1.3+spec-1.1.0
 
-Licens: MIT OR Apache-2.0  
-Källkod: https://github.com/toml-rs/toml
+License: MIT OR Apache-2.0  
+Source code: https://github.com/toml-rs/toml
 
 <details><summary>LICENSE-APACHE</summary>
 
@@ -44949,8 +44949,8 @@ SOFTWARE.
 
 ### tower 0.5.3
 
-Licens: MIT  
-Källkod: https://github.com/tower-rs/tower
+License: MIT  
+Source code: https://github.com/tower-rs/tower
 
 <details><summary>LICENSE</summary>
 
@@ -44986,8 +44986,8 @@ DEALINGS IN THE SOFTWARE.
 
 ### tower-http 0.6.11
 
-Licens: MIT  
-Källkod: https://github.com/tower-rs/tower-http
+License: MIT  
+Source code: https://github.com/tower-rs/tower-http
 
 <details><summary>LICENSE</summary>
 
@@ -45023,8 +45023,8 @@ DEALINGS IN THE SOFTWARE.
 
 ### tower-layer 0.3.3
 
-Licens: MIT  
-Källkod: https://github.com/tower-rs/tower
+License: MIT  
+Source code: https://github.com/tower-rs/tower
 
 <details><summary>LICENSE</summary>
 
@@ -45060,8 +45060,8 @@ DEALINGS IN THE SOFTWARE.
 
 ### tower-service 0.3.3
 
-Licens: MIT  
-Källkod: https://github.com/tower-rs/tower
+License: MIT  
+Source code: https://github.com/tower-rs/tower
 
 <details><summary>LICENSE</summary>
 
@@ -45097,8 +45097,8 @@ DEALINGS IN THE SOFTWARE.
 
 ### tracing 0.1.44
 
-Licens: MIT  
-Källkod: https://github.com/tokio-rs/tracing
+License: MIT  
+Source code: https://github.com/tokio-rs/tracing
 
 <details><summary>LICENSE</summary>
 
@@ -45134,8 +45134,8 @@ DEALINGS IN THE SOFTWARE.
 
 ### tracing-core 0.1.36
 
-Licens: MIT  
-Källkod: https://github.com/tokio-rs/tracing
+License: MIT  
+Source code: https://github.com/tokio-rs/tracing
 
 <details><summary>LICENSE</summary>
 
@@ -45171,8 +45171,8 @@ DEALINGS IN THE SOFTWARE.
 
 ### try-lock 0.2.5
 
-Licens: MIT  
-Källkod: https://github.com/seanmonstar/try-lock
+License: MIT  
+Source code: https://github.com/seanmonstar/try-lock
 
 <details><summary>LICENSE</summary>
 
@@ -45203,8 +45203,8 @@ THE SOFTWARE.
 
 ### typeid 1.0.3
 
-Licens: MIT OR Apache-2.0  
-Källkod: https://github.com/dtolnay/typeid
+License: MIT OR Apache-2.0  
+Source code: https://github.com/dtolnay/typeid
 
 <details><summary>LICENSE-APACHE</summary>
 
@@ -45421,8 +45421,8 @@ DEALINGS IN THE SOFTWARE.
 
 ### typenum 1.20.1
 
-Licens: MIT OR Apache-2.0  
-Källkod: https://github.com/paholg/typenum
+License: MIT OR Apache-2.0  
+Source code: https://github.com/paholg/typenum
 
 <details><summary>LICENSE</summary>
 
@@ -45670,8 +45670,8 @@ SOFTWARE.
 
 ### unicode-ident 1.0.27
 
-Licens: (MIT OR Apache-2.0) AND Unicode-3.0  
-Källkod: https://github.com/dtolnay/unicode-ident
+License: (MIT OR Apache-2.0) AND Unicode-3.0  
+Source code: https://github.com/dtolnay/unicode-ident
 
 <details><summary>LICENSE-APACHE</summary>
 
@@ -45934,8 +45934,8 @@ authorization of the copyright holder.
 
 ### unicode-segmentation 1.13.3
 
-Licens: MIT OR Apache-2.0  
-Källkod: https://github.com/unicode-rs/unicode-segmentation
+License: MIT OR Apache-2.0  
+Source code: https://github.com/unicode-rs/unicode-segmentation
 
 <details><summary>LICENSE-APACHE</summary>
 
@@ -46179,8 +46179,8 @@ DEALINGS IN THE SOFTWARE.
 
 ### url 2.5.8
 
-Licens: MIT OR Apache-2.0  
-Källkod: https://github.com/servo/rust-url
+License: MIT OR Apache-2.0  
+Source code: https://github.com/servo/rust-url
 
 <details><summary>LICENSE-APACHE</summary>
 
@@ -46424,8 +46424,8 @@ DEALINGS IN THE SOFTWARE.
 
 ### urlpattern 0.6.0
 
-Licens: MIT  
-Källkod: https://github.com/denoland/rust-urlpattern
+License: MIT  
+Source code: https://github.com/denoland/rust-urlpattern
 
 <details><summary>LICENSE</summary>
 
@@ -46457,8 +46457,8 @@ SOFTWARE.
 
 ### utf8_iter 1.0.4
 
-Licens: Apache-2.0 OR MIT  
-Källkod: https://github.com/hsivonen/utf8_iter
+License: Apache-2.0 OR MIT  
+Source code: https://github.com/hsivonen/utf8_iter
 
 <details><summary>LICENSE-APACHE</summary>
 
@@ -46702,8 +46702,8 @@ DEALINGS IN THE SOFTWARE.
 
 ### uuid 1.29.0
 
-Licens: Apache-2.0 OR MIT  
-Källkod: https://github.com/uuid-rs/uuid
+License: Apache-2.0 OR MIT  
+Source code: https://github.com/uuid-rs/uuid
 
 <details><summary>LICENSE-APACHE</summary>
 
@@ -46948,8 +46948,8 @@ DEALINGS IN THE SOFTWARE.
 
 ### walkdir 2.5.0
 
-Licens: Unlicense/MIT  
-Källkod: https://github.com/BurntSushi/walkdir
+License: Unlicense/MIT  
+Source code: https://github.com/BurntSushi/walkdir
 
 <details><summary>COPYING</summary>
 
@@ -47022,8 +47022,8 @@ For more information, please refer to <http://unlicense.org/>
 
 ### want 0.3.2
 
-Licens: MIT  
-Källkod: https://github.com/seanmonstar/want
+License: MIT  
+Source code: https://github.com/seanmonstar/want
 
 <details><summary>LICENSE</summary>
 
@@ -47053,8 +47053,8 @@ THE SOFTWARE.
 
 ### wasi 0.11.1+wasi-snapshot-preview1
 
-Licens: Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT  
-Källkod: https://github.com/bytecodealliance/wasi
+License: Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT  
+Source code: https://github.com/bytecodealliance/wasi
 
 <details><summary>LICENSE-APACHE</summary>
 
@@ -47521,8 +47521,8 @@ DEALINGS IN THE SOFTWARE.
 
 ### wasip2 1.0.4+wasi-0.2.12
 
-Licens: Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT  
-Källkod: https://github.com/bytecodealliance/wasi-rs
+License: Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT  
+Source code: https://github.com/bytecodealliance/wasi-rs
 
 <details><summary>LICENSE-APACHE</summary>
 
@@ -47989,8 +47989,8 @@ DEALINGS IN THE SOFTWARE.
 
 ### wasm-bindgen 0.2.129
 
-Licens: MIT OR Apache-2.0  
-Källkod: https://github.com/wasm-bindgen/wasm-bindgen
+License: MIT OR Apache-2.0  
+Source code: https://github.com/wasm-bindgen/wasm-bindgen
 
 <details><summary>LICENSE-APACHE</summary>
 
@@ -48234,8 +48234,8 @@ DEALINGS IN THE SOFTWARE.
 
 ### wasm-bindgen-futures 0.4.79
 
-Licens: MIT OR Apache-2.0  
-Källkod: https://github.com/wasm-bindgen/wasm-bindgen/tree/master/crates/futures
+License: MIT OR Apache-2.0  
+Source code: https://github.com/wasm-bindgen/wasm-bindgen/tree/master/crates/futures
 
 <details><summary>LICENSE-APACHE</summary>
 
@@ -48479,8 +48479,8 @@ DEALINGS IN THE SOFTWARE.
 
 ### wasm-bindgen-macro 0.2.129
 
-Licens: MIT OR Apache-2.0  
-Källkod: https://github.com/wasm-bindgen/wasm-bindgen/tree/master/crates/macro
+License: MIT OR Apache-2.0  
+Source code: https://github.com/wasm-bindgen/wasm-bindgen/tree/master/crates/macro
 
 <details><summary>LICENSE-APACHE</summary>
 
@@ -48724,8 +48724,8 @@ DEALINGS IN THE SOFTWARE.
 
 ### wasm-bindgen-macro-support 0.2.129
 
-Licens: MIT OR Apache-2.0  
-Källkod: https://github.com/wasm-bindgen/wasm-bindgen/tree/main/crates/macro-support
+License: MIT OR Apache-2.0  
+Source code: https://github.com/wasm-bindgen/wasm-bindgen/tree/main/crates/macro-support
 
 <details><summary>LICENSE-APACHE</summary>
 
@@ -48969,8 +48969,8 @@ DEALINGS IN THE SOFTWARE.
 
 ### wasm-bindgen-shared 0.2.129
 
-Licens: MIT OR Apache-2.0  
-Källkod: https://github.com/wasm-bindgen/wasm-bindgen/tree/master/crates/shared
+License: MIT OR Apache-2.0  
+Source code: https://github.com/wasm-bindgen/wasm-bindgen/tree/master/crates/shared
 
 <details><summary>LICENSE-APACHE</summary>
 
@@ -49214,8 +49214,8 @@ DEALINGS IN THE SOFTWARE.
 
 ### wasm-streams 0.5.0
 
-Licens: MIT OR Apache-2.0  
-Källkod: https://github.com/MattiasBuelens/wasm-streams/
+License: MIT OR Apache-2.0  
+Source code: https://github.com/MattiasBuelens/wasm-streams/
 
 <details><summary>LICENSE-APACHE</summary>
 
@@ -49432,8 +49432,8 @@ DEALINGS IN THE SOFTWARE.
 
 ### web-sys 0.3.106
 
-Licens: MIT OR Apache-2.0  
-Källkod: https://github.com/wasm-bindgen/wasm-bindgen/tree/master/crates/web-sys
+License: MIT OR Apache-2.0  
+Source code: https://github.com/wasm-bindgen/wasm-bindgen/tree/master/crates/web-sys
 
 <details><summary>LICENSE-APACHE</summary>
 
@@ -49677,8 +49677,8 @@ DEALINGS IN THE SOFTWARE.
 
 ### web-time 1.1.0
 
-Licens: MIT OR Apache-2.0  
-Källkod: https://github.com/daxpedda/web-time
+License: MIT OR Apache-2.0  
+Source code: https://github.com/daxpedda/web-time
 
 <details><summary>LICENSE-APACHE</summary>
 
@@ -49918,8 +49918,8 @@ SOFTWARE.
 
 ### web_atoms 0.2.6
 
-Licens: MIT OR Apache-2.0  
-Källkod: https://github.com/servo/html5ever
+License: MIT OR Apache-2.0  
+Source code: https://github.com/servo/html5ever
 
 <details><summary>LICENSE-APACHE</summary>
 
@@ -50163,8 +50163,8 @@ DEALINGS IN THE SOFTWARE.
 
 ### webkit2gtk 2.0.2
 
-Licens: MIT  
-Källkod: https://github.com/tauri-apps/webkit2gtk-rs
+License: MIT  
+Source code: https://github.com/tauri-apps/webkit2gtk-rs
 
 <details><summary>LICENSE</summary>
 
@@ -50195,8 +50195,8 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 ### webkit2gtk-sys 2.0.2
 
-Licens: MIT  
-Källkod: https://github.com/tauri-apps/webkit2gtk-rs
+License: MIT  
+Source code: https://github.com/tauri-apps/webkit2gtk-rs
 
 <details><summary>LICENSE</summary>
 
@@ -50225,23 +50225,23 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 ### webview2-com 0.39.1
 
-Licens: MIT  
-Källkod: https://github.com/wravery/webview2-rs
+License: MIT  
+Source code: https://github.com/wravery/webview2-rs
 
 ### webview2-com-macros 0.8.1
 
-Licens: MIT  
-Källkod: https://github.com/wravery/webview2-rs
+License: MIT  
+Source code: https://github.com/wravery/webview2-rs
 
 ### webview2-com-sys 0.39.1
 
-Licens: MIT  
-Källkod: https://github.com/wravery/webview2-rs
+License: MIT  
+Source code: https://github.com/wravery/webview2-rs
 
 ### winapi 0.3.9
 
-Licens: MIT/Apache-2.0  
-Källkod: https://github.com/retep998/winapi-rs
+License: MIT/Apache-2.0  
+Source code: https://github.com/retep998/winapi-rs
 
 <details><summary>LICENSE-APACHE</summary>
 
@@ -50479,13 +50479,13 @@ SOFTWARE.
 
 ### winapi-i686-pc-windows-gnu 0.4.0
 
-Licens: MIT/Apache-2.0  
-Källkod: https://github.com/retep998/winapi-rs
+License: MIT/Apache-2.0  
+Source code: https://github.com/retep998/winapi-rs
 
 ### winapi-util 0.1.11
 
-Licens: Unlicense OR MIT  
-Källkod: https://github.com/BurntSushi/winapi-util
+License: Unlicense OR MIT  
+Source code: https://github.com/BurntSushi/winapi-util
 
 <details><summary>COPYING</summary>
 
@@ -50558,13 +50558,13 @@ For more information, please refer to <http://unlicense.org/>
 
 ### winapi-x86_64-pc-windows-gnu 0.4.0
 
-Licens: MIT/Apache-2.0  
-Källkod: https://github.com/retep998/winapi-rs
+License: MIT/Apache-2.0  
+Source code: https://github.com/retep998/winapi-rs
 
 ### window-vibrancy 0.8.1
 
-Licens: Apache-2.0 OR MIT  
-Källkod: https://github.com/tauri-apps/tauri-plugin-vibrancy
+License: Apache-2.0 OR MIT  
+Source code: https://github.com/tauri-apps/tauri-plugin-vibrancy
 
 <details><summary>LICENSE-APACHE</summary>
 
@@ -50830,8 +50830,8 @@ Creator: Person: Daniel Thompson-Yvetot
 
 ### windows 0.62.2
 
-Licens: MIT OR Apache-2.0  
-Källkod: https://github.com/microsoft/windows-rs
+License: MIT OR Apache-2.0  
+Source code: https://github.com/microsoft/windows-rs
 
 <details><summary>license-apache-2.0</summary>
 
@@ -51071,8 +51071,8 @@ MIT License
 
 ### windows-collections 0.3.2
 
-Licens: MIT OR Apache-2.0  
-Källkod: https://github.com/microsoft/windows-rs
+License: MIT OR Apache-2.0  
+Source code: https://github.com/microsoft/windows-rs
 
 <details><summary>license-apache-2.0</summary>
 
@@ -51312,8 +51312,8 @@ MIT License
 
 ### windows-core 0.62.2
 
-Licens: MIT OR Apache-2.0  
-Källkod: https://github.com/microsoft/windows-rs
+License: MIT OR Apache-2.0  
+Source code: https://github.com/microsoft/windows-rs
 
 <details><summary>license-apache-2.0</summary>
 
@@ -51553,8 +51553,8 @@ MIT License
 
 ### windows-future 0.3.2
 
-Licens: MIT OR Apache-2.0  
-Källkod: https://github.com/microsoft/windows-rs
+License: MIT OR Apache-2.0  
+Source code: https://github.com/microsoft/windows-rs
 
 <details><summary>license-apache-2.0</summary>
 
@@ -51794,8 +51794,8 @@ MIT License
 
 ### windows-implement 0.60.2
 
-Licens: MIT OR Apache-2.0  
-Källkod: https://github.com/microsoft/windows-rs
+License: MIT OR Apache-2.0  
+Source code: https://github.com/microsoft/windows-rs
 
 <details><summary>license-apache-2.0</summary>
 
@@ -52035,8 +52035,8 @@ MIT License
 
 ### windows-interface 0.59.3
 
-Licens: MIT OR Apache-2.0  
-Källkod: https://github.com/microsoft/windows-rs
+License: MIT OR Apache-2.0  
+Source code: https://github.com/microsoft/windows-rs
 
 <details><summary>license-apache-2.0</summary>
 
@@ -52276,8 +52276,8 @@ MIT License
 
 ### windows-link 0.2.1
 
-Licens: MIT OR Apache-2.0  
-Källkod: https://github.com/microsoft/windows-rs
+License: MIT OR Apache-2.0  
+Source code: https://github.com/microsoft/windows-rs
 
 <details><summary>license-apache-2.0</summary>
 
@@ -52517,8 +52517,8 @@ MIT License
 
 ### windows-numerics 0.3.1
 
-Licens: MIT OR Apache-2.0  
-Källkod: https://github.com/microsoft/windows-rs
+License: MIT OR Apache-2.0  
+Source code: https://github.com/microsoft/windows-rs
 
 <details><summary>license-apache-2.0</summary>
 
@@ -52758,8 +52758,8 @@ MIT License
 
 ### windows-result 0.4.1
 
-Licens: MIT OR Apache-2.0  
-Källkod: https://github.com/microsoft/windows-rs
+License: MIT OR Apache-2.0  
+Source code: https://github.com/microsoft/windows-rs
 
 <details><summary>license-apache-2.0</summary>
 
@@ -52999,8 +52999,8 @@ MIT License
 
 ### windows-strings 0.5.1
 
-Licens: MIT OR Apache-2.0  
-Källkod: https://github.com/microsoft/windows-rs
+License: MIT OR Apache-2.0  
+Source code: https://github.com/microsoft/windows-rs
 
 <details><summary>license-apache-2.0</summary>
 
@@ -53240,8 +53240,8 @@ MIT License
 
 ### windows-sys 0.45.0
 
-Licens: MIT OR Apache-2.0  
-Källkod: https://github.com/microsoft/windows-rs
+License: MIT OR Apache-2.0  
+Source code: https://github.com/microsoft/windows-rs
 
 <details><summary>license-apache-2.0</summary>
 
@@ -53481,8 +53481,8 @@ MIT License
 
 ### windows-sys 0.61.2
 
-Licens: MIT OR Apache-2.0  
-Källkod: https://github.com/microsoft/windows-rs
+License: MIT OR Apache-2.0  
+Source code: https://github.com/microsoft/windows-rs
 
 <details><summary>license-apache-2.0</summary>
 
@@ -53722,8 +53722,8 @@ MIT License
 
 ### windows-targets 0.42.2
 
-Licens: MIT OR Apache-2.0  
-Källkod: https://github.com/microsoft/windows-rs
+License: MIT OR Apache-2.0  
+Source code: https://github.com/microsoft/windows-rs
 
 <details><summary>license-apache-2.0</summary>
 
@@ -53963,8 +53963,8 @@ MIT License
 
 ### windows-threading 0.2.1
 
-Licens: MIT OR Apache-2.0  
-Källkod: https://github.com/microsoft/windows-rs
+License: MIT OR Apache-2.0  
+Source code: https://github.com/microsoft/windows-rs
 
 <details><summary>license-apache-2.0</summary>
 
@@ -54204,8 +54204,8 @@ MIT License
 
 ### windows-version 0.1.7
 
-Licens: MIT OR Apache-2.0  
-Källkod: https://github.com/microsoft/windows-rs
+License: MIT OR Apache-2.0  
+Source code: https://github.com/microsoft/windows-rs
 
 <details><summary>license-apache-2.0</summary>
 
@@ -54445,8 +54445,8 @@ MIT License
 
 ### windows_aarch64_gnullvm 0.42.2
 
-Licens: MIT OR Apache-2.0  
-Källkod: https://github.com/microsoft/windows-rs
+License: MIT OR Apache-2.0  
+Source code: https://github.com/microsoft/windows-rs
 
 <details><summary>license-apache-2.0</summary>
 
@@ -54686,8 +54686,8 @@ MIT License
 
 ### windows_aarch64_msvc 0.42.2
 
-Licens: MIT OR Apache-2.0  
-Källkod: https://github.com/microsoft/windows-rs
+License: MIT OR Apache-2.0  
+Source code: https://github.com/microsoft/windows-rs
 
 <details><summary>license-apache-2.0</summary>
 
@@ -54927,8 +54927,8 @@ MIT License
 
 ### windows_i686_gnu 0.42.2
 
-Licens: MIT OR Apache-2.0  
-Källkod: https://github.com/microsoft/windows-rs
+License: MIT OR Apache-2.0  
+Source code: https://github.com/microsoft/windows-rs
 
 <details><summary>license-apache-2.0</summary>
 
@@ -55168,8 +55168,8 @@ MIT License
 
 ### windows_i686_msvc 0.42.2
 
-Licens: MIT OR Apache-2.0  
-Källkod: https://github.com/microsoft/windows-rs
+License: MIT OR Apache-2.0  
+Source code: https://github.com/microsoft/windows-rs
 
 <details><summary>license-apache-2.0</summary>
 
@@ -55409,8 +55409,8 @@ MIT License
 
 ### windows_x86_64_gnu 0.42.2
 
-Licens: MIT OR Apache-2.0  
-Källkod: https://github.com/microsoft/windows-rs
+License: MIT OR Apache-2.0  
+Source code: https://github.com/microsoft/windows-rs
 
 <details><summary>license-apache-2.0</summary>
 
@@ -55650,8 +55650,8 @@ MIT License
 
 ### windows_x86_64_gnullvm 0.42.2
 
-Licens: MIT OR Apache-2.0  
-Källkod: https://github.com/microsoft/windows-rs
+License: MIT OR Apache-2.0  
+Source code: https://github.com/microsoft/windows-rs
 
 <details><summary>license-apache-2.0</summary>
 
@@ -55891,8 +55891,8 @@ MIT License
 
 ### windows_x86_64_msvc 0.42.2
 
-Licens: MIT OR Apache-2.0  
-Källkod: https://github.com/microsoft/windows-rs
+License: MIT OR Apache-2.0  
+Source code: https://github.com/microsoft/windows-rs
 
 <details><summary>license-apache-2.0</summary>
 
@@ -56132,8 +56132,8 @@ MIT License
 
 ### winnow 0.5.40
 
-Licens: MIT  
-Källkod: https://github.com/winnow-rs/winnow
+License: MIT  
+Source code: https://github.com/winnow-rs/winnow
 
 <details><summary>LICENSE-MIT</summary>
 
@@ -56162,8 +56162,8 @@ WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 ### winnow 1.0.4
 
-Licens: MIT  
-Källkod: https://github.com/winnow-rs/winnow
+License: MIT  
+Source code: https://github.com/winnow-rs/winnow
 
 <details><summary>LICENSE-MIT</summary>
 
@@ -56192,8 +56192,8 @@ WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 ### wit-bindgen 0.57.1
 
-Licens: Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT  
-Källkod: https://github.com/bytecodealliance/wit-bindgen
+License: Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT  
+Source code: https://github.com/bytecodealliance/wit-bindgen
 
 <details><summary>LICENSE-APACHE</summary>
 
@@ -56660,8 +56660,8 @@ DEALINGS IN THE SOFTWARE.
 
 ### writeable 0.6.4
 
-Licens: Unicode-3.0  
-Källkod: https://github.com/unicode-org/icu4x
+License: Unicode-3.0  
+Source code: https://github.com/unicode-org/icu4x
 
 <details><summary>LICENSE</summary>
 
@@ -56718,8 +56718,8 @@ ICU 1.8.1 to ICU 57.1 © 1995-2016 International Business Machines Corporation a
 
 ### wry 0.57.1
 
-Licens: Apache-2.0 OR MIT  
-Källkod: https://github.com/tauri-apps/wry
+License: Apache-2.0 OR MIT  
+Source code: https://github.com/tauri-apps/wry
 
 <details><summary>LICENSE-APACHE</summary>
 
@@ -56986,8 +56986,8 @@ Creator: Person: Daniel Thompson-Yvetot
 
 ### x11 2.21.0
 
-Licens: MIT  
-Källkod: https://github.com/AltF02/x11-rs.git
+License: MIT  
+Source code: https://github.com/AltF02/x11-rs.git
 
 <details><summary>LICENSE-MIT</summary>
 
@@ -57021,8 +57021,8 @@ DEALINGS IN THE SOFTWARE.
 
 ### x11-dl 2.21.0
 
-Licens: MIT  
-Källkod: https://github.com/AltF02/x11-rs.git
+License: MIT  
+Source code: https://github.com/AltF02/x11-rs.git
 
 <details><summary>LICENSE-MIT</summary>
 
@@ -57056,8 +57056,8 @@ DEALINGS IN THE SOFTWARE.
 
 ### yoke 0.8.4
 
-Licens: Unicode-3.0  
-Källkod: https://github.com/unicode-org/icu4x
+License: Unicode-3.0  
+Source code: https://github.com/unicode-org/icu4x
 
 <details><summary>LICENSE</summary>
 
@@ -57114,8 +57114,8 @@ ICU 1.8.1 to ICU 57.1 © 1995-2016 International Business Machines Corporation a
 
 ### yoke-derive 0.8.4
 
-Licens: Unicode-3.0  
-Källkod: https://github.com/unicode-org/icu4x
+License: Unicode-3.0  
+Source code: https://github.com/unicode-org/icu4x
 
 <details><summary>LICENSE</summary>
 
@@ -57172,8 +57172,8 @@ ICU 1.8.1 to ICU 57.1 © 1995-2016 International Business Machines Corporation a
 
 ### zerofrom 0.1.8
 
-Licens: Unicode-3.0  
-Källkod: https://github.com/unicode-org/icu4x
+License: Unicode-3.0  
+Source code: https://github.com/unicode-org/icu4x
 
 <details><summary>LICENSE</summary>
 
@@ -57230,8 +57230,8 @@ ICU 1.8.1 to ICU 57.1 © 1995-2016 International Business Machines Corporation a
 
 ### zerofrom-derive 0.1.8
 
-Licens: Unicode-3.0  
-Källkod: https://github.com/unicode-org/icu4x
+License: Unicode-3.0  
+Source code: https://github.com/unicode-org/icu4x
 
 <details><summary>LICENSE</summary>
 
@@ -57288,8 +57288,8 @@ ICU 1.8.1 to ICU 57.1 © 1995-2016 International Business Machines Corporation a
 
 ### zerotrie 0.2.5
 
-Licens: Unicode-3.0  
-Källkod: https://github.com/unicode-org/icu4x
+License: Unicode-3.0  
+Source code: https://github.com/unicode-org/icu4x
 
 <details><summary>LICENSE</summary>
 
@@ -57346,8 +57346,8 @@ ICU 1.8.1 to ICU 57.1 © 1995-2016 International Business Machines Corporation a
 
 ### zerovec 0.11.9
 
-Licens: Unicode-3.0  
-Källkod: https://github.com/unicode-org/icu4x
+License: Unicode-3.0  
+Source code: https://github.com/unicode-org/icu4x
 
 <details><summary>LICENSE</summary>
 
@@ -57404,8 +57404,8 @@ ICU 1.8.1 to ICU 57.1 © 1995-2016 International Business Machines Corporation a
 
 ### zerovec-derive 0.11.7
 
-Licens: Unicode-3.0  
-Källkod: https://github.com/unicode-org/icu4x
+License: Unicode-3.0  
+Source code: https://github.com/unicode-org/icu4x
 
 <details><summary>LICENSE</summary>
 
@@ -57462,8 +57462,8 @@ ICU 1.8.1 to ICU 57.1 © 1995-2016 International Business Machines Corporation a
 
 ### zmij 1.0.23
 
-Licens: MIT  
-Källkod: https://github.com/dtolnay/zmij
+License: MIT  
+Source code: https://github.com/dtolnay/zmij
 
 <details><summary>LICENSE-MIT</summary>
 
@@ -57495,12 +57495,12 @@ DEALINGS IN THE SOFTWARE.
 
 </details>
 
-## JavaScript (6 paket)
+## JavaScript (6 packages)
 
 ### @tauri-apps/api 2.12.4
 
-Licens: Apache-2.0 OR MIT  
-Källkod: git+https://github.com/tauri-apps/tauri.git
+License: Apache-2.0 OR MIT  
+Source code: git+https://github.com/tauri-apps/tauri.git
 
 <details><summary>LICENSE-APACHE-2.0</summary>
 
@@ -57742,8 +57742,8 @@ Creator: Person: Daniel Thompson-Yvetot
 
 ### @tauri-apps/plugin-dialog 2.8.4
 
-Licens: MIT OR Apache-2.0  
-Källkod: https://github.com/tauri-apps/plugins-workspace
+License: MIT OR Apache-2.0  
+Source code: https://github.com/tauri-apps/plugins-workspace
 
 <details><summary>LICENSE.spdx</summary>
 
@@ -57774,8 +57774,8 @@ Creator: Person: Daniel Thompson-Yvetot
 
 ### react 19.3.1
 
-Licens: MIT  
-Källkod: https://github.com/react/react.git
+License: MIT  
+Source code: https://github.com/react/react.git
 
 <details><summary>LICENSE</summary>
 
@@ -57807,8 +57807,8 @@ SOFTWARE.
 
 ### react-dom 19.3.1
 
-Licens: MIT  
-Källkod: https://github.com/react/react.git
+License: MIT  
+Source code: https://github.com/react/react.git
 
 <details><summary>LICENSE</summary>
 
@@ -57840,8 +57840,8 @@ SOFTWARE.
 
 ### scheduler 0.28.0
 
-Licens: MIT  
-Källkod: https://github.com/react/react.git
+License: MIT  
+Source code: https://github.com/react/react.git
 
 <details><summary>LICENSE</summary>
 
@@ -57873,8 +57873,8 @@ SOFTWARE.
 
 ### three 0.186.1
 
-Licens: MIT  
-Källkod: https://github.com/mrdoob/three.js
+License: MIT  
+Source code: https://github.com/mrdoob/three.js
 
 <details><summary>LICENSE</summary>
 

@@ -1,30 +1,30 @@
-//! Skal med integrering genom tjockleken (område struct_nonlin): olinjära
-//! material (plasticitet), temperatur, *ORIENTATION och skiktade tvärsnitt
-//! (*SHELL SECTION, COMPOSITE) för S4R, S4, S3 och S3R.
+//! Shells with integration through the thickness (area struct_nonlin): nonlinear
+//! materials (plasticity), temperature, *ORIENTATION and layered sections
+//! (*SHELL SECTION, COMPOSITE) for S4R, S4, S3 and S3R.
 //!
-//! Tvärsnittet integreras i sektionspunkter genom tjockleken med Simpsons
-//! regel: ett homogent tvärsnitt har n punkter (standard 5) över
-//! hela tjockleken, ett skiktat n punkter (standard 3) i varje skikt.
-//! Sektionspunkterna numreras nerifrån (SNEG) och uppåt, skikt för skikt.
-//! I varje punkt uppdateras materialet i plan spänning med töjningen
-//! ε(z) = ε₀ + z·κ (vriden till materialets axlar) och temperaturen
-//! T(z) = T + z·∂T/∂n. Snittkrafterna och tvärsnittets tangent blir
+//! The section is integrated at section points through the thickness with Simpson's
+//! rule: a homogeneous section has n points (default 5) over
+//! the full thickness, a layered one n points (default 3) in each layer.
+//! The section points are numbered from the bottom (SNEG) upwards, layer by layer.
+//! At each point the material is updated in plane stress with the strain
+//! ε(z) = ε₀ + z·κ (rotated to the material axes) and the temperature
+//! T(z) = T + z·∂T/∂n. The section forces and the section tangent become
 //!
 //!   N = Σ wₖ σₖ,  M = Σ wₖ zₖ σₖ,  C = Σ wₖ [Cₖ, zₖCₖ; zₖCₖ, zₖ²Cₖ].
 //!
-//! Tvärskjuvning, timglasstabilisering och drill är elastiska med det
-//! ursprungliga tvärsnittets styvhet.
+//! Transverse shear, hourglass stabilization and drill are elastic with the
+//! original section stiffness.
 //!
-//! Materialets axlar: elementets lokala axlar (se `shell.rs`), vridna till
-//! *ORIENTATION:s 1-axel projicerad på skalets plan (tvärsnittets
-//! ORIENTATION=), plus skiktets vinkel för skiktade tvärsnitt. S och
-//! materialets skalära utdata (PEEQ) redovisas i sektionspunkterna 1 och den
-//! sista, S i materialets axlar; SF och SM i orienteringens axlar.
+//! Material axes: the element's local axes (see `shell.rs`), rotated to
+//! the 1-axis of *ORIENTATION projected onto the shell plane (the section's
+//! ORIENTATION=), plus the layer angle for layered sections. S and
+//! the material's scalar output (PEEQ) are reported at section point 1 and the
+//! last one, S in the material axes; SF and SM in the orientation axes.
 //!
-//! Vid NLGEOM används skalens korotationella formulering (`shell_nlgeom.rs`):
-//! membrantöjningen är logaritmisk ur nodlägena, krökningen linjär i de
-//! deformationella rotationerna, och de elastiska delarna (skjuvning, timglas,
-//! drill) som energi i de deformationella förskjutningarna.
+//! With NLGEOM the corotational shell formulation is used (`shell_nlgeom.rs`):
+//! the membrane strain is logarithmic from the nodal positions, the curvature linear in the
+//! deformational rotations, and the elastic parts (shear, hourglass,
+//! drill) as energy in the deformational displacements.
 
 use super::nlgeom::{self, MemRule};
 use super::{local_frame, Local, ShellSec};
@@ -35,8 +35,8 @@ use crate::kinematics::hyperdual::Hd;
 use crate::materials::{MatInput, MaterialModel, StressMode};
 use crate::model::{fail, Result};
 
-/// Sektionspunkt: läge z från mittytan, vikt (Simpson, med tjocklek) och
-/// vinkeln från elementets lokala 1-axel till materialets 1-axel (cos, sin).
+/// Section point: position z from the midsurface, weight (Simpson, with thickness) and
+/// the angle from the element's local 1-axis to the material 1-axis (cos, sin).
 #[derive(Clone, Copy, Debug)]
 pub struct SecPoint {
     pub z: f64,
@@ -45,28 +45,28 @@ pub struct SecPoint {
     pub s: f64,
 }
 
-/// Generaliserade töjningar per integrationspunkt (lagras för töjningsinkrementet).
+/// Generalized strains per integration point (stored for the strain increment).
 pub const NGEN: usize = 6;
 
-/// Tvärsnitt med sektionspunkter.
+/// Section with section points.
 pub struct Layup<'a> {
     pub t: f64,
     pub pts: Vec<SecPoint>,
-    /// Skikten (z0, z1, cos, sin) för skiktade tvärsnitt.
+    /// The layers (z0, z1, cos, sin) for layered sections.
     plies: Vec<(f64, f64, f64, f64)>,
     pub mat: &'a dyn MaterialModel,
     nst: usize,
-    /// Vinkel från elementets 1-axel till orienteringens 1-axel (utdata för SF, SM).
+    /// Angle from the element's 1-axis to the orientation 1-axis (output for SF, SM).
     pub out: (f64, f64),
 }
 
-/// Simpsons punkter och vikter för ett skikt [z0, z0 + h] med n punkter.
+/// Simpson points and weights for a layer [z0, z0 + h] with n points.
 fn simpson(z0: f64, h: f64, n: usize) -> Result<Vec<(f64, f64)>> {
     if n == 1 {
         return Ok(vec![(z0 + 0.5 * h, h)]);
     }
     if n % 2 == 0 {
-        return fail(format!("antalet sektionspunkter ({n}) måste vara udda (Simpsons regel)"));
+        return fail(format!("the number of section points ({n}) must be odd (Simpson's rule)"));
     }
     let dz = h / (n - 1) as f64;
     Ok((0..n)
@@ -77,12 +77,12 @@ fn simpson(z0: f64, h: f64, n: usize) -> Result<Vec<(f64, f64)>> {
         .collect())
 }
 
-/// Vinkeln (cos, sin) från elementets lokala 1-axel till materialets 1-axel
-/// för tvärsnittets *ORIENTATION. Axeln k som den extra rotationen
-/// görs kring (andra dataraden, standard 1) är skalets normalriktning, och
-/// materialaxlarna i planet är de två följande (k = 1: 2 och 3, k = 2: 3 och 1,
-/// k = 3: 1 och 2). Materialets 1-axel är den första av dem projicerad på
-/// skalets plan.
+/// The angle (cos, sin) from the element's local 1-axis to the material 1-axis
+/// for the section's *ORIENTATION. The axis k about which the additional rotation
+/// is made (second data line, default 1) is the shell normal direction, and
+/// the in-plane material axes are the next two (k = 1: 2 and 3, k = 2: 3 and 1,
+/// k = 3: 1 and 2). The material 1-axis is the first of them projected onto
+/// the shell plane.
 fn orientation_angle(ctx: &ElemCtx, loc: &Local) -> Result<(f64, f64)> {
     let Some(o) = ctx.orientation else { return Ok((1.0, 0.0)) };
     let ax = o.axes_at(common::centroid(&ctx.x));
@@ -92,19 +92,19 @@ fn orientation_angle(ctx: &ElemCtx, loc: &Local) -> Result<(f64, f64)> {
     let proj = |v: [f64; 3]| -> [f64; 3] { common::sub(v, common::scale(n, common::dot(v, n))) };
     let mut p = proj(a1);
     if common::norm(p) < 1e-3 {
-        // 1-axeln är (nästan) vinkelrät mot skalet: 1-axeln blir 2-axeln × n
+        // the 1-axis is (almost) perpendicular to the shell: the 1-axis becomes the 2-axis × n
         let q = proj(a2);
         p = common::cross(q, n);
     }
     let (a, b) = (common::dot(p, loc.r[0]), common::dot(p, loc.r[1]));
     let l = (a * a + b * b).sqrt();
     if !(l > 0.0) {
-        return fail(format!("element {}: orienteringen ger ingen riktning i skalets plan", ctx.label));
+        return fail(format!("element {}: the orientation gives no direction in the shell plane", ctx.label));
     }
     Ok((a / l, b / l))
 }
 
-/// Tjocklek och skikt (tjocklek, punkter, vinkel i grader) för *SHELL SECTION, COMPOSITE.
+/// Thickness and layers (thickness, points, angle in degrees) for *SHELL SECTION, COMPOSITE.
 pub fn composite_plies(sec: &crate::fem::model::SectionDef) -> Result<Vec<(f64, usize, f64)>> {
     let mut plies = Vec::new();
     for d in sec.raw.records() {
@@ -113,7 +113,7 @@ pub fn composite_plies(sec: &crate::fem::model::SectionDef) -> Result<Vec<(f64, 
         }
         let num = |i: usize, def: f64| -> Result<f64> {
             match d.fields.get(i).map(|f| f.trim()).filter(|f| !f.is_empty()) {
-                Some(f) => parse_f64(f).ok_or_else(|| crate::model::FemError(format!("{} rad {}: '{f}' är inget tal", sec.raw.file, d.line))),
+                Some(f) => parse_f64(f).ok_or_else(|| crate::model::FemError(format!("{} line {}: '{f}' is not a number", sec.raw.file, d.line))),
                 None => Ok(def),
             }
         };
@@ -123,22 +123,22 @@ pub fn composite_plies(sec: &crate::fem::model::SectionDef) -> Result<Vec<(f64, 
             None => 0.0,
             Some(f) => match parse_f64(f) {
                 Some(a) => a,
-                None => return sec.raw.err_at(d.line, format!("skiktets orientering '{f}' stöds inte ännu (ange vinkeln i grader)")),
+                None => return sec.raw.err_at(d.line, format!("the layer orientation '{f}' is not supported yet (give the angle in degrees)")),
             },
         };
         if !(t > 0.0) {
-            return sec.raw.err_at(d.line, "skiktets tjocklek måste vara positiv");
+            return sec.raw.err_at(d.line, "the layer thickness must be positive");
         }
         plies.push((t, n, ang));
     }
     if plies.is_empty() {
-        return sec.raw.err("*SHELL SECTION, COMPOSITE saknar skikt");
+        return sec.raw.err("*SHELL SECTION, COMPOSITE has no layers");
     }
     Ok(plies)
 }
 
-/// Tvärsnittet integreras genom tjockleken (olinjärt material, orientering
-/// eller skiktat tvärsnitt). Annars används den homogena elastiska formuleringen.
+/// The section is integrated through the thickness (nonlinear material, orientation
+/// or layered section). Otherwise the homogeneous elastic formulation is used.
 pub fn is_general(ctx: &ElemCtx) -> bool {
     let Some(sec) = ctx.section else { return false };
     if sec.raw.name != "SHELL SECTION" {
@@ -159,7 +159,7 @@ impl<'a> Layup<'a> {
         let mat = ctx.material(name)?;
         for p in ["OFFSET", "TEMPERATURE"] {
             if sec.raw.has(p) {
-                return sec.raw.err(format!("{p}= på *SHELL SECTION stöds inte ännu"));
+                return sec.raw.err(format!("{p}= on *SHELL SECTION is not supported yet"));
             }
         }
         let out = orientation_angle(ctx, loc)?;
@@ -172,7 +172,7 @@ impl<'a> Layup<'a> {
             let mut z0 = -0.5 * t;
             for (h, n, ang) in plies {
                 let (ca, sa) = (ang.to_radians().cos(), ang.to_radians().sin());
-                // vinkel = orienteringens + skiktets
+                // angle = the orientation's + the layer's
                 let (c, s) = (out.0 * ca - out.1 * sa, out.1 * ca + out.0 * sa);
                 for (z, w) in simpson(z0, h, n)? {
                     pts.push(SecPoint { z, w, c, s });
@@ -182,7 +182,7 @@ impl<'a> Layup<'a> {
             }
         } else {
             let crate::fem::model::SectionKind::Shell { thickness, n_int } = sec.kind else {
-                return fail(format!("element {} ({name}) kräver *SHELL SECTION", ctx.label));
+                return fail(format!("element {} ({name}) requires *SHELL SECTION", ctx.label));
             };
             t = thickness;
             for (z, w) in simpson(-0.5 * t, t, n_int.max(1))? {
@@ -196,7 +196,7 @@ impl<'a> Layup<'a> {
         3 + self.nst
     }
 
-    /// Tillståndets längd per integrationspunkt.
+    /// The state length per integration point.
     pub fn ip_len(&self) -> usize {
         NGEN + self.pts.len() * self.stride()
     }
@@ -212,7 +212,7 @@ impl<'a> Layup<'a> {
         st
     }
 
-    /// Elastisk tvärsnittsmatris 6×6 för [ε; κ] (lokala axlar).
+    /// Elastic section matrix 6×6 for [ε; κ] (local axes).
     pub fn elastic_c(&self) -> Result<[f64; 36]> {
         let d = self.mat.tangent_linear(StressMode::PlaneStress)?;
         let mut c = [0.0; 36];
@@ -223,9 +223,9 @@ impl<'a> Layup<'a> {
         Ok(c)
     }
 
-    /// Snittkrafter [N; M] och tangent i en integrationspunkt. `e` är de
-    /// generaliserade töjningarna vid inkrementets slut (lokala axlar), `temp`
-    /// = (T, ΔT, ∂T/∂n, Δ∂T/∂n) i mittytan; `so`/`sn` punktens tillstånd.
+    /// Section forces [N; M] and tangent at an integration point. `e` is the
+    /// generalized strains at the end of the increment (local axes), `temp`
+    /// = (T, ΔT, ∂T/∂n, Δ∂T/∂n) at the midsurface; `so`/`sn` the point state.
     pub fn response(&self, ctx: &ElemCtx, e: &[f64; 6], temp: [f64; 4], so: &[f64], sn: &mut [f64]) -> Result<([f64; 6], [f64; 36])> {
         let st = self.stride();
         let e_old: [f64; 6] = if so.len() >= NGEN { std::array::from_fn(|i| so[i]) } else { [0.0; 6] };
@@ -251,7 +251,7 @@ impl<'a> Layup<'a> {
                 dtemp: temp[1] + p.z * temp[3],
                 defgrad: None,
             };
-            let r = self.mat.update(&inp, &pso[3..], &mut psn[3..]).map_err(|err| crate::model::FemError(format!("element {} sektionspunkt {}: {}", ctx.label, k + 1, err.0)))?;
+            let r = self.mat.update(&inp, &pso[3..], &mut psn[3..]).map_err(|err| crate::model::FemError(format!("element {} section point {}: {}", ctx.label, k + 1, err.0)))?;
             psn[..3].copy_from_slice(&r.stress[..3]);
             let sl = stress_from(&r.stress, p.c, p.s);
             for i in 0..3 {
@@ -264,13 +264,13 @@ impl<'a> Layup<'a> {
         Ok((s6, c6))
     }
 
-    /// Spänning (materialets axlar) i sektionspunkt k ur tillståndet.
+    /// Stress (material axes) at section point k from the state.
     fn stress_at(&self, ipst: &[f64], k: usize) -> [f64; 3] {
         let o = NGEN + k * self.stride();
         [ipst[o], ipst[o + 1], ipst[o + 2]]
     }
 
-    /// Snittkrafter [N; M] ur lagrade spänningar (lokala axlar).
+    /// Section forces [N; M] from stored stresses (local axes).
     pub fn forces_from_state(&self, ipst: &[f64]) -> [f64; 6] {
         let mut s6 = [0.0; 6];
         for (k, p) in self.pts.iter().enumerate() {
@@ -283,9 +283,9 @@ impl<'a> Layup<'a> {
         s6
     }
 
-    /// Utdata S (sektionspunkt 1 och sista), skalära materialfält, SF och SM
-    /// per integrationspunkt. `states` = tillstånd per integrationspunkt,
-    /// `shear` = tvärkrafter (lokala axlar), `mscale` = faktor på SF1–SF3.
+    /// Output S (section point 1 and the last), scalar material fields, SF and SM
+    /// per integration point. `states` = state per integration point,
+    /// `shear` = transverse shear forces (local axes), `mscale` = factor on SF1–SF3.
     pub fn output(&self, states: &[&[f64]], shear: &[[f64; 2]], mscale: f64) -> Vec<IpField> {
         let mut s = IpField::new("S", &["S11", "S22", "S12"]);
         let mut sf = IpField::new("SF", &["SF1", "SF2", "SF3", "SF4", "SF5", "SF6"]);
@@ -334,17 +334,17 @@ impl<'a> Layup<'a> {
     }
 }
 
-/// Tvärskjuvstyvhet [K11, K22, K12] i elementets lokala axlar (skalad med
-/// faktorn 1/(1 + 0,25·10⁻⁴·A/t²)) och tvärsnittets drillstyvhet.
+/// Transverse shear stiffness [K11, K22, K12] in the element's local axes (scaled by
+/// the factor 1/(1 + 0.25·10⁻⁴·A/t²)) and the section drill stiffness.
 ///
-/// Homogena tvärsnitt: som det linjära elementet (5/6·G·t eller
-/// *TRANSVERSE SHEAR STIFFNESS). Skiktade tvärsnitt utan *TRANSVERSE SHEAR
-/// STIFFNESS: för böjning i riktning α (cylindrisk böjning) är
-/// tvärskjuvspänningen τ(z) = V·S(z)/D med S(z) = ∫ Q̄αα (z' − z_n) dz'
-/// från undersidan, och energin ger K_αα = D² / ∫ S²/G_α3 dz (5/6·G·t för ett
-/// homogent tvärsnitt). G_α3 är skiktets tvärskjuvmodul i elementets axlar
-/// (G13 och G23 ur materialets 3D-styvhet; för LAMINA, som inte sparar dem,
-/// används G12).
+/// Homogeneous sections: like the linear element (5/6·G·t or
+/// *TRANSVERSE SHEAR STIFFNESS). Layered sections without *TRANSVERSE SHEAR
+/// STIFFNESS: for bending in the direction α (cylindrical bending)
+/// the transverse shear stress is τ(z) = V·S(z)/D with S(z) = ∫ Q̄αα (z' − z_n) dz'
+/// from the bottom, and the energy gives K_αα = D² / ∫ S²/G_α3 dz (5/6·G·t for a
+/// homogeneous section). G_α3 is the layer's transverse shear modulus in the element axes
+/// (G13 and G23 from the material's 3D stiffness; for LAMINA, which does not store them,
+/// G12 is used).
 pub fn shear_stiffness(ctx: &ElemCtx, name: &str, loc: &Local, sec: &mut ShellSec, a: f64) -> Result<[f64; 3]> {
     let fp = 1.0 / (1.0 + 0.25e-4 * a / (sec.t * sec.t));
     let composite = ctx.section.is_some_and(|s| s.raw.has("COMPOSITE"));
@@ -364,31 +364,31 @@ pub fn shear_stiffness(ctx: &ElemCtx, name: &str, loc: &Local, sec: &mut ShellSe
         Ok(d) if d.len() == 36 => (d[4 * 6 + 4], d[5 * 6 + 5]),
         _ => (dps[8], dps[8]),
     };
-    // enhetsmoment Mα (N = 0, övriga moment noll): töjningar ur tvärsnittets
-    // fullständiga flexibilitet, spänningarna σ(z) = Q̄(z)(ε₀ + z κ) per enhet
-    // tvärkraft Vα = dMα/dxα, och tvärskjuvspänningen ur jämvikten
-    // τ(z) = −∫ ∂σ/∂xα dz' (Vα ger både τ13 och τ23 i skikt med vinkel)
+    // unit moment Mα (N = 0, other moments zero): strains from the section's
+    // full flexibility, the stresses σ(z) = Q̄(z)(ε₀ + z κ) per unit
+    // transverse force Vα = dMα/dxα, and the transverse shear stress from equilibrium
+    // τ(z) = −∫ ∂σ/∂xα dz' (Vα gives both τ13 and τ23 in layers with an angle)
     let abd = lay.elastic_c()?;
     let Some(fl) = super::inv_n(&abd, 6) else {
-        return fail(format!("element {} ({name}): tvärsnittets styvhetsmatris är singulär", ctx.label));
+        return fail(format!("element {} ({name}): the section stiffness matrix is singular", ctx.label));
     };
     let gp = [(-0.774_596_669_241_483_4, 5.0 / 9.0), (0.0, 8.0 / 9.0), (0.774_596_669_241_483_4, 5.0 / 9.0)];
-    // τ per skikt: τ(z) = τ(z0) − ∫_{z0}^{z} (q0 + q1 z') dz' (σ linjärt i z inom skiktet)
+    // τ per layer: τ(z) = τ(z0) − ∫_{z0}^{z} (q0 + q1 z') dz' (σ linear in z within the layer)
     let mut f = [[0.0; 2]; 2];
-    let mut tau0 = [[0.0; 2]; 2]; // [lastfall][komponent 13, 23]
+    let mut tau0 = [[0.0; 2]; 2]; // [load case][component 13, 23]
     for &(z0, z1, c, sn) in &lay.plies {
         let q = rotate_tangent(&dps, c, sn);
         let g = [g13 * c * c + g23 * sn * sn, g13 * sn * sn + g23 * c * c, c * sn * (g13 - g23)];
         let det = g[0] * g[1] - g[2] * g[2];
         let gi = [g[1] / det, g[0] / det, -g[2] / det];
-        // lastfall α: generaliserade töjningar för enhetsmomentet Mα
+        // load case α: generalized strains for the unit moment Mα
         let lin: Vec<[[f64; 2]; 2]> = (0..2)
             .map(|al| {
                 let e: [f64; 6] = std::array::from_fn(|r| fl[r * 6 + 3 + al]);
-                // σ(z) = Q̄ (ε₀ + z κ) = a + b z för komponenterna 11, 22, 12
+                // σ(z) = Q̄ (ε₀ + z κ) = a + b z for the components 11, 22, 12
                 let a: [f64; 3] = std::array::from_fn(|r| (0..3).map(|cc| q[r * 3 + cc] * e[cc]).sum());
                 let b: [f64; 3] = std::array::from_fn(|r| (0..3).map(|cc| q[r * 3 + cc] * e[3 + cc]).sum());
-                // ∂σ/∂xα: α = 1 ger (σ11, σ12) för (τ13, τ23), α = 2 ger (σ12, σ22)
+                // ∂σ/∂xα: α = 1 gives (σ11, σ12) for (τ13, τ23), α = 2 gives (σ12, σ22)
                 let (i13, i23) = if al == 0 { (0, 2) } else { (2, 1) };
                 [[a[i13], b[i13]], [a[i23], b[i23]]]
             })
@@ -414,12 +414,12 @@ pub fn shear_stiffness(ctx: &ElemCtx, name: &str, loc: &Local, sec: &mut ShellSe
     // K = F⁻¹
     let det = f[0][0] * f[1][1] - f[0][1] * f[1][0];
     let k = [f[1][1] / det, f[0][0] / det, -f[0][1] / det];
-    // drill och övriga elastiska termer följer tvärskjuvstyvheten
+    // drill and other elastic terms follow the transverse shear stiffness
     sec.tss = Some([0.5 * (k[0] + k[1]), 0.5 * (k[0] + k[1]), 0.0]);
     Ok([k[0] * fp, k[1] * fp, k[2] * fp])
 }
 
-/// Töjning [ε11, ε22, γ12] i axlar vridna vinkeln (c, s) från de lokala.
+/// Strain [ε11, ε22, γ12] in axes rotated by the angle (c, s) from the local ones.
 pub fn strain_to(e: &[f64; 3], c: f64, s: f64) -> [f64; 3] {
     [
         c * c * e[0] + s * s * e[1] + c * s * e[2],
@@ -428,7 +428,7 @@ pub fn strain_to(e: &[f64; 3], c: f64, s: f64) -> [f64; 3] {
     ]
 }
 
-/// Spänning [σ11, σ22, σ12] i axlar vridna vinkeln (c, s) från de lokala.
+/// Stress [σ11, σ22, σ12] in axes rotated by the angle (c, s) from the local ones.
 pub fn stress_to(sg: &[f64; 3], c: f64, s: f64) -> [f64; 3] {
     [
         c * c * sg[0] + s * s * sg[1] + 2.0 * c * s * sg[2],
@@ -437,7 +437,7 @@ pub fn stress_to(sg: &[f64; 3], c: f64, s: f64) -> [f64; 3] {
     ]
 }
 
-/// Spänning i lokala axlar ur materialets: σ_l = Tεᵀ σ_m.
+/// Stress in local axes from the material's: σ_l = Tεᵀ σ_m.
 fn stress_from(sm: &[f64], c: f64, s: f64) -> [f64; 3] {
     [
         c * c * sm[0] + s * s * sm[1] - 2.0 * c * s * sm[2],
@@ -446,7 +446,7 @@ fn stress_from(sm: &[f64], c: f64, s: f64) -> [f64; 3] {
     ]
 }
 
-/// Tangent i lokala axlar: Tεᵀ C Tε.
+/// Tangent in local axes: Tεᵀ C Tε.
 fn rotate_tangent(d: &[f64], c: f64, s: f64) -> [f64; 9] {
     let t = [c * c, s * s, c * s, s * s, c * c, -c * s, -2.0 * c * s, 2.0 * c * s, c * c - s * s];
     let mut dt = [0.0; 9];
@@ -476,9 +476,9 @@ fn add_point(c6: &mut [f64; 36], cl: &[f64; 9], z: f64, w: f64) {
     }
 }
 
-/// Temperatur (T, ΔT, ∂T/∂n, Δ∂T/∂n) i mittytan. Nodtemperaturerna i
-/// `ctx.temp` följs av gradienterna genom tjockleken om sådana finns
-/// (2·nn värden, se `fem::assembly`).
+/// Temperature (T, ΔT, ∂T/∂n, Δ∂T/∂n) at the midsurface. The nodal temperatures in
+/// `ctx.temp` are followed by the gradients through the thickness if present
+/// (2·nn values, see `fem::assembly`).
 pub fn temperature(ctx: &ElemCtx, nn: usize) -> [f64; 4] {
     let avg = |v: &[f64]| v.iter().sum::<f64>() / v.len() as f64;
     if ctx.temp.len() < nn || ctx.temp_old.len() < nn {
@@ -490,17 +490,17 @@ pub fn temperature(ctx: &ElemCtx, nn: usize) -> [f64; 4] {
     [t, t - t0, g, g - g0]
 }
 
-/// Elementets kinematik för den integrerade formuleringen: B-matriser
-/// (6 × 6nn, lokala frihetsgrader) och vikter per integrationspunkt, den
-/// elastiska resten (skjuvning, timglas, drill; lokal) och tvärskjuvningen
-/// per integrationspunkt (2 × 6nn).
+/// The element kinematics for the integrated formulation: B matrices
+/// (6 × 6nn, local degrees of freedom) and weights per integration point, the
+/// elastic remainder (shear, hourglass, drill; local) and the transverse shear
+/// per integration point (2 × 6nn).
 pub struct Kin {
     pub loc: Local,
     pub sec: ShellSec,
     pub ips: Vec<(Vec<f64>, f64)>,
     pub rest: Vec<f64>,
     pub shear: Vec<Vec<f64>>,
-    /// Tvärskjuvstyvheten [K11, K22, K12] (skalad, lokala axlar).
+    /// The transverse shear stiffness [K11, K22, K12] (scaled, local axes).
     pub kshear: [f64; 3],
     pub rule: MemRule,
 }
@@ -514,7 +514,7 @@ impl Kin {
         common::block_diag(&self.loc.r, 2 * self.nd() / 6)
     }
 
-    /// Elastisk styvhet (global) med tvärsnittets elastiska matris.
+    /// Elastic stiffness (global) with the elastic section matrix.
     pub fn stiffness(&self, lay: &Layup) -> Result<Vec<f64>> {
         let c = lay.elastic_c()?;
         let nd = self.nd();
@@ -525,7 +525,7 @@ impl Kin {
         Ok(super::to_global(&k, &self.loc.r, nd / 6))
     }
 
-    /// Inre kraft och tangent (geometriskt linjärt).
+    /// Internal force and tangent (geometrically linear).
     pub fn response(&self, ctx: &ElemCtx, lay: &Layup, u: &[f64], so: &[f64], sn: &mut Vec<f64>, tangent: bool) -> Result<ElemResponse> {
         let nd = self.nd();
         let ul = common::matvec(&self.t(), u);
@@ -558,7 +558,7 @@ impl Kin {
         Ok(ElemResponse { fint, k })
     }
 
-    /// Tvärkrafter per integrationspunkt för lokala förskjutningar `ul`.
+    /// Transverse shear forces per integration point for local displacements `ul`.
     pub fn shear_forces(&self, ul: &[f64]) -> Vec<[f64; 2]> {
         let nd = self.nd();
         let k = self.kshear;
@@ -572,8 +572,8 @@ impl Kin {
             .collect()
     }
 
-    /// Utdata. Vid NLGEOM är `u` de totala förskjutningarna; tvärkrafterna
-    /// räknas då med de deformationella.
+    /// Output. With NLGEOM `u` is the total displacements; the transverse shear forces
+    /// are then computed with the deformational ones.
     pub fn output(&self, ctx: &ElemCtx, name: &str, lay: &Layup, u: &[f64], state: &[f64]) -> Result<Vec<IpField>> {
         let len = lay.ip_len();
         let nip = self.ips.len();
@@ -583,7 +583,7 @@ impl Kin {
         if st.len() != nip * len && ctx.nlgeom {
             st = lay.init_state(nip);
         } else if !ctx.nlgeom && (st.len() != nip * len || ctx.material.is_some_and(|m| m.is_linear())) {
-            // linjärt material (utan tillstånd i linjära steg): räkna om från u
+            // linear material (without state in linear steps): recompute from u
             let so = lay.init_state(nip);
             let mut sn = Vec::new();
             self.response(ctx, lay, u, &so, &mut sn, false)?;
@@ -600,13 +600,13 @@ impl Kin {
         Ok(lay.output(&states, &shear, ms))
     }
 
-    /// Inre kraft och tangent vid NLGEOM (korotationellt, se modulens dokumentation).
+    /// Internal force and tangent with NLGEOM (corotational, see the module documentation).
     #[allow(clippy::too_many_arguments)]
     pub fn response_nlgeom(&self, ctx: &ElemCtx, name: &str, lay: &Layup, u: &[f64], so: &[f64], sn: &mut Vec<f64>, tangent: bool) -> Result<ElemResponse> {
         match self.nd() {
             24 => self.nl_n::<24>(ctx, name, lay, u, so, sn, tangent),
             18 => self.nl_n::<18>(ctx, name, lay, u, so, sn, tangent),
-            n => fail(format!("element {} ({name}): NLGEOM med {n} frihetsgrader stöds inte", ctx.label)),
+            n => fail(format!("element {} ({name}): NLGEOM with {n} degrees of freedom is not supported", ctx.label)),
         }
     }
 
@@ -617,10 +617,10 @@ impl Kin {
         let mem = nlgeom::Membrane::new(ctx, name, self.rule)?;
         let eps = mem.strains::<N>(&nlgeom::positions_hd::<N>(&ctx.x, u, 6, &var));
         let t = self.t();
-        // lokala deformationella förskjutningar ul = T d (hyperduala)
+        // local deformational displacements ul = T d (hyper-dual)
         let ul: Vec<Hd<N>> = (0..N).map(|i| (0..N).fold(Hd::cst(0.0), |acc, j| if t[i * N + j] != 0.0 { acc + d[j] * t[i * N + j] } else { acc })).collect();
         let lin = |b: &[f64], r: usize| -> Hd<N> { (0..N).fold(Hd::cst(0.0), |acc, j| if b[r * N + j] != 0.0 { acc + ul[j] * b[r * N + j] } else { acc }) };
-        // membranets linjära del i mitten (för S4:s antagna töjning)
+        // the linear membrane part at the center (for the assumed strain of S4)
         let (b0, _) = &self.ips[0];
         let bm_c: [Hd<N>; 3] = if self.rule == MemRule::Center && self.ips.len() > 1 { mem_center::<N>(self, &ul) } else { std::array::from_fn(|r| lin(b0, r)) };
         let len = lay.ip_len();
@@ -635,7 +635,7 @@ impl Kin {
         sn.clear();
         sn.extend_from_slice(so);
         let temp = temperature(ctx, N / 6);
-        // elastisk rest: Φ = ½ dᵀ K_r d i globala referensaxlar
+        // elastic remainder: Φ = ½ dᵀ K_r d in global reference axes
         let kr = super::to_global(&self.rest, &self.loc.r, N / 6);
         let s: Vec<f64> = (0..N).map(|i| (0..N).map(|j| kr[i * N + j] * d[j].v).sum()).collect();
         let mut fint: Vec<f64> = (0..N).map(|q| (0..N).map(|i| d[i].g[q] * s[i]).sum()).collect();
@@ -672,8 +672,8 @@ impl Kin {
         }
         let el = eps[0];
         for (q, (b, w)) in self.ips.iter().enumerate() {
-            // generaliserade töjningar: logaritmisk membrantöjning (plus S4:s
-            // antagna töjning i integrationspunkten) och linjär krökning
+            // generalized strains: logarithmic membrane strain (plus the assumed
+            // strain of S4 at the integration point) and linear curvature
             let e: [Hd<N>; 6] = std::array::from_fn(|r| if r < 3 { el[r] + (lin(b, r) - bm_c[r]) } else { lin(b, r) });
             let ev: [f64; 6] = std::array::from_fn(|r| e[r].v);
             let (sg, c) = lay.response(ctx, &ev, temp, &so[q * len..(q + 1) * len], &mut sn[q * len..(q + 1) * len])?;
@@ -709,7 +709,7 @@ impl Kin {
             }
         }
         if fint.iter().any(|v| !v.is_finite()) {
-            return fail(format!("element {} ({name}): ogiltig deformerad geometri", ctx.label));
+            return fail(format!("element {} ({name}): invalid deformed geometry", ctx.label));
         }
         if tangent {
             for p in 0..N {
@@ -724,14 +724,14 @@ impl Kin {
     }
 }
 
-/// Membranets linjära töjning i mitten (S4: enpunktsdelen utan antagen töjning).
+/// The linear membrane strain at the center (S4: the one-point part without the assumed strain).
 fn mem_center<const N: usize>(kin: &Kin, ul: &[Hd<N>]) -> [Hd<N>; 3] {
     let p0 = super::q4pt(&kin.loc.xl, 0.0, 0.0);
     let b = super::bmem(&p0.bx, &p0.by);
     std::array::from_fn(|r| (0..N).fold(Hd::cst(0.0), |acc, j| if b[r * N + j] != 0.0 { acc + ul[j] * b[r * N + j] } else { acc }))
 }
 
-/// Elementets lokala system (för `Layup::new` före kinematiken).
+/// The element's local system (for `Layup::new` before the kinematics).
 pub fn frame(ctx: &ElemCtx, name: &str) -> Result<Local> {
     local_frame(&ctx.x, ctx.label, name)
 }

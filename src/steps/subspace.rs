@@ -1,19 +1,19 @@
-//! Subspace-projektion på egenmoderna från det föregående *FREQUENCY-steget:
+//! Subspace projection onto the eigenmodes from the preceding *FREQUENCY step:
 //!
 //! - `*STEADY STATE DYNAMICS, SUBSPACE PROJECTION=ALL FREQUENCIES |
-//!   EIGENFREQUENCY | PROPERTY CHANGE | CONSTANT`: de direkta
-//!   ekvationerna (K − Ω²M + iΩC + iS) u = F projiceras på modbasen,
-//!   (diag(ωᵢ²) − Ω² I + iΩ Cᵣ + i Sᵣ) q = Φᵀ F, och löses tätt per frekvens.
-//!   Till skillnad från den modala SSD ingår all dämpning som kopplade
-//!   matriser: dämpare (*DASHPOT), materialets *DAMPING ALPHA/BETA och
-//!   STRUCTURAL (samma Cᵣ och Sᵣ som *COMPLEX FREQUENCY), plus *MODAL DAMPING
-//!   (diagonalt). Egenskaperna är frekvensoberoende, så alla
-//!   projektionsalternativ ger samma resultat.
-//! - `*DYNAMIC, SUBSPACE`: explicit centraldifferens i modkoordinaterna
-//!   (se `DynamicSubspace`).
+//!   EIGENFREQUENCY | PROPERTY CHANGE | CONSTANT`: the direct
+//!   equations (K − Ω²M + iΩC + iS) u = F are projected onto the modal basis,
+//!   (diag(ωᵢ²) − Ω² I + iΩ Cᵣ + i Sᵣ) q = Φᵀ F, and solved densely per frequency.
+//!   Unlike the modal SSD, all damping is included as coupled
+//!   matrices: dashpots (*DASHPOT), the material's *DAMPING ALPHA/BETA and
+//!   STRUCTURAL (the same Cᵣ and Sᵣ as *COMPLEX FREQUENCY), plus *MODAL DAMPING
+//!   (diagonal). The properties are frequency independent, so all
+//!   projection options give the same result.
+//! - `*DYNAMIC, SUBSPACE`: explicit central difference in the modal coordinates
+//!   (see `DynamicSubspace`).
 //!
-//! Frekvenspunkter och utdata som modal *STEADY STATE DYNAMICS (U, U_IM,
-//! elementfält och deras _IM-delar).
+//! Frequency points and output as for modal *STEADY STATE DYNAMICS (U, U_IM,
+//! element fields and their _IM parts).
 
 use super::api::{StepCtx, StepType};
 use super::complex_frequency::dense::{self, Cx};
@@ -52,14 +52,14 @@ impl StepType for SsdSubspace {
         let kw = ctx.step.procedure.as_ref().unwrap();
         match kw.param_upper("SUBSPACE PROJECTION").as_deref() {
             Some("") | Some("ALL FREQUENCIES") | Some("EIGENFREQUENCY") | Some("PROPERTY CHANGE") | Some("CONSTANT") => {}
-            Some(o) => return kw.err(format!("SUBSPACE PROJECTION={o} stöds inte")),
+            Some(o) => return kw.err(format!("SUBSPACE PROJECTION={o} is not supported")),
             None => {}
         }
         if !ctx.step.bcs.is_empty() {
-            return fail("*BOUNDARY i *STEADY STATE DYNAMICS stöds inte – använd *BASE MOTION");
+            return fail("*BOUNDARY in *STEADY STATE DYNAMICS is not supported – use *BASE MOTION");
         }
         if ctx.step.extra.iter().any(|k| k.name == "BASE MOTION") {
-            return fail("*BASE MOTION i *STEADY STATE DYNAMICS, SUBSPACE PROJECTION stöds inte ännu");
+            return fail("*BASE MOTION in *STEADY STATE DYNAMICS, SUBSPACE PROJECTION is not supported yet");
         }
         let prep = ctx.prep;
         let model = prep.model;
@@ -127,24 +127,24 @@ impl StepType for DynamicSubspace {
     }
 }
 
-/// *DYNAMIC, SUBSPACE: explicit centraldifferens i modkoordinaterna,
-/// q̈ = Φᵀ F(t) − diag(ω²) q − Cᵣ q̇ med v_{n+½} = v_{n−½} + ½(Δtₙ₊₁ + Δtₙ) aₙ,
-/// qₙ₊₁ = qₙ + Δt v_{n+½} och dämpningskraften med v_{n+½}. Cᵣ = Φᵀ C Φ med
-/// dämpare (*DASHPOT) och materialets BETA (βK); ALPHA och STRUCTURAL
-/// ignoreras. Fast
-/// tidsinkrement = dataradens första värde; över
-/// stabilitetsgränsen 2/ωmax ger det fel.
+/// *DYNAMIC, SUBSPACE: explicit central difference in the modal coordinates,
+/// q̈ = Φᵀ F(t) − diag(ω²) q − Cᵣ q̇ with v_{n+½} = v_{n−½} + ½(Δtₙ₊₁ + Δtₙ) aₙ,
+/// qₙ₊₁ = qₙ + Δt v_{n+½} and the damping force with v_{n+½}. Cᵣ = Φᵀ C Φ with
+/// dashpots (*DASHPOT) and the material's BETA (βK); ALPHA and STRUCTURAL
+/// are ignored. Fixed
+/// time increment = the first value on the data line; above
+/// the stability limit 2/ωmax it gives an error.
 fn run_dynamic_subspace(ctx: &mut StepCtx) -> Result<()> {
     let kw = ctx.step.procedure.as_ref().unwrap();
     if !ctx.step.bcs.is_empty() {
-        return fail("*BOUNDARY i *DYNAMIC, SUBSPACE stöds inte ännu");
+        return fail("*BOUNDARY in *DYNAMIC, SUBSPACE is not supported yet");
     }
     if ctx.nlgeom {
-        return fail("*DYNAMIC, SUBSPACE med NLGEOM=YES stöds inte ännu");
+        return fail("*DYNAMIC, SUBSPACE with NLGEOM=YES is not supported yet");
     }
     let v = kw.first_floats()?;
     let period = v.get(1).copied().filter(|&x| x > 0.0).unwrap_or(1.0);
-    let dt0 = v.first().copied().filter(|&x| x > 0.0).ok_or_else(|| FemError(format!("{}: tidsinkrement saknas", kw.location())))?;
+    let dt0 = v.first().copied().filter(|&x| x > 0.0).ok_or_else(|| FemError(format!("{}: time increment is missing", kw.location())))?;
     let prep = ctx.prep;
     let model = prep.model;
     let nn = model.nodes.len();
@@ -152,7 +152,7 @@ fn run_dynamic_subspace(ctx: &mut StepCtx) -> Result<()> {
     let n = b.len();
     let wmax = b.omega.iter().cloned().fold(0.0, f64::max);
     if wmax * dt0 > 2.0 {
-        return kw.err(format!("tidsinkrementet {dt0} överskrider stabilitetsgränsen 2/ωmax = {:.4e}", 2.0 / wmax));
+        return kw.err(format!("the time increment {dt0} exceeds the stability limit 2/ωmax = {:.4e}", 2.0 / wmax));
     }
     let cr = subspace_damping(ctx, &b)?;
     let time0 = ctx.state.time;
@@ -194,7 +194,7 @@ fn run_dynamic_subspace(ctx: &mut StepCtx) -> Result<()> {
     let ninc = (period / dt0 - 1e-9).ceil().max(1.0) as usize;
     let mut t = 0.0;
     let mut h_prev = 0.0;
-    // halvstegshastigheten v_{n−½}
+    // half-step velocity v_{n−½}
     let mut vh = qd.clone();
     for inc in 1..=ninc {
         let h = if inc == ninc { period - t } else { dt0 };
@@ -217,7 +217,7 @@ fn run_dynamic_subspace(ctx: &mut StepCtx) -> Result<()> {
             frames.push(mk(&q, &qd, &qdd, t, inc)?);
         }
     }
-    // sluttillståndet ärvs av följande steg
+    // the final state is inherited by the following step
     let u = total(&q);
     let st0 = ctx.state.elem_state.clone();
     let int = assembly::internal(prep, &b.dm, &u, &u, &st0, false, time0 + period, period, None)?;
@@ -229,7 +229,7 @@ fn run_dynamic_subspace(ctx: &mut StepCtx) -> Result<()> {
     Ok(())
 }
 
-/// Projicerad dämpning Φᵀ C Φ för *DYNAMIC, SUBSPACE: dämpare och βK.
+/// Projected damping Φᵀ C Φ for *DYNAMIC, SUBSPACE: dashpots and βK.
 fn subspace_damping(ctx: &StepCtx, b: &ModalBasis) -> Result<Vec<f64>> {
     let p = ctx.prep;
     let m = p.model;
@@ -251,7 +251,7 @@ fn subspace_damping(ctx: &StepCtx, b: &ModalBasis) -> Result<Vec<f64>> {
         let Some(mi) = el.section.and_then(|s| m.sections[s].material_index) else { continue };
         let Some(kw) = m.materials[mi].behavior("DAMPING") else { continue };
         let beta = match kw.param("BETA") {
-            Some(v) => parse_f64(v).ok_or_else(|| FemError(format!("{}: BETA={v} är inget tal", kw.location())))?,
+            Some(v) => parse_f64(v).ok_or_else(|| FemError(format!("{}: BETA={v} is not a number", kw.location())))?,
             None => 0.0,
         };
         if beta == 0.0 {
@@ -261,7 +261,7 @@ fn subspace_damping(ctx: &StepCtx, b: &ModalBasis) -> Result<Vec<f64>> {
         let ke = el.etype.stiffness(&ctxe).map_err(|err| FemError(format!("{}: {err}", m.elem_name(e))))?;
         let map: Vec<Option<usize>> = p.edofs[e].iter().map(|&(nd, s)| idx(nd, s)).collect();
         let nd = map.len();
-        // φᵢ i elementets frihetsgrader
+        // φᵢ in the element's DOFs
         let xe: Vec<Vec<f64>> = (0..n).map(|i| map.iter().map(|g| g.map_or(0.0, |g| b.x[i][g])).collect()).collect();
         let kx: Vec<Vec<f64>> = xe.iter().map(|x| (0..nd).map(|a| (0..nd).map(|c| ke[a * nd + c] * x[c]).sum()).collect()).collect();
         for i in 0..n {

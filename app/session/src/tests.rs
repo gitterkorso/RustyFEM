@@ -13,7 +13,7 @@ fn max_u(o: &AnalysisOutput) -> f64 {
 
 #[test]
 fn session_runs_like_engine_with_progress() {
-    let path = root().join("app/session/tests/data/cpe4_ett_element_inhomogen.inp");
+    let path = root().join("app/session/tests/data/cpe4_one_element_inhomogeneous.inp");
     let s = Session::open(&path).unwrap();
     let direct = rustyfem::steps::run(&rustyfem::inp::read_file(&path).unwrap().model, &RunOptions::default()).unwrap().0;
     let events = Arc::new(Mutex::new(Vec::new()));
@@ -27,7 +27,7 @@ fn session_runs_like_engine_with_progress() {
 
 #[test]
 fn cancel_stops_run() {
-    let s = Session::open(&root().join("app/session/tests/data/cpe4_ett_element_inhomogen.inp")).unwrap();
+    let s = Session::open(&root().join("app/session/tests/data/cpe4_one_element_inhomogeneous.inp")).unwrap();
     let err = run_analysis(s.model(), None, false, Arc::new(AtomicBool::new(true)), |_| {}).unwrap_err();
     assert!(err.contains(rustyfem::progress::CANCELLED), "{err}");
 }
@@ -51,7 +51,7 @@ fn fem_edit_undo_redo_and_mesh() {
 
 #[test]
 fn inp_edit_and_project_roundtrip() {
-    let path = root().join("app/session/tests/data/cpe4_ett_element_inhomogen.inp");
+    let path = root().join("app/session/tests/data/cpe4_one_element_inhomogeneous.inp");
     let mut s = Session::open(&path).unwrap();
     let old = s.model().steps[0].max_increments;
     s.apply(Edit::MaxIncrements { step: 0, value: 77 }).unwrap();
@@ -74,7 +74,7 @@ fn inp_edit_and_project_roundtrip() {
 fn surface_of_solid_is_exterior_only() {
     let text = "model 3d\nmaterial steel E=210e9 nu=0.3\nbox x=0..1 y=0..1 z=0..1 size=0.5\nfix x=0\nload x=1 fx=1\n";
     let s = Session::new_fem(text).unwrap();
-    // 2×2×2 hexaedrar: 24 yttre ytor, 2 trianglar var
+    // 2×2×2 hexahedra: 24 exterior faces, 2 triangles each
     assert_eq!(s.mesh().tri_elem.len(), 48);
     let est = memory::estimate(s.model(), 1e12, None, 1);
     assert!(est.fits && est.direct_bytes > 0.0);
@@ -83,16 +83,16 @@ fn surface_of_solid_is_exterior_only() {
 #[test]
 fn project_include_resolved_from_file_contents() {
     let dir = std::env::temp_dir().join(format!("rustyfem_inc_{}", std::process::id()));
-    std::fs::create_dir_all(dir.join("del")).unwrap();
-    let case = std::fs::read_to_string(root().join("app/session/tests/data/cpe4_ett_element_inhomogen.inp")).unwrap();
-    // flytta allt före första *STEP till en inkluderad fil
+    std::fs::create_dir_all(dir.join("part")).unwrap();
+    let case = std::fs::read_to_string(root().join("app/session/tests/data/cpe4_one_element_inhomogeneous.inp")).unwrap();
+    // move everything before the first *STEP to an included file
     let k = case.find("*STEP").or_else(|| case.find("*Step")).unwrap();
-    std::fs::write(dir.join("del/modell.inp"), &case[..k]).unwrap();
-    std::fs::write(dir.join("huvud.inp"), format!("*INCLUDE, INPUT=del/modell.inp\n{}", &case[k..])).unwrap();
-    let s = Session::open(&dir.join("huvud.inp")).unwrap();
+    std::fs::write(dir.join("part/model.inp"), &case[..k]).unwrap();
+    std::fs::write(dir.join("main.inp"), format!("*INCLUDE, INPUT=part/model.inp\n{}", &case[k..])).unwrap();
+    let s = Session::open(&dir.join("main.inp")).unwrap();
     let bytes = s.to_project();
     std::fs::remove_dir_all(&dir).unwrap();
-    // inkluderade filen finns inte längre på disk: läses ur projektfilen
+    // the included file is no longer on disk: it is read from the project file
     let p = std::env::temp_dir().join("rustyfem_inc_test.rustyproj");
     std::fs::write(&p, bytes).unwrap();
     let t = Session::open(&p).unwrap();
@@ -111,7 +111,7 @@ fn units_default_guess_and_roundtrip() {
     assert_eq!(p.units, "si_mm");
     assert_eq!(Session::from_project(p, None).unwrap().units, UnitSystem::SiMm);
 
-    // äldre projektfil: etiketten ger standardvalet för källan
+    // older project file: the label gives the default choice for the source
     let mut p = Project::from_bytes(&s.to_project()).unwrap();
     p.units = units::LEGACY_LABEL.into();
     assert_eq!(Session::from_project(p, None).unwrap().units, UnitSystem::Si);
@@ -126,27 +126,27 @@ fn units_default_guess_and_roundtrip() {
 
 #[test]
 fn incomplete_script_is_built_step_by_step() {
-    // tom modell: går att öppna men inte att lösa
+    // empty model: can be opened but not solved
     let mut s = Session::new_fem(EMPTY_3D).unwrap();
     assert_eq!(s.info().script_dim, Some(3));
-    assert!(s.problem().unwrap().contains("inga element"), "{:?}", s.problem());
+    assert!(s.problem().unwrap().contains("no elements"), "{:?}", s.problem());
     assert!(s.model().steps.is_empty());
-    // stöd före geometri
+    // support before geometry
     let t = format!("{EMPTY_2D}fix x=0\n");
     s.apply(Edit::FemText { text: t.clone() }).unwrap();
     assert_eq!(s.info().script_dim, Some(2));
     assert!(s.problem().is_some());
-    // geometri som stödet träffar: komplett
+    // geometry that the support hits: complete
     let t = format!("{t}plate x=0..1 y=0..0.1 t=0.01 size=0.05\nload x=1 fy=-100\n");
     s.apply(Edit::FemText { text: t.clone() }).unwrap();
     assert_eq!(s.problem(), None);
     assert_eq!(s.model().steps.len(), 1);
-    // stöd som inte träffar några noder: byggs, men med ett besked
+    // support that hits no nodes: built, but with a message
     s.apply(Edit::FemText { text: t.replace("fix x=0", "fix x=5") }).unwrap();
-    assert!(s.problem().unwrap().contains("träffade inga noder"), "{:?}", s.problem());
-    // fel i skriptet avvisas och modellen lämnas orörd
+    assert!(s.problem().unwrap().contains("no nodes"), "{:?}", s.problem());
+    // errors in the script are rejected and the model is left untouched
     let n = s.model().nodes.len();
-    assert!(s.apply(Edit::FemText { text: "model 2d\nplatta x=0..1\n".into() }).unwrap_err().contains("rad 2"));
+    assert!(s.apply(Edit::FemText { text: "model 2d\nplatta x=0..1\n".into() }).unwrap_err().contains("line 2"));
     assert_eq!(s.model().nodes.len(), n);
     s.undo().unwrap();
     assert_eq!(s.problem(), None);

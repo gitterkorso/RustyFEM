@@ -1,4 +1,4 @@
-# Portalram med I-profiler, ledade fotpunkter.
+# Portal frame with I-profiles, pinned column bases.
 material steel E=210e9 nu=0.3
 beam (0,0) (0,4) (6,4) (6,0) section=ibeam(0.3,0.15,0.0107,0.0071) n=8
 pin y=0

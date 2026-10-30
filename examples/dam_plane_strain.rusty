@@ -1,0 +1,8 @@
+# Dam cross-section in plane strain (CPE3) with self-weight and water load.
+plane strain
+elements tri
+material concrete E=30e9 nu=0.2 rho=2400
+quad (0,0) (6,0) (1.5,8) (0,8) t=1 size=0.4
+fix y=0
+gravity
+pressure x=0 p=4e4          # mean water pressure on the upstream face

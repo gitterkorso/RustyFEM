@@ -1,13 +1,13 @@
-//! Adiabatisk analys (område coupled2): *STATIC, ADIABATIC och
-//! *DYNAMIC, ADIABATIC (implicit analys).
+//! Adiabatic analysis (area coupled2): *STATIC, ADIABATIC and
+//! *DYNAMIC, ADIABATIC (implicit analysis).
 //!
-//! Temperaturen räknas i integrationspunkterna utan värmeledning:
-//! ΔT = η σ:Δεᵖˡ / (ρc) per inkrement, med η från *INELASTIC HEAT FRACTION.
-//! Materialomslaget `materials::inelastic_heat::Adiabatic` gör uppvärmningen;
-//! steg-typen här slår på det adiabatiska läget i alla integrationspunkter
-//! (begynnelsetemperaturen = elementets nodtemperatur), kör steget med den
-//! vanliga steg-typen för *STATIC respektive *DYNAMIC och slår av läget
-//! efteråt (temperaturen i punkterna behålls). TEMP i elementutdata.
+//! The temperature is computed at the integration points without heat conduction:
+//! ΔT = η σ:Δεᵖˡ / (ρc) per increment, with η from *INELASTIC HEAT FRACTION.
+//! The material wrapper `materials::inelastic_heat::Adiabatic` does the heating;
+//! the step type here switches on adiabatic mode at all integration points
+//! (initial temperature = the element's nodal temperature), runs the step with the
+//! regular step type for *STATIC or *DYNAMIC, and switches the mode off
+//! afterwards (the temperature at the points is kept). TEMP in element output.
 
 use super::api::{StepCtx, StepType};
 use crate::fem::model::StepDef;
@@ -31,7 +31,7 @@ fn proc_name(dynamic: bool) -> &'static str {
     }
 }
 
-/// Sätter adiabatiskt läge i alla integrationspunkter med `Adiabatic`-material.
+/// Sets adiabatic mode at all integration points with an `Adiabatic` material.
 fn set_mode(ctx: &mut StepCtx, on: bool) {
     let p = ctx.prep;
     let m = p.model;
@@ -48,7 +48,7 @@ fn set_mode(ctx: &mut StepCtx, on: bool) {
         if nip == 0 || st.len() < nip * stride || mat.n_state() < N_EXTRA {
             continue;
         }
-        // nodtemperaturernas medelvärde (begynnelsetemperaturen)
+        // mean of the nodal temperatures (the initial temperature)
         let t0 = if ectx.temp.is_empty() { 0.0 } else { ectx.temp.iter().take(el.nodes.len()).sum::<f64>() / el.nodes.len() as f64 };
         for k in 0..nip {
             let b = k * stride + nc;
@@ -80,7 +80,7 @@ impl StepType for Adiabatic {
         let me = self.name();
         let delegate = super::all().into_iter().filter(|t| t.name() != me).filter_map(|t| t.claim_model(ctx.step, ctx.nlgeom, model).map(|p| (p, t))).max_by_key(|(p, _)| *p);
         let Some((_, ty)) = delegate else {
-            return fail(format!("*{}, ADIABATIC: ingen steg-typ för proceduren", proc_name(self.dynamic)));
+            return fail(format!("*{}, ADIABATIC: no step type for the procedure", proc_name(self.dynamic)));
         };
         set_mode(ctx, true);
         let r = ty.run(ctx);

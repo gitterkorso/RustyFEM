@@ -1,21 +1,21 @@
-//! Område materials4: *HYPERELASTIC, ARRUDA-BOYCE, TEST DATA INPUT – μ och λm
-//! anpassade till provdata (minsta kvadratmetoden för det
-//! relativa felet E_k = 1 − T_k^th/T_k^test, Marquardt–Levenberg från
+//! Area materials4: *HYPERELASTIC, ARRUDA-BOYCE, TEST DATA INPUT – μ and λm
+//! fitted to test data (least squares for the
+//! relative error E_k = 1 − T_k^th/T_k^test, Marquardt–Levenberg from
 //! λm(0) = max(7, 3 λmax)).
 //!
-//! Med det inkompressibla materialets nominella spänningar (λ = 1 + ε) är
+//! With the nominal stresses of the incompressible material (λ = 1 + ε),
 //!
 //!   T = 2 (λ − λ^c) ∂U/∂Ī1,  ∂U/∂Ī1 = μ Σ_{i=1}^{5} i C_i λm^(2−2i) Ī1^(i−1),
 //!
-//! med c = −2 (enaxligt), −5 (tvåaxligt) och −3 (plant). Spänningen är
-//! linjär i μ, så för varje λm ges μ*(λm) av ett linjärt minsta kvadratproblem
-//! och den skalära felsumman S(λm) minimeras lokalt med start i λm(0)
-//! (samma lokala minimum som Marquardt–Levenberg-iterationen når).
+//! with c = −2 (uniaxial), −5 (biaxial) and −3 (planar). The stress is
+//! linear in μ, so for each λm, μ*(λm) is given by a linear least-squares problem
+//! and the scalar error sum S(λm) is minimized locally starting from λm(0)
+//! (the same local minimum that the Marquardt–Levenberg iteration reaches).
 //!
-//! Volymdelen: *VOLUMETRIC TEST DATA (tryck p, volymkvot J) ger D ur
-//! p = −(J − 1/J)/D (relativt fel), POISSON=ν ger D = 3(1 − 2ν)/(μ0 (1 + ν)),
-//! annars är materialet inkompressibelt (D = 0). OGDEN och VAN DER WAALS med
-//! TEST DATA INPUT stöds inte ännu (startvärden för αi saknas).
+//! The volumetric part: *VOLUMETRIC TEST DATA (pressure p, volume ratio J) gives D from
+//! p = −(J − 1/J)/D (relative error), POISSON=ν gives D = 3(1 − 2ν)/(μ0 (1 + ν)),
+//! otherwise the material is incompressible (D = 0). OGDEN and VAN DER WAALS with
+//! TEST DATA INPUT are not supported yet (starting values for αi are missing).
 
 use super::hyperelastic_ogden::{Form, HyperOgden};
 use super::{MaterialFactory, MaterialModel};
@@ -24,7 +24,7 @@ use crate::model::{FemError, Result};
 use std::sync::Arc;
 
 pub static FACTORIES: &[MaterialFactory] = &[MaterialFactory {
-    name: "hyperelasticitet ur provdata (Arruda–Boyce, TEST DATA INPUT)",
+    name: "hyperelasticity from test data (Arruda–Boyce, TEST DATA INPUT)",
     consumes: &["HYPERELASTIC", "UNIAXIAL TEST DATA", "BIAXIAL TEST DATA", "PLANAR TEST DATA", "VOLUMETRIC TEST DATA"],
     priority: 10,
     build: Some(build),
@@ -32,26 +32,26 @@ pub static FACTORIES: &[MaterialFactory] = &[MaterialFactory {
 
 const AB_C: [f64; 5] = [0.5, 1.0 / 20.0, 11.0 / 1050.0, 19.0 / 7000.0, 519.0 / 673750.0];
 
-/// Modellen tar *HYPERELASTIC med TEST DATA INPUT för en form som
-/// `hyperelastic_ogden.rs`/`hyperelastic_vdw.rs` annars bygger.
+/// The model takes *HYPERELASTIC with TEST DATA INPUT for a form that
+/// `hyperelastic_ogden.rs`/`hyperelastic_vdw.rs` would otherwise build.
 pub fn claims(kw: &RawKeyword) -> bool {
     kw.has("TEST DATA INPUT") && (kw.has("OGDEN") || kw.has("ARRUDA-BOYCE") || kw.has("VAN DER WAALS"))
 }
 
-/// (ε, T) ur ett provdatanyckelord (nominell spänning först).
+/// (ε, T) from a test data keyword (nominal stress first).
 fn pairs(kw: &RawKeyword) -> Result<Vec<(f64, f64)>> {
     let mut v = Vec::new();
     for d in kw.records() {
         let f = kw.floats(&d)?;
         if f.len() < 2 {
-            return kw.err("provdata: varje rad ska ha spänning och töjning");
+            return kw.err("test data: each line must have stress and strain");
         }
         v.push((f[1], f[0]));
     }
     Ok(v)
 }
 
-/// En deviatorisk provpunkt: Ī1, förstärkningen 2(λ − λ^c) och T.
+/// A deviatoric test point: Ī1, the gain 2(λ − λ^c) and T.
 struct Point {
     i1: f64,
     g: f64,
@@ -63,9 +63,9 @@ fn du(lm: f64, i1: f64) -> f64 {
     (0..5).map(|k| (k + 1) as f64 * AB_C[k] * lm.powi(-2 * k as i32) * i1.powi(k as i32)).sum()
 }
 
-/// (S, μ*) vid λm.
+/// (S, μ*) at λm.
 fn objective(pts: &[Point], lm: f64) -> (f64, f64) {
-    // E_k = 1 − μ a_k med a_k = g du / T
+    // E_k = 1 − μ a_k with a_k = g du / T
     let a: Vec<f64> = pts.iter().map(|p| p.g * du(lm, p.i1) / p.t).collect();
     let mu = a.iter().sum::<f64>() / a.iter().map(|x| x * x).sum::<f64>();
     (a.iter().map(|x| (1.0 - mu * x).powi(2)).sum(), mu)
@@ -77,11 +77,11 @@ fn build(def: &MaterialDef) -> Result<Option<Arc<dyn MaterialModel>>> {
         return Ok(None);
     }
     if !kw.has("ARRUDA-BOYCE") {
-        return kw.err("TEST DATA INPUT stöds bara för ARRUDA-BOYCE bland de olinjära formerna (inte OGDEN eller VAN DER WAALS ännu)");
+        return kw.err("TEST DATA INPUT is only supported for ARRUDA-BOYCE among the nonlinear forms (not OGDEN or VAN DER WAALS yet)");
     }
     for p in ["USER", "TYPE", "PROPERTIES", "MODULI"] {
         if kw.has(p) {
-            return kw.err(format!("parametern {p} stöds inte ännu med TEST DATA INPUT"));
+            return kw.err(format!("the parameter {p} is not supported yet with TEST DATA INPUT"));
         }
     }
     let mut pts = Vec::new();
@@ -89,7 +89,7 @@ fn build(def: &MaterialDef) -> Result<Option<Arc<dyn MaterialModel>>> {
     for (name, c) in [("UNIAXIAL TEST DATA", -2), ("BIAXIAL TEST DATA", -5), ("PLANAR TEST DATA", -3)] {
         let Some(t) = def.behavior(name) else { continue };
         if t.has("DEPENDENCIES") || t.has("SMOOTH") {
-            return t.err("DEPENDENCIES och SMOOTH stöds inte ännu för provdata");
+            return t.err("DEPENDENCIES and SMOOTH are not supported yet for test data");
         }
         for (e, s) in pairs(t)? {
             if s == 0.0 {
@@ -97,7 +97,7 @@ fn build(def: &MaterialDef) -> Result<Option<Arc<dyn MaterialModel>>> {
             }
             let l = 1.0 + e;
             if !(l > 0.0) {
-                return t.err("provdata: töjningen ska vara större än −1");
+                return t.err("test data: the strain must be greater than −1");
             }
             lmax = lmax.max(l).max(1.0 / l);
             let i1 = match c {
@@ -109,9 +109,9 @@ fn build(def: &MaterialDef) -> Result<Option<Arc<dyn MaterialModel>>> {
         }
     }
     if pts.is_empty() {
-        return kw.err("TEST DATA INPUT kräver *UNIAXIAL, *BIAXIAL eller *PLANAR TEST DATA");
+        return kw.err("TEST DATA INPUT requires *UNIAXIAL, *BIAXIAL or *PLANAR TEST DATA");
     }
-    // lokalt minimum av S(λm) från λm(0), i ln λm
+    // local minimum of S(λm) from λm(0), in ln λm
     let f = |x: f64| objective(&pts, 1.0 + x.exp()).0;
     let x0 = (7.0f64.max(3.0 * lmax) - 1.0).ln();
     let mut h = 0.05;
@@ -122,7 +122,7 @@ fn build(def: &MaterialDef) -> Result<Option<Arc<dyn MaterialModel>>> {
         std::mem::swap(&mut fa, &mut fb);
         h = -h;
     }
-    // stega nedför tills funktionen växer igen (eller λm blir mycket stor)
+    // step downhill until the function increases again (or λm becomes very large)
     let mut c = b + h;
     let mut fc = f(c);
     let mut n = 0;
@@ -135,10 +135,10 @@ fn build(def: &MaterialDef) -> Result<Option<Arc<dyn MaterialModel>>> {
         fc = f(c);
         n += 1;
         if n > 200 || c.abs() > 30.0 {
-            return kw.err("TEST DATA INPUT: anpassningen av λm konvergerar inte (provdata utan låsning?)");
+            return kw.err("TEST DATA INPUT: the fit of λm does not converge (test data without locking?)");
         }
     }
-    // gyllene snittet i [a, c] med minimum nära b
+    // golden-section search in [a, c] with the minimum near b
     let (mut lo, mut hi) = if a < c { (a, c) } else { (c, a) };
     let gr = 0.5 * (5f64.sqrt() - 1.0);
     let mut x1 = hi - gr * (hi - lo);
@@ -165,11 +165,11 @@ fn build(def: &MaterialDef) -> Result<Option<Arc<dyn MaterialModel>>> {
     let lm = 1.0 + (0.5 * (lo + hi)).exp();
     let (_, mu) = objective(&pts, lm);
     if !(mu > 0.0) {
-        return kw.err(format!("TEST DATA INPUT: den anpassade skjuvmodulen {mu:e} är inte positiv"));
+        return kw.err(format!("TEST DATA INPUT: the fitted shear modulus {mu:e} is not positive"));
     }
     let mut model = HyperOgden { form: Form::ArrudaBoyce(mu, lm), d: vec![0.0] };
     let mu0 = super::hyperelastic_split::HyperModel::mu0(&model);
-    // volymdel
+    // volumetric part
     if let Some(t) = def.behavior("VOLUMETRIC TEST DATA") {
         let mut s1 = 0.0;
         let mut s2 = 0.0;
@@ -184,18 +184,18 @@ fn build(def: &MaterialDef) -> Result<Option<Arc<dyn MaterialModel>>> {
         }
         let x = if s2 > 0.0 { s1 / s2 } else { 0.0 };
         if !(x > 0.0) {
-            return t.err("VOLUMETRIC TEST DATA: den anpassade kompressionsmodulen är inte positiv");
+            return t.err("VOLUMETRIC TEST DATA: the fitted bulk modulus is not positive");
         }
         model.d[0] = 1.0 / x;
     } else if let Some(s) = kw.param("POISSON") {
-        let nu: f64 = s.trim().parse().map_err(|_| FemError(format!("{}: POISSON={s} är inget tal", kw.location())))?;
+        let nu: f64 = s.trim().parse().map_err(|_| FemError(format!("{}: POISSON={s} is not a number", kw.location())))?;
         if !(nu < 0.5 && nu > -1.0) {
-            return kw.err("POISSON ska ligga i (−1, 0,5)");
+            return kw.err("POISSON must lie in (−1, 0.5)");
         }
         model.d[0] = 3.0 * (1.0 - 2.0 * nu) / (mu0 * (1.0 + nu));
     }
     if std::env::var("RUSTYFEM_VERBOSE_FIT").is_ok() {
-        eprintln!("Arruda–Boyce ur provdata: μ = {mu:.9e}, λm = {lm:.9e}, D = {:.9e}", model.d[0]);
+        eprintln!("Arruda–Boyce from test data: μ = {mu:.9e}, λm = {lm:.9e}, D = {:.9e}", model.d[0]);
     }
     Ok(Some(Arc::new(model)))
 }

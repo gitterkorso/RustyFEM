@@ -1,44 +1,44 @@
-//! Geometrisk olinjäritet (NLGEOM=YES) för motorn i `solid_higher.rs`:
-//! andra ordningens element (C3D10, C3D15, C3D20, CPS6, CPE8, CAX8 ...),
-//! tetraedrar och kilar av första ordningen (C3D4, C3D6), reducerat integrerade
-//! element med hourglass-stabilisering (C3D8R, CPS4R, CPE4R, CAX4R),
-//! inkompatibla moder (C3D8I, CPS4I, CPE4I, CAX4I) och axisymmetri (CAX*).
+//! Geometric nonlinearity (NLGEOM=YES) for the engine in `solid_higher.rs`:
+//! second-order elements (C3D10, C3D15, C3D20, CPS6, CPE8, CAX8 ...),
+//! first-order tetrahedra and wedges (C3D4, C3D6), reduced-integration
+//! elements with hourglass stabilization (C3D8R, CPS4R, CPE4R, CAX4R),
+//! incompatible modes (C3D8I, CPS4I, CPE4I, CAX4I) and axisymmetry (CAX*).
 //!
-//! Formuleringen är samma uppdaterade Lagrange som för CPS4/CPE4/C3D8
-//! (`kinematics/continuum.rs`): Hughes–Winget-inkrement i mittkonfigurationen
-//! (ΔL = ΔF·F_{n+½}⁻¹, Δε = sym ΔL, ΔR = (I − ½ΔW)⁻¹(I + ½ΔW)), Cauchy-spänning
-//! i globala axlar och logaritmisk töjning LE = ln V i utdata.
+//! The formulation is the same updated Lagrangian as for CPS4/CPE4/C3D8
+//! (`kinematics/continuum.rs`): Hughes–Winget increments in the midpoint configuration
+//! (ΔL = ΔF·F_{n+½}⁻¹, Δε = sym ΔL, ΔR = (I − ½ΔW)⁻¹(I + ½ΔW)), Cauchy stress
+//! in global axes and logarithmic strain LE = ln V in the output.
 //!
-//! För att samma kärna ska klara alla tekniker beskrivs kinematiken i varje
-//! integrationspunkt som en förskjutningsgradient som är linjär i elementets
-//! frihetsgrader d (nodförskjutningar och eventuella inre frihetsgrader α):
+//! So that the same core can handle all techniques, the kinematics at each
+//! integration point is described as a displacement gradient that is linear in the element's
+//! degrees of freedom d (nodal displacements and any internal degrees of freedom α):
 //!
 //!   H = ∂u/∂X = Σⱼ dⱼ Mⱼ,   F = I + H.
 //!
-//! - Nodförskjutning (a, c): M = e_c ⊗ ∇_X N_a; axisymmetri lägger dessutom till
-//!   ringkomponenten M₃₃ = N_a / R för u_r (F₃₃ = r/R).
-//! - Inkompatibla moder (Wilson/Taylor, i finit form enligt Simo–Armero 1992):
-//!   gradientmoderna adderas till förskjutningsgradienten i referensläget,
-//!   M = e_c ⊗ (det J₀/det J) J₀⁻ᵀ ∇_ξ φ_k, och volymmoderna som
-//!   (det J₀/det J) ψ · diag(1, 1, 1) (2D: de plana komponenterna). Det är
-//!   samma operator som småtöjningsversionen i `solid_higher_tech.rs`.
-//!   Vid NLGEOM används operatorerna i inkrementell form, i läget
-//!   vid inkrementets början (`solid_higher_incompat.rs`).
+//! - Nodal displacement (a, c): M = e_c ⊗ ∇_X N_a; axisymmetry additionally adds
+//!   the hoop component M₃₃ = N_a / R for u_r (F₃₃ = r/R).
+//! - Incompatible modes (Wilson/Taylor, in finite form according to Simo–Armero 1992):
+//!   the gradient modes are added to the displacement gradient in the reference position,
+//!   M = e_c ⊗ (det J₀/det J) J₀⁻ᵀ ∇_ξ φ_k, and the volumetric modes as
+//!   (det J₀/det J) ψ · diag(1, 1, 1) (2D: the in-plane components). This is
+//!   the same operator as the small-strain version in `solid_higher_tech.rs`.
+//!   With NLGEOM the operators are used in incremental form, at the position
+//!   at the start of the increment (`solid_higher_incompat.rs`).
 //!
-//! Virtuellt arbete i aktuell konfiguration: med lⱼ = Mⱼ F⁻¹ är
-//! töjningshastighetens kolumn Bⱼ = sym lⱼ (Voigt) och
+//! Virtual work in the current configuration: with lⱼ = Mⱼ F⁻¹ the
+//! rate-of-deformation column is Bⱼ = sym lⱼ (Voigt) and
 //!
 //!   fⱼ = ∫ σ : sym lⱼ dv,
 //!   Kᵢⱼ = ∫ Bᵢᵀ C Bⱼ dv + ∫ (lᵢ σ) : lⱼ dv,
 //!
-//! där C är Jaumann-tangenten med Truesdell-korrektion (Belytschko m.fl. 2000,
-//! avsnitt 5.4 och 6.4) och den andra termen spänningsstyvheten. För nodfrihets-
-//! grader blir spänningsstyvheten den vanliga ∫ ∇Nₐ·σ∇N_b dv I. Plan spänning
-//! använder referensvikten (tjockleken ändras så att volymen bevaras, t·da =
-//! t₀·dA), som för CPS4.
+//! where C is the Jaumann tangent with the Truesdell correction (Belytschko et al. 2000,
+//! sections 5.4 and 6.4) and the second term the stress stiffness. For nodal degrees of
+//! freedom the stress stiffness becomes the usual ∫ ∇Nₐ·σ∇N_b dv I. Plane stress
+//! uses the reference weight (the thickness changes so that the volume is preserved, t·da =
+//! t₀·dA), as for CPS4.
 //!
-//! Tensoriella materialtillstånd (plastisk töjning, mottensorer) roteras med
-//! ΔR tillsammans med spänningen (`MaterialModel::rotate_state`).
+//! Tensorial material states (plastic strain, back stresses) are rotated with
+//! ΔR together with the stress (`MaterialModel::rotate_state`).
 
 use super::shapes;
 use super::{Solid, Tech};
@@ -48,17 +48,17 @@ use crate::kinematics::tensor::{self as t, M3};
 use crate::materials::{MatInput, MaterialModel, StressMode};
 use crate::model::{fail, Result};
 
-/// En integrationspunkt i referensläget med gradientoperatorerna Mⱼ.
+/// An integration point in the reference position with the gradient operators Mⱼ.
 pub struct Point {
-    /// Formfunktioner (för temperatur).
+    /// Shape functions (for temperature).
     pub n: Vec<f64>,
-    /// Referensvikt (det J · gaussvikt · tjocklek eller 2πR).
+    /// Reference weight (det J · Gauss weight · thickness or 2πR).
     pub w0: f64,
-    /// Mⱼ för alla frihetsgrader (noder först, sedan inre).
+    /// Mⱼ for all degrees of freedom (nodes first, then internal).
     pub m: Vec<M3>,
 }
 
-/// Gradientoperatorer för nodfrihetsgraderna i en referenspunkt.
+/// Gradient operators for the nodal degrees of freedom at a reference point.
 pub fn nodal_ops(mode: StressMode, ip: &Ip, x: &[[f64; 3]]) -> Vec<M3> {
     let nd = common::ndim(mode);
     let axi = mode == StressMode::Axisymmetric;
@@ -79,7 +79,7 @@ pub fn nodal_ops(mode: StressMode, ip: &Ip, x: &[[f64; 3]]) -> Vec<M3> {
     m
 }
 
-/// Jacobianens invers och determinant i elementets mitt (som i `solid_higher_tech.rs`).
+/// The inverse and determinant of the Jacobian at the element center (as in `solid_higher_tech.rs`).
 pub(crate) fn center_jacobian(el: &Solid, x: &[[f64; 3]]) -> Result<([[f64; 3]; 3], f64)> {
     let (_, dn) = shapes::shape(el.shape, [0.0; 3]);
     let dim = el.pdim();
@@ -99,15 +99,15 @@ pub(crate) fn center_jacobian(el: &Solid, x: &[[f64; 3]]) -> Result<([[f64; 3]; 
     Ok((ji, det))
 }
 
-/// Har elementet en volymmod ξη i den plana volymtöjningen? CAX4I och
-/// CPEG4I har den alltid; CPE4I får den vid NLGEOM.
+/// Does the element have a volumetric mode ξη in the planar volumetric strain? CAX4I and
+/// CPEG4I always have it; CPE4I gets it with NLGEOM.
 fn planar_volume_mode(el: &Solid) -> bool {
     matches!(el.mode, StressMode::Axisymmetric | StressMode::PlaneStrain) || el.name.starts_with("CPEG")
 }
 
-/// Inkompatibla modernas gradientoperatorer i punkterna (ordning som
-/// `solid_higher_tech.rs`: gradientmoder k = 0.. med komponent c snabbast,
-/// sedan volymmoderna).
+/// The gradient operators of the incompatible modes at the points (ordering as
+/// `solid_higher_tech.rs`: gradient modes k = 0.. with component c fastest,
+/// then the volumetric modes).
 fn incompatible_ops(el: &Solid, ctx: &ElemCtx, ips: &[Ip]) -> Result<Vec<Vec<M3>>> {
     let (ji0, det0) = center_jacobian(el, &ctx.x)?;
     let dim = el.pdim();
@@ -166,7 +166,7 @@ fn incompatible_ops(el: &Solid, ctx: &ElemCtx, ips: &[Ip]) -> Result<Vec<Vec<M3>
     Ok(out)
 }
 
-/// Antal inre frihetsgrader (inkompatibla moder).
+/// Number of internal degrees of freedom (incompatible modes).
 pub fn n_internal(el: &Solid) -> usize {
     match el.tech {
         Tech::Incompatible if el.shape.pdim() == 2 && planar_volume_mode(el) => 5,
@@ -175,11 +175,11 @@ pub fn n_internal(el: &Solid) -> usize {
     }
 }
 
-/// Integrationspunkter med gradientoperatorer för NLGEOM.
+/// Integration points with gradient operators for NLGEOM.
 pub fn points(el: &Solid, ctx: &ElemCtx) -> Result<Vec<Point>> {
     match el.tech {
         Tech::Hourglass => {
-            // medelgradienten B̄ = (1/V)∫B dV; ringkomponenten (1/V)∫Nₐ/R dV
+            // the mean gradient B̄ = (1/V)∫B dV; the hoop component (1/V)∫Nₐ/R dV
             let (ips, bs) = super::tech::uniform_strain(el, ctx)?;
             let ip = &ips[0];
             let mut m = nodal_ops(el.mode, ip, &ctx.x);
@@ -210,10 +210,10 @@ pub fn points(el: &Solid, ctx: &ElemCtx) -> Result<Vec<Point>> {
 }
 
 // ---------------------------------------------------------------------------
-// Tensorhjälp
+// Tensor helpers
 // ---------------------------------------------------------------------------
 
-/// Spänningsvektor → symmetrisk tensor.
+/// Stress vector → symmetric tensor.
 pub fn vec_to_tensor(mode: StressMode, v: &[f64], engineering: bool) -> M3 {
     let f = if engineering { 0.5 } else { 1.0 };
     let mut m = t::zero();
@@ -245,7 +245,7 @@ pub fn vec_to_tensor(mode: StressMode, v: &[f64], engineering: bool) -> M3 {
     m
 }
 
-/// Symmetrisk tensor → vektor i `mode`:s komponentordning.
+/// Symmetric tensor → vector in the component order of `mode`.
 pub fn tensor_to_vec(mode: StressMode, m: &M3, engineering: bool) -> Vec<f64> {
     let f = if engineering { 2.0 } else { 1.0 };
     match mode {
@@ -256,7 +256,7 @@ pub fn tensor_to_vec(mode: StressMode, m: &M3, engineering: bool) -> Vec<f64> {
     }
 }
 
-/// Töjningshastighetens Voigt-vektor (ingenjörsskjuvning) ur l: sym l.
+/// The Voigt vector of the rate of deformation (engineering shear) from l: sym l.
 pub(crate) fn rate_vec(mode: StressMode, l: &M3, out: &mut [f64]) {
     match mode {
         StressMode::ThreeD => {
@@ -282,7 +282,7 @@ pub(crate) fn rate_vec(mode: StressMode, l: &M3, out: &mut [f64]) {
     }
 }
 
-/// 3×3-tensor radvis som 9 värden och tillbaka (lagrad deformationsgradient).
+/// 3×3 tensor row-wise as 9 values and back (stored deformation gradient).
 pub(crate) fn to9(m: &M3) -> [f64; 9] {
     [m[0][0], m[0][1], m[0][2], m[1][0], m[1][1], m[1][2], m[2][0], m[2][1], m[2][2]]
 }
@@ -308,8 +308,8 @@ fn voigt_pairs(mode: StressMode) -> &'static [(usize, usize)] {
     }
 }
 
-/// Materialtangent för ∫ B̄ᵀσ dv: Jaumann-tangenten D − C′(σ·d + d·σ) +
-/// ½(σ⊗I + I⊗σ), som för CPS4/CPE4/C3D8 (plan spänning: bara D).
+/// Material tangent for ∫ B̄ᵀσ dv: the Jaumann tangent D − C′(σ·d + d·σ) +
+/// ½(σ⊗I + I⊗σ), as for CPS4/CPE4/C3D8 (plane stress: only D).
 pub(crate) fn truesdell_tangent(mode: StressMode, d: &[f64], sig: &M3) -> Vec<f64> {
     if mode == StressMode::PlaneStress {
         return d.to_vec();
@@ -329,7 +329,7 @@ pub(crate) fn truesdell_tangent(mode: StressMode, d: &[f64], sig: &M3) -> Vec<f6
     c
 }
 
-/// Logaritmisk töjning för utdata (plan spänning: LE33 = 0).
+/// Logarithmic strain for output (plane stress: LE33 = 0).
 pub(crate) fn log_strain_out(mode: StressMode, f: &M3) -> M3 {
     let mut log_e = t::log_strain(f);
     if mode == StressMode::PlaneStress {
@@ -338,7 +338,7 @@ pub(crate) fn log_strain_out(mode: StressMode, f: &M3) -> M3 {
     log_e
 }
 
-/// F̄ = (J̄/J)^(1/nv) F i det plana (nv = 2) eller hela (nv = 3) blocket; nv = 0: F.
+/// F̄ = (J̄/J)^(1/nv) F in the planar (nv = 2) or full (nv = 3) block; nv = 0: F.
 fn fbar(f: &M3, jbar: f64, nv: usize) -> M3 {
     if nv == 0 {
         return *f;
@@ -354,22 +354,22 @@ fn fbar(f: &M3, jbar: f64, nv: usize) -> M3 {
     g
 }
 
-/// Volymkorrektion (F-bar, de Souza Neto m.fl. 1996): elementets
-/// volymförhållande J̄ = v/V och ∂ln J̄/∂d för en förskjutning d, och antalet
-/// komponenter nv som volymdelen gäller (2: plan, 3: 3D och axisymmetri).
+/// Volumetric correction (F-bar, de Souza Neto et al. 1996): the element's
+/// volume ratio J̄ = v/V and ∂ln J̄/∂d for a displacement d, and the number of
+/// components nv that the volumetric part applies to (2: planar, 3: 3D and axisymmetry).
 pub struct VolCorr<'a> {
     pub nv: usize,
     pub jbar: &'a dyn Fn(&[f64]) -> Result<(f64, Vec<f64>)>,
-    /// Elementets medelvärde av tr ΔL (vikt = volym i mittkonfigurationen)
-    /// för (d, dn), eller `None` om volymdelen av ΔL ska tas ur F̄ direkt.
+    /// The element mean of tr ΔL (weight = volume in the midpoint configuration)
+    /// for (d, dn), or `None` if the volumetric part of ΔL is to be taken from F̄ directly.
     pub trace: Option<&'a dyn Fn(&[f64], &[f64]) -> Result<(f64, f64)>>,
-    /// CAX4 (axisymmetri med B-bar): ringtöjningen ersätts med elementets
-    /// medelvärde H̄ = (1/V)∫ r/R dV och den plana volymdelen ges av J̄/H̄.
-    /// Ger (H̄, ∂ln H̄/∂d) för en förskjutning d.
+    /// CAX4 (axisymmetry with B-bar): the hoop strain is replaced by the element's
+    /// mean H̄ = (1/V)∫ r/R dV and the planar volumetric part is given by J̄/H̄.
+    /// Gives (H̄, ∂ln H̄/∂d) for a displacement d.
     pub hoop: Option<&'a dyn Fn(&[f64]) -> Result<(f64, Vec<f64>)>>,
 }
 
-/// H̄ = (1/V)∫ r/R dV och ∂ln H̄/∂u för axisymmetriska element (CAX4).
+/// H̄ = (1/V)∫ r/R dV and ∂ln H̄/∂u for axisymmetric elements (CAX4).
 pub fn hoop_mean(el: &Solid, ctx: &ElemCtx, u: &[f64]) -> Result<(f64, Vec<f64>)> {
     let ips = super::ips_for(el.shape, el.mode, &ctx.x, &super::RuleKind::Gauss(2).points(el.pdim()), 1.0)?;
     let nd = el.ndim();
@@ -389,10 +389,10 @@ pub fn hoop_mean(el: &Solid, ctx: &ElemCtx, u: &[f64]) -> Result<(f64, Vec<f64>)
     Ok((hb, g))
 }
 
-/// Medelvärdet av tr ΔL över elementet med 2×2(×2) punkter (vikt = volymen i
-/// mittkonfigurationen), som volymdelen i F-bar för CPE4/C3D8.
+/// The mean of tr ΔL over the element with 2×2(×2) points (weight = the volume in
+/// the midpoint configuration), as the volumetric part in F-bar for CPE4/C3D8.
 ///
-/// Andra värdet är medelvärdet av ringkomponenten ΔL₃₃ (axisymmetri).
+/// The second value is the mean of the hoop component ΔL₃₃ (axisymmetry).
 pub fn mean_trace(el: &Solid, ctx: &ElemCtx, nv: usize, d: &[f64], dn: &[f64]) -> Result<(f64, f64)> {
     let t_ = el.thickness(ctx)?;
     let ips = super::ips_for(el.shape, el.mode, &ctx.x, &super::RuleKind::Gauss(2).points(el.pdim()), t_)?;
@@ -411,8 +411,8 @@ pub fn mean_trace(el: &Solid, ctx: &ElemCtx, nv: usize, d: &[f64], dn: &[f64]) -
     Ok((s / w, s33 / w))
 }
 
-/// J̄ = v/V och ∂ln J̄/∂u = (1/v)∫ tr B dv för elementets exakta volym
-/// (2×2(×2) punkter i aktuell konfiguration).
+/// J̄ = v/V and ∂ln J̄/∂u = (1/v)∫ tr B dv for the element's exact volume
+/// (2×2(×2) points in the current configuration).
 pub fn volume_ratio(el: &Solid, ctx: &ElemCtx, v0: f64, u: &[f64]) -> Result<(f64, Vec<f64>)> {
     let nd = el.ndim();
     let x: Vec<[f64; 3]> = ctx.x.iter().enumerate().map(|(a, p)| std::array::from_fn(|c| p[c] + if c < nd { u[a * nd + c] } else { 0.0 })).collect();
@@ -447,12 +447,12 @@ pub(crate) fn grad(pt: &Point, d: &[f64]) -> M3 {
 }
 
 // ---------------------------------------------------------------------------
-// Kärnan
+// The core
 // ---------------------------------------------------------------------------
 
-/// Resultat av en utvärdering: inre kraft över alla frihetsgrader (noder och
-/// inre), nytt tillstånd (standardlayout + LE/integrerad töjning per punkt)
-/// och tangent.
+/// Result of an evaluation: internal force over all degrees of freedom (nodes and
+/// internal), new state (standard layout + LE/integrated strain per point)
+/// and tangent.
 struct Eval {
     fint: Vec<f64>,
     std_new: Vec<f64>,
@@ -460,8 +460,8 @@ struct Eval {
     k: Option<Vec<f64>>,
 }
 
-/// Inre kraft och tangent för frihetsgraderna `d` (totala) med `dn` vid
-/// inkrementets början.
+/// Internal force and tangent for the degrees of freedom `d` (total) with `dn` at
+/// the start of the increment.
 #[allow(clippy::too_many_arguments)]
 fn eval(
     ctx: &ElemCtx,
@@ -477,7 +477,7 @@ fn eval(
     tangent: bool,
 ) -> Result<Eval> {
     let nips = pts.len();
-    // F-bar: J̄ vid inkrementets början och slut, ∂ln J̄/∂d vid slutet
+    // F-bar: J̄ at the start and end of the increment, ∂ln J̄/∂d at the end
     let (jb1, gvol, nv) = match vol {
         Some(v) => {
             let (b, g) = (v.jbar)(d)?;
@@ -496,7 +496,7 @@ fn eval(
         Some(f) => Some(f(d)?),
         None => None,
     };
-    // H̄ vid inkrementets början: ringtöjningens inkrement ur H̄ (se nedan)
+    // H̄ at the start of the increment: the hoop strain increment from H̄ (see below)
     let vhoop0 = match vol.and_then(|v| v.hoop) {
         Some(f) => Some(f(dn)?),
         None => None,
@@ -512,13 +512,13 @@ fn eval(
     let mut bq = vec![0.0; ns * nd];
     let mut ls: Vec<M3> = vec![t::zero(); nd];
     for (q, pt) in pts.iter().enumerate() {
-        // Hughes–Winget-inkrementet räknas med F (utan volymkorrektion); med
-        // F-bar ersätts volymdelen av ΔL med elementets medelvärde, och F̄ =
-        // (J̄/J)^(1/nv) F används för LE, materialets F och integrationsvikten
+        // the Hughes–Winget increment is computed with F (without volumetric correction); with
+        // F-bar the volumetric part of ΔL is replaced by the element mean, and F̄ =
+        // (J̄/J)^(1/nv) F is used for LE, the material's F and the integration weight
         let f0 = grad(pt, dn);
         let f1raw = grad(pt, d);
         let f1 = match &vhoop {
-            // CAX4: F₃₃ = H̄, det F = J̄ (den plana delen skalas)
+            // CAX4: F₃₃ = H̄, det F = J̄ (the planar part is scaled)
             Some((hb, _)) => {
                 let mut g = fbar(&f1raw, jb1 / hb, 2);
                 g[2][2] = *hb;
@@ -534,9 +534,9 @@ fn eval(
             return fail(common::DISTORTED);
         }
         let mut dl = t::mul(&t::sub(&f1raw, &f0), &fmi);
-        // CAX4/CAX4R: ringtöjningens inkrement ΔH̄/H̄_{n+½} ur elementets
-        // medelvärde H̄ (i stället för medelvärdet av ΔL₃₃); se
-        // `tests/cases/accuracy2/cax4r_*` och tests/cases/rubber/cax4h_tatning_*
+        // CAX4/CAX4R: the hoop strain increment ΔH̄/H̄_{n+½} from the element's
+        // mean H̄ (instead of the mean of ΔL₃₃); see
+        // `tests/cases/accuracy2/cax4r_*` and tests/cases/rubber/cax4h_tatning_*
         let hoop_inc = match (&vhoop, &vhoop0) {
             (Some((h1, _)), Some((h0, _))) => Some((h1 - h0) / (0.5 * (h1 + h0))),
             _ => None,
@@ -544,7 +544,7 @@ fn eval(
         if let Some((tr, tr33)) = vtrace {
             let tr33 = hoop_inc.unwrap_or(tr33);
             if vhoop.is_some() {
-                // CAX4: ringdelen och den plana volymdelen var för sig
+                // CAX4: the hoop part and the planar volumetric part separately
                 let cur = dl[0][0] + dl[1][1];
                 let corr = (tr - tr33 - cur) / 2.0;
                 dl[0][0] += corr;
@@ -591,18 +591,18 @@ fn eval(
         };
         let out = mat.update(&inp, &mold, &mut mnew)?;
         let w = if mode == StressMode::PlaneStress { pt.w0 } else { pt.w0 * j1 };
-        // lⱼ = Mⱼ F⁻¹ och B-kolumnerna
+        // lⱼ = Mⱼ F⁻¹ and the B columns
         for (j, m) in pt.m.iter().enumerate() {
             ls[j] = t::mul(m, &f1ri);
             if let Some((_, gh)) = &vhoop {
-                // CAX4: δF₃₃/F₃₃ = δH̄/H̄, plan volymdel δJ̄/J̄ − δH̄/H̄
+                // CAX4: δF₃₃/F₃₃ = δH̄/H̄, planar volumetric part δJ̄/J̄ − δH̄/H̄
                 ls[j][2][2] = gh[j];
                 let cur = ls[j][0][0] + ls[j][1][1];
                 let corr = (gvol.get(j).copied().unwrap_or(0.0) - gh[j] - cur) / 2.0;
                 ls[j][0][0] += corr;
                 ls[j][1][1] += corr;
             } else if nv > 0 {
-                // volymdelen ur J̄: δF̄·F̄⁻¹ = δF·F⁻¹ + ⅟nv (δJ̄/J̄ − tr δF·F⁻¹) I
+                // the volumetric part from J̄: δF̄·F̄⁻¹ = δF·F⁻¹ + ⅟nv (δJ̄/J̄ − tr δF·F⁻¹) I
                 let tr: f64 = (0..nv).map(|i| ls[j][i][i]).sum();
                 let corr = (gvol.get(j).copied().unwrap_or(0.0) - tr) / nv as f64;
                 for i in 0..nv {
@@ -626,7 +626,7 @@ fn eval(
             let sig = vec_to_tensor(mode, &out.stress, false);
             let ct = truesdell_tangent(mode, &out.tangent, &sig);
             add_btdb(&mut kmat, &bq, &ct, ns, nd, w);
-            // spänningsstyvhet (lᵢ σ) : lⱼ
+            // stress stiffness (lᵢ σ) : lⱼ
             let a: Vec<M3> = ls.iter().map(|l| t::mul(l, &sig)).collect();
             for i in 0..nd {
                 for j in 0..nd {
@@ -686,9 +686,9 @@ pub(crate) fn add_btdb(ke: &mut [f64], b: &[f64], d: &[f64], ns: usize, nd: usiz
     }
 }
 
-/// Uppdelning av ett lagrat NLGEOM-tillstånd: (standardlayout, inre
-/// frihetsgrader, LE/integrerad töjning). Saknas tillståndet (första
-/// inkrementet efter ett steg utan NLGEOM) används startvärden.
+/// Splitting of a stored NLGEOM state: (standard layout, internal
+/// degrees of freedom, LE/integrated strain). Without a state (the first
+/// increment after a step without NLGEOM) initial values are used.
 fn split_state<'a>(so: &'a [f64], base_len: usize, na: usize) -> Option<(&'a [f64], &'a [f64], Option<&'a [f64]>)> {
     if so.len() == base_len + na {
         return Some((&so[..base_len], &so[base_len..], None));
@@ -700,11 +700,11 @@ fn split_state<'a>(so: &'a [f64], base_len: usize, na: usize) -> Option<(&'a [f6
     Some((&so[..base_len], &so[base_len..base_len + na], Some(e)))
 }
 
-/// Inre kraft och tangent med NLGEOM för motorn.
+/// Internal force and tangent with NLGEOM for the engine.
 #[allow(clippy::too_many_arguments)]
 pub fn response(el: &Solid, ctx: &ElemCtx, mat: &dyn MaterialModel, u: &[f64], du: &[f64], so: &[f64], sn: &mut Vec<f64>, tangent: bool) -> Result<ElemResponse> {
     if el.tech == Tech::Incompatible {
-        // inkrementell form av de inkompatibla moderna
+        // incremental form of the incompatible modes
         return super::incompat::response(el, ctx, mat, u, du, so, sn, tangent);
     }
     let pts = points(el, ctx)?;
@@ -717,8 +717,8 @@ pub fn response(el: &Solid, ctx: &ElemCtx, mat: &dyn MaterialModel, u: &[f64], d
     let small = super::tech::n_incompatible(el);
     let (std_old, a_old, ext_old) = match split_state(so, base_len, na) {
         Some(s) => s,
-        // tillstånd från ett steg utan NLGEOM: spänning och materialtillstånd
-        // tas över, de inkompatibla parametrarna börjar om från noll
+        // state from a step without NLGEOM: stress and material state
+        // are carried over, the incompatible parameters restart from zero
         None if na > 0 && so.len() == base_len + small && small != na => {
             init = [&so[..base_len], &vec![0.0; na][..]].concat();
             (&init[..base_len], &init[base_len..], None)
@@ -733,21 +733,21 @@ pub fn response(el: &Solid, ctx: &ElemCtx, mat: &dyn MaterialModel, u: &[f64], d
     d.extend_from_slice(a_old);
     let mut dn = un;
     dn.extend_from_slice(a_old);
-    // reducerat integrerade element: volymdelen ur elementets exakta volym
+    // reduced-integration elements: the volumetric part from the element's exact volume
     let v0: f64 = pts.iter().map(|p| p.w0).sum();
     let jfun = |dd: &[f64]| volume_ratio(el, ctx, v0, &dd[..nd]);
     let nvc = if matches!(el.mode, StressMode::PlaneStrain | StressMode::PlaneStress) { 2 } else { 3 };
     let tfun = |dd: &[f64], ddn: &[f64]| mean_trace(el, ctx, nvc, &dd[..nd], &ddn[..nd]);
     let hfun = |dd: &[f64]| hoop_mean(el, ctx, &dd[..nd]);
-    // CAX4 och CAX4R: ringkomponenten ur H̄ och den plana volymdelen ur J̄/H̄
-    // var för sig (se tests/cases/accuracy2)
+    // CAX4 and CAX4R: the hoop component from H̄ and the planar volumetric part from J̄/H̄
+    // separately (see tests/cases/accuracy2)
     let axi_bbar = matches!(el.tech, Tech::Bbar | Tech::Hourglass) && el.mode == StressMode::Axisymmetric;
     let vc = VolCorr { nv: nvc, jbar: &jfun, trace: Some(&tfun), hoop: if axi_bbar { Some(&hfun) } else { None } };
     let vol = matches!(el.tech, Tech::Hourglass | Tech::Bbar).then_some(&vc);
     let temperatures = el.temperatures(ctx);
     let mut ev = eval(ctx, &temperatures, el.mode, &pts, vol, mat, &d, &dn, std_old, ext_old, tangent || na > 0)?;
     if na > 0 {
-        // lokal Newton för de inre frihetsgraderna: f_α = 0
+        // local Newton for the internal degrees of freedom: f_α = 0
         let n = nd + na;
         let mut ok = false;
         for _ in 0..50 {
@@ -769,7 +769,7 @@ pub fn response(el: &Solid, ctx: &ElemCtx, mat: &dyn MaterialModel, u: &[f64], d
             let scale = ev.fint[..nd].iter().fold(0.0f64, |m, v| m.max(v.abs()));
             let rnorm = ev.fint[nd..].iter().fold(0.0f64, |m, v| m.max(v.abs()));
             if rnorm > 1e-8 * scale.max(1e-300) {
-                return fail("de inkompatibla moderna konvergerade inte (NLGEOM)");
+                return fail("the incompatible modes did not converge (NLGEOM)");
             }
         }
     }
@@ -779,9 +779,9 @@ pub fn response(el: &Solid, ctx: &ElemCtx, mat: &dyn MaterialModel, u: &[f64], d
         (Some(k), true) => Some(k.clone()),
         _ => None,
     };
-    // område explicit_adv: i explicit dynamik ersätts hourglass-delen av steps/explicit_solid_nlgeom.rs
+    // area explicit_adv: in explicit dynamics the hourglass part is replaced by steps/explicit_solid_nlgeom.rs
     if el.tech == Tech::Hourglass && !crate::settings::with(|s| s.hourglass_off) && !crate::steps::explicit::solid_nl::skip_standard() {
-        // (RUSTYFEM_HG_OFF: bara spänningsdelen, för felsökning)
+        // (RUSTYFEM_HG_OFF: only the stress part, for debugging)
         hourglass(el, ctx, mat, u, &mut fint, k.as_mut())?;
     }
     let mut st = ev.std_new;
@@ -791,7 +791,7 @@ pub fn response(el: &Solid, ctx: &ElemCtx, mat: &dyn MaterialModel, u: &[f64], d
     Ok(ElemResponse { fint, k })
 }
 
-/// Statisk kondensering K = Kuu − Kuα Kαα⁻¹ Kαu.
+/// Static condensation K = Kuu − Kuα Kαα⁻¹ Kαu.
 pub(crate) fn condense(k: &[f64], nd: usize, na: usize) -> Result<Vec<f64>> {
     let n = nd + na;
     let kaa: Vec<f64> = (0..na).flat_map(|i| (0..na).map(move |j| (i, j))).map(|(i, j)| k[(nd + i) * n + nd + j]).collect();
@@ -810,18 +810,18 @@ pub(crate) fn condense(k: &[f64], nd: usize, na: usize) -> Result<Vec<f64>> {
     Ok(kc)
 }
 
-/// Hourglass-krafter vid NLGEOM.
+/// Hourglass forces with NLGEOM.
 ///
-/// Hourglass-vektorerna γ_α och styvheterna s_d är desamma som vid små
-/// töjningar (`tech::hourglass_matrix`, referensgeometrin). Hourglass-
-/// förskjutningen q_α = Σₐ γ_α,a uₐ dras tillbaka med elementets
-/// medeldeformationsgradient, Q_α = F̄ᵀ q_α (F̄ = I + Σₐ uₐ ⊗ b̄ₐ, b̄ =
-/// referensvolymens medelgradient), och energin är
+/// The hourglass vectors γ_α and the stiffnesses s_d are the same as at small
+/// strains (`tech::hourglass_matrix`, the reference geometry). The hourglass
+/// displacement q_α = Σₐ γ_α,a uₐ is pulled back with the element's
+/// mean deformation gradient, Q_α = F̄ᵀ q_α (F̄ = I + Σₐ uₐ ⊗ b̄ₐ, b̄ =
+/// the mean gradient of the reference volume), and the energy is
 ///
 ///   E = ½ Σ_α Σ_d s_d Q_α,d².
 ///
-/// Krafterna och tangenten är exakta derivator av E och
-/// oberoende av inkrementindelningen (totalform).
+/// The forces and the tangent are exact derivatives of E and
+/// independent of the increment subdivision (total form).
 fn hourglass(el: &Solid, ctx: &ElemCtx, mat: &dyn MaterialModel, u: &[f64], fint: &mut [f64], k: Option<&mut Vec<f64>>) -> Result<()> {
     let (gam, sd, bbar) = hourglass_parts(el, ctx, mat)?;
     let nd = el.ndim();
@@ -868,7 +868,7 @@ fn hourglass(el: &Solid, ctx: &ElemCtx, mat: &dyn MaterialModel, u: &[f64], fint
                         }
                     }
                 }
-                // andraderivatan: δ_jl (b̄_ak γ_b + b̄_bk γ_a)
+                // the second derivative: δ_jl (b̄_ak γ_b + b̄_bk γ_a)
                 for a in 0..nn {
                     for b in 0..nn {
                         let v = sq * (bbar[a][kk] * g[b] + bbar[b][kk] * g[a]);
@@ -883,8 +883,8 @@ fn hourglass(el: &Solid, ctx: &ElemCtx, mat: &dyn MaterialModel, u: &[f64], fint
     Ok(())
 }
 
-/// Hourglass-vektorer γ_α (per nod), styvheter s_d och medelgradienten b̄ₐ
-/// i referensläget, som i `tech::hourglass_matrix`.
+/// Hourglass vectors γ_α (per node), stiffnesses s_d and the mean gradient b̄ₐ
+/// in the reference position, as in `tech::hourglass_matrix`.
 fn hourglass_parts(el: &Solid, ctx: &ElemCtx, mat: &dyn MaterialModel) -> Result<(Vec<Vec<f64>>, Vec<f64>, Vec<[f64; 3]>)> {
     let (ips, _) = super::tech::uniform_strain(el, ctx)?;
     let ip = &ips[0];
@@ -921,10 +921,10 @@ fn hourglass_parts(el: &Solid, ctx: &ElemCtx, mat: &dyn MaterialModel) -> Result
     Ok((gam, s, ip.dndx.clone()))
 }
 
-/// Utdata vid NLGEOM: Cauchy-spänning S och materialets fält ur tillståndet.
-/// Töjningen (E) ersätts av LE i `kinematics::fix_frame_output` när
-/// tillståndet har NLGEOM-tillägget; annars (frame 0, eller första framen
-/// efter ett steg utan NLGEOM) skrivs LE direkt ur nodförskjutningarnas F.
+/// Output with NLGEOM: Cauchy stress S and the material's fields from the state.
+/// The strain (E) is replaced by LE in `kinematics::fix_frame_output` when
+/// the state has the NLGEOM extension; otherwise (frame 0, or the first frame
+/// after a step without NLGEOM) LE is written directly from the F of the nodal displacements.
 pub fn output(el: &Solid, ctx: &ElemCtx, mat: &dyn MaterialModel, u: &[f64], state: &[f64]) -> Result<Vec<IpField>> {
     let mode = el.mode;
     let nips = match el.tech {

@@ -1,31 +1,31 @@
-//! Reducerat integrerade kontinuumelement (C3D8R, CPE4R, CPS4R) i explicit
-//! dynamik (NLGEOM=NO) med explicit hourglass-kontroll.
+//! Reduced-integration continuum elements (C3D8R, CPE4R, CPS4R) in explicit
+//! dynamics (NLGEOM=NO) with explicit hourglass control.
 //!
-//! Elementet räknas som i implicit analys (`elements/solid_higher_tech.rs`:
-//! enpunkts "uniform strain" med materialuppdatering), men Standard-elementets
-//! hourglass-styvhet byts mot den explicita:
+//! The element is computed as in implicit analysis (`elements/solid_higher_tech.rs`:
+//! one-point "uniform strain" with material update), but the hourglass stiffness of the
+//! implicit element is replaced by the explicit one:
 //!
-//! - styvheten per mod a och riktning d är c = 0,0125·(2/n)·G·V·Σᵢ|∇Nᵢ|²
-//!   (n = 2 eller 3 rumsdimensioner; V med tjocklek), isotrop i riktningarna
-//!   och med Flanagan–Belytschkos γₐ (h = ξη för fyrhörningar, ξη, ηζ, ζξ, ξηζ
-//!   för hexaedrar). Kontrollerat med elementstyvheten för
-//!   `HOURGLASS=STIFFNESS` (kub och förvrängd hexaeder, kvadrat och
-//!   parallellogram).
-//! - standard (RELAX STIFFNESS) är integralviskoelastisk som för skalen
-//!   (`explicit_shell::relax`) men med tidskonstanten 1000 inkrement
-//!   (avläst över 200–20 000 inkrement, samma för C3D8R och CPE4R).
+//! - the stiffness per mode a and direction d is c = 0.0125·(2/n)·G·V·Σᵢ|∇Nᵢ|²
+//!   (n = 2 or 3 spatial dimensions; V with thickness), isotropic in the directions
+//!   and with the Flanagan–Belytschko γₐ (h = ξη for quadrilaterals, ξη, ηζ, ζξ, ξηζ
+//!   for hexahedra). Checked with the element stiffness for
+//!   `HOURGLASS=STIFFNESS` (cube and distorted hexahedron, square and
+//!   parallelogram).
+//! - the default (RELAX STIFFNESS) is integral viscoelastic as for the shells
+//!   (`explicit_shell::relax`) but with the time constant 1000 increments
+//!   (read off over 200–20,000 increments, the same for C3D8R and CPE4R).
 //!
-//! Explicit-tillståndet per element är [q, Q_v, Q] för alla (mod, riktning).
+//! The explicit state per element is [q, Q_v, Q] for all (mode, direction).
 
 use super::dt::geometry;
 use super::shell::{relax, Hourglass};
 use crate::elements::{ElemCtx, Family};
 use crate::model::{fail, Result};
 
-/// Relaxationens tidskonstant (inkrement) för kontinuumelement.
+/// Time constant of the relaxation (increments) for continuum elements.
 pub const RELAX_TAU_SOLID: f64 = 1000.0;
 
-/// Hourglass-vektorerna h (naturliga koordinater) för hexaeder respektive fyrhörning.
+/// The hourglass vectors h (natural coordinates) for hexahedra and quadrilaterals respectively.
 fn base_vectors(nn: usize) -> Vec<Vec<f64>> {
     if nn == 8 {
         let nat: [[f64; 3]; 8] = [[-1., -1., -1.], [1., -1., -1.], [1., 1., -1.], [-1., 1., -1.], [-1., -1., 1.], [1., -1., 1.], [1., 1., 1.], [-1., 1., 1.]];
@@ -40,7 +40,7 @@ fn base_vectors(nn: usize) -> Vec<Vec<f64>> {
     }
 }
 
-/// Elementet `name` hanteras här (Standard-statiken för hourglass-delen).
+/// The element `name` is handled here (the implicit statics for the hourglass part).
 pub fn standard(name: &str) -> Option<&'static crate::elements::solid_higher::Solid> {
     use crate::elements::solid_higher as sh;
     match name {
@@ -51,9 +51,9 @@ pub fn standard(name: &str) -> Option<&'static crate::elements::solid_higher::So
     }
 }
 
-/// Inre kraft med explicit hourglass: elementets egen kraft (med
-/// Standard-hourglass) minus Standard-hourglass plus explicit-hourglass.
-/// Returnerar (kraft, nytt explicit-tillstånd, ökning av ALLAE).
+/// Internal force with explicit hourglass: the element's own force (with
+/// implicit hourglass) minus the implicit hourglass plus the explicit hourglass.
+/// Returns (force, new explicit state, increment of ALLAE).
 pub fn hourglass_force(ctx: &ElemCtx, el: &crate::elements::solid_higher::Solid, family: Family, fint: &mut [f64], u: &[f64], old: &[f64], mode: Hourglass) -> Result<(Vec<f64>, f64)> {
     let mat = ctx.material(el.name)?;
     let kstd = crate::elements::solid_higher::tech::hourglass_matrix(el, ctx, mat)?;
@@ -62,7 +62,7 @@ pub fn hourglass_force(ctx: &ElemCtx, el: &crate::elements::solid_higher::Solid,
         fint[i] -= (0..n).map(|j| kstd[i * n + j] * u[j]).sum::<f64>();
     }
     let Some(g) = geometry(family, el.name, &ctx.x) else {
-        return fail(format!("element {} ({}): kan inte beräkna hourglass-vektorerna", ctx.label, el.name));
+        return fail(format!("element {} ({}): cannot compute the hourglass vectors", ctx.label, el.name));
     };
     let nn = ctx.x.len();
     let nd = if nn == 8 { 3 } else { 2 };

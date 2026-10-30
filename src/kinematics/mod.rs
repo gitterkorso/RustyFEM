@@ -1,19 +1,19 @@
-//! Kinematik för geometriskt olinjär analys (NLGEOM=YES).
+//! Kinematics for geometrically nonlinear analysis (NLGEOM=YES).
 //!
-//! - `continuum`: uppdaterad Lagrange med Hughes–Winget-inkrement (CPS/CPE/C3D8
-//!   och andra kontinuumelement som har integrationspunkter i referensläget).
-//! - `truss`: stänger med logaritmisk töjning.
-//! - `beam`: Euler–Bernoulli-balkar (B23, B33) med Hermiteinterpolation av läget.
-//! - `hyperdual`: hyperduala tal för exakta derivator av töjningsenergin.
-//! - `pressure`: följande tryck på deformerade ytor.
-//! - `tensor`: 3×3-tensorer, polär uppdelning, rotationer.
+//! - `continuum`: updated Lagrangian with Hughes–Winget increments (CPS/CPE/C3D8
+//!   and other continuum elements with integration points in the reference configuration).
+//! - `truss`: trusses with logarithmic strain.
+//! - `beam`: Euler–Bernoulli beams (B23, B33) with Hermite interpolation of the position.
+//! - `hyperdual`: hyperdual numbers for exact derivatives of the strain energy.
+//! - `pressure`: follower pressure on deformed surfaces.
+//! - `tensor`: 3×3 tensors, polar decomposition, rotations.
 //!
-//! Elementen anropar hit från sin NLGEOM-rad i `internal_force`. Tillståndet
-//! per element är kontinuumkärnans vanliga layout (spänning + materialtillstånd
-//! per integrationspunkt) följt av ett tillägg som bara den här modulen läser:
-//! logaritmisk töjning (LE) och integrerad töjning per integrationspunkt, sist
-//! antalet punkter och en markör. Spänningen är Cauchy-spänning i globala axlar,
-//! så S kan skrivas ut som vanligt.
+//! Elements call in here from their NLGEOM branch in `internal_force`. The
+//! per-element state is the continuum core's usual layout (stress + material state
+//! per integration point) followed by an extension read only by this module:
+//! logarithmic strain (LE) and integrated strain per integration point, and last
+//! the number of points and a marker. The stress is Cauchy stress in global axes,
+//! so S can be output as usual.
 
 pub mod bbar_tangent;
 pub mod beam;
@@ -28,17 +28,17 @@ use crate::elements::{Family, IpField};
 use crate::fem::assembly::Prepared;
 use crate::fem::output::FrameData;
 
-/// Markör sist i elementtillståndet för NLGEOM-tillägget.
+/// Marker at the end of the element state for the NLGEOM extension.
 pub const MAGIC: f64 = -7.357_913_e77;
 
-/// Lägger tillägget (12 värden per punkt: LE, integrerad töjning) sist i tillståndet.
+/// Appends the extension (12 values per point: LE, integrated strain) to the state.
 pub fn push_ext(state: &mut Vec<f64>, ext: &[f64], nips: usize) {
     state.extend_from_slice(ext);
     state.push(nips as f64);
     state.push(MAGIC);
 }
 
-/// Tillägget (LE för alla punkter, sedan integrerad töjning) om det finns.
+/// The extension (LE for all points, then integrated strain), if present.
 pub fn ext(state: &[f64]) -> Option<&[f64]> {
     let n = state.len();
     if n < 2 || state[n - 1] != MAGIC {
@@ -52,8 +52,8 @@ pub fn ext(state: &[f64]) -> Option<&[f64]> {
     Some(&state[n - 2 - len..n - 2])
 }
 
-/// Ersätter småtöjningsfältet E med logaritmisk töjning LE (utdata vid NLGEOM)
-/// för element som har NLGEOM-tillstånd.
+/// Replaces the small-strain field E with logarithmic strain LE (output with NLGEOM)
+/// for elements that have NLGEOM state.
 pub fn fix_frame_output(p: &Prepared, frame: &mut FrameData, state: &[Vec<f64>]) {
     for (e, fields) in frame.elem.iter_mut().enumerate() {
         let Some(x) = state.get(e).and_then(|s| ext(s)) else { continue };
@@ -68,7 +68,7 @@ pub fn fix_frame_output(p: &Prepared, frame: &mut FrameData, state: &[Vec<f64>])
         let mut le = IpField::new("LE", labels);
         for q in 0..nips {
             let v = &x[6 * q..6 * q + 6];
-            // skjuvkomponenter som ingenjörstöjning
+            // shear components as engineering strain
             let vals = match labels.len() {
                 1 => vec![v[0]],
                 4 => vec![v[0], v[1], v[2], 2.0 * v[3]],

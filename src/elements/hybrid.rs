@@ -1,52 +1,52 @@
-//! Hybridelement (blandad förskjutning–tryck-formulering): C3D8H, C3D10H,
-//! C3D20H, C3D20RH, CPE4H, CPE8H, CAX4H, CAX8H m.fl.
+//! Hybrid elements (mixed displacement–pressure formulation): C3D8H, C3D10H,
+//! C3D20H, C3D20RH, CPE4H, CPE8H, CAX4H, CAX8H etc.
 //!
-//! C3D4H finns inte här: det använder ett kontinuerligt nodvis tryckfält
-//! (en tryckvariabel per hörnnod i nätet), som kräver globala tryckfrihetsgrader.
+//! C3D4H is not here: it uses a continuous nodal pressure field
+//! (one pressure variable per corner node of the mesh), which requires global pressure degrees of freedom.
 //!
-//! Formuleringen är den tre-fältsformulering för nästan och helt
-//! inkompressibla material som Simo, Taylor & Pister (1985) och Simo & Taylor
-//! (1991) gav (se även Bonet & Wood, kap. 8, och de Souza Neto m.fl., kap. 15):
-//! utöver förskjutningen interpoleras trycket p och volymkvoten θ oberoende
-//! inom elementet, med samma (diskontinuerliga) bas ψ – konstant (C3D8H,
-//! C3D10H, CPE4H, CAX4H, CPE3H) eller linjär i referenskoordinaterna (C3D20H,
-//! C3D20RH, CPE8H, CAX8H, CPE6H, ...), med ett bestämt antal tryckvariabler
-//! per element. Energin är
+//! The formulation is the three-field formulation for nearly and fully
+//! incompressible materials given by Simo, Taylor & Pister (1985) and Simo & Taylor
+//! (1991) (see also Bonet & Wood, ch. 8, and de Souza Neto et al., ch. 15):
+//! in addition to the displacement, the pressure p and the volume ratio θ are interpolated independently
+//! within the element, with the same (discontinuous) basis ψ – constant (C3D8H,
+//! C3D10H, CPE4H, CAX4H, CPE3H) or linear in the reference coordinates (C3D20H,
+//! C3D20RH, CPE8H, CAX8H, CPE6H, ...), with a fixed number of pressure variables
+//! per element. The energy is
 //!
-//!   Π(u, θ, p) = Σ_q w_q [ W_dev(F̄_q) + U(θ_q) + p_q (J_q − θ_q) ] (+ timglasterm, se nedan)
+//!   Π(u, θ, p) = Σ_q w_q [ W_dev(F̄_q) + U(θ_q) + p_q (J_q − θ_q) ] (+ hourglass term, see below)
 //!
-//! och stationaritet i p och θ ger θ = L2-projektionen av J på tryckbasen och
-//! p = projektionen av U′(θ). Båda kondenseras på elementnivå, så elementet
-//! har bara förskjutningar i det globala systemet. F̄ = (θ/J)^(1/n) F i de n
-//! volymriktningarna (n = 3 i 3D och axisymmetri, n = 2 vid plan töjning)
-//! för element med konstant tryck; för element med linjärt tryck används F
-//! i den deviatoriska delen.
+//! and stationarity in p and θ gives θ = the L2 projection of J onto the pressure basis and
+//! p = the projection of U′(θ). Both are condensed at the element level, so the element
+//! has only displacements in the global system. F̄ = (θ/J)^(1/n) F in the n
+//! volumetric directions (n = 3 in 3D and axisymmetry, n = 2 in plane strain)
+//! for elements with constant pressure; for elements with linear pressure F is used
+//! in the deviatoric part.
 //!
-//! För element med konstant tryck och kompressibelt material blir detta
-//! exakt F-bar-elementet (`kinematics/fbar_hyper.rs`), och C3D8H/CPE4H ger
-//! samma resultat som C3D8/CPE4, inklusive volymtimglasstyvheten för
-//! hyperelastiska material.
+//! For elements with constant pressure and a compressible material this becomes
+//! exactly the F-bar element (`kinematics/fbar_hyper.rs`), and C3D8H/CPE4H give
+//! the same results as C3D8/CPE4, including the volumetric hourglass stiffness for
+//! hyperelastic materials.
 //!
-//! **Helt inkompressibla material** (*HYPERELASTIC med D1 = 0, *ELASTIC med
-//! ν = 0,5) hanteras med en straffkompressionsmodul K = 10⁸ μ0 i U(θ) i
-//! stället för en global Lagrangemultiplikator; volymkvoten avviker då från 1
-//! med p/K ~ 10⁻⁸ och förskjutningarna från den exakta lösningen med samma
-//! storleksordning.
+//! **Fully incompressible materials** (*HYPERELASTIC with D1 = 0, *ELASTIC with
+//! ν = 0.5) are handled with a penalty bulk modulus K = 10⁸ μ0 in U(θ)
+//! instead of a global Lagrange multiplier; the volume ratio then deviates from 1
+//! by p/K ~ 10⁻⁸ and the displacements from the exact solution by the same
+//! order of magnitude.
 //!
-//! **Linjär analys** (utan NLGEOM, *ELASTIC): den linjära motsvarigheten med
-//! energin Σ w [μ |dev ε̄|² + K/2 θ²], där θ är projektionen av tr ε och ε̄
-//! har volymdelen ersatt med θ i de n riktningarna (B-bar för konstant tryck).
+//! **Linear analysis** (without NLGEOM, *ELASTIC): the linear counterpart with
+//! the energy Σ w [μ |dev ε̄|² + K/2 θ²], where θ is the projection of tr ε and ε̄
+//! has the volumetric part replaced by θ in the n directions (B-bar for constant pressure).
 //!
-//! **Andra material i C3D8H, CPE4H och CAX4H** (plasticitet, *ELASTIC vid
-//! NLGEOM, ...): de ger samma förskjutningar som
-//! C3D8, CPE4 och CAX4 (selektivt reducerad integrering), så
-//! elementen räknas då med motsvarande första ordningens element
-//! (`forsta_ordningen`). Helt inkompressibel *ELASTIC (ν = 0,5) och de övriga
-//! hybridelementen stöder bara linjärt elastiska material utan NLGEOM och
-//! hyperelastiska material.
+//! **Other materials in C3D8H, CPE4H and CAX4H** (plasticity, *ELASTIC with
+//! NLGEOM, ...): they give the same displacements as
+//! C3D8, CPE4 and CAX4 (selectively reduced integration), so
+//! the elements are then computed with the corresponding first-order element
+//! (`first_order`). Fully incompressible *ELASTIC (ν = 0.5) and the other
+//! hybrid elements support only linear elastic materials without NLGEOM and
+//! hyperelastic materials.
 //!
-//! Tillstånd per integrationspunkt: Cauchyspänning,
-//! vid NLGEOM följd av NLGEOM-tillägget med LE (`kinematics::push_ext`).
+//! State per integration point: Cauchy stress,
+//! with NLGEOM followed by the NLGEOM extension with LE (`kinematics::push_ext`).
 
 use super::api::{not_implemented, ElemCtx, ElemResponse, ElementType, Family, IpField, MassKind};
 use super::common::{self, Ip};
@@ -61,32 +61,32 @@ use crate::materials::hyperelastic_split::{self as hs, HyperModel};
 use crate::materials::{MaterialModel, StressMode};
 use crate::model::{fail, Result};
 
-/// Tryckinterpolation inom elementet.
+/// Pressure interpolation within the element.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Pressure {
     Constant,
     Linear,
 }
 
-/// Straffkompressionsmodul för helt inkompressibla material, relativt μ0.
+/// Penalty bulk modulus for fully incompressible materials, relative to μ0.
 pub const PENALTY: f64 = 1e8;
 
-/// Andel β av volymenergin som integreras med elementets fulla regel i
-/// stället för med den projicerade volymkvoten: U = (1 − β) U(θ) + β U(J).
-/// Hybridelementen har den här lilla lokala kompressibiliteten i linjär
-/// analys med *ELASTIC (hydrostatisk spänning K θ̄ + β K (ε_v − θ̄) i
-/// punkterna; C3D6H, C3D10H, C3D15H, C3D20H, C3D20RH,
-/// CPE8H och CAX8H, β = 10⁻⁶), men inte C3D8H/CPE4H/CAX4H och inte
-/// hyperelastiska material vid NLGEOM.
+/// Fraction β of the volumetric energy that is integrated with the element's full rule
+/// instead of with the projected volume ratio: U = (1 − β) U(θ) + β U(J).
+/// The hybrid elements have this small local compressibility in linear
+/// analysis with *ELASTIC (hydrostatic stress K θ̄ + β K (ε_v − θ̄) at
+/// the points; C3D6H, C3D10H, C3D15H, C3D20H, C3D20RH,
+/// CPE8H and CAX8H, β = 10⁻⁶), but not C3D8H/CPE4H/CAX4H and not
+/// hyperelastic materials with NLGEOM.
 pub const BETA: f64 = 1e-6;
 
 pub struct Hybrid {
-    /// Geometri, integrationsregel och laster (namnet är hybridelementets).
+    /// Geometry, integration rule and loads (the name is the hybrid element's).
     pub base: Solid,
     pub pressure: Pressure,
-    /// Antal volymriktningar i F̄ (0: den deviatoriska delen räknas med F).
+    /// Number of volumetric directions in F̄ (0: the deviatoric part is computed with F).
     pub nbar: usize,
-    /// Volymtimglasstyvhet för hyperelastiska material (som F-bar-elementen).
+    /// Volumetric hourglass stiffness for hyperelastic materials (like the F-bar elements).
     pub hourglass: bool,
 }
 
@@ -119,7 +119,7 @@ pub static TYPES: &[&dyn ElementType] = &[
     &CAX8RH,
 ];
 
-/// Inställningar som kan ändras med miljövariabler vid felsökning
+/// Settings that can be changed with environment variables when debugging
 /// (RUSTYFEM_HYB_NBAR, RUSTYFEM_HYB_HG = 0/1).
 fn knobs(h: &Hybrid) -> (usize, bool) {
     let nbar = crate::settings::with(|s| s.hybrid_nbar).unwrap_or(h.nbar);
@@ -127,7 +127,7 @@ fn knobs(h: &Hybrid) -> (usize, bool) {
     (nbar, hg)
 }
 
-/// Tryckbasen ψ i varje integrationspunkt och M⁻¹ (M = Σ w ψ ψᵀ).
+/// The pressure basis ψ at each integration point and M⁻¹ (M = Σ w ψ ψᵀ).
 struct Basis {
     np: usize,
     psi: Vec<Vec<f64>>,
@@ -137,8 +137,8 @@ struct Basis {
 fn basis(kind: Pressure, ndim: usize, ips: &[Ip], x: &[[f64; 3]], nat: Option<&[[f64; 3]]>) -> Result<Basis> {
     let mut pos: Vec<[f64; 3]> = ips.iter().map(|ip| [0, 1, 2].map(|c| ip.n.iter().zip(x).map(|(n, p)| n * p[c]).sum())).collect();
     if let Some(nat) = nat {
-        // den linjära tryckbasen är linjär i de naturliga koordinaterna
-        // (kontrollerat med förvrängda C3D20H, CPE8H, CAX8H och C3D15H)
+        // the linear pressure basis is linear in the natural coordinates
+        // (verified with distorted C3D20H, CPE8H, CAX8H and C3D15H)
         pos = nat.to_vec();
     }
     let w: f64 = ips.iter().map(|ip| ip.w).sum();
@@ -169,7 +169,7 @@ fn basis(kind: Pressure, ndim: usize, ips: &[Ip], x: &[[f64; 3]], nat: Option<&[
     Ok(Basis { np, psi, minv })
 }
 
-/// Invers av en liten tät symmetrisk matris (Gauss–Jordan).
+/// Inverse of a small dense symmetric matrix (Gauss–Jordan).
 fn invert(a: &[f64], n: usize) -> Result<Vec<f64>> {
     let mut m = a.to_vec();
     let mut inv = vec![0.0; n * n];
@@ -179,7 +179,7 @@ fn invert(a: &[f64], n: usize) -> Result<Vec<f64>> {
     for col in 0..n {
         let piv = (col..n).max_by(|&i, &j| m[i * n + col].abs().total_cmp(&m[j * n + col].abs())).unwrap();
         if m[piv * n + col].abs() < 1e-300 {
-            return fail("hybridelement: tryckbasen är singulär (förvrängt element?)");
+            return fail("hybrid element: the pressure basis is singular (distorted element?)");
         }
         for k in 0..n {
             m.swap(col * n + k, piv * n + k);
@@ -215,14 +215,14 @@ impl Basis {
     }
 }
 
-/// Elastiska moduler (μ, K) för linjär analys; K = straffmodul för ν = 0,5.
+/// Elastic moduli (μ, K) for linear analysis; K = penalty modulus for ν = 0.5.
 fn linear_moduli(mat: &dyn MaterialModel, name: &str) -> Result<(f64, f64)> {
     if let Some(h) = mat.hyperelastic() {
         let k = if h.incompressible() { PENALTY * h.mu0() } else { h.k0() };
         return Ok((h.mu0(), k));
     }
     let Some((e, nu)) = mat.elastic_moduli().filter(|_| mat.is_linear()) else {
-        return fail(format!("{name}: hybridelement stöder linjärt isotropt elastiska och hyperelastiska material"));
+        return fail(format!("{name}: hybrid elements support linear isotropic elastic and hyperelastic materials"));
     };
     let mu = e / (2.0 * (1.0 + nu));
     let k = if nu >= 0.5 - 1e-12 { PENALTY * mu } else { e / (3.0 * (1.0 - 2.0 * nu)) };
@@ -245,14 +245,14 @@ impl Hybrid {
         super::solid_higher::bmat_any(self.base.mode, ip, x)
     }
 
-    /// Linjär styvhet, och spänning/töjning per punkt för förskjutningen `u`.
+    /// Linear stiffness, and stress/strain per point for the displacement `u`.
     fn linear(&self, ctx: &ElemCtx, u: Option<&[f64]>) -> Result<(Vec<f64>, Vec<Vec<f64>>, Vec<Vec<f64>>)> {
         let mode = self.base.mode;
         let (nbar, _) = knobs(self);
         let mat = ctx.material(self.base.name)?;
         let (mu, kb) = linear_moduli(mat, self.base.name)?;
-        // β bara för de rena hybridelementen; C3D8H, CPE4H och CAX4H (selektivt
-        // reducerad integrering) har den inte
+        // β only for the pure hybrid elements; C3D8H, CPE4H and CAX4H (selectively
+        // reduced integration) do not have it
         let beta = if linear_incompressible(mat) || self.hourglass { 0.0 } else { BETA };
         let ips = self.base.ips(ctx)?;
         let bs: Vec<Vec<f64>> = ips.iter().map(|ip| self.bmat(ip, &ctx.x)).collect();
@@ -271,7 +271,7 @@ impl Hybrid {
                 }
             }
         }
-        // θ-operator per punkt: ψ_qᵀ M⁻¹ b
+        // θ operator per point: ψ_qᵀ M⁻¹ b
         let th: Vec<Vec<f64>> = bas
             .psi
             .iter()
@@ -280,7 +280,7 @@ impl Hybrid {
                 (0..nd).map(|c| (0..np).map(|k| ms[k] * bv[k * nd + c]).sum()).collect()
             })
             .collect();
-        // deviatorisk D (ingenjörsskjuvning) i 3D-komponenterna (11, 22, 33, skjuv...)
+        // deviatoric D (engineering shear) in the 3D components (11, 22, 33, shear...)
         let shear = ns - 3;
         let mut dd = vec![0.0; ns * ns];
         for i in 0..3 {
@@ -296,7 +296,7 @@ impl Hybrid {
         for (q, (ip, b)) in ips.iter().zip(&bs).enumerate() {
             let mut bb = b.clone();
             if nbar == 4 {
-                // axisymmetri som CAX4 (B-bar): εrr+εzz och εθθ ersätts var för sig med sina medelvärden
+                // axisymmetry like CAX4 (B-bar): εrr+εzz and εθθ are each replaced by their mean values
                 let wsum: f64 = ips.iter().map(|ip| ip.w).sum();
                 for c in 0..nd {
                     let pl_avg: f64 = ips.iter().zip(&bs).map(|(ip, b)| ip.w * (b[c] + b[nd + c])).sum::<f64>() / wsum;
@@ -376,14 +376,14 @@ impl Hybrid {
     }
 }
 
-/// Kinematik i en punkt vid NLGEOM.
+/// Kinematics at a point with NLGEOM.
 struct Pt {
     w: f64,
     f: M3,
     j: f64,
-    /// δL = δF F⁻¹ för varje frihetsgrad (3×3)
+    /// δL = δF F⁻¹ for each degree of freedom (3×3)
     lg: Vec<M3>,
-    /// tr δL per frihetsgrad
+    /// tr δL per degree of freedom
     gv: Vec<f64>,
 }
 
@@ -395,7 +395,7 @@ fn ddot(a: &M3, b: &M3) -> f64 {
     (0..3).map(|i| (0..3).map(|j| a[i][j] * b[i][j]).sum::<f64>()).sum()
 }
 
-/// tr(A B) begränsat till de n första diagonalelementen.
+/// tr(A B) restricted to the first n diagonal elements.
 fn trn_prod(a: &M3, b: &M3, n: usize) -> f64 {
     (0..n).map(|i| (0..3).map(|k| a[i][k] * b[k][i]).sum::<f64>()).sum()
 }
@@ -406,7 +406,7 @@ pub struct NlEval {
     pub state: Vec<f64>,
 }
 
-/// Hybridelement vid NLGEOM med hyperelastiskt material.
+/// Hybrid element with NLGEOM with a hyperelastic material.
 #[allow(clippy::too_many_arguments)]
 pub fn nl_eval(
     mode: StressMode,
@@ -424,9 +424,9 @@ pub fn nl_eval(
     nl_eval_hist(mode, ips, x, pressure, nbar, hourglass, h, u, tangent, nat, mult, None)
 }
 
-/// Som `nl_eval`, med materialets historievariabler (`HyperModel::n_hist`,
-/// *MULLINS EFFECT) ur elementtillståndet vid inkrementets början; de ligger
-/// efter spänningen i varje punkt.
+/// Like `nl_eval`, with the material's history variables (`HyperModel::n_hist`,
+/// *MULLINS EFFECT) from the element state at the start of the increment; they are stored
+/// after the stress at each point.
 #[allow(clippy::too_many_arguments)]
 pub fn nl_eval_hist(
     mode: StressMode,
@@ -442,11 +442,11 @@ pub fn nl_eval_hist(
     mult: Option<(&[f64], f64)>,
     hist_old: Option<&[f64]>,
 ) -> Result<NlEval> {
-    // *HYPERFOAM (ingen uppdelning): hela τ(F̄) i stället för τ_dev, ingen volymterm
-    // (används av CAX4, `cax4_hyper`; hybridelementen själva stöder inte skum)
+    // *HYPERFOAM (no split): the full τ(F̄) instead of τ_dev, no volumetric term
+    // (used by CAX4, `cax4_hyper`; the hybrid elements themselves do not support foam)
     let full = h.kirchhoff_full(&t::I3).is_some();
     if full && mult.is_some() {
-        return fail("*HYPERFOAM stöds inte i hybridelement (använd C3D8, CPE4, CAX4, ...)");
+        return fail("*HYPERFOAM is not supported in hybrid elements (use C3D8, CPE4, CAX4, ...)");
     }
     let tau_of = |f: &M3, old: &[f64], new: &mut [f64]| -> Result<M3> { if full { hs::kirchhoff_hist(h, f, old, new) } else { h.tau_dev_hist(f, old, new) } };
     let ndim = common::ndim(mode);
@@ -511,10 +511,10 @@ pub fn nl_eval_hist(
         .map(|q| (0..nd).map(|c| (0..nq).map(|r| pm[q][r] * pts[r].w * pts[r].j * pts[r].gv[c]).sum()).collect())
         .collect();
     let hc = if hourglass && nbar > 0 { hourglass_coef(if mode == StressMode::PlaneStrain || (axi && nbar == 4) { 2 } else { 3 }) * mu0 } else { 0.0 };
-    // tryck i punkterna: projektionen av U′(θ)
+    // pressure at the points: the projection of U′(θ)
     let up: Vec<f64> = theta.iter().map(|&th| vol(th).0).collect();
     let mut ptil: Vec<f64> = (0..nq).map(|q| (0..nq).map(|r| pm[q][r] * pts[r].w * up[r]).sum()).collect();
-    // helt inkompressibelt: trycket är Lagrangemultiplikatorer (skalade med s) i tryckbasen
+    // fully incompressible: the pressures are Lagrange multipliers (scaled by s) in the pressure basis
     let np = if mult.is_some() { bas.np } else { 0 };
     if let Some((pv, sc)) = mult {
         for q in 0..nq {
@@ -536,9 +536,9 @@ pub fn nl_eval_hist(
     };
     let mut state = vec![0.0; nq * stride];
     let mut ext = vec![0.0; 12 * nq];
-    // koefficient c_q framför Δ(dθ_q) (andra variationen av θ_q)
+    // coefficient c_q in front of Δ(dθ_q) (the second variation of θ_q)
     let mut c2 = vec![0.0; nq];
-    // CAX4H: ringsträckningen ersätts med sitt medelvärde λ̄ och planets del skalas så att J(F̄) = θ
+    // CAX4H: the hoop stretch is replaced by its mean λ̄ and the in-plane part is scaled so that J(F̄) = θ
     let axbar = axi && nbar == 4;
     let (lam_bar, lam_v) = if axbar {
         let wl: f64 = pts.iter().map(|p| p.w * p.f[2][2]).sum();
@@ -563,7 +563,7 @@ pub fn nl_eval_hist(
             }
             fb[2][2] = lam_bar;
         } else if nbar > 0 {
-            // F̄ = (θ/J)^(1/n) F i n-blocket (n = 2 bara vid plan töjning, där J = J_n)
+            // F̄ = (θ/J)^(1/n) F in the n block (n = 2 only in plane strain, where J = J_n)
             let s = (th / p.j).powf(1.0 / nbar as f64);
             for r in 0..nbar {
                 for c in 0..nbar {
@@ -585,14 +585,14 @@ pub fn nl_eval_hist(
         ext[6 * q..6 * q + 6].copy_from_slice(&le6);
         ext[6 * nq + 6 * q..6 * nq + 6 * q + 6].copy_from_slice(&le6);
         let (u1, u2) = vol(th);
-        // timglasets volymkvot: J/θ, för CAX4H planets J_p/J̄_p med J̄_p = θ/λ̄
+        // the hourglass volume ratio: J/θ, for CAX4H the in-plane J_p/J̄_p with J̄_p = θ/λ̄
         let jp = p.f[0][0] * p.f[1][1] - p.f[0][1] * p.f[1][0];
         let x = if axbar { jp * lam_bar / th } else { p.j / th };
         let psi = x * x - 1.0;
         let hvec = |c: usize| if axbar { p.lg[c][0][0] + p.lg[c][1][1] - dtheta[q][c] / th + lam_v[c] } else { p.gv[c] - dtheta[q][c] / th };
         let trd: f64 = (0..nbe).map(|i| td[i][i]).sum();
         let w = p.w;
-        // δL̄ per frihetsgrad
+        // δL̄ per degree of freedom
         let lb: Vec<M3> = (0..nd)
             .map(|c| {
                 let mut m = p.lg[c];
@@ -615,7 +615,7 @@ pub fn nl_eval_hist(
             let hv = hvec(c);
             fint[c] += w * (ddot(&td, &lb[c]) + u1 * dtheta[q][c] + hc * psi * hv);
         }
-        // koefficienter framför Δ(dθ_q)/θ (från τ_dev : I_n/n och timglas) och Δ(dθ_q) (U′)
+        // coefficients in front of Δ(dθ_q)/θ (from τ_dev : I_n/n and hourglass) and Δ(dθ_q) (U′)
         let a_rel = if nbe > 0 { trd / nbe as f64 } else { 0.0 } - hc * psi;
         c2[q] = w * (u1 + a_rel / th);
         if !tangent {
@@ -633,12 +633,12 @@ pub fn nl_eval_hist(
         for r in 0..nd {
             let cd: [f64; 6] = std::array::from_fn(|m| (0..6).map(|n| ct[n][m] * dv[r][n]).sum());
             for c in 0..nd {
-                // materialdel och spinndel
+                // material part and spin part
                 let w_ = t::skew(&lb[c]);
                 let xm = t::sub(&t::mul(&w_, &td), &t::mul(&td, &w_));
                 let mut s: f64 = (0..6).map(|m| cd[m] * dv[c][m]).sum();
                 s += ddot(&lb[r], &xm);
-                // geometrisk del −τ_d : (δL ΔL) och T-termer
+                // geometric part −τ_d : (δL ΔL) and T terms
                 let mut prod = t::mul(&p.lg[r], &p.lg[c]);
                 let gterm = -ddot(&td, &t::transpose(&prod));
                 prod = t::mul(&p.lg[r], &p.lg[c]);
@@ -660,7 +660,7 @@ pub fn nl_eval_hist(
         }
     }
     if tangent {
-        // Σ_q c2_q Δ(dθ_q) med Δ(dθ_q) = Σ_r P_qr w_r J_r [G_r G_rᵀ − T_r]
+        // Σ_q c2_q Δ(dθ_q) with Δ(dθ_q) = Σ_r P_qr w_r J_r [G_r G_rᵀ − T_r]
         let k = &mut kmat;
         for r in 0..nq {
             let coef: f64 = (0..nq).map(|q| c2[q] * pm[q][r]).sum::<f64>() * pts[r].w * pts[r].j;
@@ -680,7 +680,7 @@ pub fn nl_eval_hist(
             for (q, p) in pts.iter().enumerate() {
                 let w = p.w;
                 for a in 0..nd {
-                    // Σ p_q J_q (G Gᵀ − T) och kopplingen s ψ_k J_q G_q
+                    // Σ p_q J_q (G Gᵀ − T) and the coupling s ψ_k J_q G_q
                     for b in 0..nd {
                         let tq = tr(&t::mul(&p.lg[a], &p.lg[b]));
                         k[a * nt + b] += w * ptil[q] * p.j * (p.gv[a] * p.gv[b] - tq);
@@ -709,12 +709,12 @@ pub fn nl_eval_hist(
     Ok(NlEval { fint, k: tangent.then_some(kmat), state })
 }
 
-/// CAX4 (selektivt reducerad integrering) med kompressibelt hyperelastiskt
-/// material (även *HYPERFOAM och *MULLINS EFFECT) vid NLGEOM: räknas med
-/// samma F-bar-formulering som CAX4H (konstant volymkvot θ, ringsträckningen
-/// ersatt med sitt medelvärde, volymtimglasstyvhet), se
-/// `tests/cases/foam/cax4_*`. Anropas från `solid_higher.rs`;
-/// `None` för andra element och material.
+/// CAX4 (selectively reduced integration) with a compressible hyperelastic
+/// material (also *HYPERFOAM and *MULLINS EFFECT) with NLGEOM: computed with
+/// the same F-bar formulation as CAX4H (constant volume ratio θ, the hoop stretch
+/// replaced by its mean, volumetric hourglass stiffness), see
+/// `tests/cases/foam/cax4_*`. Called from `solid_higher.rs`;
+/// `None` for other elements and materials.
 #[allow(clippy::too_many_arguments)]
 pub fn cax4_hyper(el: &Solid, ctx: &ElemCtx, mat: &dyn MaterialModel, u: &[f64], so: &[f64], sn: &mut Vec<f64>, tangent: bool) -> Result<Option<ElemResponse>> {
     if el.name != "CAX4" || el.mode != StressMode::Axisymmetric {
@@ -732,7 +732,7 @@ pub fn cax4_hyper(el: &Solid, ctx: &ElemCtx, mat: &dyn MaterialModel, u: &[f64],
 }
 
 impl Hybrid {
-    /// Antal tryckvariabler per element.
+    /// Number of pressure variables per element.
     pub fn n_pressure(&self) -> usize {
         match self.pressure {
             Pressure::Constant => 1,
@@ -740,10 +740,10 @@ impl Hybrid {
         }
     }
 
-    /// Motsvarande element utan hybridformulering för andra material än
-    /// hyperelastiska (C3D8H → C3D8, CPE4H → CPE4, CAX4H → CAX4), eller `None`
-    /// om elementet räknas med hybridformuleringen.
-    fn forsta_ordningen(&self, mat: &dyn MaterialModel) -> Option<&'static dyn ElementType> {
+    /// The corresponding element without hybrid formulation for materials other than
+    /// hyperelastic ones (C3D8H → C3D8, CPE4H → CPE4, CAX4H → CAX4), or `None`
+    /// if the element is computed with the hybrid formulation.
+    fn first_order(&self, mat: &dyn MaterialModel) -> Option<&'static dyn ElementType> {
         if mat.hyperelastic().is_some() || linear_incompressible(mat) {
             return None;
         }
@@ -755,33 +755,33 @@ impl Hybrid {
         }
     }
 
-    /// Som `forsta_ordningen`, men bara när hybridvägen inte kan räkna fallet
-    /// (NLGEOM eller olinjärt material); linjärt elastiskt utan NLGEOM ger samma
-    /// resultat med båda.
+    /// Like `first_order`, but only when the hybrid path cannot handle the case
+    /// (NLGEOM or nonlinear material); linear elastic without NLGEOM gives the same
+    /// result with both.
     fn delegat(&self, ctx: &ElemCtx) -> Result<Option<&'static dyn ElementType>> {
         let mat = ctx.material(self.base.name)?;
-        Ok(self.forsta_ordningen(mat).filter(|_| ctx.nlgeom || !mat.is_linear()))
+        Ok(self.first_order(mat).filter(|_| ctx.nlgeom || !mat.is_linear()))
     }
 
-    /// Antal geometriska noder.
+    /// Number of geometric nodes.
     fn ngeo(&self) -> usize {
         self.base.n_nodes()
     }
 
-    /// Antal frihetsgrader på de geometriska noderna.
+    /// Number of degrees of freedom on the geometric nodes.
     fn ngeo_dofs(&self) -> usize {
         self.ngeo() * self.ndim()
     }
 
-    /// Kontext med bara de geometriska noderna.
+    /// Context with only the geometric nodes.
     fn geo_ctx<'a>(&self, ctx: &ElemCtx<'a>) -> ElemCtx<'a> {
         let mut c = ctx.clone();
         c.x.truncate(self.ngeo());
         c
     }
 
-    /// Lägger till de interna nodernas frihetsgrader: identitet (oanvända) i
-    /// styvheten och u i kraften, så att de förblir noll.
+    /// Adds the degrees of freedom of the internal nodes: identity (unused) in
+    /// the stiffness and u in the force, so that they remain zero.
     fn pad(&self, fint: Vec<f64>, k: Option<Vec<f64>>, u: &[f64], used: usize) -> ElemResponse {
         let n = u.len();
         let m = fint.len();
@@ -803,8 +803,8 @@ impl Hybrid {
         ElemResponse { fint: f, k }
     }
 
-    /// Skala s för tryckvariablerna: p = s · u_p med s = μ0 / h, så att u_p får
-    /// längdenhet och tryckekvationerna kraftenhet (Newton-kriterierna per fält).
+    /// Scale s for the pressure variables: p = s · u_p with s = μ0 / h, so that u_p gets
+    /// length units and the pressure equations force units (the per-field Newton criteria).
     fn pressure_scale(&self, ctx: &ElemCtx, h: &dyn HyperModel) -> f64 {
         let x = &ctx.x[..self.ngeo()];
         let size = x.iter().map(|p| common::norm(common::sub(*p, x[0]))).fold(0.0, f64::max).max(1e-300);
@@ -828,7 +828,7 @@ impl ElementType for Hybrid {
     fn n_connectivity(&self) -> usize {
         self.ngeo()
     }
-    /// Tryckvariablerna ligger på interna noder, `ndim` per nod.
+    /// The pressure variables lie on internal nodes, `ndim` per node.
     fn internal_nodes(&self) -> usize {
         self.n_pressure().div_ceil(self.ndim())
     }
@@ -847,7 +847,7 @@ impl ElementType for Hybrid {
 
     fn init_state(&self, ctx: &ElemCtx) -> Result<Vec<f64>> {
         if let Some(m) = ctx.material {
-            if let Some(d) = self.forsta_ordningen(m) {
+            if let Some(d) = self.first_order(m) {
                 return d.init_state(&self.geo_ctx(ctx));
             }
         }
@@ -873,10 +873,10 @@ impl ElementType for Hybrid {
         }
         if ctx.nlgeom {
             let Some(h) = mat.hyperelastic() else {
-                return not_implemented("NLGEOM med andra material än *HYPERELASTIC", self.base.name);
+                return not_implemented("NLGEOM with materials other than *HYPERELASTIC", self.base.name);
             };
             if h.kirchhoff_full(&t::I3).is_some() {
-                return fail(format!("{}: *HYPERFOAM stöds inte i hybridelement (använd C3D8, CPE4, CAX4, ...)", self.base.name));
+                return fail(format!("{}: *HYPERFOAM is not supported in hybrid elements (use C3D8, CPE4, CAX4, ...)", self.base.name));
             }
             let (nbar, hg) = knobs(self);
             let ips = self.base.ips(&g)?;
@@ -912,14 +912,14 @@ impl ElementType for Hybrid {
         Ok(f)
     }
 
-    /// Spänningsstyvhet för *BUCKLE (område hybrid2, `hybrid2::hybrid_geometric`).
+    /// Stress stiffness for *BUCKLE (area hybrid2, `hybrid2::hybrid_geometric`).
     fn geometric_stiffness(&self, ctx: &ElemCtx, u: &[f64], state: &[f64]) -> Result<Vec<f64>> {
         let g = self.geo_ctx(ctx);
         let ng = self.ngeo_dofs();
-        // C3D8H/CPE4H/CAX4H som C3D8/CPE4/CAX4 (även linjärt elastiskt;
-        // tillståndet har samma layout)
+        // C3D8H/CPE4H/CAX4H like C3D8/CPE4/CAX4 (also linear elastic;
+        // the state has the same layout)
         let mat = ctx.material(self.base.name)?;
-        let kg = match self.forsta_ordningen(mat) {
+        let kg = match self.first_order(mat) {
             Some(d) => d.geometric_stiffness(&g, &u[..ng.min(u.len())], state)?,
             None => super::hybrid2::hybrid_geometric(self, &g, mat, state)?,
         };
@@ -944,7 +944,7 @@ impl ElementType for Hybrid {
             return d.output(&g, &u[..self.ngeo_dofs()], state);
         }
         let eps = if ctx.nlgeom { Vec::new() } else { self.linear(&g, Some(&u[..self.ngeo_dofs()]))?.2 };
-        // historievariabler (*MULLINS EFFECT: SENER, DMENER) efter spänningen vid NLGEOM
+        // history variables (*MULLINS EFFECT: SENER, DMENER) after the stress with NLGEOM
         let mat = ctx.material(self.base.name)?;
         let nh = if ctx.nlgeom { mat.hyperelastic().map_or(0, |h| h.n_hist()) } else { 0 };
         let stride = ns + nh;

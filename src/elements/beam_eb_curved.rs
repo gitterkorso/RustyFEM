@@ -1,33 +1,33 @@
-//! Krökta Euler–Bernoullibalkar B23/B33 (område beams3): när nodnormalerna
-//! (medelvärdesbildade, `elements/normals.rs`, eller från *NORMAL) inte är
-//! vinkelräta mot kordan är elementet initialt krökt.
+//! Curved Euler–Bernoulli beams B23/B33 (area beams3): when the nodal normals
+//! (averaged, `elements/normals.rs`, or from *NORMAL) are not
+//! perpendicular to the chord, the element is initially curved.
 //!
-//! Formulering (linjäriserad):
+//! Formulation (linearized):
 //!
-//! - Axeln är en Hermitekurva X(ξ) = N₁X₁ + N₂X₂ + J(N₃T₁ + N₄T₂) med
-//!   nodtangenterna Tₙ vinkelräta mot nodnormalerna (kordan projicerad) och
-//!   J = |dX/dξ| i elementets mitt (fixpunkt, en andragradsekvation), S = Jξ.
-//! - Förskjutningen interpoleras på samma sätt med nodvärdena u, rotationerna
-//!   φ och sträckningen λ i ändarna (en inre nod med två frihetsgrader):
-//!   du/dξ = J(λₙTₙ + φₙ × Tₙ); rotationen kring axeln linjärt.
-//! - Töjningar: ε = G⁻¹X'·u', krökningarna
+//! - The axis is a Hermite curve X(ξ) = N₁X₁ + N₂X₂ + J(N₃T₁ + N₄T₂) with
+//!   the nodal tangents Tₙ perpendicular to the nodal normals (the chord projected) and
+//!   J = |dX/dξ| at the element center (fixed point, a quadratic equation), S = Jξ.
+//! - The displacement is interpolated the same way with the nodal values u, the rotations
+//!   φ and the stretch λ at the ends (an internal node with two degrees of freedom):
+//!   du/dξ = J(λₙTₙ + φₙ × Tₙ); the rotation about the axis linearly.
+//! - Strains: ε = G⁻¹X'·u', the curvatures
 //!   K₂ = G⁻¹(δn₁·X'' + N₁·u'' − ε N₁·X''),
-//!   K₁ = −G⁻¹(δn₂·X'' + N₂·u'' − ε N₂·X'') och vridningen
-//!   e₁ = ω'·t + ω·(N₁' × N₂) − g^{-1/2}(N₂·u')(t·N₁'), med tre Gausspunkter
-//!   och dL = dS = J dξ.
-//! - Massan: ρA∫uᵀu dL (tre Gausspunkter) och ρ(I₁₁ + I₂₂) för vridningen,
-//!   ingen rotationströghet för böjning (som de raka elementen).
+//!   K₁ = −G⁻¹(δn₂·X'' + N₂·u'' − ε N₂·X'') and the twist
+//!   e₁ = ω'·t + ω·(N₁' × N₂) − g^{-1/2}(N₂·u')(t·N₁'), with three Gauss points
+//!   and dL = dS = J dξ.
+//! - The mass: ρA∫uᵀu dL (three Gauss points) and ρ(I₁₁ + I₂₂) for the torsion,
+//!   no rotary inertia for bending (like the straight elements).
 //!
-//! λ kondenseras bort i
-//! `stiffness` och läggs till som inre frihetsgrader i egenvärdessteg
-//! (`beam_mass::internal_dofs`). NLGEOM använder fortfarande raka element.
+//! λ is condensed out in
+//! `stiffness` and added as internal degrees of freedom in eigenvalue steps
+//! (`beam_mass::internal_dofs`). NLGEOM still uses straight elements.
 
 use super::api::{ElemCtx, ElementType};
 use super::beam_eb::EulerBeam;
 use super::common::{cross, dot, norm, scale, sub};
 use crate::model::{fail, Result};
 
-/// Gränsen för när en nodnormal räknas som lutande mot kordan.
+/// The limit for when a nodal normal counts as inclined to the chord.
 const TILT: f64 = 1e-10;
 
 fn unit(v: [f64; 3]) -> [f64; 3] {
@@ -38,7 +38,7 @@ fn add3(a: [f64; 3], b: [f64; 3]) -> [f64; 3] {
     [a[0] + b[0], a[1] + b[1], a[2] + b[2]]
 }
 
-/// Hermitefunktionerna och deras derivator i ξ ∈ [−1, 1].
+/// The Hermite functions and their derivatives at ξ ∈ [−1, 1].
 fn herm(xi: f64) -> ([f64; 4], [f64; 4], [f64; 4]) {
     (
         [(1.0 - xi).powi(2) * (2.0 + xi) / 4.0, (1.0 + xi).powi(2) * (2.0 - xi) / 4.0, (1.0 - xi).powi(2) * (1.0 + xi) / 4.0, -(1.0 + xi).powi(2) * (1.0 - xi) / 4.0],
@@ -49,9 +49,9 @@ fn herm(xi: f64) -> ([f64; 4], [f64; 4], [f64; 4]) {
 
 const GAUSS3: [(f64, f64); 3] = [(-0.774_596_669_241_483_4, 5.0 / 9.0), (0.0, 8.0 / 9.0), (0.774_596_669_241_483_4, 5.0 / 9.0)];
 
-/// Ett krökt element: geometri och styvheter.
+/// A curved element: geometry and stiffnesses.
 pub struct Curved {
-    /// Elementets frihetsgrader (6 för B23, 12 för B33) och totalt med λ₁, λ₂.
+    /// The element's degrees of freedom (6 for B23, 12 for B33) and the total with λ₁, λ₂.
     pub n: usize,
     pub ne: usize,
     x: [[f64; 3]; 2],
@@ -66,7 +66,7 @@ pub struct Curved {
     rho_ip: f64,
 }
 
-/// Rader i en punkt: töjningar (ε, K₁, K₂, e₁) och förskjutning u (3 rader).
+/// Rows at a point: strains (ε, K₁, K₂, e₁) and displacement u (3 rows).
 struct Rows {
     e: [Vec<f64>; 4],
     u: [Vec<f64>; 3],
@@ -75,8 +75,8 @@ struct Rows {
 }
 
 impl Curved {
-    /// Elementets krökta data, eller `None` om nodnormalerna är vinkelräta mot
-    /// kordan och lika (rakt element).
+    /// The element's curved data, or `None` if the nodal normals are perpendicular to
+    /// the chord and equal (straight element).
     pub fn of(el: &EulerBeam, ctx: &ElemCtx) -> Result<Option<Curved>> {
         let Some(nrm) = super::normals::of(ctx) else { return Ok(None) };
         if nrm.len() < 2 {
@@ -100,10 +100,10 @@ impl Curved {
         };
         let t: [[f64; 3]; 2] = std::array::from_fn(|i| unit(sub(c, scale(n2[i], dot(c, n2[i])))));
         if t.iter().any(|v| !(norm(*v) > 0.5)) {
-            return fail(format!("element {} ({}): nodnormalen är parallell med elementet", ctx.label, el.name()));
+            return fail(format!("element {} ({}): the nodal normal is parallel to the element", ctx.label, el.name()));
         }
         let n1: [[f64; 3]; 2] = std::array::from_fn(|i| cross(n2[i], t[i]));
-        // J = |dX/dξ| i mitten (fixpunkt): J = |¾c − ¼J(T₁ + T₂)|, en andragradsekvation
+        // J = |dX/dξ| at the center (fixed point): J = |¾c − ¼J(T₁ + T₂)|, a quadratic equation
         let ts = add3(t[0], t[1]);
         let (qa, qb, qc) = (1.0 - dot(ts, ts) / 16.0, 0.375 * dot(c, ts), -0.5625 * l * l);
         let j = (-qb + (qb * qb - 4.0 * qa * qc).sqrt()) / (2.0 * qa);
@@ -111,8 +111,8 @@ impl Curved {
         Ok(Some(Curved { n: nd, ne: nd + 2, x: [x0, x1], t, n1, j, ea, ei11, ei22, gj, rho_a: d.density * d.area, rho_ip: d.density * ip }))
     }
 
-    /// Kolumnen i elementvektorn för nod `a`, komponent `c` (0–2 förskjutning,
-    /// 3–5 rotation) eller `None` om B23 saknar den.
+    /// The column in the element vector for node `a`, component `c` (0–2 displacement,
+    /// 3–5 rotation) or `None` if B23 lacks it.
     fn col(&self, a: usize, c: usize) -> Option<usize> {
         if self.n == 12 {
             Some(6 * a + c)
@@ -125,7 +125,7 @@ impl Curved {
         }
     }
 
-    /// Axeln i ξ: (X', X'', t, N1, N2) med derivator map. S = Jξ.
+    /// The axis at ξ: (X', X'', t, N1, N2) with derivatives w.r.t. S = Jξ.
     fn frame(&self, xi: f64) -> ([f64; 3], [f64; 3], [f64; 3], [f64; 3], [f64; 3]) {
         let (_, dn, ddn) = herm(xi);
         let j = self.j;
@@ -147,7 +147,7 @@ impl Curved {
         let n1d = scale(sub(self.frame(xi + h).3, self.frame(xi - h).3), 1.0 / (2.0 * h * j));
         let g = dot(xs, xs);
         let sg = g.sqrt();
-        // u, u' och u'' (3 komponenter) samt ω och ω' som rader
+        // u, u' and u'' (3 components) and ω and ω' as rows
         let mut u = [vec![0.0; ne], vec![0.0; ne], vec![0.0; ne]];
         let mut us = u.clone();
         let mut uss = u.clone();
@@ -168,7 +168,7 @@ impl Curved {
             }
             let tn = self.t[a];
             let lam = self.n + a;
-            // du/dξ i noden = J(λ T + φ × T)
+            // du/dξ at the node = J(λ T + φ × T)
             for c in 0..3 {
                 u[c][lam] += j * n[2 + a] * tn[c];
                 us[c][lam] += dn[2 + a] * tn[c];
@@ -208,7 +208,7 @@ impl Curved {
             k1[k] = -(dn2 + n2uss[k] - de[k] * n2xss) / g;
             e1[k] = t_om1[k] + w_om[k] - n2us[k] / sg * tn1d;
         }
-        // vridningen i massan: nodernas vridning kring sina tangenter, linjärt
+        // the torsion in the mass: the nodes' twist about their tangents, linearly
         let mut twn = vec![0.0; ne];
         for a in 0..2 {
             for c in 0..3 {
@@ -221,7 +221,7 @@ impl Curved {
         Rows { e: [de, k1, k2, e1], u, tw: twn, dl: j }
     }
 
-    /// Styvhet och massa med λ₁, λ₂ sist (ne × ne, globala koordinater).
+    /// Stiffness and mass with λ₁, λ₂ last (ne × ne, global coordinates).
     pub fn full(&self) -> (Vec<f64>, Vec<f64>) {
         let ne = self.ne;
         let mut k = vec![0.0; ne * ne];
@@ -245,13 +245,13 @@ impl Curved {
         (k, m)
     }
 
-    /// Statisk kondensering av λ: (K_uu − K_uλ K_λλ⁻¹ K_λu, K_λλ⁻¹ K_λu).
+    /// Static condensation of λ: (K_uu − K_uλ K_λλ⁻¹ K_λu, K_λλ⁻¹ K_λu).
     pub fn condensed(&self) -> Vec<f64> {
         let (k, _) = self.full();
         condense(&k, self.n, self.ne).0
     }
 
-    /// Fördelad last (kraft per längd q i globala koordinater), kondenserad.
+    /// Distributed load (force per length q in global coordinates), condensed.
     pub fn load(&self, q: [f64; 3]) -> Vec<f64> {
         let ne = self.ne;
         let mut f = vec![0.0; ne];
@@ -278,7 +278,7 @@ impl Curved {
         out
     }
 
-    /// Snittkrafter i Gausspunkterna (N, M₁, M₂, T) med λ ur kondenseringen.
+    /// Section forces at the Gauss points (N, M₁, M₂, T) with λ from the condensation.
     pub fn section_forces(&self, u: &[f64]) -> Vec<[f64; 4]> {
         let ne = self.ne;
         let (k, _) = self.full();
@@ -309,7 +309,7 @@ fn outer_add(k: &mut [f64], n: usize, c: f64, a: &[f64], b: &[f64]) {
     }
 }
 
-/// Kondenserar bort de två sista frihetsgraderna: (K_c, K_λλ⁻¹K_λu, K_λλ⁻¹).
+/// Condenses out the last two degrees of freedom: (K_c, K_λλ⁻¹K_λu, K_λλ⁻¹).
 #[allow(clippy::type_complexity)]
 fn condense(k: &[f64], n: usize, ne: usize) -> (Vec<f64>, [Vec<f64>; 2], [[f64; 2]; 2]) {
     let a = k[n * ne + n];
@@ -328,7 +328,7 @@ fn condense(k: &[f64], n: usize, ne: usize) -> (Vec<f64>, [Vec<f64>; 2], [[f64; 
     (kc, x, inv)
 }
 
-/// Snittkrafter SF/SM i de tre Gausspunkterna (som `beams2_eb_output.rs`).
+/// Section forces SF/SM at the three Gauss points (like `beams2_eb_output.rs`).
 pub fn output(c: &Curved, dim: usize, u: &[f64]) -> Vec<super::api::IpField> {
     use super::api::IpField;
     let f = c.section_forces(u);
@@ -345,9 +345,9 @@ pub fn output(c: &Curved, dim: usize, u: &[f64]) -> Vec<super::api::IpField> {
     vec![sf, sm]
 }
 
-/// Inre frihetsgrader för egenvärdessteg: skillnaden mellan den fullständiga
-/// krökta matrisen (med λ₁, λ₂) och elementets nodmatriser (`stiffness`,
-/// `mass` med konsistent massa), som `beam_mass::internal_dofs` lägger till.
+/// Internal degrees of freedom for eigenvalue steps: the difference between the full
+/// curved matrix (with λ₁, λ₂) and the element's nodal matrices (`stiffness`,
+/// `mass` with consistent mass), which `beam_mass::internal_dofs` adds.
 pub fn internal(c: &Curved, el: &EulerBeam, ctx: &ElemCtx) -> Result<super::beam_mass::BeamInternal> {
     use super::api::MassKind;
     let (mut k, mut m) = c.full();

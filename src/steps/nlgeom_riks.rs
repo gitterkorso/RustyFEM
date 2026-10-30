@@ -1,28 +1,28 @@
-//! *STATIC, RIKS: båglängdsmetoden för instabila jämviktsvägar (efterknäckning,
-//! genomslag).
+//! *STATIC, RIKS: the arc-length method for unstable equilibrium paths (post-buckling,
+//! snap-through).
 //!
-//! Lastfaktorn λ är en obekant: F = F₀ + λ (F_ref − F₀), där F₀ är lasten vid
-//! stegets början och F_ref stegets laster. Metoden är den modifierade
-//! Riks-metoden (Riks 1979, Crisfield 1981, Ramm 1981):
+//! The load factor λ is an unknown: F = F₀ + λ (F_ref − F₀), where F₀ is the load at
+//! the start of the step and F_ref the step's loads. The method is the modified
+//! Riks method (Riks 1979, Crisfield 1981, Ramm 1981):
 //!
-//! - Rummet skalas: förskjutningarna med ū (största beloppet i den första,
-//!   linjära lösningen v₀ = K⁻¹P) och lasten med |P|, så att punkten är (u/ū; λ).
-//! - Prediktor: steget Δl längs tangenten (v; 1), Δλ = ±Δl κ/√(ṽ·ṽ + 1), där
-//!   κ = √(ṽ₀·ṽ₀ + 1) i stegets första punkt, så att första inkrementet får
-//!   Δλ = Δl_in/l_period (båglängden redovisas i samma enhet som Δl_in).
-//!   Tecknet väljs så att prediktorn pekar åt samma håll som förra
-//!   inkrementet.
-//! - Korrektor: K [v c] = [P R], μ = −c̃·ṽ₀/(ṽ·ṽ₀ + 1), Δu += c + μ v,
-//!   Δλ += μ (korrektionen vinkelrät mot den senaste tangenten), och v₀ ← v.
-//! - Konvergens med samma fältvisa kriterier som *STATIC (R_n, C_n, *CONTROLS).
-//! - Båglängden ändras automatiskt som tidsinkrementet i *STATIC (ökning 1,5
-//!   efter två snabba inkrement, kvartering vid divergens) inom [Δl_min, Δl_max];
-//!   DIRECT ger fast båglängd.
-//! - Steget slutar när λ passerar λ_slut, när förskjutningen i angiven
-//!   nod/frihetsgrad passerar angivet värde, eller vid INC= inkrement.
+//! - The space is scaled: the displacements by ū (the largest magnitude in the first,
+//!   linear solution v₀ = K⁻¹P) and the load by |P|, so that the point is (u/ū; λ).
+//! - Predictor: the step Δl along the tangent (v; 1), Δλ = ±Δl κ/√(ṽ·ṽ + 1), where
+//!   κ = √(ṽ₀·ṽ₀ + 1) at the first point of the step, so that the first increment gets
+//!   Δλ = Δl_in/l_period (the arc length is reported in the same unit as Δl_in).
+//!   The sign is chosen so that the predictor points in the same direction as the previous
+//!   increment.
+//! - Corrector: K [v c] = [P R], μ = −c̃·ṽ₀/(ṽ·ṽ₀ + 1), Δu += c + μ v,
+//!   Δλ += μ (the correction orthogonal to the latest tangent), and v₀ ← v.
+//! - Convergence with the same field-wise criteria as *STATIC (R_n, C_n, *CONTROLS).
+//! - The arc length is changed automatically like the time increment in *STATIC (increase 1.5
+//!   after two fast increments, quartering on divergence) within [Δl_min, Δl_max];
+//!   DIRECT gives a fixed arc length.
+//! - The step ends when λ passes λ_end, when the displacement at the given
+//!   node/DOF passes the given value, or after INC= increments.
 //!
-//! Föreskrivna förskjutningar skalas inte med λ (de hålls på värdet vid stegets
-//! början); laster som inte ändras i steget är döda laster.
+//! Prescribed displacements are not scaled by λ (they are held at their value at the start of the
+//! step); loads that do not change in the step are dead loads.
 
 use super::api::{StepCtx, StepType};
 use super::newton::NonlinearSystem;
@@ -36,25 +36,25 @@ pub struct Riks;
 
 pub static STEP_TYPES: &[&dyn StepType] = &[&Riks];
 
-/// Data på *STATIC, RIKS-raden.
+/// Data on the *STATIC, RIKS line.
 struct Params {
     dl_in: f64,
     period: f64,
     dl_min: f64,
     dl_max: f64,
     lam_end: Option<f64>,
-    /// (nodindex, slot, gränsvärde)
+    /// (node index, slot, limit value)
     disp_end: Option<(usize, usize, f64)>,
 }
 
 fn params(ctx: &StepCtx) -> Result<Params> {
-    let kw = ctx.step.procedure.as_ref().expect("procedur");
+    let kw = ctx.step.procedure.as_ref().expect("procedure");
     let recs = kw.records();
     let fields: Vec<String> = recs.first().map(|d| d.fields.iter().map(|f| f.trim().to_string()).collect()).unwrap_or_default();
     let num = |i: usize| -> Result<Option<f64>> {
         match fields.get(i).filter(|f| !f.is_empty()) {
             None => Ok(None),
-            Some(f) => crate::fem::model::parse_f64(f).map(Some).ok_or_else(|| FemError(format!("{}: '{f}' är inget tal", kw.location()))),
+            Some(f) => crate::fem::model::parse_f64(f).map(Some).ok_or_else(|| FemError(format!("{}: '{f}' is not a number", kw.location()))),
         }
     };
     let period = num(1)?.filter(|&x| x > 0.0).unwrap_or(1.0);
@@ -65,10 +65,10 @@ fn params(ctx: &StepCtx) -> Result<Params> {
     let m = ctx.prep.model;
     let disp_end = match (fields.get(5).filter(|f| !f.is_empty()), num(6)?, num(7)?) {
         (Some(node), Some(dof), Some(val)) => {
-            let n = find_node(m, node).ok_or_else(|| FemError(format!("{}: noden '{node}' för slutvillkoret finns inte", kw.location())))?;
+            let n = find_node(m, node).ok_or_else(|| FemError(format!("{}: the node '{node}' for the end condition does not exist", kw.location())))?;
             let d = dof as usize;
             if !(1..=6).contains(&d) {
-                return fail(format!("{}: frihetsgrad {d} för slutvillkoret stöds inte", kw.location()));
+                return fail(format!("{}: DOF {d} for the end condition is not supported", kw.location()));
             }
             Some((n, d - 1, val))
         }
@@ -77,7 +77,7 @@ fn params(ctx: &StepCtx) -> Result<Params> {
     Ok(Params { dl_in: dl_in / period, period, dl_min: dl_min / period, dl_max: dl_max / period, lam_end, disp_end })
 }
 
-/// Nod som nummer (i den enda/förvalda instansen), INSTANS.nummer eller nodset med en nod.
+/// Node as a number (in the single/default instance), INSTANCE.number or a node set with one node.
 fn find_node(m: &crate::fem::model::FeModel, s: &str) -> Option<usize> {
     let up = s.to_uppercase();
     if let Some(v) = m.nsets.get(&up).filter(|v| v.len() == 1) {
@@ -88,7 +88,7 @@ fn find_node(m: &crate::fem::model::FeModel, s: &str) -> Option<usize> {
         return m.node(i, lab.trim().parse().ok()?);
     }
     let lab: i64 = up.parse().ok()?;
-    for name in ["MODELL", "ASSEMBLY"] {
+    for name in ["MODEL", "ASSEMBLY"] {
         if let Some(n) = m.instance_index(name).and_then(|i| m.node(i, lab)) {
             return Some(n);
         }
@@ -107,7 +107,7 @@ impl StepType for Riks {
 
     fn run(&self, ctx: &mut StepCtx) -> Result<()> {
         if !ctx.nlgeom {
-            return fail("*STATIC, RIKS stöds bara med NLGEOM=YES");
+            return fail("*STATIC, RIKS is only supported with NLGEOM=YES");
         }
         let prm = params(ctx)?;
         let fixed = ctx.step.procedure.as_ref().is_some_and(|p| p.has("DIRECT"));
@@ -131,12 +131,12 @@ impl StepType for Riks {
         let mut dl = prm.dl_in;
         let mut ubar = 0.0f64;
         let mut kappa = 1.0f64;
-        // förra inkrementets ändring (skalad) och Δλ
+        // the previous increment's change (scaled) and Δλ
         let mut prev: Option<(Vec<f64>, f64)> = None;
         let mut quick_prev = false;
         let mut incs = 0usize;
         let mut iters = 0usize;
-        // ū = största förskjutningen (translationer) i v₀; skalärprodukterna tar med alla frihetsgrader
+        // ū = the largest displacement (translations) in v₀; the dot products include all DOFs
         let wu: Vec<f64> = (0..sys.n_eq()).map(|q| if sys.eq_field(q) == Field::Displacement { 1.0 } else { 0.0 }).collect();
         let scaled_dot = |a: &[f64], b: &[f64], ub: f64| a.iter().zip(b).map(|(x, y)| x * y).sum::<f64>() / (ub * ub);
         loop {
@@ -145,22 +145,22 @@ impl StepType for Riks {
             }
             let mut cutbacks = 0;
             let (out, dlam_inc, du_inc) = loop {
-                // tangent och lastmönster i startpunkten
+                // tangent and load pattern at the starting point
                 sys.begin_increment(arc, arc + dl)?;
                 sys.riks = Some(RiksLoads { lambda: lam });
                 sys.evaluate(true)?;
                 let pat = sys.load_pattern()?;
                 if pat.iter().all(|&x| x == 0.0) {
-                    return fail("*STATIC, RIKS: steget har ingen referenslast (F_ref = F₀)");
+                    return fail("*STATIC, RIKS: the step has no reference load (F_ref = F₀)");
                 }
                 let v0 = sys.solve(&pat)?;
                 if ubar == 0.0 {
                     ubar = v0.iter().zip(&wu).fold(0.0f64, |a, (&x, w)| a.max(w * x.abs()));
                     if !(ubar > 0.0) {
-                        return fail("*STATIC, RIKS: lastmönstret ger ingen förskjutning");
+                        return fail("*STATIC, RIKS: the load pattern gives no displacement");
                     }
-                    // båglängdens enhet: det första inkrementet (Δλ = Δl_in/l_period)
-                    // har längden Δl_in i det skalade rummet
+                    // the arc-length unit: the first increment (Δλ = Δl_in/l_period)
+                    // has the length Δl_in in the scaled space
                     kappa = (scaled_dot(&v0, &v0, ubar) + 1.0).sqrt();
                 }
                 let mag = dl * kappa / (scaled_dot(&v0, &v0, ubar) + 1.0).sqrt();
@@ -181,7 +181,7 @@ impl StepType for Riks {
                 sys.riks = Some(RiksLoads { lambda: lam + dlam0 });
                 let mut hook = |s: &mut NlSystem, r: &[f64]| -> Result<Vec<f64>> {
                     let pat = s.load_pattern()?;
-                    // samma faktorisering för båda högerleden
+                    // the same factorization for both right-hand sides
                     let (v, c) = s.solve_pair(&pat, r)?;
                     let mu = -scaled_dot(&c, &vo, ubar) / (scaled_dot(&v, &vo, ubar) + 1.0);
                     let l = lam_cell.get() + mu;
@@ -198,17 +198,17 @@ impl StepType for Riks {
                     }
                     None => {
                         if fixed {
-                            return fail(format!("Riks-inkrement {} konvergerade inte (DIRECT, fast båglängd)", incs + 1));
+                            return fail(format!("Riks increment {} did not converge (DIRECT, fixed arc length)", incs + 1));
                         }
                         cutbacks += 1;
                         dl *= ctrl.cutback;
                         if cutbacks > ctrl.max_cutbacks || dl < prm.dl_min {
                             return fail(format!(
-                                "*STATIC, RIKS: ingen konvergens vid lastfaktor {lam:.6}: båglängden blev mindre än minimum eller för många halveringar"
+                                "*STATIC, RIKS: no convergence at load factor {lam:.6}: the arc length became smaller than the minimum or too many cutbacks"
                             ));
                         }
                         if verbose {
-                            eprintln!("  Riks: halverar båglängden till {:.4e}", dl * prm.period);
+                            eprintln!("  Riks: halving the arc length to {:.4e}", dl * prm.period);
                         }
                     }
                 }
@@ -227,13 +227,13 @@ impl StepType for Riks {
             if verbose {
                 let info = *sys.info.lock().unwrap();
                 eprintln!(
-                    "  Riks-inkrement {incs}: lastfaktor {lam:.6}, båglängd {:.6}, {} iterationer{}",
+                    "  Riks increment {incs}: load factor {lam:.6}, arc length {:.6}, {} iterations{}",
                     arc * prm.period,
                     out.iterations,
-                    if info.negative > 0 { format!(", {} negativa egenvärden", info.negative) } else { String::new() }
+                    if info.negative > 0 { format!(", {} negative eigenvalues", info.negative) } else { String::new() }
                 );
             }
-            // slutvillkor
+            // end condition
             let mut done = false;
             if let Some(lam_e) = prm.lam_end {
                 if (lam_e > 0.0 && lam >= lam_e) || (lam_e < 0.0 && lam <= lam_e) {

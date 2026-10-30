@@ -1,36 +1,36 @@
-//! Område explicit_adv: DEM (diskreta elementmetoden) med PD3D i
-//! explicit analys, och kontakt mellan sfäriska partiklar (PD3D och SPH:s
-//! PC3D) och elementytor.
+//! Area explicit_adv: DEM (discrete element method) with PD3D in
+//! explicit analysis, and contact between spherical particles (PD3D and SPH
+//! PC3D) and element surfaces.
 //!
-//! Partikeln är en stel sfär med radien r och densiteten ρ från
-//! `*DISCRETE SECTION, DENSITY=ρ` (dataraden: r): m = ρ·4πr³/3 och
-//! rotationströgheten I = 2/5 m r² (frihetsgraderna UR1–UR3).
-//! `ALPHA=α` ger massproportionell dämpning −α m v och −α I ω (ALLVD).
+//! The particle is a rigid sphere with radius r and density ρ from
+//! `*DISCRETE SECTION, DENSITY=ρ` (data line: r): m = ρ·4πr³/3 and
+//! the rotary inertia I = 2/5 m r² (degrees of freedom UR1–UR3).
+//! `ALPHA=α` gives mass-proportional damping −α m v and −α I ω (ALLVD).
 //!
-//! Kontakt ingår i general contact (`*CONTACT`, `*CONTACT INCLUSIONS` med
-//! partikelytan, `*SURFACE, TYPE=ELEMENT` med partikelelementen utan
-//! ytbeteckning, eller en nodyta för PC3D) mot partiklar eller elementytor.
-//! Egenskaper ur `*CONTACT PROPERTY ASSIGNMENT` och `*SURFACE INTERACTION`:
+//! Contact is part of general contact (`*CONTACT`, `*CONTACT INCLUSIONS` with
+//! the particle surface, `*SURFACE, TYPE=ELEMENT` with the particle elements without
+//! a face label, or a node surface for PC3D) against particles or element surfaces.
+//! Properties from `*CONTACT PROPERTY ASSIGNMENT` and `*SURFACE INTERACTION`:
 //!
-//! - Normalkraft: `*SURFACE BEHAVIOR, PRESSURE-OVERCLOSURE=LINEAR` (kraft =
-//!   lutning · genomträngning δ), `=HERTZ` (F = 4/3 E* √R* δ^{3/2} med E och ν
-//!   från `*DISCRETE ELASTICITY`, 1/E* = Σ(1 − ν²)/E, R* = r₁r₂/(r₁ + r₂);
-//!   dataraden ger den största styvheten K_max) eller hård kontakt med
-//!   massbaserad straffstyvhet κ m/Δt² (som `explicit_contact.rs`).
-//! - Dämpning: c = 2ζ √(K m) med K = normalstyvheten och m = den minsta av de
-//!   två massorna (en stel/massalös motyta: partikelns massa), ζ = 0,03 som
-//!   standard för straffkontakt eller `*CONTACT DAMPING, DEFINITION=
-//!   CRITICAL DAMPING FRACTION` (kontrollerat för en kedja av tre
-//!   partiklar med linjär kontakt).
-//!   Dämpningen räknas som ALLVD.
-//! - Friktion (`*FRICTION` μ): tangentiell fjäder med normalstyvheten och
-//!   Coulombs gräns μ Fₙ; kraften verkar i kontaktpunkten och ger moment på
-//!   partiklarna (rullning). Glidningens arbete ger ALLFD.
+//! - Normal force: `*SURFACE BEHAVIOR, PRESSURE-OVERCLOSURE=LINEAR` (force =
+//!   slope · penetration δ), `=HERTZ` (F = 4/3 E* √R* δ^{3/2} with E and ν
+//!   from `*DISCRETE ELASTICITY`, 1/E* = Σ(1 − ν²)/E, R* = r₁r₂/(r₁ + r₂);
+//!   the data line gives the largest stiffness K_max) or hard contact with
+//!   mass-based penalty stiffness κ m/Δt² (like `explicit_contact.rs`).
+//! - Damping: c = 2ζ √(K m) with K = the normal stiffness and m = the smaller of the
+//!   two masses (a rigid/massless counter surface: the particle mass), ζ = 0.03 by
+//!   default for penalty contact or `*CONTACT DAMPING, DEFINITION=
+//!   CRITICAL DAMPING FRACTION` (checked for a chain of three
+//!   particles with linear contact).
+//!   The damping is counted as ALLVD.
+//! - Friction (`*FRICTION` μ): tangential spring with the normal stiffness and
+//!   the Coulomb limit μ Fₙ; the force acts at the contact point and gives moments on
+//!   the particles (rolling). The work of sliding gives ALLFD.
 //!
-//! Partiklar mot elementytor: närmaste punkt på facetten, δ = r − avståndet
-//! längs facettens normal; kraften fördelas på facettens noder med
-//! formfunktionerna. SPH-partiklar (PC3D) är sfärer med radien L (den
-//! karakteristiska längden, som kontakttjocklek) utan rotation.
+//! Particles against element surfaces: closest point on the facet, δ = r − the distance
+//! along the facet normal; the force is distributed to the facet nodes with
+//! the shape functions. SPH particles (PC3D) are spheres with radius L (the
+//! characteristic length, as contact thickness) without rotation.
 
 use super::{Eval, Sink};
 use crate::elements::common::{cross, dot, norm, sub};
@@ -41,10 +41,10 @@ use crate::interactions::geom::{self, Facet};
 use crate::model::{fail, FemError, Result};
 use std::collections::{HashMap, HashSet};
 
-/// Standarddämpning (andel av kritisk dämpning) för straffkontakt.
+/// Default damping (fraction of critical damping) for penalty contact.
 pub const DEFAULT_ZETA: f64 = 0.03;
 
-/// En sfärisk partikel.
+/// A spherical particle.
 #[derive(Debug, Clone)]
 pub struct Sphere {
     pub e: usize,
@@ -54,7 +54,7 @@ pub struct Sphere {
     pub inertia: f64,
     pub rot: bool,
     pub alpha: f64,
-    /// Hertz: (E, ν) från *DISCRETE ELASTICITY.
+    /// Hertz: (E, ν) from *DISCRETE ELASTICITY.
     pub elastic: Option<(f64, f64)>,
 }
 
@@ -87,19 +87,19 @@ struct Pair {
     a: Vec<usize>,
     b: Target,
     props: Props,
-    /// Tangentialkraft (på b) per kontakt (a, b-index).
+    /// Tangential force (on b) per contact (a, b index).
     ft: HashMap<(usize, usize), [f64; 3]>,
 }
 
 pub struct Dem {
     pub spheres: Vec<Sphere>,
     pairs: Vec<Pair>,
-    /// Sfärens index per nod.
+    /// Sphere index per node.
     of_node: HashMap<usize, usize>,
 }
 
-/// Elementen i ytan om den bara består av partiklar (PD3D, PC3D), eller
-/// nodytans noder om alla hör till partiklar. `None` annars.
+/// The elements in the surface if it consists only of particles (PD3D, PC3D), or
+/// the nodes of the node surface if all belong to particles. `None` otherwise.
 pub fn particle_surface(m: &FeModel, name: &str) -> Option<Vec<usize>> {
     let s = m.surfaces.get(&name.trim().to_uppercase())?;
     let part_of_node = || -> HashMap<usize, usize> {
@@ -123,7 +123,7 @@ pub fn particle_surface(m: &FeModel, name: &str) -> Option<Vec<usize>> {
     v.iter().all(|&e| crate::elements::explicit_adv::is_particle(m.elements[e].etype.name())).then_some(v)
 }
 
-/// *CONTACT-blocket innehåller partikelytor (läses här och inte i `explicit_contact.rs`).
+/// The *CONTACT block contains particle surfaces (read here and not in `explicit_contact.rs`).
 pub fn is_particle_pair(m: &FeModel, a: &str, b: &str) -> bool {
     particle_surface(m, a).is_some() || particle_surface(m, b).is_some()
 }
@@ -136,14 +136,14 @@ fn sub_options<'a>(m: &'a FeModel, kw: &RawKeyword, names: &[&str]) -> Vec<&'a R
 fn properties(m: &FeModel, kw: &RawKeyword, name: &str) -> Result<Props> {
     let up = name.trim().to_uppercase();
     let Some(pos) = m.extra.iter().position(|k| k.name == "SURFACE INTERACTION" && k.param_upper("NAME").as_deref() == Some(up.as_str())) else {
-        return kw.err(format!("*SURFACE INTERACTION, NAME={name} finns inte"));
+        return kw.err(format!("*SURFACE INTERACTION, NAME={name} does not exist"));
     };
     let mut pr = Props::default();
     for sub in m.extra.iter().skip(pos + 1).take_while(|k| matches!(k.name.as_str(), "SURFACE BEHAVIOR" | "FRICTION" | "CONTACT DAMPING")) {
         match sub.name.as_str() {
             "FRICTION" => {
                 if sub.has("ROUGH") || sub.data.len() > 1 || sub.has("ANISOTROPIC") || sub.has("DEPENDENCIES") {
-                    return sub.err("partikelkontakt: bara isotrop Coulombfriktion med en konstant μ stöds");
+                    return sub.err("particle contact: only isotropic Coulomb friction with a constant μ is supported");
                 }
                 pr.mu = sub.first_floats()?.first().copied().unwrap_or(0.0);
             }
@@ -153,19 +153,19 @@ fn properties(m: &FeModel, kw: &RawKeyword, name: &str) -> Result<Props> {
                     None | Some("HARD") => Normal::Hard,
                     Some("LINEAR") => match v.first().copied().filter(|&k| k > 0.0) {
                         Some(k) => Normal::Linear(k),
-                        None => return sub.err("PRESSURE-OVERCLOSURE=LINEAR: ange lutningen (> 0)"),
+                        None => return sub.err("PRESSURE-OVERCLOSURE=LINEAR: specify the slope (> 0)"),
                     },
                     Some("HERTZ") => Normal::Hertz(v.first().copied().filter(|&k| k > 0.0)),
-                    Some(o) => return sub.err(format!("partikelkontakt: PRESSURE-OVERCLOSURE={o} stöds inte ännu (HARD, LINEAR, HERTZ)")),
+                    Some(o) => return sub.err(format!("particle contact: PRESSURE-OVERCLOSURE={o} is not supported yet (HARD, LINEAR, HERTZ)")),
                 };
                 if sub.has("NO SEPARATION") {
-                    return sub.err("partikelkontakt: NO SEPARATION stöds inte");
+                    return sub.err("particle contact: NO SEPARATION is not supported");
                 }
             }
             _ => {
                 let d = crate::interactions::contact::damping::parse(sub, true)?;
                 if !d.critical {
-                    return sub.err("partikelkontakt: bara DEFINITION=CRITICAL DAMPING FRACTION stöds");
+                    return sub.err("particle contact: only DEFINITION=CRITICAL DAMPING FRACTION is supported");
                 }
                 pr.zeta = d.mu0;
             }
@@ -183,17 +183,17 @@ impl Dem {
         for (e, el) in m.elements.iter().enumerate() {
             let sph = match el.etype.name() {
                 "PD3D" => {
-                    let Some(si) = el.section else { return fail(format!("{} saknar tvärsnitt (*DISCRETE SECTION)", m.elem_name(e))) };
+                    let Some(si) = el.section else { return fail(format!("{} has no section (*DISCRETE SECTION)", m.elem_name(e))) };
                     let sec = &m.sections[si];
                     if sec.raw.name != "DISCRETE SECTION" {
-                        return sec.raw.err("PD3D kräver *DISCRETE SECTION");
+                        return sec.raw.err("PD3D requires *DISCRETE SECTION");
                     }
                     let Some(rho) = sec.raw.param("DENSITY").and_then(parse_f64).filter(|&r| r > 0.0) else {
-                        return sec.raw.err("*DISCRETE SECTION: DENSITY= (> 0) saknas (fördelningar stöds inte ännu)");
+                        return sec.raw.err("*DISCRETE SECTION: DENSITY= (> 0) is missing (distributions are not supported yet)");
                     };
                     let r = sec.raw.first_floats()?.first().copied().unwrap_or(0.0);
                     if !(r > 0.0) {
-                        return sec.raw.err("*DISCRETE SECTION: ange partikelns radie (> 0) på dataraden");
+                        return sec.raw.err("*DISCRETE SECTION: specify the particle radius (> 0) on the data line");
                     }
                     let alpha = sec.raw.param("ALPHA").and_then(parse_f64).unwrap_or(0.0);
                     let elastic = match (sec.raw.param(ELASTIC_E).and_then(parse_f64), sec.raw.param(ELASTIC_NU).and_then(parse_f64)) {
@@ -204,7 +204,7 @@ impl Dem {
                     Sphere { e, node: el.nodes[0], r, mass, inertia: 0.4 * mass * r * r, rot: true, alpha, elastic }
                 }
                 "PC3D" => {
-                    // SPH-partikel: kontaktradien är den karakteristiska längden
+                    // SPH particle: the contact radius is the characteristic length
                     let Some(si) = el.section else { continue };
                     let sec = &m.sections[si];
                     let l = sec.raw.first_floats()?.first().copied().unwrap_or(0.0);
@@ -220,7 +220,7 @@ impl Dem {
         if spheres.is_empty() {
             return Ok(None);
         }
-        // kontaktpar ur *CONTACT
+        // contact pairs from *CONTACT
         let mut pairs = Vec::new();
         for kw in m.extra.iter().filter(|k| k.name == "CONTACT") {
             let subs = sub_options(m, kw, &["CONTACT INCLUSIONS", "CONTACT PROPERTY ASSIGNMENT", "CONTACT EXCLUSIONS", "CONTACT FORMULATION", "CONTACT CONTROLS ASSIGNMENT", "CONTACT INITIALIZATION ASSIGNMENT", "SURFACE PROPERTY ASSIGNMENT"]);
@@ -230,7 +230,7 @@ impl Dem {
                 for d in &s.data {
                     let f: Vec<&str> = d.fields.iter().map(|x| x.trim()).collect();
                     if f.len() >= 3 && !f[2].is_empty() {
-                        // fel i egenskaperna rapporteras bara för partikelpar
+                        // errors in the properties are reported only for particle pairs
                         let pr = match properties(m, s, f[2]) {
                             Ok(pr) => pr,
                             Err(_) => continue,
@@ -255,12 +255,12 @@ impl Dem {
                     if pa.is_none() && pb.is_none() {
                         continue;
                     }
-                    // egenskaperna: per ytpar (i någon ordning) eller globala
+                    // the properties: per surface pair (in either order) or global
                     let pr = match per.iter().find(|(x, y, _)| (x == &a && y == &b) || (x == &b && y == &a)) {
                         Some(x) => x.2,
                         None => glob,
                     };
-                    // fel i den använda egenskapen
+                    // errors in the property used
                     for s2 in subs.iter().filter(|s| s.name == "CONTACT PROPERTY ASSIGNMENT") {
                         for d2 in &s2.data {
                             let f2: Vec<&str> = d2.fields.iter().map(|x| x.trim()).collect();
@@ -286,7 +286,7 @@ impl Dem {
             }
         }
         if !spheres.iter().any(|s| s.rot) && pairs.is_empty() {
-            // bara SPH-partiklar utan kontakt
+            // only SPH particles without contact
             return Ok(None);
         }
         Ok(Some(Dem { spheres, pairs, of_node }))
@@ -301,13 +301,13 @@ impl Dem {
         }
     }
 
-    /// Kontakt- och dämpningskrafter. Returnerar friktionens dissipation i inkrementet.
+    /// Contact and damping forces. Returns the frictional dissipation in the increment.
     pub fn forces(&mut self, p: &Prepared, ev: &Eval, out: &mut Sink) -> Result<f64> {
         let m = p.model;
         let x: Vec<[f64; 3]> = self.spheres.iter().map(|s| std::array::from_fn(|c| m.nodes[s.node][c] + ev.u[s.node][c])).collect();
         let v: Vec<[f64; 3]> = self.spheres.iter().map(|s| std::array::from_fn(|c| ev.v[s.node][c])).collect();
         let w: Vec<[f64; 3]> = self.spheres.iter().map(|s| if s.rot { std::array::from_fn(|c| ev.v[s.node][3 + c]) } else { [0.0; 3] }).collect();
-        // massproportionell dämpning
+        // mass-proportional damping
         for (i, s) in self.spheres.iter().enumerate() {
             if s.alpha != 0.0 && s.rot {
                 for c in 0..3 {
@@ -328,7 +328,7 @@ impl Dem {
             let mut seen: HashSet<(usize, usize)> = HashSet::new();
             match &pair.b {
                 Target::Spheres(bs) => {
-                    // grannar via rutnät (sfärerna i b)
+                    // neighbours via grid (the spheres in b)
                     let rmax = pair.a.iter().chain(bs.iter()).map(|&i| spheres[i].r).fold(0.0f64, f64::max);
                     let cell = 2.0 * rmax.max(1e-300);
                     let key = |q: &[f64; 3]| ((q[0] / cell).floor() as i64, (q[1] / cell).floor() as i64, (q[2] / cell).floor() as i64);
@@ -369,23 +369,23 @@ impl Dem {
                                         };
                                         let rstar = si.r * sj.r / (si.r + sj.r);
                                         let (fe, kn) = normal_force(pr.normal, delta, mmin, dt, estar, rstar).map_err(|e| FemError(format!("{}: {}", m.elem_name(si.e), e.0)))?;
-                                        // kontaktpunkten och relativhastigheten (j relativt i)
+                                        // the contact point and the relative velocity (j relative to i)
                                         let vci: [f64; 3] = std::array::from_fn(|c| v[i0][c] + cross(w[i0], [si.r * n[0], si.r * n[1], si.r * n[2]])[c]);
                                         let vcj: [f64; 3] = std::array::from_fn(|c| v[j0][c] + cross(w[j0], [-sj.r * n[0], -sj.r * n[1], -sj.r * n[2]])[c]);
                                         let vrel = sub(vcj, vci);
                                         let vn = dot(vrel, n);
                                         let c_n = 2.0 * pr.zeta * (kn * mmin).sqrt();
                                         let fd = -c_n * vn;
-                                        // normal: på j längs +n, på i längs −n
+                                        // normal: on j along +n, on i along −n
                                         for c in 0..3 {
                                             out.fcon[sj.node][c] += fe * n[c];
                                             out.fcon[si.node][c] -= fe * n[c];
-                                            // dämpningen som viskös kraft (fvis subtraheras)
+                                            // the damping as a viscous force (fvis is subtracted)
                                             out.fvis[sj.node][c] -= fd * n[c];
                                             out.fvis[si.node][c] += fd * n[c];
                                         }
                                         if pr.mu > 0.0 {
-                                            // Coulombs gräns med normalkraftens elastiska del (avläst: rullning på platta 2e-2 → 1e-3)
+                                            // Coulomb limit with the elastic part of the normal force (read off: rolling on a plate 2e-2 → 1e-3)
                                 let fnorm = fe.max(0.0);
                                             let vt: [f64; 3] = std::array::from_fn(|c| vrel[c] - vn * n[c]);
                                             let ft_old = pair.ft.get(&k).copied().unwrap_or([0.0; 3]);
@@ -430,14 +430,14 @@ impl Dem {
                                 pair.ft.remove(&k);
                                 continue;
                             }
-                            // normalen från facetten mot partikeln
+                            // the normal from the facet towards the particle
                             let n = fp.normal;
                             let mf: f64 = f.nodes.iter().zip(&fp.n).map(|(&nd, &w)| w * nodemass(nd)).sum();
                             let mmin = if mf > 0.0 { si.mass.min(mf) } else { si.mass };
                             let estar = si.elastic.map(|a| a.0 / (1.0 - a.1 * a.1));
                             let (fe, kn) = normal_force(pr.normal, delta, mmin, dt, estar, si.r).map_err(|e| FemError(format!("{}: {}", m.elem_name(si.e), e.0)))?;
                             let vf: [f64; 3] = std::array::from_fn(|c| f.nodes.iter().zip(&fp.n).map(|(&nd, &w)| w * ev.v[nd][c]).sum());
-                            // partikelns kontaktpunkt (mot facetten: −r n)
+                            // the particle's contact point (towards the facet: −r n)
                             let vc: [f64; 3] = std::array::from_fn(|c| v[i][c] + cross(w[i], [-si.r * n[0], -si.r * n[1], -si.r * n[2]])[c]);
                             let vrel = sub(vc, vf);
                             let vn = dot(vrel, n);
@@ -454,7 +454,7 @@ impl Dem {
                                 }
                             }
                             if pr.mu > 0.0 {
-                                // Coulombs gräns med normalkraftens elastiska del (avläst: rullning på platta 2e-2 → 1e-3)
+                                // Coulomb limit with the elastic part of the normal force (read off: rolling on a plate 2e-2 → 1e-3)
                                 let fnorm = fe.max(0.0);
                                 let vt: [f64; 3] = std::array::from_fn(|c| vrel[c] - vn * n[c]);
                                 let ft_old = pair.ft.get(&k).copied().unwrap_or([0.0; 3]);
@@ -487,7 +487,7 @@ impl Dem {
     pub fn output(&self, _p: &Prepared, _fr: &mut FrameData) {}
 }
 
-/// Normalkraftens elastiska del och normalstyvheten vid genomträngningen δ.
+/// The elastic part of the normal force and the normal stiffness at the penetration δ.
 fn normal_force(normal: Normal, delta: f64, mmin: f64, dt: f64, estar: Option<f64>, rstar: f64) -> Result<(f64, f64)> {
     Ok(match normal {
         Normal::Linear(k) => (k * delta, k),
@@ -496,12 +496,12 @@ fn normal_force(normal: Normal, delta: f64, mmin: f64, dt: f64, estar: Option<f6
             (k * delta, k)
         }
         Normal::Hertz(kmax) => {
-            let Some(es) = estar else { return fail("PRESSURE-OVERCLOSURE=HERTZ kräver *DISCRETE ELASTICITY (E, ν)") };
+            let Some(es) = estar else { return fail("PRESSURE-OVERCLOSURE=HERTZ requires *DISCRETE ELASTICITY (E, ν)") };
             let f = 4.0 / 3.0 * es * rstar.sqrt() * delta.powf(1.5);
             let k = 2.0 * es * (rstar * delta).sqrt();
             match kmax {
                 Some(km) if k > km => {
-                    // F växer linjärt med lutningen vid K_max bortom δ_max
+                    // F grows linearly with the slope at K_max beyond δ_max
                     let dmax = (km / (2.0 * es)).powi(2) / rstar;
                     let fmax = 4.0 / 3.0 * es * rstar.sqrt() * dmax.powf(1.5);
                     (fmax + km * (delta - dmax), km)
@@ -512,18 +512,18 @@ fn normal_force(normal: Normal, delta: f64, mmin: f64, dt: f64, estar: Option<f6
     })
 }
 
-/// Tangentiell straffstyvhet kₜ = m*/Δt², m* = den effektiva massan för
-/// relativ glidning i kontaktpunkten (1/m* = Σ 1/m + r²/I): fastnad kontakt
-/// stoppar glidhastigheten på ett inkrement (rullning utan glidning,
-/// v = 5/7 v₀ för en sfär på ett plan).
+/// Tangential penalty stiffness kₜ = m*/Δt², m* = the effective mass for
+/// relative sliding at the contact point (1/m* = Σ 1/m + r²/I): sticking contact
+/// stops the sliding velocity in one increment (rolling without sliding,
+/// v = 5/7 v₀ for a sphere on a plane).
 fn tangent_stiffness(inv_mass: f64, dt: f64) -> f64 {
     1.0 / (inv_mass * dt * dt)
 }
 
-/// Tangentiell fjäder (styvheten kₜ) med Coulombs gräns `limit`:
-/// den nya tangentialkraften och glidningens dissipation.
+/// Tangential spring (stiffness kₜ) with the Coulomb limit `limit`:
+/// the new tangential force and the dissipation of sliding.
 fn tangential(ft_old: [f64; 3], n: [f64; 3], vt: [f64; 3], kt: f64, dt: f64, limit: f64) -> ([f64; 3], f64) {
-    // föregående kraft vriden till det nya tangentplanet
+    // the previous force rotated to the new tangent plane
     let fo = dot(ft_old, n);
     let mut ft: [f64; 3] = std::array::from_fn(|c| ft_old[c] - fo * n[c]);
     let l0 = norm(ft_old);
@@ -531,7 +531,7 @@ fn tangential(ft_old: [f64; 3], n: [f64; 3], vt: [f64; 3], kt: f64, dt: f64, lim
     if l1 > 0.0 {
         ft = ft.map(|x| x * l0 / l1);
     }
-    // kraften på b motverkar b:s glidning relativt a
+    // the force on b opposes the sliding of b relative to a
     for c in 0..3 {
         ft[c] -= kt * vt[c] * dt;
     }
@@ -544,6 +544,6 @@ fn tangential(ft_old: [f64; 3], n: [f64; 3], vt: [f64; 3], kt: f64, dt: f64, lim
     (ft, 0.0)
 }
 
-/// Platsen för *DISCRETE ELASTICITY på tvärsnittets nyckelord (E och ν).
+/// Location of *DISCRETE ELASTICITY on the section keyword (E and ν).
 pub const ELASTIC_E: &str = "RUSTYFEM_DISCRETE_E";
 pub const ELASTIC_NU: &str = "RUSTYFEM_DISCRETE_NU";

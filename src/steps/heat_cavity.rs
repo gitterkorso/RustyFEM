@@ -1,49 +1,49 @@
-//! Kavitetsstrålning i *HEAT TRANSFER.
+//! Cavity radiation in *HEAT TRANSFER.
 //!
-//! Indata:
-//! - `*SURFACE PROPERTY, NAME=` + `*EMISSIVITY` (ε, T): ytegenskaper (modelldata);
-//! - `*CAVITY DEFINITION, NAME=, AMBIENT TEMP=, SET PROPERTY`: kaviteten som
-//!   lista av ytor (`yta, ytegenskap` per rad med SET PROPERTY);
+//! Input:
+//! - `*SURFACE PROPERTY, NAME=` + `*EMISSIVITY` (ε, T): surface properties (model data);
+//! - `*CAVITY DEFINITION, NAME=, AMBIENT TEMP=, SET PROPERTY`: the cavity as a
+//!   list of surfaces (`surface, surface property` per line with SET PROPERTY);
 //! - `*RADIATION VIEW FACTOR, CAVITY=, BLOCKING=, REFLECTION=, VTOL=,
-//!   INFINITESIMAL=, LUMPED AREA=, INTEGRATION=, SYMMETRY=, OFF` (stegdata,
-//!   ärvs till senare steg);
-//! - `*RADIATION SYMMETRY, NAME=` + `*REFLECTION, TYPE=LINE/PLANE` (spegling);
-//! - `*PHYSICAL CONSTANTS` (σ och absoluta nollpunkten) krävs.
+//!   INFINITESIMAL=, LUMPED AREA=, INTEGRATION=, SYMMETRY=, OFF` (step data,
+//!   inherited by later steps);
+//! - `*RADIATION SYMMETRY, NAME=` + `*REFLECTION, TYPE=LINE/PLANE` (reflection);
+//! - `*PHYSICAL CONSTANTS` (σ and absolute zero) is required.
 //!
-//! Formulering: varje fasett (elementyta)
-//! är isoterm med strålningspotentialen ηᵢ = Σ_N P_iN (θ_N − θ_Z)⁴, där
-//! P_iN = (1/Aᵢ)∫Nᴺ dA. Flödena per areaenhet in i fasetterna löser
+//! Formulation: each facet (element face)
+//! is isothermal with the radiation potential ηᵢ = Σ_N P_iN (θ_N − θ_Z)⁴, where
+//! P_iN = (1/Aᵢ)∫Nᴺ dA. The fluxes per unit area into the facets solve
 //!
 //!   Σⱼ (δᵢⱼ + (εⱼ − 1)Fᵢⱼ) qⱼ/εⱼ = σ Σⱼ Fᵢⱼ (ηⱼ − ηᵢ) + σ Fᵢ,amb (η_amb − ηᵢ)
 //!
-//! (REFLECTION=NO: qᵢ = högerledet, svart kropp). Lösningen är linjär i η:
-//! Qᵢ = Aᵢ qᵢ = Σⱼ Mᵢⱼ ηⱼ + m⁰ᵢ. Nodflödet är Q_N = Σᵢ P_iN Qᵢ och
-//! Jacobianen 4 R̄_NM (θ_M − θ_Z)³ med R̄ = Pᵀ M P (osymmetrisk; lösaren
-//! `unsymmetric` väljs automatiskt). Emissiviteten tas vid
-//! fasettens temperatur FTEMP = θ_Z + (Σ P_iN (θ_N − θ_Z)⁴)^¼ i inkrementets
-//! början, linjärt extrapolerad från de två senaste inkrementen som
-//! prediktor (explicit, utan bidrag till Jacobianen).
-//! Med automatisk inkrementering görs inkrementet om med halva längden när
-//! emissiviteten ändras mer än MXDEM= (standard 0,1) under inkrementet.
+//! (REFLECTION=NO: qᵢ = the right-hand side, black body). The solution is linear in η:
+//! Qᵢ = Aᵢ qᵢ = Σⱼ Mᵢⱼ ηⱼ + m⁰ᵢ. The nodal flux is Q_N = Σᵢ P_iN Qᵢ and the
+//! Jacobian 4 R̄_NM (θ_M − θ_Z)³ with R̄ = Pᵀ M P (unsymmetric; the solver
+//! `unsymmetric` is selected automatically). The emissivity is taken at the
+//! facet temperature FTEMP = θ_Z + (Σ P_iN (θ_N − θ_Z)⁴)^¼ at the start of the
+//! increment, linearly extrapolated from the two most recent increments as a
+//! predictor (explicit, without contribution to the Jacobian).
+//! With automatic incrementation the increment is redone with half the length when
+//! the emissivity changes by more than MXDEM= (default 0.1) during the increment.
 //!
-//! Synfaktorer:
-//! - 2D (plana element): Hottels korsade trådar, exakt för plana kanter,
-//!   efter att fasetterna klippts mot varandras plan;
-//! - 3D: klumpad area (ekv. 3, med atan-regulariseringen) när
-//!   R²/max(Aᵢ, Aⱼ) > LUMPED AREA (5), infinitesimal–ändlig (Hottel, ekv. 4)
-//!   när areakvoten > INFINITESIMAL (64), annars Mitalas–Stephensons
-//!   konturintegral (ekv. 5) med INTEGRATION (3) gausspunkter per kant och
-//!   den inre kantintegralen analytiskt;
-//! - blockering (BLOCKING=ALL, standard): paret tas bort om strålen mellan
-//!   fasetternas mittpunkter skär en annan fasett i kaviteten;
-//! - öppen kavitet (AMBIENT TEMP=): Fᵢ,amb = 1 − Σⱼ Fᵢⱼ om avvikelsen är
-//!   större än VTOL (0,05), annars ingen strålning till omgivningen;
-//! - spegling (*REFLECTION): bidraget från spegelbilden av varje fasett
-//!   läggs till Fᵢⱼ.
+//! View factors:
+//! - 2D (planar elements): Hottel's crossed strings, exact for straight edges,
+//!   after the facets have been clipped against each other's planes;
+//! - 3D: lumped area (eq. 3, with the atan regularization) when
+//!   R²/max(Aᵢ, Aⱼ) > LUMPED AREA (5), infinitesimal–finite (Hottel, eq. 4)
+//!   when the area ratio > INFINITESIMAL (64), otherwise the Mitalas–Stephenson
+//!   contour integral (eq. 5) with INTEGRATION (3) Gauss points per edge and
+//!   the inner edge integral analytically;
+//! - blocking (BLOCKING=ALL, default): the pair is removed if the ray between
+//!   the facet midpoints intersects another facet in the cavity;
+//! - open cavity (AMBIENT TEMP=): Fᵢ,amb = 1 − Σⱼ Fᵢⱼ if the deviation is
+//!   larger than VTOL (0.05), otherwise no radiation to the ambient;
+//! - reflection (*REFLECTION): the contribution from the mirror image of each facet
+//!   is added to Fᵢⱼ.
 //!
-//! Andra ordningens ytor: mittnoderna ignoreras i synfaktorerna men
-//! ingår i P_iN. Axisymmetriska kaviteter, *PERIODIC, *CYCLIC,
-//! *MOTION och BLOCKING=PARTIAL ger fel.
+//! Second-order faces: the midside nodes are ignored in the view factors but
+//! included in P_iN. Axisymmetric cavities, *PERIODIC, *CYCLIC,
+//! *MOTION and BLOCKING=PARTIAL give an error.
 
 use crate::elements::heat::{self as hel};
 use crate::fem::assembly::{DofMap, NONE};
@@ -56,29 +56,29 @@ use std::collections::BTreeMap;
 
 use super::api::StepType;
 
-/// Inga egna steg-typer; används av `steps/heat.rs`.
+/// No step types of its own; used by `steps/heat.rs`.
 pub static STEP_TYPES: &[&dyn StepType] = &[];
 
-/// Slot för temperaturen NT11.
+/// Slot for the temperature NT11.
 const TS: usize = 7;
 
-/// En fasett (elementyta) i en kavitet.
+/// A facet (element face) in a cavity.
 #[derive(Debug, Clone)]
 pub struct Facet {
     pub elem: usize,
     pub face: String,
-    /// Index i kavitetens nodlista och P_iN.
+    /// Indices into the cavity's node list and P_iN.
     pub p: Vec<(usize, f64)>,
     pub area: f64,
-    /// Hörnen (2D: två punkter) i ordning; normalen pekar ut ur elementet.
+    /// The corners (2D: two points) in order; the normal points out of the element.
     pub corners: Vec<[f64; 3]>,
     pub normal: [f64; 3],
     pub center: [f64; 3],
-    /// Ytegenskapens index i `Radiation::props`.
+    /// Index of the surface property in `Radiation::props`.
     prop: usize,
 }
 
-/// Synfaktorinställningar från *RADIATION VIEW FACTOR.
+/// View factor settings from *RADIATION VIEW FACTOR.
 #[derive(Debug, Clone)]
 struct VfOpts {
     blocking: bool,
@@ -87,35 +87,35 @@ struct VfOpts {
     infinitesimal: f64,
     lumped: f64,
     integration: usize,
-    /// Speglingar (punkt, normal) från *RADIATION SYMMETRY/*REFLECTION.
+    /// Reflections (point, normal) from *RADIATION SYMMETRY/*REFLECTION.
     mirrors: Vec<([f64; 3], [f64; 3])>,
 }
 
 pub struct Cavity {
     pub name: String,
     pub facets: Vec<Facet>,
-    /// Kavitetens noder (globala index).
+    /// The cavity's nodes (global indices).
     pub nodes: Vec<usize>,
-    /// Synfaktorer Fᵢⱼ (nf × nf, radvis).
+    /// View factors Fᵢⱼ (nf × nf, row-major).
     pub f: Vec<f64>,
-    /// Fᵢ,amb (öppen kavitet).
+    /// Fᵢ,amb (open cavity).
     pub famb: Vec<f64>,
     ambient: Option<f64>,
     opts: VfOpts,
-    /// R̄_NM (noder × noder) och m⁰_N (nodflöde från omgivningen).
+    /// R̄_NM (nodes × nodes) and m⁰_N (nodal flux from the ambient).
     rbar: Vec<f64>,
     m0: Vec<f64>,
-    /// Emissiviteter som R̄ räknades med.
+    /// Emissivities that R̄ was computed with.
     eps: Vec<f64>,
 }
 
-/// Alla aktiva kaviteter i ett steg.
+/// All active cavities in a step.
 pub struct Radiation {
     pub cavities: Vec<Cavity>,
-    /// Största tillåtna emissivitetsändring per inkrement (MXDEM), None = ingen kontroll.
+    /// Largest allowed emissivity change per increment (MXDEM), None = no check.
     pub mxdem: Option<f64>,
-    /// (tid, temperaturer) i början av aktuellt och föregående inkrement, för
-    /// den linjära extrapoleringen av temperaturen som emissiviteten tas vid.
+    /// (time, temperatures) at the start of the current and previous increment, for
+    /// the linear extrapolation of the temperature at which the emissivity is taken.
     cur: Option<(f64, Vec<f64>)>,
     prev: Option<(f64, Vec<f64>)>,
     props: Vec<Table>,
@@ -125,27 +125,27 @@ pub struct Radiation {
 
 fn num(kw: &RawKeyword, key: &str) -> Result<Option<f64>> {
     match kw.param(key) {
-        Some(v) => parse_f64(v).map(Some).ok_or_else(|| FemError(format!("{}: {key}={v} är inget tal", kw.location()))),
+        Some(v) => parse_f64(v).map(Some).ok_or_else(|| FemError(format!("{}: {key}={v} is not a number", kw.location()))),
         None => Ok(None),
     }
 }
 
-/// Ytegenskaper: namn → emissivitetstabell.
+/// Surface properties: name → emissivity table.
 fn surface_properties(model: &FeModel) -> Result<BTreeMap<String, Table>> {
     let mut out = BTreeMap::new();
     let mut current: Option<String> = None;
     for kw in &model.extra {
         match kw.name.as_str() {
             "SURFACE PROPERTY" => {
-                let Some(n) = kw.param_upper("NAME") else { return kw.err("NAME= saknas") };
+                let Some(n) = kw.param_upper("NAME") else { return kw.err("NAME= is missing") };
                 current = Some(n);
             }
             "EMISSIVITY" => {
-                let Some(n) = current.clone() else { return kw.err("*EMISSIVITY ska stå direkt efter *SURFACE PROPERTY") };
+                let Some(n) = current.clone() else { return kw.err("*EMISSIVITY must come directly after *SURFACE PROPERTY") };
                 let t = read_table(kw, 1)?;
                 for (_, v) in &t.pts {
                     if !(0.0..=1.0).contains(&v[0]) {
-                        return kw.err(format!("emissiviteten {} ska ligga i [0, 1]", v[0]));
+                        return kw.err(format!("the emissivity {} must lie in [0, 1]", v[0]));
                     }
                 }
                 out.insert(n, t);
@@ -170,67 +170,67 @@ fn physical_constants(model: &FeModel) -> Result<(Option<f64>, Option<f64>)> {
     Ok((z, s))
 }
 
-/// Har modellen någon kavitet?
+/// Does the model have any cavity?
 pub fn has_cavities(model: &FeModel) -> bool {
     model.extra.iter().any(|k| k.name == "CAVITY DEFINITION")
 }
 
-/// Synfaktorinställningar per kavitet som gäller i steget `index` (de ärvs
-/// från tidigare steg). `None` = ingen kavitetsstrålning (OFF eller aldrig
-/// begärd).
+/// View factor settings per cavity that apply in step `index` (they are inherited
+/// from earlier steps). `None` = no cavity radiation (OFF or never
+/// requested).
 fn step_options(model: &FeModel, index: usize, names: &[String]) -> Result<BTreeMap<String, Option<VfOpts>>> {
     let mut out: BTreeMap<String, Option<VfOpts>> = BTreeMap::new();
     for step in model.steps.iter().take(index + 1) {
-        // speglingar i steget (*RADIATION SYMMETRY följt av *REFLECTION)
+        // reflections in the step (*RADIATION SYMMETRY followed by *REFLECTION)
         let mut syms: BTreeMap<String, Vec<([f64; 3], [f64; 3])>> = BTreeMap::new();
         let mut cur: Option<String> = None;
         for kw in &step.extra {
             match kw.name.as_str() {
                 "RADIATION SYMMETRY" => {
-                    let Some(n) = kw.param_upper("NAME") else { return kw.err("NAME= saknas") };
+                    let Some(n) = kw.param_upper("NAME") else { return kw.err("NAME= is missing") };
                     syms.entry(n.clone()).or_default();
                     cur = Some(n);
                 }
                 "REFLECTION" => {
-                    let Some(n) = cur.clone() else { return kw.err("*REFLECTION ska stå efter *RADIATION SYMMETRY") };
+                    let Some(n) = cur.clone() else { return kw.err("*REFLECTION must come after *RADIATION SYMMETRY") };
                     let ty = kw.param_upper("TYPE").unwrap_or_default();
-                    // TYPE=PLANE har punkterna på två rader
+                    // TYPE=PLANE has the points on two lines
                     let mut v = Vec::new();
                     for d in &kw.data {
                         v.extend(kw.floats(d)?);
                     }
                     let m = match ty.as_str() {
                         "LINE" => {
-                            // två punkter på linjen
+                            // two points on the line
                             if v.len() < 4 {
-                                return kw.err("TYPE=LINE: skriv 'x1, y1, x2, y2'");
+                                return kw.err("TYPE=LINE: write 'x1, y1, x2, y2'");
                             }
                             let t = [v[2] - v[0], v[3] - v[1], 0.0];
                             let l = (t[0] * t[0] + t[1] * t[1]).sqrt();
                             if l == 0.0 {
-                                return kw.err("punkterna sammanfaller");
+                                return kw.err("the points coincide");
                             }
                             ([v[0], v[1], 0.0], [-t[1] / l, t[0] / l, 0.0])
                         }
                         "PLANE" => {
-                            // tre punkter i planet
+                            // three points in the plane
                             if v.len() < 9 {
-                                return kw.err("TYPE=PLANE: skriv tre punkter (9 koordinater)");
+                                return kw.err("TYPE=PLANE: write three points (9 coordinates)");
                             }
                             let a = [v[0], v[1], v[2]];
                             let n = cross(sub([v[3], v[4], v[5]], a), sub([v[6], v[7], v[8]], a));
                             let l = norm(n);
                             if l == 0.0 {
-                                return kw.err("punkterna ligger på en linje");
+                                return kw.err("the points lie on a line");
                             }
                             (a, scale(n, 1.0 / l))
                         }
-                        _ => return kw.err(format!("TYPE={ty} stöds inte (LINE, PLANE)")),
+                        _ => return kw.err(format!("TYPE={ty} is not supported (LINE, PLANE)")),
                     };
                     syms.get_mut(&n).unwrap().push(m);
                 }
-                "PERIODIC" | "CYCLIC" => return kw.err(format!("*{} för kavitetsstrålning stöds inte ännu", kw.name)),
-                "MOTION" => return kw.err("*MOTION (rörliga kavitetsytor) stöds inte ännu"),
+                "PERIODIC" | "CYCLIC" => return kw.err(format!("*{} for cavity radiation is not supported yet", kw.name)),
+                "MOTION" => return kw.err("*MOTION (moving cavity surfaces) is not supported yet"),
                 _ => {}
             }
         }
@@ -238,7 +238,7 @@ fn step_options(model: &FeModel, index: usize, names: &[String]) -> Result<BTree
             let which: Vec<String> = match kw.param_upper("CAVITY") {
                 Some(c) => {
                     if !names.contains(&c) {
-                        return kw.err(format!("kaviteten {c} finns inte (*CAVITY DEFINITION)"));
+                        return kw.err(format!("the cavity {c} does not exist (*CAVITY DEFINITION)"));
                     }
                     vec![c]
                 }
@@ -253,20 +253,20 @@ fn step_options(model: &FeModel, index: usize, names: &[String]) -> Result<BTree
             let blocking = match kw.param_upper("BLOCKING").as_deref() {
                 None | Some("ALL") => true,
                 Some("NO") => false,
-                Some(o) => return kw.err(format!("BLOCKING={o} stöds inte (ALL, NO)")),
+                Some(o) => return kw.err(format!("BLOCKING={o} is not supported (ALL, NO)")),
             };
             let reflection = match kw.param_upper("REFLECTION").as_deref() {
                 None | Some("YES") => true,
                 Some("NO") => false,
-                Some(o) => return kw.err(format!("REFLECTION={o} är okänt (YES, NO)")),
+                Some(o) => return kw.err(format!("REFLECTION={o} is unknown (YES, NO)")),
             };
             if kw.has("RANGE") {
-                return kw.err("RANGE= stöds inte ännu");
+                return kw.err("RANGE= is not supported yet");
             }
             let mirrors = match kw.param_upper("SYMMETRY") {
                 Some(s) => match syms.get(&s) {
                     Some(m) => m.clone(),
-                    None => return kw.err(format!("symmetrin {s} saknas i steget (*RADIATION SYMMETRY, NAME={s})")),
+                    None => return kw.err(format!("the symmetry {s} is missing in the step (*RADIATION SYMMETRY, NAME={s})")),
                 },
                 None => Vec::new(),
             };
@@ -287,13 +287,13 @@ fn step_options(model: &FeModel, index: usize, names: &[String]) -> Result<BTree
     Ok(out)
 }
 
-/// MXDEM= på procedurraden (*HEAT TRANSFER), standard 0,1.
+/// MXDEM= on the procedure line (*HEAT TRANSFER), default 0.1.
 pub fn mxdem(step: &crate::fem::model::StepDef) -> Option<f64> {
     let v = step.procedure.as_ref().and_then(|k| k.param("MXDEM")).and_then(parse_f64);
     Some(v.unwrap_or(0.1))
 }
 
-/// Kavitetsstrålningen i steget `index` (None om ingen kavitet är aktiv).
+/// The cavity radiation in step `index` (None if no cavity is active).
 pub fn for_step(model: &FeModel, index: usize) -> Result<Option<Radiation>> {
     if !has_cavities(model) {
         return Ok(None);
@@ -304,7 +304,7 @@ pub fn for_step(model: &FeModel, index: usize) -> Result<Option<Radiation>> {
     let defs: Vec<&RawKeyword> = model.extra.iter().filter(|k| k.name == "CAVITY DEFINITION").collect();
     let mut names = Vec::new();
     for kw in &defs {
-        let Some(n) = kw.param_upper("NAME") else { return kw.err("NAME= saknas") };
+        let Some(n) = kw.param_upper("NAME") else { return kw.err("NAME= is missing") };
         names.push(n);
     }
     let opts = step_options(model, index, &names)?;
@@ -313,10 +313,10 @@ pub fn for_step(model: &FeModel, index: usize) -> Result<Option<Radiation>> {
     for (kw, name) in defs.iter().zip(&names) {
         let Some(Some(o)) = opts.get(name) else { continue };
         if z.is_none() || s.is_none() {
-            return kw.err("kavitetsstrålning kräver *PHYSICAL CONSTANTS, ABSOLUTE ZERO=..., STEFAN BOLTZMANN=...");
+            return kw.err("cavity radiation requires *PHYSICAL CONSTANTS, ABSOLUTE ZERO=..., STEFAN BOLTZMANN=...");
         }
         if kw.param_upper("PARALLEL DECOMPOSITION").as_deref() == Some("ON") {
-            // samma ekvationer, bara annan lösningsmetod
+            // same equations, just a different solution method
         }
         let mut pairs: Vec<(String, String)> = Vec::new();
         for d in kw.records() {
@@ -324,20 +324,20 @@ pub fn for_step(model: &FeModel, index: usize) -> Result<Option<Radiation>> {
             if kw.has("SET PROPERTY") {
                 for c in f.chunks(2) {
                     if c.len() < 2 {
-                        return kw.err_at(d.line, "SET PROPERTY: skriv 'yta, ytegenskap'");
+                        return kw.err_at(d.line, "SET PROPERTY: write 'surface, surface property'");
                     }
                     pairs.push((c[0].clone(), c[1].clone()));
                 }
             } else {
-                return kw.err_at(d.line, "ytegenskapen måste anges med SET PROPERTY ('yta, ytegenskap'); PROPERTY= på *SURFACE stöds inte ännu");
+                return kw.err_at(d.line, "the surface property must be given with SET PROPERTY ('surface, surface property'); PROPERTY= on *SURFACE is not supported yet");
             }
         }
         let mut facets = Vec::new();
         let mut node_idx: BTreeMap<usize, usize> = BTreeMap::new();
         let mut nodes = Vec::new();
         for (sname, pname) in &pairs {
-            let Some(surf) = model.surfaces.get(sname) else { return kw.err(format!("ytan {sname} finns inte")) };
-            let Some(t) = props_by_name.get(pname) else { return kw.err(format!("ytegenskapen {pname} saknar *EMISSIVITY")) };
+            let Some(surf) = model.surfaces.get(sname) else { return kw.err(format!("the surface {sname} does not exist")) };
+            let Some(t) = props_by_name.get(pname) else { return kw.err(format!("the surface property {pname} has no *EMISSIVITY")) };
             let pi = match prop_names.iter().position(|p| p == pname) {
                 Some(i) => i,
                 None => {
@@ -347,17 +347,17 @@ pub fn for_step(model: &FeModel, index: usize) -> Result<Option<Radiation>> {
                 }
             };
             for (e, label) in &surf.faces {
-                let fct = build_facet(model, *e, label, pi, &mut node_idx, &mut nodes).map_err(|err| FemError(format!("kaviteten {name}, ytan {sname}: {}", err.0)))?;
+                let fct = build_facet(model, *e, label, pi, &mut node_idx, &mut nodes).map_err(|err| FemError(format!("cavity {name}, surface {sname}: {}", err.0)))?;
                 facets.push(fct);
             }
         }
         if facets.is_empty() {
-            return kw.err("kaviteten har inga fasetter");
+            return kw.err("the cavity has no facets");
         }
         let dim3 = facets[0].corners.len() > 2;
         let nf = facets.len();
         let f = view_factors(&facets, o, dim3);
-        // felsökning: RUSTYFEM_VF_DUMP=fil skriver synfaktorerna (element, yta, area, rad)
+        // debugging: RUSTYFEM_VF_DUMP=file writes the view factors (element, face, area, row)
         if let Ok(path) = std::env::var("RUSTYFEM_VF_DUMP") {
             let mut s = String::new();
             for (i, fc) in facets.iter().enumerate() {
@@ -398,10 +398,10 @@ fn build_facet(model: &FeModel, e: usize, label: &str, prop: usize, node_idx: &m
     let el = &model.elements[e];
     let name = el.etype.name();
     let Some(he) = hel::lookup(name).or_else(|| crate::elements::thermal_electric::lookup(name)) else {
-        return fail(format!("{}: elementtypen {name} kan inte ingå i en kavitet (värmeledningselement krävs)", model.elem_name(e)));
+        return fail(format!("{}: element type {name} cannot be part of a cavity (heat transfer elements are required)", model.elem_name(e)));
     };
     if he.axisym {
-        return fail(format!("{}: axisymmetriska kaviteter stöds inte ännu", model.elem_name(e)));
+        return fail(format!("{}: axisymmetric cavities are not supported yet", model.elem_name(e)));
     }
     let f = he.face_index(label)?;
     let thickness = el.section.map(|s| model.sections[s].solid_thickness()).unwrap_or(1.0);
@@ -409,7 +409,7 @@ fn build_facet(model: &FeModel, e: usize, label: &str, prop: usize, node_idx: &m
     let pts = he.face_points(&x, f, thickness, false)?;
     let area: f64 = pts.iter().map(|p| p.w).sum();
     if area <= 0.0 {
-        return fail(format!("{}: ytan {label} har ingen area", model.elem_name(e)));
+        return fail(format!("{}: face {label} has no area", model.elem_name(e)));
     }
     let fnodes = he.faces()[f];
     let dim = he.dim();
@@ -431,7 +431,7 @@ fn build_facet(model: &FeModel, e: usize, label: &str, prop: usize, node_idx: &m
         let t = sub(corners[1], corners[0]);
         [t[1], -t[0], 0.0]
     } else {
-        // Newells metod för polygonens normal
+        // Newell's method for the polygon normal
         let mut n = [0.0; 3];
         for a in 0..ncorner {
             let p = corners[a];
@@ -444,7 +444,7 @@ fn build_facet(model: &FeModel, e: usize, label: &str, prop: usize, node_idx: &m
     };
     let l = norm(normal);
     normal = scale(normal, 1.0 / l);
-    // normalen ut ur elementet
+    // the normal out of the element
     if dot(normal, sub(center, ecen)) < 0.0 {
         normal = scale(normal, -1.0);
     }
@@ -463,7 +463,7 @@ fn build_facet(model: &FeModel, e: usize, label: &str, prop: usize, node_idx: &m
 }
 
 // ---------------------------------------------------------------------------
-// Vektorhjälp
+// Vector helpers
 // ---------------------------------------------------------------------------
 
 fn sub(a: [f64; 3], b: [f64; 3]) -> [f64; 3] {
@@ -488,14 +488,14 @@ fn dist(a: [f64; 3], b: [f64; 3]) -> f64 {
     norm(sub(a, b))
 }
 
-/// Speglar punkten `x` i planet/linjen (punkt `o`, enhetsnormal `n`).
+/// Reflects the point `x` in the plane/line (point `o`, unit normal `n`).
 fn mirror(x: [f64; 3], o: [f64; 3], n: [f64; 3]) -> [f64; 3] {
     let d = dot(sub(x, o), n);
     sub(x, scale(n, 2.0 * d))
 }
 
-/// Fasettens spegelbild (hörnordningen vänds så att polygonen behåller sin
-/// orientering relativt normalen).
+/// The mirror image of the facet (the corner order is reversed so that the polygon keeps its
+/// orientation relative to the normal).
 fn mirrored(f: &Facet, o: [f64; 3], n: [f64; 3]) -> Facet {
     let mut g = f.clone();
     g.corners = f.corners.iter().rev().map(|&c| mirror(c, o, n)).collect();
@@ -506,11 +506,11 @@ fn mirrored(f: &Facet, o: [f64; 3], n: [f64; 3]) -> Facet {
 }
 
 // ---------------------------------------------------------------------------
-// Synfaktorer
+// View factors
 // ---------------------------------------------------------------------------
 
-/// Klipper polygonen (2D: sträcka) mot halvrummet framför planet (punkt `o`,
-/// normal `n`). Returnerar tom vektor om inget ligger framför.
+/// Clips the polygon (2D: segment) against the half-space in front of the plane (point `o`,
+/// normal `n`). Returns an empty vector if nothing lies in front.
 fn clip(poly: &[[f64; 3]], o: [f64; 3], n: [f64; 3], segment: bool) -> Vec<[f64; 3]> {
     let tol = 1e-12 * poly.iter().map(|p| norm(sub(*p, o))).fold(0.0, f64::max).max(1e-300);
     let d: Vec<f64> = poly.iter().map(|p| dot(sub(*p, o), n)).collect();
@@ -542,7 +542,7 @@ fn clip(poly: &[[f64; 3]], o: [f64; 3], n: [f64; 3], segment: bool) -> Vec<[f64;
     out
 }
 
-/// Aᵢ Fᵢⱼ i 2D (per tjockleksenhet gånger tjockleken `t`): korsade trådar.
+/// Aᵢ Fᵢⱼ in 2D (per unit thickness times the thickness `t`): crossed strings.
 fn vf2d(a: &Facet, b: &Facet) -> f64 {
     let pa = clip(&a.corners, b.corners[0], b.normal, true);
     if pa.is_empty() {
@@ -557,7 +557,7 @@ fn vf2d(a: &Facet, b: &Facet) -> f64 {
     0.5 * (crossed - uncrossed).abs()
 }
 
-/// ∫ ln|y − x| längs sträckan a → b (längd L) för punkten x: analytiskt.
+/// ∫ ln|y − x| along the segment a → b (length L) for the point x: analytically.
 fn line_log(a: [f64; 3], b: [f64; 3], x: [f64; 3]) -> f64 {
     let e = sub(b, a);
     let l = norm(e);
@@ -594,7 +594,7 @@ fn gauss(n: usize) -> (&'static [f64], &'static [f64]) {
     }
 }
 
-/// Polygonens area.
+/// Area of the polygon.
 fn poly_area(p: &[[f64; 3]]) -> f64 {
     let mut n = [0.0; 3];
     for k in 1..p.len().saturating_sub(1) {
@@ -603,7 +603,7 @@ fn poly_area(p: &[[f64; 3]]) -> f64 {
     0.5 * norm(n)
 }
 
-/// Orienterar polygonen moturs kring normalen `n`.
+/// Orients the polygon counterclockwise about the normal `n`.
 fn orient(p: Vec<[f64; 3]>, n: [f64; 3]) -> Vec<[f64; 3]> {
     let mut s = [0.0; 3];
     for k in 1..p.len().saturating_sub(1) {
@@ -616,8 +616,8 @@ fn orient(p: Vec<[f64; 3]>, n: [f64; 3]) -> Vec<[f64; 3]> {
     }
 }
 
-/// ∫∫ ln|s − t| ds dt för två kanter på samma linje som överlappar (längd
-/// > 0); None annars.
+/// ∫∫ ln|s − t| ds dt for two edges on the same line that overlap (length
+/// > 0); None otherwise.
 fn colinear_overlap(a0: [f64; 3], a1: [f64; 3], b0: [f64; 3], b1: [f64; 3]) -> Option<f64> {
     let ea = sub(a1, a0);
     let la = norm(ea);
@@ -635,12 +635,12 @@ fn colinear_overlap(a0: [f64; 3], a1: [f64; 3], b0: [f64; 3], b1: [f64; 3]) -> O
     if t2.min(s2) - t1.max(s1) <= tol {
         return None;
     }
-    // G(u) = u²/2 ln|u| − 3u²/4 med ∂²G(t − s)/∂s∂t = −ln|t − s|
+    // G(u) = u²/2 ln|u| − 3u²/4 with ∂²G(t − s)/∂s∂t = −ln|t − s|
     let g = |u: f64| if u != 0.0 { 0.5 * u * u * u.abs().ln() - 0.75 * u * u } else { 0.0 };
     Some(-(g(t2 - s2) - g(t2 - s1) - g(t1 - s2) + g(t1 - s1)))
 }
 
-/// Aᵢ Fᵢⱼ i 3D.
+/// Aᵢ Fᵢⱼ in 3D.
 fn vf3d(a: &Facet, b: &Facet, o: &VfOpts) -> f64 {
     let pa = clip(&a.corners, b.center, b.normal, false);
     let pb = clip(&b.corners, a.center, a.normal, false);
@@ -657,7 +657,7 @@ fn vf3d(a: &Facet, b: &Facet, o: &VfOpts) -> f64 {
     let r2 = dot(rv, rv);
     // R/√A ≥ LUMPED AREA
     if r2 > 0.0 && r2 / aa.max(ab) >= o.lumped * o.lumped * (1.0 - 1e-9) {
-        // klumpad area med atan-regularisering (ekv. 3)
+        // lumped area with atan regularization (eq. 3)
         let r = r2.sqrt();
         let ci = dot(a.normal, rv) / r;
         let cj = -dot(b.normal, rv) / r;
@@ -669,7 +669,7 @@ fn vf3d(a: &Facet, b: &Facet, o: &VfOpts) -> f64 {
     }
     let ratio = aa.max(ab) / aa.min(ab);
     if ratio > o.infinitesimal {
-        // infinitesimal–ändlig (Hottel): punkten i den mindre ytans mittpunkt
+        // infinitesimal–finite (Hottel): the point at the midpoint of the smaller face
         let (small, sn, big) = if aa < ab { (ca, a.normal, &pb) } else { (cb, b.normal, &pa) };
         let mut s = 0.0;
         let m = big.len();
@@ -686,7 +686,7 @@ fn vf3d(a: &Facet, b: &Facet, o: &VfOpts) -> f64 {
         }
         return aa.min(ab) * (s / (2.0 * std::f64::consts::PI)).abs();
     }
-    // konturintegral (Mitalas–Stephenson): (1/2π) ∮∮ ln r dsᵢ·dsⱼ
+    // contour integral (Mitalas–Stephenson): (1/2π) ∮∮ ln r dsᵢ·dsⱼ
     let pa = orient(pa, a.normal);
     let pb = orient(pb, b.normal);
     let (gx, gw) = gauss(o.integration);
@@ -711,8 +711,8 @@ fn vf3d(a: &Facet, b: &Facet, o: &VfOpts) -> f64 {
                 continue;
             }
             let mut acc = 0.0;
-            // kanter som överlappar (gemensam kant): dubbelintegralen
-            // analytiskt; övriga med gauss längs den yttre kanten
+            // overlapping edges (shared edge): the double integral
+            // analytically; the others with Gauss along the outer edge
             if let Some(v) = colinear_overlap(a0, a1, b0, b1) {
                 acc = v;
             } else {
@@ -724,7 +724,7 @@ fn vf3d(a: &Facet, b: &Facet, o: &VfOpts) -> f64 {
             s += phi * acc;
         }
     }
-    // dsᵢ·dsⱼ med motsatt orienterade normaler (ytorna vända mot varandra)
+    // dsᵢ·dsⱼ with oppositely oriented normals (the faces facing each other)
     (s / (2.0 * std::f64::consts::PI)).abs()
 }
 
@@ -744,7 +744,7 @@ fn centroid(p: &[[f64; 3]]) -> [f64; 3] {
     }
 }
 
-/// Skär sträckan p → q (2D) fasetten g (sträcka) i dess inre?
+/// Does the segment p → q (2D) intersect the facet g (segment) in its interior?
 fn hits2d(p: [f64; 3], q: [f64; 3], g: &Facet) -> bool {
     let (a, b) = (g.corners[0], g.corners[1]);
     let d = sub(q, p);
@@ -760,7 +760,7 @@ fn hits2d(p: [f64; 3], q: [f64; 3], g: &Facet) -> bool {
     t > eps && t < 1.0 - eps && s > eps && s < 1.0 - eps
 }
 
-/// Skär sträckan p → q (3D) polygonen g?
+/// Does the segment p → q (3D) intersect the polygon g?
 fn hits3d(p: [f64; 3], q: [f64; 3], g: &Facet) -> bool {
     let d = sub(q, p);
     let den = dot(d, g.normal);
@@ -773,7 +773,7 @@ fn hits3d(p: [f64; 3], q: [f64; 3], g: &Facet) -> bool {
         return false;
     }
     let x = add(p, scale(d, t));
-    // punkten i polygonen: samma tecken på alla kantprodukter
+    // the point in the polygon: same sign on all edge products
     let m = g.corners.len();
     let mut sign = 0.0;
     for k in 0..m {
@@ -790,11 +790,11 @@ fn hits3d(p: [f64; 3], q: [f64; 3], g: &Facet) -> bool {
     true
 }
 
-/// Synfaktormatrisen Fᵢⱼ (radvis).
+/// The view factor matrix Fᵢⱼ (row-major).
 fn view_factors(facets: &[Facet], o: &VfOpts, dim3: bool) -> Vec<f64> {
     let nf = facets.len();
     let mut af = vec![0.0; nf * nf];
-    // spegelbilderna (en per spegling, samt kombinationer om flera)
+    // the mirror images (one per reflection, plus combinations if several)
     let mut images: Vec<Vec<Facet>> = vec![facets.to_vec()];
     for &(po, pn) in &o.mirrors {
         let cur = images.clone();
@@ -822,13 +822,13 @@ fn view_factors(facets: &[Facet], o: &VfOpts, dim3: bool) -> Vec<f64> {
                         continue;
                     }
                 }
-                // 2D: per tjockleksenhet → gånger tjockleken (fasettens area/längd)
+                // 2D: per unit thickness → times the thickness (facet area/length)
                 let v = if dim3 { v } else { v * a.area / dist(a.corners[0], a.corners[1]) };
                 if k == 0 {
                     af[i * nf + j] += v;
                     af[j * nf + i] += v;
                 } else {
-                    // spegelbilden av j sett från i (alla par, även j ≤ i)
+                    // the mirror image of j seen from i (all pairs, also j ≤ i)
                     af[i * nf + j] += v;
                 }
             }
@@ -843,10 +843,10 @@ fn view_factors(facets: &[Facet], o: &VfOpts, dim3: bool) -> Vec<f64> {
 }
 
 // ---------------------------------------------------------------------------
-// Strålningsflöden
+// Radiation fluxes
 // ---------------------------------------------------------------------------
 
-/// Löser A X = B (A n × n, B n × m, radvisa) med LU och partiell pivotering.
+/// Solves A X = B (A n × n, B n × m, row-major) with LU and partial pivoting.
 fn solve_dense(mut a: Vec<f64>, n: usize, mut b: Vec<f64>, m: usize) -> Result<Vec<f64>> {
     for k in 0..n {
         let mut piv = k;
@@ -856,7 +856,7 @@ fn solve_dense(mut a: Vec<f64>, n: usize, mut b: Vec<f64>, m: usize) -> Result<V
             }
         }
         if a[piv * n + k].abs() < 1e-300 {
-            return fail("kavitetsstrålningens ekvationssystem är singulärt");
+            return fail("the cavity radiation equation system is singular");
         }
         if piv != k {
             for c in 0..n {
@@ -894,19 +894,19 @@ fn solve_dense(mut a: Vec<f64>, n: usize, mut b: Vec<f64>, m: usize) -> Result<V
 }
 
 impl Radiation {
-    /// Fasettens temperatur (FTEMP) θ_Z + (Σ P_iN (θ_N − θ_Z)⁴)^¼, som
-    /// emissiviteten tas vid.
+    /// The facet temperature (FTEMP) θ_Z + (Σ P_iN (θ_N − θ_Z)⁴)^¼, at which
+    /// the emissivity is taken.
     fn facet_temp(c: &Cavity, f: &Facet, u: &[NodeVec], z: f64) -> f64 {
         let eta: f64 = f.p.iter().map(|&(k, w)| w * (u[c.nodes[k]][TS] - z).max(0.0).powi(4)).sum();
         z + eta.max(0.0).powf(0.25)
     }
 
-    /// Början av ett inkrement vid tiden `t0` med längden `dt`: emissiviteten
-    /// tas vid temperaturen extrapolerad linjärt från de två
-    /// senaste inkrementen (θₙ + (θₙ − θₙ₋₁) Δt/Δtₙ₋₁; i första inkrementet
+    /// Start of an increment at time `t0` with length `dt`: the emissivity
+    /// is taken at the temperature extrapolated linearly from the two
+    /// most recent increments (θₙ + (θₙ − θₙ₋₁) Δt/Δtₙ₋₁; in the first increment
     /// θₙ).
-    /// Föreskrivna temperaturer (`constrained`) tas från `u_bc` (värdet vid
-    /// inkrementets slut) i stället för att extrapoleras.
+    /// Prescribed temperatures (`constrained`) are taken from `u_bc` (the value at
+    /// the end of the increment) instead of being extrapolated.
     pub fn start_increment(&mut self, u_committed: &[NodeVec], u_bc: &[NodeVec], constrained: &[u16], t0: f64, dt: f64) -> Result<()> {
         let temps: Vec<f64> = u_committed.iter().map(|v| v[TS]).collect();
         match &self.cur {
@@ -933,8 +933,8 @@ impl Radiation {
         self.begin_increment(&pred)
     }
 
-    /// Emissiviteter vid temperaturerna `u_start` och matriserna R̄, m⁰
-    /// (räknas bara om när emissiviteterna ändrats).
+    /// Emissivities at the temperatures `u_start` and the matrices R̄, m⁰
+    /// (recomputed only when the emissivities have changed).
     pub fn begin_increment(&mut self, u_start: &[NodeVec]) -> Result<()> {
         let sigma = self.sigma;
         let z = self.abs_zero;
@@ -944,11 +944,11 @@ impl Radiation {
                 continue;
             }
             let nf = c.facets.len();
-            // seriell form: J = C⁻¹(ε E + (1 − ε) f_amb E_amb),
-            // C = I − diag(1 − ε) F, instrålningen H = F J + f_amb E_amb =
-            // Σⱼ hᵢⱼ Eⱼ + hᵢₐ E_amb och qᵢ = εᵢ (Σⱼ hᵢⱼ (Eⱼ − Eᵢ) + hᵢₐ (E_amb − Eᵢ)),
-            // dvs. ett isotermt hölje ger inget flöde även när Σⱼ Fᵢⱼ ≠ 1
-            // (kontrollerat för en sluten 3D-kavitet)
+            // serial form: J = C⁻¹(ε E + (1 − ε) f_amb E_amb),
+            // C = I − diag(1 − ε) F, the irradiation H = F J + f_amb E_amb =
+            // Σⱼ hᵢⱼ Eⱼ + hᵢₐ E_amb and qᵢ = εᵢ (Σⱼ hᵢⱼ (Eⱼ − Eᵢ) + hᵢₐ (E_amb − Eᵢ)),
+            // i.e. an isothermal enclosure gives no flux even when Σⱼ Fᵢⱼ ≠ 1
+            // (verified for a closed 3D cavity)
             let m = nf + 1;
             let mut h = vec![0.0; nf * m];
             if c.opts.reflection {
@@ -980,7 +980,7 @@ impl Radiation {
                     h[i * m + nf] = c.famb[i];
                 }
             }
-            // x: flöde per area qᵢ = Σⱼ xᵢⱼ ηⱼ + xᵢₐ (svart kropp utan ε)
+            // x: flux per area qᵢ = Σⱼ xᵢⱼ ηⱼ + xᵢₐ (black body without ε)
             let mut x = vec![0.0; nf * m];
             let eamb = c.ambient.map_or(0.0, |ta| (ta - z).powi(4));
             for i in 0..nf {
@@ -1024,8 +1024,8 @@ impl Radiation {
         Ok(())
     }
 
-    /// Begär ett halverat inkrement (PNEWDT = 0,5) om emissiviteten vid
-    /// temperaturerna `u` skiljer sig mer än MXDEM från den som används.
+    /// Requests a halved increment (PNEWDT = 0.5) if the emissivity at
+    /// the temperatures `u` differs by more than MXDEM from the one used.
     pub fn check_mxdem(&self, u: &[NodeVec]) {
         let Some(mx) = self.mxdem else { return };
         for c in &self.cavities {
@@ -1042,7 +1042,7 @@ impl Radiation {
         }
     }
 
-    /// Lägger till −Q_N i `fint` och tangenten −4 R̄_NM (θ_M − θ_Z)³.
+    /// Adds −Q_N to `fint` and the tangent −4 R̄_NM (θ_M − θ_Z)³.
     pub fn contribute(&self, u: &[NodeVec], dm: &DofMap, fint: &mut [NodeVec], mat: Option<&mut dyn SystemMatrix>) {
         let z = self.abs_zero;
         let mut mat = mat;

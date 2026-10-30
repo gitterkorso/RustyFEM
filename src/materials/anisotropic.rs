@@ -1,26 +1,26 @@
-//! Anisotrop linjär elasticitet och lokala materialriktningar.
+//! Anisotropic linear elasticity and local material directions.
 //!
-//! *ELASTIC med TYPE=
+//! *ELASTIC with TYPE=
 //! - ENGINEERING CONSTANTS: E1, E2, E3, ν12, ν13, ν23, G12, G13, G23
-//!   (ortotrop, angiven via flexibiliteten),
+//!   (orthotropic, specified via the compliance),
 //! - ORTHOTROPIC: D1111, D1122, D2222, D1133, D2233, D3333, D1212, D1313, D2323,
-//! - ANISOTROPIC: de 21 konstanterna i den övre triangeln kolumnvis
+//! - ANISOTROPIC: the 21 constants of the upper triangle column by column
 //!   (D1111, D1122, D2222, D1133, D2233, D3333, D1112, ..., D2323),
-//! - LAMINA: E1, E2, ν12, G12, G13, G23 (bara plan spänning).
+//! - LAMINA: E1, E2, ν12, G12, G13, G23 (plane stress only).
 //!
-//! Konstitutiva sambandet är σ = D ε i komponentordningen (11, 22, 33,
-//! 12, 13, 23) med ingenjörsskjuvtöjning, så D1212 = G12 osv. För plan
-//! spänning och stänger kondenseras de spänningskomponenter som ska vara noll
-//! bort (statisk kondensation av 3D-matrisen), för plan töjning tas
-//! delmatrisen för (11, 22, 33, 12).
+//! The constitutive relation is σ = D ε in the component order (11, 22, 33,
+//! 12, 13, 23) with engineering shear strain, so D1212 = G12 etc. For plane
+//! stress and beams/trusses the stress components that must be zero are condensed
+//! out (static condensation of the 3D matrix), for plane strain the
+//! submatrix for (11, 22, 33, 12) is taken.
 //!
-//! Lokala materialriktningar (*ORIENTATION, SYSTEM=RECTANGULAR eller
-//! CYLINDRICAL, DEFINITION=COORDINATES, med valfri extra rotation kring en
-//! lokal axel) kopplas till element via tvärsnittets parameter ORIENTATION=.
-//! Kontinuumkärnan (`elements/common.rs`) roterar töjningen till de lokala
-//! axlarna, anropar materialet och roterar tillbaka spänning och tangent;
-//! spänning och töjning redovisas i lokala axlar. Riktningarna
-//! beräknas i varje integrationspunkt (spelar roll för cylindriska system).
+//! Local material directions (*ORIENTATION, SYSTEM=RECTANGULAR or
+//! CYLINDRICAL, DEFINITION=COORDINATES, with an optional extra rotation about a
+//! local axis) are attached to elements via the section parameter ORIENTATION=.
+//! The continuum core (`elements/common.rs`) rotates the strain to the local
+//! axes, calls the material and rotates the stress and tangent back;
+//! stress and strain are reported in local axes. The directions
+//! are computed at each integration point (matters for cylindrical systems).
 
 use super::{MatInput, MatOutput, MaterialFactory, MaterialModel, StressMode};
 use crate::elements::common::{cross, dot, inv3, norm, scale, sub};
@@ -29,9 +29,9 @@ use crate::model::{fail, Result};
 use std::sync::Arc;
 
 pub static FACTORIES: &[MaterialFactory] =
-    &[MaterialFactory { name: "ELASTIC (anisotrop)", consumes: &["ELASTIC"], priority: 1, build: Some(build) }];
+    &[MaterialFactory { name: "ELASTIC (anisotropic)", consumes: &["ELASTIC"], priority: 1, build: Some(build) }];
 
-/// Index för komponenterna i ett spänningstillstånd bland de sex 3D-komponenterna.
+/// Indices of the components of a stress state among the six 3D components.
 pub fn mode_components(mode: StressMode) -> &'static [usize] {
     match mode {
         StressMode::ThreeD => &[0, 1, 2, 3, 4, 5],
@@ -41,7 +41,7 @@ pub fn mode_components(mode: StressMode) -> &'static [usize] {
     }
 }
 
-/// Komponenter som är spänningsfria (kondenseras bort) i ett spänningstillstånd.
+/// Components that are stress-free (condensed out) in a stress state.
 pub fn free_components(mode: StressMode) -> &'static [usize] {
     match mode {
         StressMode::PlaneStress => &[2, 4, 5],
@@ -50,7 +50,7 @@ pub fn free_components(mode: StressMode) -> &'static [usize] {
     }
 }
 
-/// Löser A x = b (n×n radvis) med Gausselimination och pivotering.
+/// Solves A x = b (n×n row-major) with Gaussian elimination and pivoting.
 pub fn solve_dense(a: &[f64], b: &[f64]) -> Option<Vec<f64>> {
     let n = b.len();
     let mut m = a.to_vec();
@@ -86,7 +86,7 @@ pub fn solve_dense(a: &[f64], b: &[f64]) -> Option<Vec<f64>> {
     Some(x)
 }
 
-/// Invers av en n×n-matris (radvis).
+/// Inverse of an n×n matrix (row-major).
 pub fn invert(a: &[f64], n: usize) -> Option<Vec<f64>> {
     let mut inv = vec![0.0; n * n];
     for j in 0..n {
@@ -100,8 +100,8 @@ pub fn invert(a: &[f64], n: usize) -> Option<Vec<f64>> {
     Some(inv)
 }
 
-/// Reducerar en 6×6 styvhetsmatris till spänningstillståndet `mode`:
-/// delmatris för givna komponenter, statisk kondensation av spänningsfria.
+/// Reduces a 6×6 stiffness matrix to the stress state `mode`:
+/// submatrix for the given components, static condensation of the stress-free ones.
 pub fn reduce_6x6(d: &[[f64; 6]; 6], mode: StressMode) -> Vec<f64> {
     let a = mode_components(mode);
     let b = free_components(mode);
@@ -127,12 +127,12 @@ pub fn reduce_6x6(d: &[[f64; 6]; 6], mode: StressMode) -> Vec<f64> {
     out
 }
 
-/// Linjärt anisotropt elastiskt material med 6×6-matrisen `d` (lokala axlar),
-/// eller en färdig matris för plan spänning (LAMINA).
+/// Linear anisotropic elastic material with the 6×6 matrix `d` (local axes),
+/// or a ready-made matrix for plane stress (LAMINA).
 #[derive(Debug, Clone)]
 pub struct AnisotropicElastic {
     pub d: [[f64; 6]; 6],
-    /// LAMINA: 3×3-matris för plan spänning (11, 22, 12).
+    /// LAMINA: 3×3 matrix for plane stress (11, 22, 12).
     pub lamina: Option<[f64; 9]>,
     pub kind: String,
 }
@@ -143,14 +143,14 @@ impl AnisotropicElastic {
             return match mode {
                 StressMode::PlaneStress => Ok(l.to_vec()),
                 StressMode::Uniaxial => Ok(vec![l[0] - l[1] * l[3] / l[4]]),
-                _ => fail("*ELASTIC, TYPE=LAMINA gäller bara plan spänning (CPS-element och skal)"),
+                _ => fail("*ELASTIC, TYPE=LAMINA applies only to plane stress (CPS elements and shells)"),
             };
         }
         Ok(reduce_6x6(&self.d, mode))
     }
 }
 
-/// Tolkar alla tal i ett *ELASTIC-block (fortsättningsrader slås ihop).
+/// Parses all numbers in an *ELASTIC block (continuation lines are merged).
 fn all_floats(kw: &RawKeyword) -> Result<Vec<f64>> {
     let mut v = Vec::new();
     for d in &kw.data {
@@ -159,11 +159,11 @@ fn all_floats(kw: &RawKeyword) -> Result<Vec<f64>> {
     Ok(v)
 }
 
-/// 6×6-styvhet för ortotropt material från ingenjörskonstanter.
+/// 6×6 stiffness for an orthotropic material from engineering constants.
 pub fn engineering_constants(c: &[f64; 9]) -> Result<[[f64; 6]; 6]> {
     let [e1, e2, e3, n12, n13, n23, g12, g13, g23] = *c;
     if !(e1 > 0.0 && e2 > 0.0 && e3 > 0.0 && g12 > 0.0 && g13 > 0.0 && g23 > 0.0) {
-        return fail("moduler i ENGINEERING CONSTANTS ska vara positiva");
+        return fail("moduli in ENGINEERING CONSTANTS must be positive");
     }
     let s = [
         [1.0 / e1, -n12 / e1, -n13 / e1],
@@ -172,7 +172,7 @@ pub fn engineering_constants(c: &[f64; 9]) -> Result<[[f64; 6]; 6]> {
     ];
     let (inv, det) = inv3(s);
     if !(det > 0.0) {
-        return fail("ENGINEERING CONSTANTS ger en flexibilitetsmatris som inte är positivt definit (kontrollera ν)");
+        return fail("ENGINEERING CONSTANTS give a compliance matrix that is not positive definite (check ν)");
     }
     let mut d = [[0.0; 6]; 6];
     for i in 0..3 {
@@ -191,22 +191,22 @@ fn build(def: &MaterialDef) -> Result<Option<Arc<dyn MaterialModel>>> {
     let ty = kw.param_upper("TYPE").unwrap_or_else(|| "ISOTROPIC".into());
     let ty = ty.split_whitespace().collect::<Vec<_>>().join(" ");
     if ty == "ISOTROPIC" || ty == "SHEAR" {
-        // TYPE=SHEAR (deviatorisk del till *EOS) hanteras av `materials/eos.rs`
+        // TYPE=SHEAR (deviatoric part for *EOS) is handled by `materials/eos.rs`
         return Ok(None);
     }
     if ty == "TRACTION" {
-        return Ok(None); // kohesiva element: materials/cohesive.rs
+        return Ok(None); // cohesive elements: materials/cohesive.rs
     }
     if kw.has("DEPENDENCIES") || kw.has("TEMPERATURE") {
-        return kw.err("temperaturberoende elasticitet stöds inte ännu");
+        return kw.err("temperature-dependent elasticity is not supported yet");
     }
     let v = all_floats(kw)?;
     let need = |n: usize| -> Result<()> {
         if v.len() < n {
-            return kw.err(format!("TYPE={ty} kräver {n} konstanter, {} angivna", v.len()));
+            return kw.err(format!("TYPE={ty} requires {n} constants, {} given", v.len()));
         }
         if v.len() > n + 1 {
-            return kw.err(format!("TYPE={ty}: fler än {n} konstanter (temperaturberoende data stöds inte ännu)"));
+            return kw.err(format!("TYPE={ty}: more than {n} constants (temperature-dependent data is not supported yet)"));
         }
         Ok(())
     };
@@ -251,12 +251,12 @@ fn build(def: &MaterialDef) -> Result<Option<Arc<dyn MaterialModel>>> {
             need(6)?;
             let (e1, e2, n12, g12) = (v[0], v[1], v[2], v[3]);
             if !(e1 > 0.0 && e2 > 0.0 && g12 > 0.0) {
-                return kw.err("E1, E2 och G12 ska vara positiva");
+                return kw.err("E1, E2 and G12 must be positive");
             }
             let n21 = n12 * e2 / e1;
             let den = 1.0 - n12 * n21;
             if !(den > 0.0) {
-                return kw.err("LAMINA: 1 − ν12 ν21 ska vara positivt");
+                return kw.err("LAMINA: 1 − ν12 ν21 must be positive");
             }
             lamina = Some([e1 / den, n12 * e2 / den, 0.0, n12 * e2 / den, e2 / den, 0.0, 0.0, 0.0, g12]);
             let mut d = [[0.0; 6]; 6];
@@ -265,19 +265,19 @@ fn build(def: &MaterialDef) -> Result<Option<Arc<dyn MaterialModel>>> {
             d[5][5] = v[5];
             d
         }
-        other => return kw.err(format!("TYPE={other} stöds inte (ISOTROPIC, ENGINEERING CONSTANTS, ORTHOTROPIC, ANISOTROPIC, LAMINA)")),
+        other => return kw.err(format!("TYPE={other} is not supported (ISOTROPIC, ENGINEERING CONSTANTS, ORTHOTROPIC, ANISOTROPIC, LAMINA)")),
     };
     if lamina.is_none() {
-        // stabilitet: matrisen ska vara positivt definit
+        // stability: the matrix must be positive definite
         let flat: Vec<f64> = d.iter().flatten().copied().collect();
         if !positive_definite(&flat, 6) {
-            return kw.err(format!("TYPE={ty}: elasticitetsmatrisen är inte positivt definit"));
+            return kw.err(format!("TYPE={ty}: the elasticity matrix is not positive definite"));
         }
     }
     Ok(Some(Arc::new(AnisotropicElastic { d, lamina, kind: ty })))
 }
 
-/// Cholesky-test av positiv definithet.
+/// Cholesky test of positive definiteness.
 pub fn positive_definite(a: &[f64], n: usize) -> bool {
     let mut l = vec![0.0; n * n];
     for i in 0..n {
@@ -301,7 +301,7 @@ pub fn positive_definite(a: &[f64], n: usize) -> bool {
 
 impl MaterialModel for AnisotropicElastic {
     fn name(&self) -> &str {
-        "ELASTIC (anisotrop)"
+        "ELASTIC (anisotropic)"
     }
 
     fn is_linear(&self) -> bool {
@@ -329,7 +329,7 @@ pub enum OrientationSystem {
     Cylindrical,
 }
 
-/// Ett lokalt koordinatsystem för materialriktningar.
+/// A local coordinate system for material directions.
 #[derive(Debug, Clone)]
 pub struct Orientation {
     pub name: String,
@@ -337,7 +337,7 @@ pub struct Orientation {
     pub a: [f64; 3],
     pub b: [f64; 3],
     pub c: [f64; 3],
-    /// Extra rotation (lokal axel 1–3, vinkel i grader).
+    /// Extra rotation (local axis 1–3, angle in degrees).
     pub extra: Option<(usize, f64)>,
 }
 
@@ -347,20 +347,20 @@ impl Orientation {
         let system = match kw.param_upper("SYSTEM").as_deref() {
             None | Some("RECTANGULAR") => OrientationSystem::Rectangular,
             Some("CYLINDRICAL") => OrientationSystem::Cylindrical,
-            Some(o) => return kw.err(format!("SYSTEM={o} stöds inte ännu (RECTANGULAR, CYLINDRICAL)")),
+            Some(o) => return kw.err(format!("SYSTEM={o} is not supported yet (RECTANGULAR, CYLINDRICAL)")),
         };
         match kw.param_upper("DEFINITION").as_deref() {
             None | Some("COORDINATES") => {}
-            Some(o) => return kw.err(format!("DEFINITION={o} stöds inte ännu (bara COORDINATES)")),
+            Some(o) => return kw.err(format!("DEFINITION={o} is not supported yet (only COORDINATES)")),
         }
         if kw.has("LOCAL DIRECTIONS") {
-            return kw.err("LOCAL DIRECTIONS stöds inte ännu");
+            return kw.err("LOCAL DIRECTIONS is not supported yet");
         }
         let recs = kw.records();
-        let Some(first) = recs.first() else { return kw.err("datarad med punkterna a och b saknas") };
+        let Some(first) = recs.first() else { return kw.err("data line with the points a and b is missing") };
         let v = kw.floats(first)?;
         if v.len() < 6 {
-            return kw.err("datarad 1 ska ha a (3 koordinater) och b (3 koordinater)");
+            return kw.err("data line 1 must have a (3 coordinates) and b (3 coordinates)");
         }
         let a = [v[0], v[1], v[2]];
         let b = [v[3], v[4], v[5]];
@@ -371,10 +371,10 @@ impl Orientation {
                 let axis = w.first().copied().unwrap_or(1.0).round() as usize;
                 let ang = w.get(1).copied().unwrap_or(0.0);
                 if !(1..=3).contains(&axis) {
-                    return kw.err_at(d.line, "den extra rotationens axel ska vara 1, 2 eller 3");
+                    return kw.err_at(d.line, "the axis of the extra rotation must be 1, 2 or 3");
                 }
-                // axeln behålls även med vinkeln 0 (skal: den anger vilka axlar som
-                // ligger i skalets plan, se elements/shell_section.rs)
+                // the axis is kept even with angle 0 (shells: it specifies which axes
+                // lie in the shell plane, see elements/shell_section.rs)
                 Some((axis, ang))
             }
             None => None,
@@ -383,13 +383,13 @@ impl Orientation {
         if o.system == OrientationSystem::Rectangular {
             let ax = o.axes_at([0.0; 3]);
             if ax.iter().any(|r| r.iter().any(|x| !x.is_finite())) {
-                return kw.err("punkterna a, b och origo ger inget koordinatsystem (parallella eller sammanfallande)");
+                return kw.err("the points a, b and the origin do not give a coordinate system (parallel or coincident)");
             }
         }
         Ok(o)
     }
 
-    /// Lokala axlar i punkten `p`: rad i = lokal axel i uttryckt i globala koordinater.
+    /// Local axes at the point `p`: row i = local axis i expressed in global coordinates.
     pub fn axes_at(&self, p: [f64; 3]) -> [[f64; 3]; 3] {
         let (e1, e2, e3) = match self.system {
             OrientationSystem::Rectangular => {
@@ -421,8 +421,8 @@ impl Orientation {
         e
     }
 
-    /// Transformationsmatris för töjningar i spänningstillståndet `mode`
-    /// (ε_lokal = T ε_global, ingenjörsskjuvtöjning), ncomp × ncomp radvis.
+    /// Transformation matrix for strains in the stress state `mode`
+    /// (ε_local = T ε_global, engineering shear strain), ncomp × ncomp row-major.
     pub fn strain_transform_mode(&self, p: [f64; 3], mode: StressMode) -> Vec<f64> {
         let t = strain_transform(&self.axes_at(p));
         let idx = mode_components(mode);
@@ -430,15 +430,15 @@ impl Orientation {
     }
 }
 
-/// Komponentpar (i, j) för 3D-ordningen 11, 22, 33, 12, 13, 23.
+/// Component pairs (i, j) for the 3D order 11, 22, 33, 12, 13, 23.
 pub const VOIGT: [(usize, usize); 6] = [(0, 0), (1, 1), (2, 2), (0, 1), (0, 2), (1, 2)];
 
-/// 6×6-matrisen T med ε_lokal = T ε_global (ingenjörsskjuvtöjning) för
-/// rotationen `q` (rad i = lokal axel i).
+/// The 6×6 matrix T with ε_local = T ε_global (engineering shear strain) for
+/// the rotation `q` (row i = local axis i).
 pub fn strain_transform(q: &[[f64; 3]; 3]) -> [[f64; 6]; 6] {
     let mut t = [[0.0; 6]; 6];
     for (jc, &(k, l)) in VOIGT.iter().enumerate() {
-        // global töjningstensor för enhetskomponenten jc
+        // global strain tensor for the unit component jc
         let mut eg = [[0.0; 3]; 3];
         if k == l {
             eg[k][k] = 1.0;
@@ -459,7 +459,7 @@ pub fn strain_transform(q: &[[f64; 3]; 3]) -> [[f64; 6]; 6] {
     t
 }
 
-/// Orientering per tvärsnitt (tvärsnittets ORIENTATION= mot *ORIENTATION i modellen).
+/// Orientation per section (the section's ORIENTATION= against *ORIENTATION in the model).
 pub fn section_orientations(model: &FeModel) -> Result<Vec<Option<Orientation>>> {
     let mut out = Vec::with_capacity(model.sections.len());
     for s in &model.sections {
@@ -469,7 +469,7 @@ pub fn section_orientations(model: &FeModel) -> Result<Vec<Option<Orientation>>>
         };
         let kw = model.extra.iter().find(|k| k.name == "ORIENTATION" && k.param_upper("NAME").as_deref() == Some(name.as_str()));
         let Some(kw) = kw else {
-            return s.raw.err(format!("orienteringen '{name}' är inte definierad (*ORIENTATION, NAME={name})"));
+            return s.raw.err(format!("the orientation '{name}' is not defined (*ORIENTATION, NAME={name})"));
         };
         out.push(Some(Orientation::parse(kw)?));
     }

@@ -1,4 +1,4 @@
-// Åtgärder: anrop mot motorn via `Engine` och uppdatering av UI-läget.
+// Actions: calls to the engine via `Engine` and updates of the UI state.
 
 import type { Edit, Edited, Engine, Opened, RunEvent, StepResultInfo, UnitSystem } from "./engine/Engine";
 import { TauriEngine } from "./engine/TauriEngine";
@@ -35,7 +35,7 @@ export async function init() {
     const [solvers, memory, unitSystems] = await Promise.all([engine.solvers(), engine.systemMemory(), engine.unitSystems()]);
     set({ solvers, memory, unitSystems });
   } catch (e) {
-    log("warn", `motorn svarar inte: ${errText(e)}`);
+    log("warn", `the engine is not responding: ${errText(e)}`);
   }
 }
 
@@ -58,23 +58,23 @@ async function adopt(o: Opened, keepOld = false) {
     animate: "off",
   }));
   for (const w of o.model.warnings) log("warn", w);
-  log("info", `${o.session.name}: ${o.model.nodes} noder, ${o.model.elements} element, ${o.model.steps.length} steg`);
+  log("info", `${o.session.name}: ${o.model.nodes} nodes, ${o.model.elements} elements, ${o.model.steps.length} steps`);
   if (o.session.has_results) await loadResults();
 }
 
-/** Tomma modeller att bygga från grunden (som `EMPTY_2D`/`EMPTY_3D` i sessionen). */
+/** Empty models to build from scratch (like `EMPTY_2D`/`EMPTY_3D` in the session). */
 export const blankModel = {
-  2: "# Ny modell – verktygen i appen lägger till rader här.\nmodel 2d\n",
-  3: "# Ny modell – verktygen i appen lägger till rader här.\nmodel 3d\n",
+  2: "# New model – the tools in the app add lines here.\nmodel 2d\n",
+  3: "# New model – the tools in the app add lines here.\nmodel 3d\n",
 };
 
 export async function newModel(script?: string) {
   if (!(await confirmDiscard())) return;
-  await busy("Skapar modell", async () => adopt(await engine.newModel(script)));
+  await busy("Creating model", async () => adopt(await engine.newModel(script)));
 }
 
 export async function openPath(path: string) {
-  await busy("Öppnar", async () => {
+  await busy("Opening", async () => {
     await adopt(await engine.open(path));
     const recent = [path, ...get().recent.filter((p) => p !== path)].slice(0, 8);
     set({ recent });
@@ -91,7 +91,7 @@ export async function openDialog() {
 async function confirmDiscard(): Promise<boolean> {
   const s = get().session;
   if (!s?.dirty) return true;
-  return window.confirm(`${s.name} har ändringar som inte är sparade. Fortsätta ändå?`);
+  return window.confirm(`${s.name} has unsaved changes. Continue anyway?`);
 }
 
 export async function save(as = false) {
@@ -104,10 +104,10 @@ export async function save(as = false) {
     if (!path) return;
   }
   const p = path;
-  await busy("Sparar", async () => {
+  await busy("Saving", async () => {
     const info = await engine.save(id, p);
     set({ session: info });
-    toast("info", `Sparade ${info.name}`);
+    toast("info", `Saved ${info.name}`);
     const recent = [p, ...get().recent.filter((x) => x !== p)].slice(0, 8);
     set({ recent });
     persist("recent", recent);
@@ -118,7 +118,7 @@ export async function exportScript() {
   const { id, session } = get();
   if (id === null || session?.kind !== "rusty") return;
   const p = await engine.saveDialog(session.name.replace(/\.(rusty|rustyproj)$/i, "") + ".rusty", "script");
-  if (p) await busy("Exporterar", () => engine.save(id, p));
+  if (p) await busy("Exporting", () => engine.save(id, p));
 }
 
 async function afterEdit(r: Edited) {
@@ -128,7 +128,7 @@ async function afterEdit(r: Edited) {
     const mesh = await engine.mesh(id);
     set((s) => ({ mesh, meshVersion: s.meshVersion + 1, pick: null }));
   }
-  // steget kan försvinna och komma tillbaka när en .rusty-modell byggs rad för rad
+  // the step can disappear and come back when a .rusty model is built line by line
   const ss = get().symbolStep;
   if ((ss !== null && r.model.steps.length <= ss) || (ss === null && r.model.steps.length)) set({ symbolStep: r.model.steps.length ? 0 : null });
 }
@@ -139,10 +139,10 @@ export async function edit(e: Edit): Promise<boolean> {
   return err === null;
 }
 
-/** Som `edit`, men felet returneras (för att visas vid fältet) i stället för som en toast. */
+/** Like `edit`, but the error is returned (to be shown next to the field) instead of as a toast. */
 export async function tryEdit(e: Edit): Promise<string | null> {
   const id = get().id;
-  if (id === null) return "ingen modell öppen";
+  if (id === null) return "no model open";
   try {
     await afterEdit(await engine.edit(id, e));
     return null;
@@ -151,7 +151,7 @@ export async function tryEdit(e: Edit): Promise<string | null> {
   }
 }
 
-/** Byter modellens enhetssystem. Resultatkatalogen hämtas om för fältens enheter. */
+/** Changes the model's unit system. The results catalog is fetched again for the fields' units. */
 export async function setUnits(u: UnitSystem) {
   const id = get().id;
   if (id === null) return;
@@ -166,13 +166,13 @@ export async function setUnits(u: UnitSystem) {
 export async function undo() {
   const { id, session } = get();
   if (id === null || !session?.undo) return;
-  await busy("Ångrar", async () => afterEdit(await engine.undo(id)));
+  await busy("Undoing", async () => afterEdit(await engine.undo(id)));
 }
 
 export async function redo() {
   const { id, session } = get();
   if (id === null || !session?.redo) return;
-  await busy("Gör om", async () => afterEdit(await engine.redo(id)));
+  await busy("Redoing", async () => afterEdit(await engine.redo(id)));
 }
 
 const MB = 1024 * 1024;
@@ -198,22 +198,22 @@ export async function solve() {
   if (id === null || run.running || !model) return;
   const problem = get().session?.problem;
   if (problem) {
-    toast("error", `Modellen kan inte lösas än: ${problem}`);
+    toast("error", `The model cannot be solved yet: ${problem}`);
     if (get().session?.kind === "rusty") set({ sel: { type: "script" }, right: true });
     return;
   }
   if (!model.steps.length) {
-    toast("error", "Modellen har inga steg att lösa.");
+    toast("error", "The model has no steps to solve.");
     return;
   }
   set((s) => ({ dock: true, run: { ...s.run, running: true, progress: 0, stepIndex: 0, steps: model.steps.length, stepName: "", increment: 0, residuals: [] } }));
   const est = await estimate();
   let solver = run.solver;
   if (est) {
-    log("info", `Minne: ${bytes(est.direct_bytes)} (direkt) / ${bytes(est.iterative_bytes)} (PCG), budget ${bytes(est.budget_bytes)} – ${est.note}`);
-    if (!est.fits && !window.confirm(`Uppskattat minnesbehov överskrider budgeten (${bytes(est.budget_bytes)}).\n${est.note}\n\nKöra ändå?`)) {
+    log("info", `Memory: ${bytes(est.direct_bytes)} (direct) / ${bytes(est.iterative_bytes)} (PCG), budget ${bytes(est.budget_bytes)} – ${est.note}`);
+    if (!est.fits && !window.confirm(`The estimated memory requirement exceeds the budget (${bytes(est.budget_bytes)}).\n${est.note}\n\nRun anyway?`)) {
       set((s) => ({ run: { ...s.run, running: false } }));
-      log("warn", "Körningen avbröts före start (minne)");
+      log("warn", "The run was cancelled before it started (memory)");
       return;
     }
     if (!solver && est.solver !== "direct") solver = est.solver;
@@ -226,16 +226,16 @@ export async function solve() {
   }
 }
 
-/** Framsteg från motorn (egen körning eller en körning startad via MCP). */
+/** Progress from the engine (our own run or a run started via MCP). */
 function onRunEvent(e: RunEvent) {
   const steps = get().model?.steps.length || 1;
   switch (e.type) {
     case "Started":
       set((s) => ({ dock: true, run: { ...s.run, running: true, progress: 0, stepIndex: 0, steps, stepName: "", increment: 0, residuals: [] } }));
-      log("info", `Löser med ${e.solver} …`);
+      log("info", `Solving with ${e.solver} …`);
       break;
     case "Step":
-      log("info", `Steg ${e.index + 1}/${steps}: ${e.name} (*${e.procedure})`);
+      log("info", `Step ${e.index + 1}/${steps}: ${e.name} (*${e.procedure})`);
       set((s) => ({ run: { ...s.run, stepIndex: e.index, stepName: e.name, increment: 0, residuals: [], progress: e.index / steps } }));
       break;
     case "Increment":
@@ -249,9 +249,9 @@ function onRunEvent(e: RunEvent) {
     case "Finished":
       set((s) => ({ run: { ...s.run, running: false, progress: e.ok ? 1 : s.run.progress } }));
       if (e.ok) {
-        log("ok", `Klart på ${(e.seconds ?? 0).toFixed(2)} s – ${e.message}`);
+        log("ok", `Done in ${(e.seconds ?? 0).toFixed(2)} s – ${e.message}`);
         loadResults(true);
-      } else if (e.cancelled) log("warn", "Körningen avbröts");
+      } else if (e.cancelled) log("warn", "The run was cancelled");
       else {
         log("error", e.message);
         toast("error", e.message);
@@ -260,11 +260,11 @@ function onRunEvent(e: RunEvent) {
   }
 }
 
-/** Lyssnar på motorns händelser: ändringar och körningar via MCP, MCP-serverns läge. */
+/** Listens to engine events: edits and runs via MCP, the MCP server's status. */
 export async function listenEngine() {
   await engine.listen({
     opened: async (o) => {
-      log("info", `MCP: öppnade ${o.session.name}`);
+      log("info", `MCP: opened ${o.session.name}`);
       await adopt(o, get().session?.dirty ?? false);
     },
     changed: async (id, geometry) => {
@@ -272,9 +272,9 @@ export async function listenEngine() {
       const units = get().session?.units;
       const [session, model] = await Promise.all([engine.sessionInfo(id), engine.modelInfo(id)]);
       await afterEdit({ session, model, geometry });
-      // set_units via MCP: fältens enheter i resultatkatalogen
+      // set_units via MCP: the fields' units in the results catalog
       if (session.units !== units && session.has_results) set({ results: await engine.results(id) });
-      log("info", `MCP: modellen ändrades${session.undo ? ` (${session.undo})` : ""}`);
+      log("info", `MCP: the model changed${session.undo ? ` (${session.undo})` : ""}`);
     },
     run: (id, e) => {
       if (id === get().id) onRunEvent(e);
@@ -296,7 +296,7 @@ export async function mcpToggle(port: number | null) {
 export async function mcpInstallClaudeDesktop() {
   try {
     const files = await engine.mcpInstallClaudeDesktop();
-    toast("info", `RustyFEM tillagd i Claude Desktop – starta om Claude Desktop (${files.length} fil${files.length === 1 ? "" : "er"})`);
+    toast("info", `RustyFEM added to Claude Desktop – restart Claude Desktop (${files.length} file${files.length === 1 ? "" : "s"})`);
     set({ mcp: await engine.mcpStatus() });
   } catch (e) {
     toast("error", errText(e));
@@ -308,7 +308,7 @@ export async function cancel() {
   if (id !== null) await engine.cancel(id).catch(() => {});
 }
 
-/** Förval: U i sista framen, annars första fältet. */
+/** Default: S (else U) in the last frame, otherwise the first field. */
 function defaultSel(res: StepResultInfo[]): ResultSel | null {
   const st = res.length - 1;
   if (st < 0) return null;

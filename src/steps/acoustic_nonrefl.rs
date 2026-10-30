@@ -1,7 +1,7 @@
-//! Område gaps1: impedans- och strålningsränder för de akustiska stegen
-//! (inkluderas från `acoustic.rs`).
+//! Area gaps1: impedance and radiation boundaries for the acoustic steps
+//! (included from `acoustic.rs`).
 //!
-//! Strålningsvillkoret är n⁻·∇p = f (i k̃ + β) p med
+//! The radiation condition is n⁻·∇p = f (i k̃ + β) p with
 //!
 //! | NONREFLECTING | f | β |
 //! |---|---|---|
@@ -9,23 +9,23 @@
 //! | CIRCULAR | 1 | 1/(2r₁) |
 //! | SPHERICAL | 1 | 1/r₁ |
 //! | ELLIPTICAL | √((1 − ε²)/(1 − ε² ((x − x₀)·e_m/a)²)) | 1/(2a) |
-//! | PROLATE SPHEROIDAL | som ELLIPTICAL | 1/a |
+//! | PROLATE SPHEROIDAL | as ELLIPTICAL | 1/a |
 //!
-//! Geometrifaktorn f varierar över randen och integreras in i randmatrisen,
-//! H = ∫ f N N dS (x i ytans integrationspunkter). Dataraden för ELLIPTICAL
-//! och PROLATE SPHEROIDAL är (yta, a, ε, x₀, y₀, z₀, e_m,x, e_m,y, e_m,z);
-//! riktningen normeras. NONREFLECTING=IMPROVED (Sandler: planvåg med
-//! godtycklig infallsvinkel, faktorn cos θ) är bara tillåten i transient
-//! dynamik och byggs som PLANAR med en markering; `acoustic_improved.rs`
-//! räknar cos θ i varje inkrement.
+//! The geometry factor f varies over the boundary and is integrated into the boundary matrix,
+//! H = ∫ f N N dS (x at the face integration points). The data line for ELLIPTICAL
+//! and PROLATE SPHEROIDAL is (surface, a, ε, x₀, y₀, z₀, e_m,x, e_m,y, e_m,z);
+//! the direction is normalized. NONREFLECTING=IMPROVED (Sandler: plane wave with
+//! arbitrary angle of incidence, the factor cos θ) is only allowed in transient
+//! dynamics and is built as PLANAR with a flag; `acoustic_improved.rs`
+//! computes cos θ in each increment.
 
 use super::*;
 
-/// Geometrifaktorn för en strålningsrand.
+/// The geometry factor for a radiation boundary.
 #[derive(Debug, Clone, Copy)]
 pub(super) enum GeoFactor {
     One,
-    /// Ellips/sfäroid: halva storaxeln a, excentricitet ε, centrum, storaxelns riktning.
+    /// Ellipse/spheroid: semi-major axis a, eccentricity ε, center, direction of the major axis.
     Ellipse { a: f64, e: f64, x0: [f64; 3], em: [f64; 3] },
 }
 
@@ -42,7 +42,7 @@ impl GeoFactor {
     }
 }
 
-/// Randens slag och geometrifaktor ur nyckelordet och dataradens tal.
+/// The kind of boundary and the geometry factor from the keyword and the numbers on the data line.
 fn kind_of(m: &FeModel, kw: &RawKeyword, extra: &[f64]) -> Result<(ImpKind, GeoFactor, bool)> {
     if let Some(name) = kw.param("PROPERTY") {
         return Ok((property_table(m, name.trim(), kw)?, GeoFactor::One, false));
@@ -53,14 +53,14 @@ fn kind_of(m: &FeModel, kw: &RawKeyword, extra: &[f64]) -> Result<(ImpKind, GeoF
         "PLANAR" => Ok((ImpKind::Radiation(0.0), GeoFactor::One, false)),
         "IMPROVED" => Ok((ImpKind::Radiation(0.0), GeoFactor::One, true)),
         "CIRCULAR" | "SPHERICAL" => {
-            let Some(r) = first else { return kw.err(format!("NONREFLECTING={nr} kräver radien r₁ på dataraden")) };
+            let Some(r) = first else { return kw.err(format!("NONREFLECTING={nr} requires the radius r₁ on the data line")) };
             Ok((ImpKind::Radiation(if nr == "CIRCULAR" { 0.5 / r } else { 1.0 / r }), GeoFactor::One, false))
         }
         "ELLIPTICAL" | "PROLATE SPHEROIDAL" => {
-            let Some(a) = first else { return kw.err(format!("NONREFLECTING={nr} kräver halva storaxeln a på dataraden")) };
+            let Some(a) = first else { return kw.err(format!("NONREFLECTING={nr} requires the semi-major axis a on the data line")) };
             let e = extra.get(1).copied().unwrap_or(0.0);
             if !(0.0..1.0).contains(&e) {
-                return kw.err(format!("NONREFLECTING={nr}: excentriciteten ska ligga i [0, 1)"));
+                return kw.err(format!("NONREFLECTING={nr}: the eccentricity must lie in [0, 1)"));
             }
             let g = |i: usize| extra.get(i).copied().unwrap_or(0.0);
             let x0 = [g(2), g(3), g(4)];
@@ -72,18 +72,18 @@ fn kind_of(m: &FeModel, kw: &RawKeyword, extra: &[f64]) -> Result<(ImpKind, GeoF
                 em = [1.0, 0.0, 0.0];
             }
             let beta = if nr == "ELLIPTICAL" { 0.5 / a } else { 1.0 / a };
-            // geometrifaktorn används inte: lösningen beror inte på
-            // ε, centrum eller storaxelns riktning och är densamma som för
-            // CIRCULAR/SPHERICAL med r₁ = a (kontrollerat i *STEADY STATE
-            // DYNAMICS och *DYNAMIC). Faktorn finns kvar för RUSTYFEM_ELLIPSE_F=1.
+            // the geometry factor is not used: the solution does not depend on
+            // ε, the center or the direction of the major axis and is the same as for
+            // CIRCULAR/SPHERICAL with r₁ = a (verified in *STEADY STATE
+            // DYNAMICS and *DYNAMIC). The factor remains for RUSTYFEM_ELLIPSE_F=1.
             let geo = if std::env::var("RUSTYFEM_ELLIPSE_F").is_ok_and(|v| v == "1") { GeoFactor::Ellipse { a, e, x0, em } } else { GeoFactor::One };
             Ok((ImpKind::Radiation(beta), geo, false))
         }
-        other => kw.err(format!("NONREFLECTING={other} stöds inte (PLANAR, IMPROVED, CIRCULAR, SPHERICAL, ELLIPTICAL, PROLATE SPHEROIDAL)")),
+        other => kw.err(format!("NONREFLECTING={other} is not supported (PLANAR, IMPROVED, CIRCULAR, SPHERICAL, ELLIPTICAL, PROLATE SPHEROIDAL)")),
     }
 }
 
-/// Talen efter ytan/elementet på en datarad.
+/// The numbers after the surface/element on a data line.
 fn numbers(kw: &RawKeyword, f: &[&str]) -> Result<Vec<f64>> {
     let mut v = Vec::new();
     for s in f {
@@ -91,7 +91,7 @@ fn numbers(kw: &RawKeyword, f: &[&str]) -> Result<Vec<f64>> {
             v.push(0.0);
             continue;
         }
-        v.push(parse_f64(s).ok_or_else(|| FemError(format!("{}: '{s}' är inget tal", kw.location())))?);
+        v.push(parse_f64(s).ok_or_else(|| FemError(format!("{}: '{s}' is not a number", kw.location())))?);
     }
     while v.last() == Some(&0.0) && v.len() > 1 {
         v.pop();
@@ -100,13 +100,13 @@ fn numbers(kw: &RawKeyword, f: &[&str]) -> Result<Vec<f64>> {
 }
 
 impl<'a, 'm> Sys<'a, 'm> {
-    /// Bygger impedans- och strålningsränderna (`ImpBoundary`) för steg `index`.
+    /// Builds the impedance and radiation boundaries (`ImpBoundary`) for step `index`.
     pub(super) fn build_impedances_gaps1(&mut self, index: usize) -> Result<()> {
         let m = self.p.model;
         let na = self.n_all();
         let transient = m.steps.get(index).is_some_and(|s| s.procedure_name() == "DYNAMIC");
         for kw in impedance_keywords(m, index) {
-            // ytor: (element, ytindex, dataradens tal)
+            // faces: (element, face index, the numbers on the data line)
             let mut faces: Vec<(usize, usize, Vec<f64>)> = Vec::new();
             for d in kw.records() {
                 let f: Vec<&str> = d.fields.iter().map(|s| s.trim()).collect();
@@ -117,36 +117,36 @@ impl<'a, 'm> Sys<'a, 'm> {
                     let extra = numbers(kw, &f[1..])?;
                     let surf = geom::surface(m, kw, f[0])?;
                     if surf.kind == "NODE" {
-                        return kw.err("*SIMPEDANCE kräver en elementbaserad yta");
+                        return kw.err("*SIMPEDANCE requires an element-based surface");
                     }
                     for (e, lab) in &surf.faces {
                         let i = lab.strip_prefix('S').and_then(|x| x.parse::<usize>().ok()).filter(|&i| i >= 1);
-                        let Some(i) = i else { return kw.err(format!("ytan {lab} stöds inte för impedans")) };
+                        let Some(i) = i else { return kw.err(format!("the face {lab} is not supported for impedance")) };
                         faces.push((*e, i - 1, extra.clone()));
                     }
                 } else {
-                    let Some(lab) = f.get(1) else { return kw.err_at(d.line, "skriv 'element eller elementset, In'") };
+                    let Some(lab) = f.get(1) else { return kw.err_at(d.line, "write 'element or element set, In'") };
                     let up = lab.to_uppercase();
                     let i = up.strip_prefix('I').and_then(|x| x.parse::<usize>().ok()).filter(|&i| i >= 1);
-                    let Some(i) = i else { return kw.err_at(d.line, format!("'{lab}' är ingen impedansyta (I1, I2, ...)")) };
+                    let Some(i) = i else { return kw.err_at(d.line, format!("'{lab}' is not an impedance face (I1, I2, ...)")) };
                     let extra = numbers(kw, &f[2..])?;
                     for e in geom::elem_ref(m, kw, f[0])? {
                         faces.push((e, i - 1, extra.clone()));
                     }
                 }
             }
-            // en rand per (nyckelord, datarad, material)
+            // one boundary per (keyword, data line, material)
             let mut groups: Vec<(Vec<f64>, AcousticProps, Gen, ImpKind, bool)> = Vec::new();
             let mut improved_faces: Vec<(usize, usize)> = Vec::new();
             for (e, fi, extra) in faces {
                 let el = &m.elements[e];
                 let Some(a) = ac::lookup(el.etype.name()) else {
-                    return kw.err(format!("{} är inget akustiskt element", m.elem_name(e)));
+                    return kw.err(format!("{} is not an acoustic element", m.elem_name(e)));
                 };
                 let props = material_props(m, e)?;
                 let (kind, geo, improved) = kind_of(m, kw, &extra)?;
                 if improved && !transient {
-                    return kw.err("NONREFLECTING=IMPROVED kan bara användas i transient dynamik (*DYNAMIC)");
+                    return kw.err("NONREFLECTING=IMPROVED can only be used in transient dynamics (*DYNAMIC)");
                 }
                 let x: Vec<[f64; 3]> = el.nodes.iter().map(|&nd| m.nodes[nd]).collect();
                 let he = face_matrix_w(a, &x, fi, thickness(m, e), &|xp| geo.at(xp))?;
@@ -172,7 +172,7 @@ impl<'a, 'm> Sys<'a, 'm> {
                 self.imp.push(ImpBoundary { kind, h, props });
             }
             if !improved_faces.is_empty() {
-                // ränder med cos θ (acoustic_improved.rs): H byggs om i varje inkrement
+                // boundaries with cos θ (acoustic_improved.rs): H is rebuilt in each increment
                 self.improved.push(super::improved::Improved { faces: improved_faces });
             }
         }

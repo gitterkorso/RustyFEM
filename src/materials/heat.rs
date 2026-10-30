@@ -1,16 +1,16 @@
-//! Termiska materialegenskaper: *CONDUCTIVITY, *SPECIFIC HEAT och *EXPANSION.
+//! Thermal material properties: *CONDUCTIVITY, *SPECIFIC HEAT and *EXPANSION.
 //!
-//! Värmeledningen (`steps/heat.rs`) och den termiska spänningsanalysen
-//! (`steps/heat_stress.rs`) läser egenskaperna direkt ur materialdefinitionen
-//! med `HeatProps::from_def`. Egenskaperna kan bero av temperaturen (tabell
-//! med en temperatur sist på varje rad); mellan punkterna interpoleras linjärt
-//! och utanför tabellen hålls värdet konstant.
+//! The heat conduction (`steps/heat.rs`) and the thermal stress analysis
+//! (`steps/heat_stress.rs`) read the properties directly from the material definition
+//! with `HeatProps::from_def`. The properties may depend on temperature (table
+//! with a temperature last on each line); between the points the interpolation is linear
+//! and outside the table the value is held constant.
 //!
-//! Registret:
-//! - en passiv post förbrukar de termiska beteendena när ett mekaniskt
-//!   material (t.ex. *ELASTIC) väljs;
-//! - en fabrik med låg prioritet bygger en "endast termisk" modell för
-//!   material som saknar mekaniska egenskaper (rena värmeledningsmodeller).
+//! The registry:
+//! - a passive entry consumes the thermal behaviors when a mechanical
+//!   material (e.g. *ELASTIC) is selected;
+//! - a low-priority factory builds a "thermal only" model for
+//!   materials without mechanical properties (pure heat conduction models).
 
 use super::{MatInput, MatOutput, MaterialFactory, MaterialModel};
 use crate::fem::model::{MaterialDef, RawKeyword};
@@ -19,21 +19,21 @@ use std::sync::Arc;
 
 pub static FACTORIES: &[MaterialFactory] = &[
     MaterialFactory {
-        name: "termiska egenskaper (läses av värmeledningen)",
+        name: "thermal properties (read by the heat conduction)",
         consumes: &["CONDUCTIVITY", "SPECIFIC HEAT", "EXPANSION", "LATENT HEAT"],
         priority: 0,
         build: None,
     },
     MaterialFactory {
-        name: "endast termiska egenskaper",
+        name: "thermal properties only",
         consumes: &["CONDUCTIVITY", "SPECIFIC HEAT", "EXPANSION"],
         priority: -100,
         build: Some(build_thermal_only),
     },
 ];
 
-/// Materialmodell för material som bara har termiska egenskaper. Den kan inte
-/// användas i mekaniska element.
+/// Material model for materials that only have thermal properties. It cannot
+/// be used in mechanical elements.
 #[derive(Debug)]
 pub struct ThermalOnly {
     name: String,
@@ -48,7 +48,7 @@ fn build_thermal_only(def: &MaterialDef) -> Result<Option<Arc<dyn MaterialModel>
 
 impl MaterialModel for ThermalOnly {
     fn name(&self) -> &str {
-        "endast termiska egenskaper"
+        "thermal properties only"
     }
 
     fn is_linear(&self) -> bool {
@@ -56,12 +56,12 @@ impl MaterialModel for ThermalOnly {
     }
 
     fn update(&self, _input: &MatInput, _so: &[f64], _sn: &mut [f64]) -> Result<MatOutput> {
-        fail(format!("material {}: har bara termiska egenskaper (*CONDUCTIVITY/*SPECIFIC HEAT) men används i ett mekaniskt element", self.name))
+        fail(format!("material {}: has only thermal properties (*CONDUCTIVITY/*SPECIFIC HEAT) but is used in a mechanical element", self.name))
     }
 }
 
-/// Tabell över temperaturen: (T, värden) sorterat efter T. Linjär interpolation
-/// mellan punkterna, konstant utanför.
+/// Table over temperature: (T, values) sorted by T. Linear interpolation
+/// between the points, constant outside.
 #[derive(Debug, Clone, Default)]
 pub struct Table {
     pub pts: Vec<(f64, Vec<f64>)>,
@@ -76,12 +76,12 @@ impl Table {
         self.pts.first().map_or(0, |p| p.1.len())
     }
 
-    /// Temperaturberoende (mer än en punkt).
+    /// Temperature dependent (more than one point).
     pub fn varies(&self) -> bool {
         self.pts.len() > 1
     }
 
-    /// Värden och derivator d/dT vid temperaturen `t`.
+    /// Values and derivatives d/dT at temperature `t`.
     pub fn eval(&self, t: f64) -> (Vec<f64>, Vec<f64>) {
         let n = self.ncomp();
         let p = &self.pts;
@@ -101,12 +101,12 @@ impl Table {
         (val, der)
     }
 
-    /// Första komponenten vid `t`.
+    /// First component at `t`.
     pub fn value(&self, t: f64) -> f64 {
         self.eval(t).0[0]
     }
 
-    /// ∫ₐᵇ f(T) dT för första komponenten (exakt för den styckvis linjära tabellen).
+    /// ∫ₐᵇ f(T) dT for the first component (exact for the piecewise linear table).
     pub fn integral(&self, a: f64, b: f64) -> f64 {
         if a == b {
             return 0.0;
@@ -123,12 +123,12 @@ impl Table {
     }
 }
 
-/// Läser en tabell med `ncomp` värden följt av en temperatur per datarad.
+/// Reads a table with `ncomp` values followed by a temperature per data line.
 pub fn read_table(kw: &RawKeyword, ncomp: usize) -> Result<Table> {
     if kw.has("DEPENDENCIES") {
         let d = kw.param("DEPENDENCIES").unwrap_or("").trim();
         if !(d.is_empty() || d == "0") {
-            return kw.err("beroende av fältvariabler (DEPENDENCIES=) stöds inte ännu");
+            return kw.err("dependence on field variables (DEPENDENCIES=) is not supported yet");
         }
     }
     let mut pts: Vec<(f64, Vec<f64>)> = Vec::new();
@@ -143,19 +143,19 @@ pub fn read_table(kw: &RawKeyword, ncomp: usize) -> Result<Table> {
         pts.push((t, vals));
     }
     if pts.is_empty() {
-        return kw.err("datarad saknas");
+        return kw.err("data line missing");
     }
     if pts.len() > 1 {
         for w in pts.windows(2) {
             if w[1].0 <= w[0].0 {
-                return kw.err("temperaturerna i tabellen ska vara strikt stigande");
+                return kw.err("the temperatures in the table must be strictly increasing");
             }
         }
     }
     Ok(Table { pts })
 }
 
-/// Ledningsförmågans form.
+/// Form of the conductivity.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CondKind {
     /// k
@@ -166,17 +166,17 @@ pub enum CondKind {
     Aniso,
 }
 
-/// Termiska egenskaper för ett material.
+/// Thermal properties of a material.
 #[derive(Debug, Clone)]
 pub struct HeatProps {
     pub name: String,
     pub cond: Option<(CondKind, Table)>,
     pub specific_heat: Option<Table>,
     pub density: f64,
-    /// Längdutvidgning α(T) (isotrop) och referenstemperaturen ZERO=.
+    /// Linear expansion α(T) (isotropic) and the reference temperature ZERO=.
     pub expansion: Option<(Table, f64)>,
-    /// Latent värme (*LATENT HEAT): (L, solidustemperatur, likvidustemperatur)
-    /// per fasomvandling.
+    /// Latent heat (*LATENT HEAT): (L, solidus temperature, liquidus temperature)
+    /// per phase change.
     pub latent: Vec<(f64, f64, f64)>,
 }
 
@@ -189,7 +189,7 @@ impl HeatProps {
                     "ISO" | "ISOTROPIC" => CondKind::Iso,
                     "ORTHO" | "ORTHOTROPIC" => CondKind::Ortho,
                     "ANISO" | "ANISOTROPIC" => CondKind::Aniso,
-                    other => return kw.err(format!("TYPE={other} stöds inte (ISO, ORTHO, ANISO)")),
+                    other => return kw.err(format!("TYPE={other} is not supported (ISO, ORTHO, ANISO)")),
                 };
                 let n = match kind {
                     CondKind::Iso => 1,
@@ -203,7 +203,7 @@ impl HeatProps {
         let specific_heat = match def.behavior("SPECIFIC HEAT") {
             Some(kw) => {
                 if kw.has("PER VOLUME") {
-                    return kw.err("PER VOLUME stöds inte ännu");
+                    return kw.err("PER VOLUME is not supported yet");
                 }
                 Some(read_table(kw, 1)?)
             }
@@ -213,13 +213,13 @@ impl HeatProps {
             Some(kw) => {
                 let ty = kw.param_upper("TYPE").unwrap_or_else(|| "ISO".into());
                 if ty != "ISO" {
-                    return kw.err(format!("TYPE={ty} stöds inte ännu (bara ISO)"));
+                    return kw.err(format!("TYPE={ty} is not supported yet (only ISO)"));
                 }
                 if kw.has("USER") {
-                    return kw.err("USER stöds inte");
+                    return kw.err("USER is not supported");
                 }
                 let zero = match kw.param("ZERO") {
-                    Some(z) => crate::fem::model::parse_f64(z).ok_or_else(|| crate::model::FemError(format!("{}: ZERO={z} är inget tal", kw.location())))?,
+                    Some(z) => crate::fem::model::parse_f64(z).ok_or_else(|| crate::model::FemError(format!("{}: ZERO={z} is not a number", kw.location())))?,
                     None => 0.0,
                 };
                 Some((read_table(kw, 1)?, zero))
@@ -234,21 +234,21 @@ impl HeatProps {
                     continue;
                 }
                 if v[2] < v[1] {
-                    return kw.err_at(d.line, "likvidustemperaturen ska vara minst solidustemperaturen");
+                    return kw.err_at(d.line, "the liquidus temperature must be at least the solidus temperature");
                 }
                 latent.push((v[0], v[1], v[2]));
             }
             if latent.is_empty() {
-                return kw.err("skriv 'latent värme, solidustemperatur, likvidustemperatur'");
+                return kw.err("write 'latent heat, solidus temperature, liquidus temperature'");
             }
         }
         Ok(HeatProps { name: def.name.clone(), cond, specific_heat, density: def.density, expansion, latent })
     }
 
-    /// Ledningsförmågan som 3×3-tensor och dess derivata d/dT vid temperaturen `t`.
+    /// The conductivity as a 3×3 tensor and its derivative d/dT at temperature `t`.
     pub fn conductivity(&self, t: f64) -> Result<([[f64; 3]; 3], [[f64; 3]; 3])> {
         let Some((kind, tab)) = &self.cond else {
-            return fail(format!("material {}: *CONDUCTIVITY saknas", self.name));
+            return fail(format!("material {}: *CONDUCTIVITY missing", self.name));
         };
         let (v, d) = tab.eval(t);
         let m = |v: &[f64]| -> [[f64; 3]; 3] {
@@ -261,14 +261,14 @@ impl HeatProps {
         Ok((m(&v), m(&d)))
     }
 
-    /// ρ c(T) och ρ ∫c dT mellan två temperaturer (inre energi per volym).
+    /// ρ c(T) and ρ ∫c dT between two temperatures (internal energy per volume).
     pub fn capacity(&self) -> Option<&Table> {
         self.specific_heat.as_ref()
     }
 
-    /// Latent värme per massenhet som frigjorts vid temperaturen `t` och dess
-    /// derivata: Σ L·f(T), där andelen f går linjärt från 0 vid solidus till 1
-    /// vid likvidus (stegfunktion om de sammanfaller).
+    /// Latent heat per unit mass released at temperature `t` and its
+    /// derivative: Σ L·f(T), where the fraction f goes linearly from 0 at solidus to 1
+    /// at liquidus (step function if they coincide).
     pub fn latent_energy(&self, t: f64) -> (f64, f64) {
         let mut u = 0.0;
         let mut du = 0.0;
@@ -283,8 +283,8 @@ impl HeatProps {
         (u, du)
     }
 
-    /// Termisk töjning α(T)(T − T0) − α(TI)(TI − T0) (definition med
-    /// referenstemperaturen T0 = ZERO och begynnelsetemperaturen TI).
+    /// Thermal strain α(T)(T − T0) − α(TI)(TI − T0) (definition with
+    /// the reference temperature T0 = ZERO and the initial temperature TI).
     pub fn thermal_strain(&self, t: f64, ti: f64) -> f64 {
         match &self.expansion {
             Some((tab, zero)) => tab.value(t) * (t - zero) - tab.value(ti) * (ti - zero),

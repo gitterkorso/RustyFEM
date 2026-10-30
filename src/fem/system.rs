@@ -1,8 +1,8 @@
-//! Kvasistatisk jämvikt R(u) = F_ext(t) − F_int(u) = 0 som `NonlinearSystem`.
+//! Quasi-static equilibrium R(u) = F_ext(t) − F_int(u) = 0 as a `NonlinearSystem`.
 //!
-//! Används av STATIC (linjärt och materiellt olinjärt) och kan återanvändas
-//! av NLGEOM- och kontaktsteg: sätt `nlgeom` och låt elementen/interaktionerna
-//! stå för kinematiken.
+//! Used by STATIC (linear and materially nonlinear) and can be reused
+//! by NLGEOM and contact steps: set `nlgeom` and let the elements/interactions
+//! handle the kinematics.
 
 use crate::fem::assembly::{self, DofMap, Prepared};
 use crate::fem::dof::{self, Field, NodeVec, SLOTS, SLOT_DOF};
@@ -18,27 +18,27 @@ pub struct StaticSystem<'p, 'm> {
     pub nlgeom: bool,
     pub dm: DofMap,
     pub mat: Box<dyn SystemMatrix>,
-    /// Aktuell lösning och senast godkända.
+    /// Current solution and last accepted one.
     pub u: Vec<NodeVec>,
     pub u_committed: Vec<NodeVec>,
     pub state_old: Vec<Vec<f64>>,
     pub state_new: Vec<Vec<f64>>,
     pub fint: Vec<NodeVec>,
     pub fext: Vec<NodeVec>,
-    /// Total tid vid stegets början och stegets längd.
+    /// Total time at the start of the step and the step length.
     pub time0: f64,
     pub period: f64,
     pub t0: f64,
     pub t1: f64,
     linear: bool,
-    /// Obalanserade inre krafter från begynnelsespänningen (*INITIAL
-    /// CONDITIONS, TYPE=STRESS) i första steget; läggs till de yttre krafterna
-    /// med faktorn (1 − t) (`materials::initial_state`).
+    /// Unbalanced internal forces from the initial stress (*INITIAL
+    /// CONDITIONS, TYPE=STRESS) in the first step; added to the external forces
+    /// with the factor (1 − t) (`materials::initial_state`).
     pub unbalance: Option<Vec<NodeVec>>,
 }
 
 impl<'p, 'm> StaticSystem<'p, 'm> {
-    /// Startar från tillståndet `state` (u och elementtillstånd).
+    /// Starts from the state `state` (u and element states).
     pub fn new(
         p: &'p Prepared<'m>,
         loads: &'p StepLoads,
@@ -70,7 +70,7 @@ impl<'p, 'm> StaticSystem<'p, 'm> {
         })
     }
 
-    /// Reaktioner (F_int − F_ext i låsta frihetsgrader) vid senaste utvärderingen.
+    /// Reactions (F_int − F_ext at constrained DOFs) at the latest evaluation.
     pub fn reactions(&self) -> Vec<NodeVec> {
         let mut r = vec![[0.0; SLOTS]; self.u.len()];
         for (n, rn) in r.iter_mut().enumerate() {
@@ -83,7 +83,7 @@ impl<'p, 'm> StaticSystem<'p, 'm> {
         r
     }
 
-    /// Skriver godkänd lösning till tillståndet.
+    /// Writes the accepted solution to the state.
     pub fn store(&self, state: &mut SolutionState) {
         state.u = self.u_committed.clone();
         state.elem_state = self.state_old.clone();
@@ -92,14 +92,14 @@ impl<'p, 'm> StaticSystem<'p, 'm> {
 }
 
 impl StaticSystem<'_, '_> {
-    /// Linjär prediktor för ett inkrement med föreskrivna förskjutningar
-    /// (olinjära problem): de fria frihetsgraderna får det linjära svaret på
-    /// randvillkorsändringen med tangenten vid inkrementets början,
-    /// K_ff c = R(u0) − K_fp Δu_p, där K_fp Δu_p tas som en riktningsderivata av
-    /// de inre krafterna. Annars utvärderas första iterationen i ett "knäckt"
-    /// läge där bara de föreskrivna noderna har flyttats, vilket ger orimliga
-    /// töjningar i elementen intill (t.ex. plasticitet långt bortom flytgränsen).
-    /// Den konvergerade lösningen påverkas inte.
+    /// Linear predictor for an increment with prescribed displacements
+    /// (nonlinear problems): the free DOFs get the linear response to the
+    /// boundary-condition change with the tangent at the start of the increment,
+    /// K_ff c = R(u0) − K_fp Δu_p, where K_fp Δu_p is taken as a directional derivative of
+    /// the internal forces. Otherwise the first iteration is evaluated in a "kinked"
+    /// configuration where only the prescribed nodes have moved, which gives unreasonable
+    /// strains in the adjacent elements (e.g. plasticity far beyond the yield point).
+    /// The converged solution is not affected.
     fn predict(&mut self) -> Result<()> {
         let target = std::mem::replace(&mut self.u, self.u_committed.clone());
         let r0 = match self.evaluate(true) {
@@ -169,9 +169,9 @@ impl NonlinearSystem for StaticSystem<'_, '_> {
             }
         }
         self.dm.mpc.expand(&mut self.u);
-        // Prediktorn används inte med olinjära interaktioner (kontakt): den
-        // linjära extrapolationen med tangenten från inkrementets början kan
-        // öppna kontakten så att kroppar som bara hålls av kontakt blir fria.
+        // The predictor is not used with nonlinear interactions (contact): the
+        // linear extrapolation with the tangent from the start of the increment can
+        // open the contact so that bodies held only by contact become free.
         let contact = self.p.interactions.iter().any(|i| !i.is_linear());
         if moved && !self.linear && !contact && self.dm.n_eq > 0 {
             self.predict()?;
@@ -187,22 +187,22 @@ impl NonlinearSystem for StaticSystem<'_, '_> {
         let t0 = std::time::Instant::now();
         let int = assembly::internal(self.p, &self.dm, &self.u, &du, &self.state_old, self.nlgeom, time, dt, k)?;
         if crate::settings::with(|s| s.timing) {
-            eprintln!("inre krafter{}: {:.3} s", if tangent { " och tangent" } else { "" }, t0.elapsed().as_secs_f64());
+            eprintln!("internal forces{}: {:.3} s", if tangent { " and tangent" } else { "" }, t0.elapsed().as_secs_f64());
         }
         self.fint = int.fint;
         self.state_new = int.state_new;
         self.fext = assembly::external(self.p, &self.loads.cloads_at(self.t1), &self.loads.dloads_at(self.t1), &self.u, self.nlgeom, time)?;
-        // område geomaterials: begynnelsespänningens obalans avvecklas linjärt under första steget
+        // geomaterials area: the initial-stress imbalance is ramped out linearly during the first step
         if let Some(f0) = self.unbalance.as_ref().filter(|_| self.t1 > 0.0) {
             crate::materials::initial_state::add_unbalance(&mut self.fext, f0, self.t1);
         }
-        // villkorskrafter (kopplingselement) ur den okondenserade residualen
+        // constraint forces (connector elements) from the uncondensed residual
         if !self.dm.mpc.is_empty() {
             for it in &self.p.interactions {
                 it.observe_residual(&self.fint, &self.fext, &self.dm.mpc.slaves);
             }
         }
-        // linjära villkor: krafter i slavar förs över till deras masters
+        // linear constraints: forces at slaves are transferred to their masters
         self.dm.mpc.condense(&mut self.fint);
         self.dm.mpc.condense(&mut self.fext);
         let mut r = vec![0.0; self.dm.n_eq];

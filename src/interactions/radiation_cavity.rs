@@ -1,6 +1,6 @@
-//! Matrisstrukturen för kavitetsstrålning (strålningskavitet, inte *FLUID CAVITY i `cavity.rs`) (*CAVITY DEFINITION): alla noder
-//! på kavitetens ytor kopplas till varandra (synfaktormatrisen är full).
-//! Flödena räknas av värmeledningen i `steps/heat_cavity.rs`.
+//! Matrix structure for cavity radiation (radiation cavity, not *FLUID CAVITY in `cavity.rs`) (*CAVITY DEFINITION): all nodes
+//! on the cavity surfaces are coupled to each other (the view factor matrix is full).
+//! The fluxes are computed by the heat transfer analysis in `steps/heat_cavity.rs`.
 
 use super::{Interaction, InteractionFactory};
 use crate::fem::model::{FeModel, RawKeyword};
@@ -14,7 +14,7 @@ struct CavityLink {
 
 impl Interaction for CavityLink {
     fn name(&self) -> String {
-        "kavitetsstrålning".into()
+        "cavity radiation".into()
     }
     fn connectivity(&self) -> Vec<Vec<usize>> {
         vec![self.nodes.clone()]
@@ -25,7 +25,7 @@ fn links(m: &FeModel, kw: &RawKeyword) -> Result<Vec<Box<dyn Interaction>>> {
     let mut nodes = Vec::new();
     for d in kw.records() {
         for (k, f) in d.fields.iter().enumerate() {
-            // med SET PROPERTY är varannan post ytegenskapens namn
+            // with SET PROPERTY every other entry is the name of the surface property
             if kw.has("SET PROPERTY") && k % 2 == 1 {
                 continue;
             }

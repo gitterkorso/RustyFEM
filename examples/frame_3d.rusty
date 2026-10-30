@@ -1,4 +1,4 @@
-# Bordsliknande 3D-ram: fyra pelare och ett balklag, inspänt i golvet.
+# Table-like 3D frame: four columns and a beam grid, clamped at the floor.
 material steel E=210e9 nu=0.3
 beam (0,0,0) (0,0,3) section=pipe(0.06,0.005) n=6
 beam (4,0,0) (4,0,3) section=pipe(0.06,0.005) n=6

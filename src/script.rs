@@ -1,4 +1,4 @@
-//! Textformatet `.rusty`: en rad per kommando, `#` inleder kommentar.
+//! The `.rusty` text format: one command per line, `#` starts a comment.
 //!
 //! ```text
 //! material steel E=210e9 nu=0.3
@@ -6,7 +6,7 @@
 //! fix x=0
 //! load x=2 fy=-1000
 //! ```
-//! Se docs/REFERENS.md för alla kommandon.
+//! See docs/REFERENCE.md for all commands.
 
 use crate::model::{fail, Dim, Material, Model, Result, Sel, RX, RY, RZ, UX, UY, UZ};
 use crate::section::BeamSection;
@@ -18,11 +18,11 @@ struct Args {
 }
 
 fn err<T>(line: usize, msg: impl AsRef<str>) -> Result<T> {
-    fail(format!("rad {line}: {}", msg.as_ref()))
+    fail(format!("line {line}: {}", msg.as_ref()))
 }
 
 fn parse_num(line: usize, s: &str) -> Result<f64> {
-    s.parse::<f64>().or_else(|_| err(line, format!("'{s}' är inget tal")))
+    s.parse::<f64>().or_else(|_| err(line, format!("'{s}' is not a number")))
 }
 
 fn parse_range(line: usize, s: &str) -> Result<(f64, f64)> {
@@ -40,7 +40,7 @@ fn parse_range(line: usize, s: &str) -> Result<(f64, f64)> {
 
 fn parse_list(line: usize, s: &str) -> Result<Vec<f64>> {
     let inner = s.strip_prefix('(').and_then(|t| t.strip_suffix(')')).ok_or_else(|| {
-        crate::model::FemError(format!("rad {line}: '{s}' ska vara en lista inom parentes, t.ex. (1,2)"))
+        crate::model::FemError(format!("line {line}: '{s}' must be a list in parentheses, e.g. (1,2)"))
     })?;
     inner.split(',').map(|t| parse_num(line, t)).collect()
 }
@@ -50,7 +50,7 @@ fn parse_point(line: usize, s: &str) -> Result<([f64; 3], usize)> {
     match v.len() {
         2 => Ok(([v[0], v[1], 0.0], 2)),
         3 => Ok(([v[0], v[1], v[2]], 3)),
-        _ => err(line, format!("punkten '{s}' ska ha 2 eller 3 koordinater")),
+        _ => err(line, format!("the point '{s}' must have 2 or 3 coordinates")),
     }
 }
 
@@ -71,14 +71,14 @@ impl Args {
     fn req(&mut self, key: &str, what: &str) -> Result<f64> {
         match self.num(key)? {
             Some(v) => Ok(v),
-            None => err(self.line, format!("{key}= saknas ({what})")),
+            None => err(self.line, format!("{key}= is missing ({what})")),
         }
     }
 
     fn range(&mut self, key: &str) -> Result<(f64, f64)> {
         match self.get(key) {
             Some(v) => parse_range(self.line, &v),
-            None => err(self.line, format!("{key}= saknas, t.ex. {key}=0..1")),
+            None => err(self.line, format!("{key}= is missing, e.g. {key}=0..1")),
         }
     }
 
@@ -118,7 +118,7 @@ impl Args {
             }
         }
         if conds.is_empty() {
-            return err(self.line, "urval saknas: ange t.ex. x=0, y=0..1, at=(1,2) eller all");
+            return err(self.line, "selection is missing: specify e.g. x=0, y=0..1, at=(1,2) or all");
         }
         Ok(Sel::Box(conds))
     }
@@ -127,8 +127,8 @@ impl Args {
         for (i, (k, v)) in self.items.iter().enumerate() {
             if !self.used[i] {
                 return match k {
-                    Some(k) => err(self.line, format!("okänd parameter '{k}='")),
-                    None => err(self.line, format!("oväntat ord '{v}'")),
+                    Some(k) => err(self.line, format!("unknown parameter '{k}='")),
+                    None => err(self.line, format!("unexpected word '{v}'")),
                 };
             }
         }
@@ -136,7 +136,7 @@ impl Args {
     }
 }
 
-/// Tar bort kommentar och blanksteg inne i parenteser.
+/// Removes the comment and whitespace inside parentheses.
 fn normalize(raw: &str) -> String {
     let s = raw.split('#').next().unwrap_or("");
     let mut out = String::with_capacity(s.len());
@@ -185,7 +185,7 @@ fn infer_dim(lines: &[Line]) -> Result<Dim> {
             return match l.args.items.first().map(|i| i.1.as_str()) {
                 Some("2d") => Ok(Dim::Two),
                 Some("3d") => Ok(Dim::Three),
-                _ => err(l.no, "skriv 'model 2d' eller 'model 3d'"),
+                _ => err(l.no, "write 'model 2d' or 'model 3d'"),
             };
         }
     }
@@ -204,17 +204,17 @@ fn infer_dim(lines: &[Line]) -> Result<Dim> {
 
 fn parse_section(line: usize, s: &str) -> Result<BeamSection> {
     let (name, rest) = s.split_once('(').ok_or_else(|| {
-        crate::model::FemError(format!("rad {line}: tvärsnitt skrivs t.ex. rect(0.05,0.1)"))
+        crate::model::FemError(format!("line {line}: a cross-section is written e.g. rect(0.05,0.1)"))
     })?;
     let v = parse_list(line, &format!("({rest}"))?;
-    let need = |n: usize| if v.len() == n { Ok(()) } else { err(line, format!("{name}(...) ska ha {n} värden")) };
+    let need = |n: usize| if v.len() == n { Ok(()) } else { err(line, format!("{name}(...) must have {n} values")) };
     match name {
         "rect" => need(2).map(|_| BeamSection::rect(v[0], v[1])),
         "circle" => need(1).map(|_| BeamSection::circle(v[0])),
         "pipe" => need(2).map(|_| BeamSection::pipe(v[0], v[1])),
         "ibeam" => need(4).map(|_| BeamSection::ibeam(v[0], v[1], v[2], v[3])),
         "general" => need(4).map(|_| BeamSection::general(v[0], v[1], v[2], v[3])),
-        _ => err(line, format!("okänt tvärsnitt '{name}' (rect, circle, pipe, ibeam, general)")),
+        _ => err(line, format!("unknown cross-section '{name}' (rect, circle, pipe, ibeam, general)")),
     }
 }
 
@@ -223,13 +223,13 @@ fn pick_material(a: &mut Args, m: &mut Model, current: &mut Option<usize>, line:
         let name = name.to_lowercase();
         return match m.materials.iter().position(|x| x.name.to_lowercase() == name) {
             Some(i) => Ok(i),
-            None => err(line, format!("materialet '{name}' är inte definierat")),
+            None => err(line, format!("material '{name}' is not defined")),
         };
     }
     Ok(*current.get_or_insert_with(|| m.material(Material::steel())))
 }
 
-/// Tolkar en modell i textformat.
+/// Parses a model in text format.
 pub fn parse(text: &str) -> Result<Model> {
     let mut lines = tokenize(text);
     let dim = infer_dim(&lines)?;
@@ -249,7 +249,7 @@ pub fn parse(text: &str) -> Result<Model> {
                 } else if a.flag("stress") {
                     m.plane_strain = false;
                 } else {
-                    return err(line, "skriv 'plane stress' eller 'plane strain'");
+                    return err(line, "write 'plane stress' or 'plane strain'");
                 }
             }
             "elements" => {
@@ -258,12 +258,12 @@ pub fn parse(text: &str) -> Result<Model> {
                 } else if a.flag("quad") {
                     m.triangles = false;
                 } else {
-                    return err(line, "skriv 'elements quad' eller 'elements tri'");
+                    return err(line, "write 'elements quad' or 'elements tri'");
                 }
             }
             "material" => {
                 let Some((None, name)) = a.items.first().cloned() else {
-                    return err(line, "materialet behöver ett namn, t.ex. 'material steel'");
+                    return err(line, "the material needs a name, e.g. 'material steel'");
                 };
                 a.used[0] = true;
                 let base = match name.as_str() {
@@ -277,7 +277,7 @@ pub fn parse(text: &str) -> Result<Model> {
                 let mut mat = match (base, e) {
                     (Some(b), _) => b,
                     (None, Some(_)) => Material::new(&name, 0.0, 0.3),
-                    (None, None) => return err(line, format!("materialet '{name}' behöver E=")),
+                    (None, None) => return err(line, format!("material '{name}' needs E=")),
                 };
                 mat.name = name;
                 if let Some(e) = e {
@@ -294,38 +294,38 @@ pub fn parse(text: &str) -> Result<Model> {
             "plate" => {
                 let (x0, x1) = a.range("x")?;
                 let (y0, y1) = a.range("y")?;
-                let t = a.req("t", "tjocklek")?;
-                let size = a.req("size", "elementstorlek")?;
+                let t = a.req("t", "thickness")?;
+                let size = a.req("size", "element size")?;
                 let mat = pick_material(a, &mut m, &mut current, line)?;
-                m.plate([x0, y0], [x1, y1], t, size, mat).map_err(|e| crate::model::FemError(format!("rad {line}: {e}")))?;
+                m.plate([x0, y0], [x1, y1], t, size, mat).map_err(|e| crate::model::FemError(format!("line {line}: {e}")))?;
             }
             "quad" => {
                 let p = a.points()?;
                 if p.len() != 4 {
-                    return err(line, "quad behöver fyra hörn, t.ex. quad (0,0) (2,0) (2,1) (0,1)");
+                    return err(line, "quad needs four corners, e.g. quad (0,0) (2,0) (2,1) (0,1)");
                 }
-                let t = a.req("t", "tjocklek")?;
-                let size = a.req("size", "elementstorlek")?;
+                let t = a.req("t", "thickness")?;
+                let size = a.req("size", "element size")?;
                 let mat = pick_material(a, &mut m, &mut current, line)?;
                 let c = [[p[0][0], p[0][1]], [p[1][0], p[1][1]], [p[2][0], p[2][1]], [p[3][0], p[3][1]]];
-                m.quad_region(c, t, size, mat).map_err(|e| crate::model::FemError(format!("rad {line}: {e}")))?;
+                m.quad_region(c, t, size, mat).map_err(|e| crate::model::FemError(format!("line {line}: {e}")))?;
             }
             "box" => {
                 let (x0, x1) = a.range("x")?;
                 let (y0, y1) = a.range("y")?;
                 let (z0, z1) = a.range("z")?;
-                let size = a.req("size", "elementstorlek")?;
+                let size = a.req("size", "element size")?;
                 let mat = pick_material(a, &mut m, &mut current, line)?;
-                m.box_solid([x0, y0, z0], [x1, y1, z1], size, mat).map_err(|e| crate::model::FemError(format!("rad {line}: {e}")))?;
+                m.box_solid([x0, y0, z0], [x1, y1, z1], size, mat).map_err(|e| crate::model::FemError(format!("line {line}: {e}")))?;
             }
             "beam" => {
                 let p = a.points()?;
                 if p.len() < 2 {
-                    return err(line, "beam behöver minst två punkter, t.ex. beam (0,0) (2,0) section=rect(0.05,0.1)");
+                    return err(line, "beam needs at least two points, e.g. beam (0,0) (2,0) section=rect(0.05,0.1)");
                 }
                 let sec = match a.get("section") {
                     Some(s) => parse_section(line, &s)?,
-                    None => return err(line, "section= saknas, t.ex. section=rect(0.05,0.1)"),
+                    None => return err(line, "section= is missing, e.g. section=rect(0.05,0.1)"),
                 };
                 let n = a.num("n")?.unwrap_or(10.0).max(1.0) as usize;
                 let up = match a.get("up") {
@@ -334,18 +334,18 @@ pub fn parse(text: &str) -> Result<Model> {
                 };
                 let mat = pick_material(a, &mut m, &mut current, line)?;
                 for w in p.windows(2) {
-                    m.beam(w[0], w[1], sec.clone(), mat, n, up).map_err(|e| crate::model::FemError(format!("rad {line}: {e}")))?;
+                    m.beam(w[0], w[1], sec.clone(), mat, n, up).map_err(|e| crate::model::FemError(format!("line {line}: {e}")))?;
                 }
             }
             "truss" => {
                 let p = a.points()?;
                 if p.len() < 2 {
-                    return err(line, "truss behöver minst två punkter");
+                    return err(line, "truss needs at least two points");
                 }
-                let area = a.req("area", "tvärsnittsarea")?;
+                let area = a.req("area", "cross-section area")?;
                 let mat = pick_material(a, &mut m, &mut current, line)?;
                 for w in p.windows(2) {
-                    m.truss(w[0], w[1], area, mat).map_err(|e| crate::model::FemError(format!("rad {line}: {e}")))?;
+                    m.truss(w[0], w[1], area, mat).map_err(|e| crate::model::FemError(format!("line {line}: {e}")))?;
                 }
             }
             "fix" => {
@@ -367,7 +367,7 @@ pub fn parse(text: &str) -> Result<Model> {
                     }
                 }
                 if dofs.is_empty() {
-                    return err(line, "ange vilka frihetsgrader som låses, t.ex. 'support x=0 ux' eller 'uy=0.001'");
+                    return err(line, "specify which degrees of freedom are constrained, e.g. 'support x=0 ux' or 'uy=0.001'");
                 }
                 m.support(s, &dofs);
             }
@@ -378,13 +378,13 @@ pub fn parse(text: &str) -> Result<Model> {
                     f[d] = a.num(name)?.unwrap_or(0.0);
                 }
                 if f.iter().all(|&v| v == 0.0) {
-                    return err(line, "ange minst en lastkomponent, t.ex. fy=-1000");
+                    return err(line, "specify at least one load component, e.g. fy=-1000");
                 }
                 m.loads.push(crate::model::Load::Force { sel: s, f });
             }
             "pressure" => {
                 let s = a.selection()?;
-                let p = a.req("p", "tryck")?;
+                let p = a.req("p", "pressure")?;
                 m.pressure(s, p);
             }
             "gravity" => {
@@ -409,7 +409,7 @@ pub fn parse(text: &str) -> Result<Model> {
             other => {
                 return err(
                     line,
-                    format!("okänt kommando '{other}' (model, plane, elements, material, plate, quad, box, beam, truss, fix, pin, support, load, pressure, gravity)"),
+                    format!("unknown command '{other}' (model, plane, elements, material, plate, quad, box, beam, truss, fix, pin, support, load, pressure, gravity)"),
                 )
             }
         }
@@ -419,6 +419,6 @@ pub fn parse(text: &str) -> Result<Model> {
 }
 
 pub fn load(path: &std::path::Path) -> Result<Model> {
-    let text = std::fs::read_to_string(path).map_err(|e| crate::model::FemError(format!("kunde inte läsa {}: {e}", path.display())))?;
+    let text = std::fs::read_to_string(path).map_err(|e| crate::model::FemError(format!("could not read {}: {e}", path.display())))?;
     parse(&text)
 }

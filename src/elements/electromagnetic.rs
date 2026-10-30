@@ -1,21 +1,21 @@
-//! Elektromagnetiska element (EMC3D4, EMC2D3): Nédélecs kantelement av
-//! lägsta ordningen (första sorten) för den magnetiska vektorpotentialen A.
-//! EMC2D3 är en plan triangel med A i planet (∇×A vinkelrätt mot planet) och
-//! tjockleken från *SOLID SECTION.
+//! Electromagnetic elements (EMC3D4, EMC2D3): Nédélec edge elements of the
+//! lowest order (first kind) for the magnetic vector potential A.
+//! EMC2D3 is a plane triangle with A in the plane (∇×A perpendicular to the plane) and
+//! the thickness from *SOLID SECTION.
 //!
-//! Frihetsgraderna är A:s tangentiella komponent längs elementets kanter
-//! (en per kant, inga nodfrihetsgrader). Med barycentriska koordinater λᵢ är
-//! kantfunktionen för kanten a → b (global riktning från lägre till högre
-//! nodindex)
+//! The degrees of freedom are the tangential component of A along the element edges
+//! (one per edge, no nodal degrees of freedom). With barycentric coordinates λᵢ the
+//! edge function for the edge a → b (global direction from lower to higher
+//! node index) is
 //!
-//!   W = λ_a ∇λ_b − λ_b ∇λ_a,   ∇×W = 2 ∇λ_a × ∇λ_b (konstant),
+//!   W = λ_a ∇λ_b − λ_b ∇λ_a,   ∇×W = 2 ∇λ_a × ∇λ_b (constant),
 //!
-//! och elementmatriserna för ∇×(ν∇×A) + iωσA = J:
+//! and the element matrices for ∇×(ν∇×A) + iωσA = J:
 //!
-//!   K_ef = ν V (∇×W_e)·(∇×W_f),  M_ef = σ ∫ W_e·W_f dV (exakt, ∫λᵢλⱼ = V(1+δᵢⱼ)/20),
+//!   K_ef = ν V (∇×W_e)·(∇×W_f),  M_ef = σ ∫ W_e·W_f dV (exact, ∫λᵢλⱼ = V(1+δᵢⱼ)/20),
 //!   f_e  = J·∫W_e dV = J·V/4 (∇λ_b − ∇λ_a).
 //!
-//! Steg-typen i `steps/electromagnetic.rs` assemblerar och löser.
+//! The step type in `steps/electromagnetic.rs` assembles and solves.
 
 use super::api::{ElementType, Family};
 use crate::fem::dof::Dof;
@@ -23,7 +23,7 @@ use crate::model::{fail, Result};
 
 pub struct EmElem {
     pub name: &'static str,
-    /// Plan triangel (EMC2D3) i stället för tetraeder.
+    /// Plane triangle (EMC2D3) instead of a tetrahedron.
     pub planar: bool,
 }
 
@@ -31,12 +31,12 @@ pub static EMC3D4: EmElem = EmElem { name: "EMC3D4", planar: false };
 pub static EMC2D3: EmElem = EmElem { name: "EMC2D3", planar: true };
 pub static TYPES: &[&dyn ElementType] = &[&EMC2D3, &EMC3D4];
 
-/// Det elektromagnetiska elementet `name`.
+/// The electromagnetic element `name`.
 pub fn lookup(name: &str) -> Option<&'static EmElem> {
     [&EMC2D3, &EMC3D4].into_iter().find(|e| e.name == name)
 }
 
-/// Lokala kanter (nodpar).
+/// Local edges (node pairs).
 pub const TET_EDGES: [(usize, usize); 6] = [(0, 1), (1, 2), (2, 0), (0, 3), (1, 3), (2, 3)];
 pub const TRI_EDGES: [(usize, usize); 3] = [(0, 1), (1, 2), (2, 0)];
 const TET4_FACES: &[&[usize]] = &[&[0, 1, 2], &[0, 3, 1], &[1, 3, 2], &[2, 3, 0]];
@@ -51,7 +51,7 @@ impl EmElem {
         }
     }
 
-    /// Geometrin (2D: arean gånger tjockleken som volym, ∇λ i planet).
+    /// The geometry (2D: area times thickness as volume, ∇λ in the plane).
     pub fn geom(&self, x: &[[f64; 3]], thickness: f64) -> Result<TetGeom> {
         if !self.planar {
             return tet_geom(x);
@@ -60,7 +60,7 @@ impl EmElem {
         let (x2, y2) = (x[2][0] - x[0][0], x[2][1] - x[0][1]);
         let det = x1 * y2 - x2 * y1;
         if det <= 0.0 {
-            return fail("triangeln har negativ eller noll area (nodordningen)");
+            return fail("the triangle has negative or zero area (node ordering)");
         }
         let mut grad = [[0.0; 3]; 4];
         grad[1] = [y2 / det, -x2 / det, 0.0];
@@ -70,11 +70,11 @@ impl EmElem {
     }
 }
 
-/// Tetraederns geometri: volym och ∇λᵢ.
+/// Tetrahedron geometry: volume and ∇λᵢ.
 pub struct TetGeom {
     pub vol: f64,
     pub grad: [[f64; 3]; 4],
-    /// 3 för tetraeder, 2 för triangel (∫λᵢλⱼ = A(1+δᵢⱼ)/12).
+    /// 3 for a tetrahedron, 2 for a triangle (∫λᵢλⱼ = A(1+δᵢⱼ)/12).
     pub dim: usize,
 }
 
@@ -83,9 +83,9 @@ pub fn tet_geom(x: &[[f64; 3]]) -> Result<TetGeom> {
     let j = [d(1), d(2), d(3)];
     let (inv, det) = super::common::inv3([[j[0][0], j[1][0], j[2][0]], [j[0][1], j[1][1], j[2][1]], [j[0][2], j[1][2], j[2][2]]]);
     if det <= 0.0 {
-        return fail("tetraedern har negativ eller noll volym (nodordningen)");
+        return fail("the tetrahedron has negative or zero volume (node ordering)");
     }
-    // λ₁..λ₃ = rader i J⁻¹ (J kolumnvis = kanter), λ₀ = 1 − Σ
+    // λ₁..λ₃ = rows of J⁻¹ (J column-wise = edges), λ₀ = 1 − Σ
     let mut grad = [[0.0; 3]; 4];
     for k in 0..3 {
         for c in 0..3 {
@@ -105,7 +105,7 @@ fn dot(a: [f64; 3], b: [f64; 3]) -> f64 {
     a[0] * b[0] + a[1] * b[1] + a[2] * b[2]
 }
 
-/// Kantens (a, b) i elementets riktning: rotorn och ∫W dV / V.
+/// Of the edge (a, b) in the element's direction: the curl and ∫W dV / V.
 pub struct EdgeFns {
     pub curl: Vec<[f64; 3]>,
     pub mean: Vec<[f64; 3]>,

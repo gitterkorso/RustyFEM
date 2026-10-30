@@ -1,30 +1,30 @@
-//! Omstart (*RESTART, WRITE / *RESTART, READ) och jobbkontexten.
+//! Restart (*RESTART, WRITE / *RESTART, READ) and the job context.
 //!
-//! **Jobbkontexten** (`Job`) talar om var en analys skriver och läser sina
-//! filer: jobbkatalog och jobbnamn, den fullständiga
-//! indatatexten (för omstartfilen), omstartfilen att läsa (`--oldjob`)
-//! och globalmodellens resultat för submodellering
-//! (`--global`). Den sätts per tråd med `scope` av CLI:t och
-//! regressionstesterna; utan kontext skrivs inga filer.
+//! **The job context** (`Job`) tells where an analysis writes and reads its
+//! files: job directory and job name, the complete
+//! input text (for the restart file), the restart file to read (`--oldjob`)
+//! and the global model's results for submodeling
+//! (`--global`). It is set per thread with `scope` by the CLI and
+//! the regression tests; without a context no files are written.
 //!
-//! **Omstartfilen** `jobb.rfres` är binär (små-endian) och innehåller
-//! indatatexten (med *INCLUDE utvecklade), antal noder och element och för
-//! varje sparat steg dess nummer, antal inkrement och hela `SolutionState`
-//! (nodvärden, elementtillstånd, tid, NLGEOM, gällande randvillkor och laster,
-//! reaktioner och övriga nodvektorer som V och A). Tillståndet sparas vid
-//! slutet av varje steg där *RESTART, WRITE gäller (FREQUENCY=0 stänger av;
-//! OVERLAY behåller bara det senaste steget).
+//! **The restart file** `job.rfres` is binary (little-endian) and contains
+//! the input text (with *INCLUDE expanded), the number of nodes and elements, and for
+//! each saved step its number, number of increments and the entire `SolutionState`
+//! (nodal values, element states, time, NLGEOM, active boundary conditions and loads,
+//! reactions and other nodal vectors such as V and A). The state is saved at the
+//! end of every step where *RESTART, WRITE applies (FREQUENCY=0 switches it off;
+//! OVERLAY keeps only the latest step).
 //!
-//! **Omstart**: en indatafil med *RESTART, READ, STEP=n (utan
-//! modelldata, bara nya steg) läses med `read_job`: den gamla indatatexten
-//! fram till och med steg n slås ihop med den nya filens nyckelord och
-//! `steps::run` hoppar över steg 1..n och startar från det sparade
-//! tillståndet (`before_run`). Utdata innehåller bara de nya stegen, numrerade
-//! från 1.
+//! **Restart**: an input file with *RESTART, READ, STEP=n (without
+//! model data, only new steps) is read with `read_job`: the old input text
+//! up to and including step n is merged with the new file's keywords and
+//! `steps::run` skips steps 1..n and starts from the saved
+//! state (`before_run`). The output contains only the new steps, numbered
+//! from 1.
 //!
-//! Begränsningar: omstart bara vid slutet av ett steg (INC= måste vara stegets
-//! sista inkrement), interaktioners inre tillstånd (kontaktstatus, friktion)
-//! och elementborttagning vid skada sparas inte (*MODEL CHANGE spelas upp igen).
+//! Limitations: restart only at the end of a step (INC= must be the step's
+//! last increment); the internal state of interactions (contact status, friction)
+//! and element deletion on damage are not saved (*MODEL CHANGE is replayed).
 
 use super::api::StepType;
 use crate::fem::assembly::Prepared;
@@ -36,39 +36,39 @@ use crate::model::{fail, FemError, Result};
 use std::cell::RefCell;
 use std::path::{Path, PathBuf};
 
-// område gaps1: *IMPORT från explicit analys (obalanskrafter)
+// area gaps1: *IMPORT from explicit analysis (out-of-balance forces)
 #[path = "import_explicit.rs"]
 mod import_explicit;
 
-/// Inga egna steg-typer.
+/// No step types of its own.
 pub static STEP_TYPES: &[&dyn StepType] = &[];
 
-/// Var ett jobb skriver och läser sina filer (se modulens dokumentation).
+/// Where a job writes and reads its files (see the module documentation).
 #[derive(Debug, Clone, Default)]
 pub struct Job {
-    /// Katalogen där jobbets filer skrivs (omstartfil, .mtx, substrukturer).
+    /// The directory where the job's files are written (restart file, .mtx, substructures).
     pub dir: PathBuf,
-    /// Jobbnamnet (indatafilens stam).
+    /// The job name (stem of the input file).
     pub name: String,
-    /// Fullständig indatatext (*INCLUDE utvecklade) för omstartfilen.
+    /// Complete input text (*INCLUDE expanded) for the restart file.
     pub deck: Option<String>,
-    /// Omstartfil att läsa (*RESTART, READ och *IMPORT).
+    /// Restart file to read (*RESTART, READ and *IMPORT).
     pub oldjob: Option<PathBuf>,
-    /// Globalmodellens resultat (`--out`-fil eller omstartfil) för *SUBMODEL.
+    /// The global model's results (`--out` file or restart file) for *SUBMODEL.
     pub global: Option<PathBuf>,
 }
 
 impl Job {
-    /// Jobb för indatafilen `inp`: katalogen och stammen.
+    /// Job for the input file `inp`: the directory and the stem.
     pub fn for_file(inp: &Path) -> Job {
         Job {
             dir: inp.parent().map(|p| p.to_path_buf()).unwrap_or_else(|| PathBuf::from(".")),
-            name: inp.file_stem().map(|s| s.to_string_lossy().to_string()).unwrap_or_else(|| "jobb".into()),
+            name: inp.file_stem().map(|s| s.to_string_lossy().to_string()).unwrap_or_else(|| "job".into()),
             ..Default::default()
         }
     }
 
-    /// Sökväg för en fil som jobbet skriver: `<dir>/<namn><suffix>`.
+    /// Path of a file written by the job: `<dir>/<name><suffix>`.
     pub fn file(&self, suffix: &str) -> PathBuf {
         self.dir.join(format!("{}{suffix}", self.name))
     }
@@ -78,18 +78,18 @@ thread_local! {
     static JOB: RefCell<Option<Job>> = const { RefCell::new(None) };
 }
 
-/// Aktuellt jobb i den här tråden (om något).
+/// The current job in this thread (if any).
 pub fn job() -> Option<Job> {
     JOB.with(|j| j.borrow().clone())
 }
 
-/// Sätter jobbkontexten tills det returnerade värdet släpps.
+/// Sets the job context until the returned value is dropped.
 pub fn scope(job: Job) -> JobScope {
     let old = JOB.with(|j| j.replace(Some(job)));
     JobScope(old)
 }
 
-/// Återställer föregående jobbkontext när den släpps.
+/// Restores the previous job context when dropped.
 pub struct JobScope(Option<Job>);
 
 impl Drop for JobScope {
@@ -99,7 +99,7 @@ impl Drop for JobScope {
     }
 }
 
-/// Omstartfilens sökväg för ett jobbnamn eller en sökväg med eller utan ändelse.
+/// Path of the restart file for a job name or a path with or without extension.
 pub fn restart_path(p: &Path) -> PathBuf {
     if p.extension().is_some_and(|e| e.eq_ignore_ascii_case("rfres")) {
         p.to_path_buf()
@@ -111,7 +111,7 @@ pub fn restart_path(p: &Path) -> PathBuf {
 }
 
 // ---------------------------------------------------------------------------
-// Indatatext
+// Input text
 
 fn quote(v: &str) -> String {
     if v.contains(',') || v.contains('=') {
@@ -121,7 +121,7 @@ fn quote(v: &str) -> String {
     }
 }
 
-/// Skriver nyckelordsblock som .inp-text (läses tillbaka till samma block).
+/// Writes keyword blocks as .inp text (read back into the same blocks).
 pub fn deck_text(blocks: &[RawKeyword]) -> String {
     let mut s = String::new();
     for kw in blocks {
@@ -151,7 +151,7 @@ pub fn deck_text(blocks: &[RawKeyword]) -> String {
     s
 }
 
-/// Indatatexten för en fil med *INCLUDE utvecklade.
+/// The input text for a file with *INCLUDE expanded.
 pub fn file_deck(inp: &Path) -> Result<String> {
     let mut inc = Vec::new();
     Ok(deck_text(&crate::inp::reader::blocks_from_file(inp, &mut inc, 0)?))
@@ -161,9 +161,9 @@ fn is_read(kw: &RawKeyword) -> bool {
     kw.name == "RESTART" && kw.has("READ")
 }
 
-/// Läser indatafilen för ett jobb. Innehåller den *RESTART, READ slås den
-/// ihop med indatatexten i `job.oldjob` (se modulens dokumentation).
-/// `job.deck` får den fullständiga indatatexten.
+/// Reads the input file for a job. If it contains *RESTART, READ it is
+/// merged with the input text in `job.oldjob` (see the module documentation).
+/// `job.deck` receives the complete input text.
 pub fn read_job(inp: &Path, job: &mut Job) -> Result<crate::inp::InpModel> {
     let mut inc = Vec::new();
     let blocks = crate::inp::reader::blocks_from_file(inp, &mut inc, 0)?;
@@ -175,13 +175,13 @@ pub fn read_job(inp: &Path, job: &mut Job) -> Result<crate::inp::InpModel> {
         return crate::inp::read_file(inp);
     };
     let Some(old) = job.oldjob.clone() else {
-        return read.err("*RESTART, READ kräver en omstartfil (rustyfem run fil.inp --oldjob jobb)");
+        return read.err("*RESTART, READ requires a restart file (rustyfem run file.inp --oldjob job)");
     };
     let rf = RestartFile::load(&restart_path(&old))?;
     let n = read_step(read)?;
     let mut old_inc = Vec::new();
-    let mut old_blocks = crate::inp::reader::blocks_from_str(&rf.deck, "(omstart)", inp.parent().unwrap_or(Path::new(".")), &mut old_inc, 0)?;
-    // gamla filen fram till och med *END STEP för steg n
+    let mut old_blocks = crate::inp::reader::blocks_from_str(&rf.deck, "(restart)", inp.parent().unwrap_or(Path::new(".")), &mut old_inc, 0)?;
+    // the old file up to and including *END STEP for step n
     let mut ends = 0;
     let mut cut = old_blocks.len();
     for (i, k) in old_blocks.iter().enumerate() {
@@ -194,10 +194,10 @@ pub fn read_job(inp: &Path, job: &mut Job) -> Result<crate::inp::InpModel> {
         }
     }
     if ends < n {
-        return read.err(format!("STEP={n} men den gamla analysen har bara {ends} steg"));
+        return read.err(format!("STEP={n} but the old analysis has only {ends} steps"));
     }
     old_blocks.truncate(cut);
-    // tidigare *RESTART, READ i den gamla texten gäller inte längre
+    // earlier *RESTART, READ in the old text no longer applies
     old_blocks.retain(|k| !is_read(k));
     for k in blocks {
         if k.name == "HEADING" {
@@ -207,18 +207,18 @@ pub fn read_job(inp: &Path, job: &mut Job) -> Result<crate::inp::InpModel> {
     }
     let text = deck_text(&old_blocks);
     let mut m = crate::inp::read_str(&text, inp.parent().unwrap_or(Path::new(".")))?;
-    // bara den nya filens *INCLUDE (för att kopiera den till jobbkatalogen)
+    // only the new file's *INCLUDE (to copy it to the job directory)
     m.included = inc;
     job.deck = Some(text);
     Ok(m)
 }
 
-/// *IMPORT: den gamla analysens modelldata (noder, element, set, material,
-/// tvärsnitt; inga randvillkor, laster eller begynnelsevillkor) följd av den
-/// nya filens nyckelord.
+/// *IMPORT: the old analysis's model data (nodes, elements, sets, materials,
+/// sections; no boundary conditions, loads or initial conditions) followed by the
+/// new file's keywords.
 fn read_import(inp: &Path, job: &mut Job, imp: RawKeyword, blocks: Vec<RawKeyword>, inc: Vec<PathBuf>) -> Result<crate::inp::InpModel> {
     let Some(old) = job.oldjob.clone() else {
-        return imp.err("*IMPORT kräver den tidigare analysens omstartfil (rustyfem run fil.inp --oldjob jobb)");
+        return imp.err("*IMPORT requires the previous analysis's restart file (rustyfem run file.inp --oldjob job)");
     };
     let rf = RestartFile::load(&restart_path(&old))?;
     let mut old_inc = Vec::new();
@@ -233,13 +233,13 @@ fn read_import(inp: &Path, job: &mut Job, imp: RawKeyword, blocks: Vec<RawKeywor
         }
         all.push(k);
     }
-    // område gaps1: UPDATE=YES – det importerade läget blir ny referenskonfiguration
+    // area gaps1: UPDATE=YES – the imported configuration becomes the new reference configuration
     if imp.flag("UPDATE", false)? {
         let n = match imp.param("STEP").and_then(crate::inp::parse_label) {
             Some(x) if x > 0 => x as usize,
             _ => rf.steps.last().map(|s| s.index).unwrap_or(1),
         };
-        let Some(saved) = rf.step(n) else { return imp.err(format!("omstartfilen saknar steg {n}")) };
+        let Some(saved) = rf.step(n) else { return imp.err(format!("the restart file has no step {n}")) };
         import_explicit::move_nodes(&mut all, &saved.state.u).map_err(|e| FemError(format!("{}: {}", imp.location(), e.0)))?;
     }
     for k in blocks {
@@ -255,12 +255,12 @@ fn read_import(inp: &Path, job: &mut Job, imp: RawKeyword, blocks: Vec<RawKeywor
 }
 
 fn read_step(kw: &RawKeyword) -> Result<usize> {
-    let Some(v) = kw.param("STEP") else { return kw.err("*RESTART, READ saknar STEP=") };
-    crate::inp::parse_label(v).filter(|&n| n > 0).map(|n| n as usize).ok_or_else(|| FemError(format!("{}: STEP={v} ska vara ett positivt heltal", kw.location())))
+    let Some(v) = kw.param("STEP") else { return kw.err("*RESTART, READ is missing STEP=") };
+    crate::inp::parse_label(v).filter(|&n| n > 0).map(|n| n as usize).ok_or_else(|| FemError(format!("{}: STEP={v} must be a positive integer", kw.location())))
 }
 
 // ---------------------------------------------------------------------------
-// Binärformat
+// Binary format
 
 const MAGIC: &[u8] = b"RUSTYFEM-RESTART 1\n";
 
@@ -302,7 +302,7 @@ struct R<'a> {
 impl R<'_> {
     fn bytes(&mut self, n: usize) -> Result<&[u8]> {
         if self.p + n > self.b.len() {
-            return fail("omstartfilen är trasig eller avkortad");
+            return fail("the restart file is corrupt or truncated");
         }
         let s = &self.b[self.p..self.p + n];
         self.p += n;
@@ -399,19 +399,19 @@ fn read_state(r: &mut R) -> Result<SolutionState> {
     Ok(s)
 }
 
-/// Ett sparat steg i omstartfilen.
+/// A saved step in the restart file.
 #[derive(Debug, Clone)]
 pub struct SavedStep {
-    /// Stegets nummer (1-baserat) i analysen.
+    /// The step's number (1-based) in the analysis.
     pub index: usize,
     pub name: String,
-    /// Antal inkrement i steget (för INC=).
+    /// Number of increments in the step (for INC=).
     pub increments: usize,
-    /// Tillståndet vid stegets slut.
+    /// The state at the end of the step.
     pub state: SolutionState,
 }
 
-/// Innehållet i en omstartfil.
+/// The contents of a restart file.
 #[derive(Debug, Clone, Default)]
 pub struct RestartFile {
     pub deck: String,
@@ -438,7 +438,7 @@ impl RestartFile {
 
     pub fn from_bytes(b: &[u8]) -> Result<RestartFile> {
         if !b.starts_with(MAGIC) {
-            return fail("filen är ingen RustyFEM-omstartfil (rfres)");
+            return fail("the file is not a RustyFEM restart file (rfres)");
         }
         let mut r = R { b, p: MAGIC.len() };
         let mut f = RestartFile { deck: r.s()?, n_nodes: r.u()?, n_elems: r.u()?, ..Default::default() };
@@ -451,15 +451,15 @@ impl RestartFile {
     }
 
     pub fn load(path: &Path) -> Result<RestartFile> {
-        let b = std::fs::read(path).map_err(|e| FemError(format!("kunde inte läsa omstartfilen {}: {e}", path.display())))?;
+        let b = std::fs::read(path).map_err(|e| FemError(format!("could not read the restart file {}: {e}", path.display())))?;
         Self::from_bytes(&b).map_err(|e| FemError(format!("{}: {}", path.display(), e.0)))
     }
 
     pub fn save(&self, path: &Path) -> Result<()> {
-        std::fs::write(path, self.to_bytes()).map_err(|e| FemError(format!("kunde inte skriva omstartfilen {}: {e}", path.display())))
+        std::fs::write(path, self.to_bytes()).map_err(|e| FemError(format!("could not write the restart file {}: {e}", path.display())))
     }
 
-    /// Modellen som omstartfilen beskriver (indatatexten läst på nytt).
+    /// The model that the restart file describes (the input text re-read).
     pub fn model(&self, dir: &Path) -> Result<FeModel> {
         Ok(crate::inp::read_str(&self.deck, dir)?.model)
     }
@@ -470,18 +470,18 @@ impl RestartFile {
 }
 
 // ---------------------------------------------------------------------------
-// Krokar i steps::run
+// Hooks in steps::run
 
-/// Omstartens läge under en analys (skapas av `before_run`).
+/// The restart state during an analysis (created by `before_run`).
 #[derive(Default)]
 pub struct RestartRun {
-    /// Antal steg som hoppas över (återställda från omstartfilen).
+    /// Number of steps skipped (restored from the restart file).
     pub skip: usize,
     saved: Vec<SavedStep>,
     warned: bool,
 }
 
-/// *RESTART, WRITE gäller för steg `i` (0-baserat)? Ger (på, OVERLAY).
+/// Does *RESTART, WRITE apply to step `i` (0-based)? Returns (on, OVERLAY).
 fn write_active(model: &FeModel, i: usize) -> (bool, bool) {
     let mut on = (false, false);
     let mut apply = |k: &RawKeyword| {
@@ -498,8 +498,8 @@ fn write_active(model: &FeModel, i: usize) -> (bool, bool) {
     on
 }
 
-/// Före första steget: vid *RESTART, READ läses tillståndet från omstartfilen
-/// och de återställda stegen hoppas över.
+/// Before the first step: with *RESTART, READ the state is read from the restart file
+/// and the restored steps are skipped.
 pub fn before_run(model: &FeModel, prep: &Prepared, state: &mut SolutionState) -> Result<RestartRun> {
     let mut rr = RestartRun::default();
     if let Some(imp) = model.extra.iter().find(|k| k.name == "IMPORT") {
@@ -511,13 +511,13 @@ pub fn before_run(model: &FeModel, prep: &Prepared, state: &mut SolutionState) -
     let Some(read) = model.extra.iter().rev().find(|k| is_read(k)) else { return Ok(rr) };
     let n = read_step(read)?;
     let Some(old) = job().and_then(|j| j.oldjob) else {
-        return read.err("*RESTART, READ kräver en omstartfil (rustyfem run fil.inp --oldjob jobb)");
+        return read.err("*RESTART, READ requires a restart file (rustyfem run file.inp --oldjob job)");
     };
     let path = restart_path(&old);
     let rf = RestartFile::load(&path)?;
     if rf.n_nodes != model.nodes.len() || rf.n_elems != model.elements.len() {
         return read.err(format!(
-            "omstartfilen {} har {} noder och {} element, modellen {} och {}",
+            "the restart file {} has {} nodes and {} elements, the model {} and {}",
             path.display(),
             rf.n_nodes,
             rf.n_elems,
@@ -527,23 +527,23 @@ pub fn before_run(model: &FeModel, prep: &Prepared, state: &mut SolutionState) -
     }
     let Some(saved) = rf.step(n) else {
         let have: Vec<String> = rf.steps.iter().map(|s| s.index.to_string()).collect();
-        return read.err(format!("omstartfilen {} saknar steg {n} (sparade steg: {})", path.display(), have.join(", ")));
+        return read.err(format!("the restart file {} has no step {n} (saved steps: {})", path.display(), have.join(", ")));
     };
     if let Some(inc) = read.param("INC").and_then(crate::inp::parse_label) {
         if inc as usize != saved.increments && !(read.has("END STEP") && (inc as usize) >= saved.increments) {
             return read.err(format!(
-                "omstart inne i ett steg stöds inte: INC={inc}, men steg {n} sparades vid sitt slut (inkrement {})",
+                "restart in the middle of a step is not supported: INC={inc}, but step {n} was saved at its end (increment {})",
                 saved.increments
             ));
         }
     }
     if n > model.steps.len() {
-        return read.err(format!("STEP={n} men modellen har {} steg", model.steps.len()));
+        return read.err(format!("STEP={n} but the model has {} steps", model.steps.len()));
     }
     if saved.state.elem_state.len() != state.elem_state.len() {
-        return read.err("omstartfilens elementtillstånd passar inte modellen");
+        return read.err("the restart file's element states do not match the model");
     }
-    // *MODEL CHANGE i de återställda stegen spelas upp igen
+    // *MODEL CHANGE in the restored steps is replayed
     let mut scratch = saved.state.clone();
     for s in model.steps.iter().take(n) {
         crate::steps::model_change::begin_step(prep, s, &mut scratch)?;
@@ -554,23 +554,23 @@ pub fn before_run(model: &FeModel, prep: &Prepared, state: &mut SolutionState) -
     Ok(rr)
 }
 
-/// *IMPORT, STEP=n, STATE=YES, UPDATE=NO: nodvärden och elementtillstånd vid
-/// slutet av steg n i den tidigare analysen. Randvillkor, laster och
-/// hastigheter följer inte med; analysens tid börjar om från 0.
-/// Returnerar `true` om tillståndet kommer från en explicit analys (STATE=YES):
-/// då ska obalanskrafterna avvecklas (`import_explicit.rs`).
+/// *IMPORT, STEP=n, STATE=YES, UPDATE=NO: nodal values and element states at the
+/// end of step n in the previous analysis. Boundary conditions, loads and
+/// velocities are not carried over; the analysis time restarts from 0.
+/// Returns `true` if the state comes from an explicit analysis (STATE=YES):
+/// the out-of-balance forces must then be ramped down (`import_explicit.rs`).
 fn import_state(model: &FeModel, imp: &RawKeyword, state: &mut SolutionState) -> Result<bool> {
     let Some(old) = job().and_then(|j| j.oldjob) else {
-        return imp.err("*IMPORT kräver den tidigare analysens omstartfil (rustyfem run fil.inp --oldjob jobb)");
+        return imp.err("*IMPORT requires the previous analysis's restart file (rustyfem run file.inp --oldjob job)");
     };
-    // område gaps1: UPDATE=YES – noderna är redan flyttade (`read_import`)
+    // area gaps1: UPDATE=YES – the nodes have already been moved (`read_import`)
     let update = imp.flag("UPDATE", false)?;
     let with_state = imp.flag("STATE", true)?;
     let path = restart_path(&old);
     let rf = RestartFile::load(&path)?;
     if rf.n_nodes != model.nodes.len() || rf.n_elems != model.elements.len() {
         return imp.err(format!(
-            "bara import av hela modellen stöds: omstartfilen {} har {} noder och {} element, modellen {} och {}",
+            "only import of the whole model is supported: the restart file {} has {} nodes and {} elements, the model {} and {}",
             path.display(),
             rf.n_nodes,
             rf.n_elems,
@@ -578,7 +578,7 @@ fn import_state(model: &FeModel, imp: &RawKeyword, state: &mut SolutionState) ->
             model.elements.len()
         ));
     }
-    // elementseten på dataraderna (omräknade till index av *IMPORT-hanteraren)
+    // the element sets on the data lines (converted to indices by the *IMPORT handler)
     let mut listed = std::collections::BTreeSet::new();
     for d in &imp.data {
         for f in &d.fields {
@@ -588,33 +588,33 @@ fn import_state(model: &FeModel, imp: &RawKeyword, state: &mut SolutionState) ->
         }
     }
     if !imp.data.is_empty() && listed.len() != model.elements.len() {
-        return imp.err(format!("bara import av alla element stöds ({} av {} element i de angivna seten)", listed.len(), model.elements.len()));
+        return imp.err(format!("only import of all elements is supported ({} of {} elements in the given sets)", listed.len(), model.elements.len()));
     }
     let n = match imp.param("STEP") {
-        Some(v) => crate::inp::parse_label(v).filter(|&x| x > 0).ok_or_else(|| FemError(format!("{}: STEP={v} ska vara ett positivt heltal", imp.location())))? as usize,
+        Some(v) => crate::inp::parse_label(v).filter(|&x| x > 0).ok_or_else(|| FemError(format!("{}: STEP={v} must be a positive integer", imp.location())))? as usize,
         None => rf.steps.last().map(|s| s.index).unwrap_or(1),
     };
     let Some(saved) = rf.step(n) else {
         let have: Vec<String> = rf.steps.iter().map(|s| s.index.to_string()).collect();
-        return imp.err(format!("omstartfilen {} saknar steg {n} (sparade steg: {})", path.display(), have.join(", ")));
+        return imp.err(format!("the restart file {} has no step {n} (saved steps: {})", path.display(), have.join(", ")));
     };
     if imp.param("INTERVAL").is_some() {
-        eprintln!("varning: *IMPORT: INTERVAL= ignoreras – tillståndet vid slutet av steg {n} importeras");
+        eprintln!("warning: *IMPORT: INTERVAL= is ignored – the state at the end of step {n} is imported");
     }
-    // småtöjningsmaterialen räknar med total töjning: en ny referens kräver
-    // den integrerade (NLGEOM) töjningen i tillståndet
+    // the small-strain materials work with total strain: a new reference requires
+    // the integrated (NLGEOM) strain in the state
     if update && !saved.state.nlgeom {
-        return imp.err("UPDATE=YES stöds bara när den tidigare analysen var geometriskt olinjär (NLGEOM=YES) – använd UPDATE=NO");
+        return imp.err("UPDATE=YES is only supported when the previous analysis was geometrically nonlinear (NLGEOM=YES) – use UPDATE=NO");
     }
     state.u = if update { vec![[0.0; SLOTS]; saved.state.u.len()] } else { saved.state.u.clone() };
     if with_state {
-        // område gaps1: NLGEOM-tillägget (logaritmisk och integrerad töjning sist i
-        // tillståndet, `kinematics::push_ext`) följer med; jämför grunddelen
+        // area gaps1: the NLGEOM extension (logarithmic and integrated strain at the end of
+        // the state, `kinematics::push_ext`) is carried over; compare the base part
         let base = |s: &[f64]| s.len() - crate::kinematics::ext(s).map_or(0, |x| x.len() + 2);
         if saved.state.elem_state.len() != state.elem_state.len() || saved.state.elem_state.iter().zip(&state.elem_state).any(|(a, b)| base(a) != base(b)) {
             let first = saved.state.elem_state.iter().zip(&state.elem_state).position(|(a, b)| base(a) != base(b));
-            let detail = first.map(|e| format!(" (element {}: {} värden i omstartfilen, {} i modellen)", e + 1, saved.state.elem_state[e].len(), state.elem_state[e].len())).unwrap_or_default();
-            return imp.err(format!("elementtillståndet i omstartfilen passar inte modellens element (samma elementtyper och material krävs){detail}"));
+            let detail = first.map(|e| format!(" (element {}: {} values in the restart file, {} in the model)", e + 1, saved.state.elem_state[e].len(), state.elem_state[e].len())).unwrap_or_default();
+            return imp.err(format!("the element state in the restart file does not match the model's elements (the same element types and materials are required){detail}"));
         }
         state.elem_state = saved.state.elem_state.clone();
     }
@@ -624,7 +624,7 @@ fn import_state(model: &FeModel, imp: &RawKeyword, state: &mut SolutionState) ->
 }
 
 impl RestartRun {
-    /// Efter steg `i` (0-baserat): skriv omstartfilen om *RESTART, WRITE gäller.
+    /// After step `i` (0-based): write the restart file if *RESTART, WRITE applies.
     pub fn after_step(&mut self, model: &FeModel, i: usize, state: &SolutionState, so: &StepOutput) -> Result<()> {
         let (on, overlay) = write_active(model, i);
         if !on {
@@ -632,7 +632,7 @@ impl RestartRun {
         }
         let Some(j) = job() else {
             if !self.warned {
-                eprintln!("varning: *RESTART, WRITE: ingen jobbkatalog – omstartfilen skrivs inte");
+                eprintln!("warning: *RESTART, WRITE: no job directory – the restart file is not written");
                 self.warned = true;
             }
             return Ok(());
@@ -646,7 +646,7 @@ impl RestartRun {
             Some(d) => d.clone(),
             None => {
                 if !self.warned {
-                    eprintln!("varning: *RESTART, WRITE: indatatexten saknas i jobbkontexten – omstartfilen skrivs inte");
+                    eprintln!("warning: *RESTART, WRITE: the input text is missing in the job context – the restart file is not written");
                     self.warned = true;
                 }
                 return Ok(());

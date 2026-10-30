@@ -1,5 +1,5 @@
 *HEADING
-CPE4, ett element, inhomogen föreskriven deformation (B-bar och F-bar vid NLGEOM)
+CPE4, one element, inhomogeneous prescribed deformation (B-bar and F-bar with NLGEOM)
 *NODE
 1, 0, 0
 2, 1, 0

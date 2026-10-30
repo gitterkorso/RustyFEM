@@ -1,9 +1,9 @@
-//! Hyperduala tal: värde, gradient och Hessian med avseende på N variabler.
+//! Hyperdual numbers: value, gradient and Hessian with respect to N variables.
 //!
-//! Används för element vars inre kraft och tangent härleds ur en
-//! töjningsenergi Φ(q): f = ∂Φ/∂q och K = ∂²Φ/∂q² blir exakta (ingen
-//! numerisk derivering). Räknereglerna är andra ordningens framåtderivering
-//! (Griewank & Walther, "Evaluating derivatives", kap. 13).
+//! Used for elements whose internal force and tangent are derived from a
+//! strain energy Φ(q): f = ∂Φ/∂q and K = ∂²Φ/∂q² become exact (no
+//! numerical differentiation). The arithmetic rules are second-order forward differentiation
+//! (Griewank & Walther, "Evaluating derivatives", ch. 13).
 
 use std::ops::{Add, Div, Mul, Neg, Sub};
 
@@ -19,14 +19,14 @@ impl<const N: usize> Hd<N> {
         Hd { v, g: [0.0; N], h: [[0.0; N]; N] }
     }
 
-    /// Variabel nummer `i` med värdet `v`.
+    /// Variable number `i` with value `v`.
     pub fn var(v: f64, i: usize) -> Self {
         let mut x = Self::cst(v);
         x.g[i] = 1.0;
         x
     }
 
-    /// f(x) med derivatorna f′ och f″ i x.
+    /// f(x) with derivatives f′ and f″ at x.
     fn chain(self, f: f64, d1: f64, d2: f64) -> Self {
         let mut r = Self::cst(f);
         for i in 0..N {
@@ -149,7 +149,7 @@ mod tests {
 
     #[test]
     fn derivatives() {
-        // f = sin(x) y² / sqrt(x + y) i (x, y) = (0.7, 1.3), jämfört med differenser
+        // f = sin(x) y² / sqrt(x + y) at (x, y) = (0.7, 1.3), compared with differences
         let f = |x: Hd<2>, y: Hd<2>| x.sin() * y * y / (x + y).sqrt();
         let (x0, y0) = (0.7, 1.3);
         let r = f(Hd::var(x0, 0), Hd::var(y0, 1));
@@ -166,7 +166,7 @@ mod tests {
     }
 }
 
-/// Hyperdual 3-vektor och 3×3-matris.
+/// Hyperdual 3-vector and 3×3 matrix.
 pub type V3<const N: usize> = [Hd<N>; 3];
 pub type T3<const N: usize> = [[Hd<N>; 3]; 3];
 
@@ -182,9 +182,9 @@ pub fn matvec3<const N: usize>(m: &T3<N>, v: &V3<N>) -> V3<N> {
     std::array::from_fn(|i| m[i][0] * v[0] + m[i][1] * v[1] + m[i][2] * v[2])
 }
 
-/// Koefficienterna i Rodrigues formel som funktioner av s = θ²:
+/// The coefficients in Rodrigues' formula as functions of s = θ²:
 /// k = 0: sin θ/θ, k = 1: (1 − cos θ)/θ², k = 2: (θ − sin θ)/θ³.
-/// Ger (f, df/ds, d²f/ds²); serieutveckling för små θ.
+/// Returns (f, df/ds, d²f/ds²); series expansion for small θ.
 fn rodrigues_coef(k: usize, s: f64) -> (f64, f64, f64) {
     if s < 0.25 {
         // f = Σ (−1)^j s^j / (2j + 1 + k)!
@@ -207,7 +207,7 @@ fn rodrigues_coef(k: usize, s: f64) -> (f64, f64, f64) {
             }
             sj *= s;
         }
-        // s = 0: derivatorna är koefficienterna för s¹ och 2·s²
+        // s = 0: the derivatives are the coefficients of s¹ and 2·s²
         if s == 0.0 {
             let f3 = |n: usize| (1..=n).map(|x| x as f64).product::<f64>();
             d1 = -1.0 / f3(3 + k);
@@ -257,7 +257,7 @@ fn mat_mul3<const N: usize>(a: &T3<N>, b: &T3<N>) -> T3<N> {
     std::array::from_fn(|i| std::array::from_fn(|j| a[i][0] * b[0][j] + a[i][1] * b[1][j] + a[i][2] * b[2][j]))
 }
 
-/// Rotationsmatrisen C(ψ) = I + a Ψ + b Ψ² för rotationsvektorn ψ.
+/// The rotation matrix C(ψ) = I + a Ψ + b Ψ² for the rotation vector ψ.
 pub fn exp_so3<const N: usize>(p: &V3<N>) -> T3<N> {
     let s = dot3(p, p);
     let (a, b) = (coef(0, s), coef(1, s));
@@ -266,7 +266,7 @@ pub fn exp_so3<const N: usize>(p: &V3<N>) -> T3<N> {
     std::array::from_fn(|i| std::array::from_fn(|j| w[i][j] * a + w2[i][j] * b + if i == j { 1.0 } else { 0.0 }))
 }
 
-/// Tangentoperatorn T(ψ) = I + b Ψ + c Ψ², dC = [T dψ]× C.
+/// The tangent operator T(ψ) = I + b Ψ + c Ψ², dC = [T dψ]× C.
 pub fn tangent_so3<const N: usize>(p: &V3<N>) -> T3<N> {
     let s = dot3(p, p);
     let (b, c) = (coef(1, s), coef(2, s));
@@ -293,7 +293,7 @@ mod so3_tests {
                 }
             }
         }
-        // kontinuitet vid s = 0,25
+        // continuity at s = 0.25
         for k in 0..3 {
             let (a, b) = (rodrigues_coef(k, 0.25 - 1e-12), rodrigues_coef(k, 0.25 + 1e-12));
             assert!((a.0 - b.0).abs() < 1e-12 && (a.1 - b.1).abs() < 1e-10 && (a.2 - b.2).abs() < 1e-8, "k {k}");

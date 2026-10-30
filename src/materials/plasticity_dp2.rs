@@ -1,31 +1,31 @@
-//! Utökade Drucker–Prager-modeller (*DRUCKER PRAGER) utöver den linjära med
-//! K = 1 i `plasticity_dp.rs`: SHEAR CRITERION=HYPERBOLIC, SHEAR
-//! CRITERION=EXPONENT FORM och SHEAR CRITERION=LINEAR med K ≠ 1, med
-//! hårdnande från *DRUCKER PRAGER HARDENING (TYPE=COMPRESSION, TENSION, SHEAR).
+//! Extended Drucker–Prager models (*DRUCKER PRAGER) beyond the linear one with
+//! K = 1 in `plasticity_dp.rs`: SHEAR CRITERION=HYPERBOLIC, SHEAR
+//! CRITERION=EXPONENT FORM and SHEAR CRITERION=LINEAR with K ≠ 1, with
+//! hardening from *DRUCKER PRAGER HARDENING (TYPE=COMPRESSION, TENSION, SHEAR).
 //!
-//! Utökade Drucker–Prager-modeller:
+//! Extended Drucker–Prager models:
 //!
-//! - Hyperbolisk: F = √(l0² + q²) − p tan β − d′ = 0 med l0 = d′|0 − pt|0 tan β
-//!   (pt|0 = hydrostatisk draghållfasthet i indata) och
+//! - Hyperbolic: F = √(l0² + q²) − p tan β − d′ = 0 with l0 = d′|0 − pt|0 tan β
+//!   (pt|0 = hydrostatic tensile strength in the input) and
 //!   d′ = √(l0² + σc²) − σc tan β/3 (COMPRESSION), √(l0² + σt²) + σt tan β/3
-//!   (TENSION), √(l0² + d²) (SHEAR). l0 är fast; med d′|0 insatt blir
-//!   √(l0² + σ0²) = l0 + A, dvs. l0 = (σ0² − A²)/(2A) med A = (pt|0 + σ0/3) tan β,
-//!   (pt|0 − σ0/3) tan β respektive pt|0 tan β.
-//! - Exponentform: F = a qᵇ − p − pt = 0 med pt = a σcᵇ − σc/3, a σtᵇ + σt/3
-//!   respektive a dᵇ.
-//! - Båda har den hyperboliska flödespotentialen
-//!   G = √((ε σ̄|0 tan ψ)² + q²) − p tan ψ, ε från ECCENTRICITY= (standard 0,1;
-//!   för den hyperboliska modellen med ψ = β ε = l0/(σ̄|0 tan β), associativt
-//!   flöde), och ekvivalent plastisk töjning σ̄ ε̄̇ᵖ = σ:ε̇ᵖ.
-//! - Linjär med K ≠ 1: F = t − p tan β − d, G = t − p tan ψ; d = (1 − tan β/3) σc,
-//!   (1/K + tan β/3) σt respektive d (TYPE=SHEAR: kohesionen direkt); ε̄̇ᵖ = λ̇ (1 − tan ψ/3),
-//!   λ̇ (1/K + tan ψ/3) respektive λ̇ (1 + 1/K)/2 (axiell plastisk töjning i
-//!   enaxligt tryck/drag, γ̇ᵖ/√3 i skjuvning; oberoende av K).
+//!   (TENSION), √(l0² + d²) (SHEAR). l0 is fixed; inserting d′|0 gives
+//!   √(l0² + σ0²) = l0 + A, i.e. l0 = (σ0² − A²)/(2A) with A = (pt|0 + σ0/3) tan β,
+//!   (pt|0 − σ0/3) tan β and pt|0 tan β respectively.
+//! - Exponent form: F = a qᵇ − p − pt = 0 with pt = a σcᵇ − σc/3, a σtᵇ + σt/3
+//!   and a dᵇ respectively.
+//! - Both have the hyperbolic flow potential
+//!   G = √((ε σ̄|0 tan ψ)² + q²) − p tan ψ, ε from ECCENTRICITY= (default 0.1;
+//!   for the hyperbolic model with ψ = β ε = l0/(σ̄|0 tan β), associated
+//!   flow), and equivalent plastic strain σ̄ ε̄̇ᵖ = σ:ε̇ᵖ.
+//! - Linear with K ≠ 1: F = t − p tan β − d, G = t − p tan ψ; d = (1 − tan β/3) σc,
+//!   (1/K + tan β/3) σt and d respectively (TYPE=SHEAR: the cohesion directly); ε̄̇ᵖ = λ̇ (1 − tan ψ/3),
+//!   λ̇ (1/K + tan ψ/3) and λ̇ (1 + 1/K)/2 respectively (axial plastic strain in
+//!   uniaxial compression/tension, γ̇ᵖ/√3 in shear; independent of K).
 //!
-//! Integrationen är bakåt Euler med den gemensamma returalgoritmen i
-//! `invariant_return.rs`; tangenten är numerisk (centraldifferens av hela
-//! uppdateringen) och osymmetrisk vid icke-associativt flöde (helt med
-//! *STEP, UNSYMM=YES, annars den symmetriska delen). Utdata PEEQ och PE.
+//! The integration is backward Euler with the shared return-mapping algorithm in
+//! `invariant_return.rs`; the tangent is numerical (central difference of the whole
+//! update) and unsymmetric for non-associated flow (in full with
+//! *STEP, UNSYMM=YES, otherwise its symmetric part). Output PEEQ and PE.
 
 use super::invariant_return::{return_map, Inv, Surface};
 use super::plasticity::{ddot, iso_d6, mv6, pe_labels, rotate_v6, update_reduced, Hardening, M6, V6};
@@ -35,13 +35,13 @@ use crate::model::Result;
 use std::sync::Arc;
 
 pub static FACTORIES: &[MaterialFactory] = &[MaterialFactory {
-    name: "utökad Drucker–Prager (hyperbolisk, exponentform, linjär med K ≠ 1)",
+    name: "extended Drucker–Prager (hyperbolic, exponent form, linear with K ≠ 1)",
     consumes: &["ELASTIC", "DRUCKER PRAGER", "DRUCKER PRAGER HARDENING"],
     priority: 11,
     build: Some(build),
 }];
 
-/// Om materialet ska byggas här i stället för i `plasticity_dp.rs`.
+/// Whether the material should be built here instead of in `plasticity_dp.rs`.
 pub fn claims(def: &MaterialDef) -> bool {
     let Some(kw) = def.behavior("DRUCKER PRAGER") else { return false };
     match kw.param_upper("SHEAR CRITERION").as_deref() {
@@ -81,7 +81,7 @@ pub struct DruckerPrager2 {
     crit: Criterion,
     tan_beta: f64,
     tan_psi: f64,
-    /// ε σ̄|0 tan ψ i den hyperboliska flödespotentialen.
+    /// ε σ̄|0 tan ψ in the hyperbolic flow potential.
     ecc: f64,
     htype: HType,
     hard: Hardening,
@@ -97,21 +97,21 @@ fn table(kw: &RawKeyword) -> Result<Vec<(f64, f64)>> {
     for d in &kw.data {
         let v = kw.floats(d)?;
         if v.len() > 2 && v[2..].iter().any(|&x| x != 0.0) {
-            return kw.err_at(d.line, "hastighets- eller temperaturberoende hårdnande stöds inte ännu");
+            return kw.err_at(d.line, "rate- or temperature-dependent hardening is not supported yet");
         }
         let (s, p) = (v.first().copied().unwrap_or(0.0), v.get(1).copied().unwrap_or(0.0));
         if !(s > 0.0) {
-            return kw.err_at(d.line, "flytspänningen ska vara positiv");
+            return kw.err_at(d.line, "the yield stress must be positive");
         }
         match t.last() {
-            Some(&(pl, _)) if !(p > pl) => return kw.err_at(d.line, "den plastiska töjningen ska öka"),
-            None if p != 0.0 => return kw.err_at(d.line, "första punkten ska ha plastisk töjning 0"),
+            Some(&(pl, _)) if !(p > pl) => return kw.err_at(d.line, "the plastic strain must increase"),
+            None if p != 0.0 => return kw.err_at(d.line, "the first point must have plastic strain 0"),
             _ => {}
         }
         t.push((p, s));
     }
     if t.is_empty() {
-        return kw.err("flytspänning saknas");
+        return kw.err("yield stress is missing");
     }
     Ok(t)
 }
@@ -121,32 +121,32 @@ fn build(def: &MaterialDef) -> Result<Option<Arc<dyn MaterialModel>>> {
         return Ok(None);
     }
     let kw = def.behavior("DRUCKER PRAGER").unwrap();
-    let Some(el) = def.behavior("ELASTIC") else { return kw.err("*DRUCKER PRAGER kräver *ELASTIC") };
+    let Some(el) = def.behavior("ELASTIC") else { return kw.err("*DRUCKER PRAGER requires *ELASTIC") };
     if el.param_upper("TYPE").is_some_and(|t| t != "ISOTROPIC") || el.data.len() > 1 {
-        return el.err("Drucker–Prager kräver isotrop, temperaturoberoende elasticitet");
+        return el.err("Drucker–Prager requires isotropic, temperature-independent elasticity");
     }
     let ev = el.first_floats()?;
     let (e, nu) = (ev.first().copied().unwrap_or(0.0), ev.get(1).copied().unwrap_or(0.0));
     if !(e > 0.0 && nu > -1.0 && nu < 0.5) {
-        return el.err("E ska vara positivt och ν mellan −1 och 0,5");
+        return el.err("E must be positive and ν between −1 and 0.5");
     }
     if kw.data.len() > 1 || kw.has("DEPENDENCIES") {
-        return kw.err("temperaturberoende parametrar stöds inte ännu");
+        return kw.err("temperature-dependent parameters are not supported yet");
     }
     if kw.has("TEST DATA") {
-        return kw.err("TEST DATA (anpassning till triaxialförsök) stöds inte ännu");
+        return kw.err("TEST DATA (fitting to triaxial tests) is not supported yet");
     }
     let Some(hk) = def.behavior("DRUCKER PRAGER HARDENING") else {
-        return kw.err("*DRUCKER PRAGER kräver *DRUCKER PRAGER HARDENING");
+        return kw.err("*DRUCKER PRAGER requires *DRUCKER PRAGER HARDENING");
     };
     if hk.has("RATE") || hk.has("DEPENDENCIES") || def.behavior("RATE DEPENDENT").is_some() {
-        return hk.err("hastighets- eller temperaturberoende hårdnande stöds inte ännu");
+        return hk.err("rate- or temperature-dependent hardening is not supported yet");
     }
     let htype = match hk.param_upper("TYPE").as_deref() {
         None | Some("COMPRESSION") => HType::Compression,
         Some("TENSION") => HType::Tension,
         Some("SHEAR") => HType::Shear,
-        Some(o) => return hk.err(format!("TYPE={o} ska vara COMPRESSION, TENSION eller SHEAR")),
+        Some(o) => return hk.err(format!("TYPE={o} must be COMPRESSION, TENSION or SHEAR")),
     };
     let hard = Hardening::Table(table(hk)?);
     let s0 = hard.initial();
@@ -154,7 +154,7 @@ fn build(def: &MaterialDef) -> Result<Option<Arc<dyn MaterialModel>>> {
     let g = |i: usize| v.get(i).copied().unwrap_or(0.0);
     let deg = |x: f64| x.to_radians().tan();
     let ecc_param = match kw.param("ECCENTRICITY") {
-        Some(s) => Some(crate::fem::model::parse_f64(s).filter(|&x| x > 0.0).ok_or_else(|| crate::model::FemError(format!("{}: ECCENTRICITY ska vara ett positivt tal", kw.location())))?),
+        Some(s) => Some(crate::fem::model::parse_f64(s).filter(|&x| x > 0.0).ok_or_else(|| crate::model::FemError(format!("{}: ECCENTRICITY must be a positive number", kw.location())))?),
         None => None,
     };
     let crit_name = kw.param_upper("SHEAR CRITERION").unwrap_or_else(|| "LINEAR".into());
@@ -162,10 +162,10 @@ fn build(def: &MaterialDef) -> Result<Option<Arc<dyn MaterialModel>>> {
         "HYPERBOLIC" => {
             let (beta, pt0, psi) = (g(0), g(1), g(3));
             if !(beta > 0.0 && beta < 90.0) || !(0.0..90.0).contains(&psi) {
-                return kw.err("β ska ligga mellan 0 och 90 grader (ej 0) och ψ mellan 0 och 90 grader");
+                return kw.err("β must lie between 0 and 90 degrees (not 0) and ψ between 0 and 90 degrees");
             }
             if !(pt0 > 0.0) {
-                return kw.err("den hydrostatiska draghållfastheten pt|0 ska vara positiv");
+                return kw.err("the hydrostatic tensile strength pt|0 must be positive");
             }
             let (tb, tp) = (deg(beta), deg(psi));
             let a = match htype {
@@ -174,11 +174,11 @@ fn build(def: &MaterialDef) -> Result<Option<Arc<dyn MaterialModel>>> {
                 HType::Shear => pt0 * tb,
             };
             if !(a > 0.0) {
-                return kw.err("pt|0 är för liten jämfört med flytspänningen (l0 kan inte bestämmas)");
+                return kw.err("pt|0 is too small compared with the yield stress (l0 cannot be determined)");
             }
             let l0 = (s0 * s0 - a * a) / (2.0 * a);
             if !(l0 > 0.0) {
-                return kw.err("l0 = d′|0 − pt|0 tan β blir inte positiv – kontrollera pt|0 och flytspänningen");
+                return kw.err("l0 = d′|0 − pt|0 tan β is not positive – check pt|0 and the yield stress");
             }
             let eps = ecc_param.unwrap_or(l0 / (s0 * tb));
             (Criterion::Hyperbolic { l0 }, tb, tp, eps * s0 * tp)
@@ -186,10 +186,10 @@ fn build(def: &MaterialDef) -> Result<Option<Arc<dyn MaterialModel>>> {
         "EXPONENT FORM" => {
             let (a, b, psi) = (g(0), g(1), g(3));
             if !(a > 0.0) || !(b >= 1.0) {
-                return kw.err("exponentformen kräver a > 0 och b ≥ 1");
+                return kw.err("the exponent form requires a > 0 and b ≥ 1");
             }
             if !(0.0..90.0).contains(&psi) {
-                return kw.err("ψ ska ligga mellan 0 och 90 grader");
+                return kw.err("ψ must lie between 0 and 90 degrees");
             }
             let tp = deg(psi);
             let eps = ecc_param.unwrap_or(0.1);
@@ -198,10 +198,10 @@ fn build(def: &MaterialDef) -> Result<Option<Arc<dyn MaterialModel>>> {
         _ => {
             let (beta, k, psi) = (g(0), g(1), v.get(2).copied().unwrap_or(g(0)));
             if !(0.778 - 1e-9..=1.0).contains(&k) {
-                return kw.err("K ska ligga mellan 0,778 och 1 (konvex flytyta)");
+                return kw.err("K must lie between 0.778 and 1 (convex yield surface)");
             }
             if !(0.0..90.0).contains(&beta) || !(0.0..90.0).contains(&psi) {
-                return kw.err("β och ψ ska ligga mellan 0 och 90 grader");
+                return kw.err("β and ψ must lie between 0 and 90 degrees");
             }
             (Criterion::Linear { k }, deg(beta), deg(psi), 0.0)
         }
@@ -211,12 +211,12 @@ fn build(def: &MaterialDef) -> Result<Option<Arc<dyn MaterialModel>>> {
     let m = DruckerPrager2 { e, nu, g: gm, kb, ce: iso_d6(e, nu), crit, tan_beta: tb, tan_psi: tp, ecc, htype, hard };
     if let Criterion::Linear { k } = crit {
         if m.cohesion_factor(k) <= 0.0 {
-            return kw.err("tan β ≥ 3 ger ingen kohesion för hårdnande i tryck");
+            return kw.err("tan β ≥ 3 gives no cohesion for hardening in compression");
         }
     }
     if let Criterion::Exponent { .. } = crit {
         if m.pt(s0) <= 0.0 {
-            return kw.err("exponentformen ger ingen positiv hydrostatisk draghållfasthet pt = a σᵇ ∓ σ/3 vid den första flytspänningen");
+            return kw.err("the exponent form gives no positive hydrostatic tensile strength pt = a σᵇ ∓ σ/3 at the first yield stress");
         }
     }
     Ok(Some(Arc::new(m)))
@@ -227,12 +227,12 @@ impl DruckerPrager2 {
         match self.htype {
             HType::Compression => 1.0 - self.tan_beta / 3.0,
             HType::Tension => 1.0 / k + self.tan_beta / 3.0,
-            // tabellen ger kohesionen d direkt
+            // the table gives the cohesion d directly
             HType::Shear => 1.0,
         }
     }
 
-    /// d′ (hyperbolisk) som funktion av hårdnandespänningen σ̄ och dd′/dσ̄.
+    /// d′ (hyperbolic) as a function of the hardening stress σ̄ and dd′/dσ̄.
     fn dprime(&self, l0: f64, s: f64) -> (f64, f64) {
         let r = (l0 * l0 + s * s).sqrt();
         match self.htype {
@@ -242,7 +242,7 @@ impl DruckerPrager2 {
         }
     }
 
-    /// pt (exponentform) som funktion av σ̄.
+    /// pt (exponent form) as a function of σ̄.
     fn pt(&self, s: f64) -> f64 {
         let Criterion::Exponent { a, b } = self.crit else { return 0.0 };
         match self.htype {

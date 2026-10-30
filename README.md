@@ -2,47 +2,52 @@
 
 ![RustyFEM](web/public/brand/rustyfem-logo.png)
 
-**RustyFEM är ett program för finita elementanalys (FEM), skrivet i Rust.** Det
-räknar ut hur konstruktioner och komponenter deformeras, vilka spänningar som
-uppstår och hur de svänger, värms upp eller går sönder – från en enkel
-konsolbalk till olinjära modeller med kontakt, plasticitet och stora
-deformationer.
+**RustyFEM is a finite element analysis (FEM) program written in Rust.** It
+computes how structures and components deform, which stresses develop and
+how they vibrate, heat up or fail – from a simple cantilever beam to
+nonlinear models with contact, plasticity and large deformations.
 
-Projektet består av två delar:
+The project consists of two parts:
 
-- **Beräkningsmotorn** – en fristående FEM-lösare med egna glesa
-  ekvationslösare. Motorn har inga externa beroenden och kan användas som
-  kommandoradsprogram, som Rust-bibliotek eller via ett C-gränssnitt.
-- **Skrivbordsappen** – ett grafiskt gränssnitt där man bygger modellen, löser
-  den och granskar resultaten i 3D. Appen körs på Windows, macOS och Linux;
-  iPad och iPhone är förberedda.
+- **The engine** – a standalone FEM solver with its own sparse equation
+  solvers. The engine has no external dependencies and can be used as a
+  command-line program, as a Rust library or through a C interface.
+- **The desktop app** – a graphical interface for building the model, solving
+  it and inspecting the results in 3D. The app runs on Windows, macOS and
+  Linux; iPad and iPhone are prepared.
 
-## Varför RustyFEM?
+> [!WARNING]
+> **Not for real-world design.** RustyFEM is a tool for education, research
+> and development. The results may contain errors and are provided without
+> any warranty. Do not use them as the basis for designing or approving real
+> structures. See the [disclaimer](DISCLAIMER.md).
 
-- **Snabbt att komma igång.** En modell kan beskrivas med några rader i det
-  egna skriptspråket `.rusty` – geometri, nät, material, stöd och laster –
-  eller byggas direkt i appen.
-- **Tydliga felmeddelanden.** I stället för kryptiska numeriska fel får man
-  besked i klartext, t.ex. *"nod 5 vid (1, 0, 0) kan röra sig fritt i ux –
-  lägg till stöd"*.
-- **Brett funktionsstöd.** Solider, skal, balkar och stänger; linjära och
-  olinjära material; statik, dynamik, egenfrekvenser, knäckning, värme,
-  akustik, kontakt och explicit dynamik.
-- **Egen lösarteknik.** Multifrontal direktlösare med nested dissection och
-  parallellism på alla kärnor, samt iterativa och indefinita lösare för stora
-  eller svåra problem.
-- **Öppet för egna tillägg.** Egna material- och elementrutiner kan kopplas in
-  som delade bibliotek, och kärnan är byggd för att byggas ut område för
-  område.
-- **Import av befintliga modeller.** Indatafiler i `.inp`-format kan öppnas
-  direkt.
+## Why RustyFEM?
 
-## Ett exempel
+- **Quick to get started.** A model can be described in a few lines of the
+  built-in `.rusty` scripting language – geometry, mesh, material, supports
+  and loads – or built directly in the app.
+- **Clear error messages.** Instead of cryptic numerical errors you get a
+  plain-language explanation, e.g. *"node 5 at (1, 0, 0) can move freely in
+  ux – add a support"*.
+- **Broad feature set.** Solids, shells, beams and trusses; linear and
+  nonlinear materials; statics, dynamics, natural frequencies, buckling, heat
+  transfer, acoustics, contact and explicit dynamics.
+- **In-house solver technology.** A multifrontal direct solver with nested
+  dissection and parallelism on all cores, plus iterative and indefinite
+  solvers for large or difficult problems.
+- **Open to extensions.** Custom material and element routines can be plugged
+  in as shared libraries, and the core is designed to be extended area by
+  area.
+- **Import of existing models.** Input files in `.inp` format can be opened
+  directly.
 
-En konsol i plan spänning, inspänd i ena änden och belastad i den andra:
+## An example
+
+A cantilever in plane stress, clamped at one end and loaded at the other:
 
 ```text
-# Konsol i plan spänning
+# Cantilever in plane stress
 material steel E=210e9 nu=0.3
 plate x=0..2 y=0..0.2 t=0.01 size=0.025
 fix x=0
@@ -50,79 +55,86 @@ load x=2 fy=-1000
 ```
 
 ```bash
-rustyfem examples/konsol_platta.rusty
+rustyfem examples/cantilever_plate.rusty
 ```
 
-Fem rader blir en färdig analys. Programmet skriver ut största förskjutning,
-högsta von Mises-spänning, summan av reaktionskrafterna och en
-jämviktskontroll, och hela fältet sparas för visning. Fler exempel finns i
-[`examples/`](examples).
+Five lines make a complete analysis. The program prints the maximum
+displacement, the highest von Mises stress, the sum of the reaction forces and
+an equilibrium check, and the full field is saved for visualization. More
+examples are in [`examples/`](examples).
 
-## Kom igång
+## Getting started
 
-**Krav:** [Rust](https://www.rust-lang.org/tools/install) (stabil) och, för
-appen, [Node.js](https://nodejs.org/) 20 eller senare.
+**Requirements:** [Rust](https://www.rust-lang.org/tools/install) (stable)
+and, for the app, [Node.js](https://nodejs.org/) 20 or later.
 
-**Kommandoradsprogrammet**
+**The command-line program**
 
 ```bash
 cargo build --release
-./target/release/rustyfem examples/konsol_platta.rusty
-./target/release/rustyfem list     # element, nyckelord, steg och lösare som stöds
+./target/release/rustyfem examples/cantilever_plate.rusty
+./target/release/rustyfem list     # supported elements, keywords, steps and solvers
 ```
 
-**Skrivbordsappen**
+**The desktop app**
 
 ```bash
 cd web
 npm install
-npm run tauri dev                  # utvecklingsläge
-npm run tauri build                # installationspaket för den egna plattformen
+npm run tauri dev                  # development mode
+npm run tauri build                # installer for the current platform
 ```
 
-## Filformat
+## File formats
 
-| Fil | Innehåll |
+| File | Contents |
 |---|---|
-| `.rusty` | RustyFEMs skriptspråk för modeller: geometri, nät, material, stöd och laster |
-| `.rustyproj` | Projektfil från appen: modellen, redigeringarna, enhetssystemet och resultaten i en fil |
-| `.inp` | Indatafiler i det vanliga nyckelordsformatet, för import av befintliga modeller |
+| `.rusty` | RustyFEM's scripting language for models: geometry, mesh, material, supports and loads |
+| `.rustyproj` | Project file from the app: the model, the edits, the unit system and the results in one file |
+| `.inp` | Input files in .inp format (keyword-based), for importing existing models |
 
-## Projektets struktur
+## Project structure
 
-| Katalog | Innehåll |
+| Directory | Contents |
 |---|---|
-| [`src/`](src) | Beräkningsmotorn: element, material, analyssteg, kontakt och lösare |
-| [`app/`](app) | Appens kärna (`app/session`) och skrivbordsskalet (`app/src-tauri`) |
-| [`web/`](web) | Användargränssnittet (React, TypeScript och three.js) |
-| [`ffi/`](ffi) | C-gränssnitt till motorns ekvationslösare |
-| [`examples/`](examples) | Exempelmodeller i `.rusty` och exempel på Rust-API:t |
-| [`docs/`](docs) | Teknisk referens |
+| [`src/`](src) | The engine: elements, materials, analysis steps, contact and solvers |
+| [`app/`](app) | The app core (`app/session`) and the desktop shell (`app/src-tauri`) |
+| [`web/`](web) | The user interface (React, TypeScript and three.js) |
+| [`ffi/`](ffi) | C interface to the engine's equation solvers |
+| [`examples/`](examples) | Example models in `.rusty` and examples of the Rust API |
+| [`docs/`](docs) | Technical reference |
 
-Testerna och de drygt 1 500 regressionsfallen ligger i ett separat
-testprojekt.
+The tests and the more than 1,500 regression cases live in a separate test
+project.
 
-## Dokumentation
+## Documentation
 
-- [Teknisk referens](docs/REFERENS.md) – skriptspråket, kommandoraden, alla
-  element, material och analystyper, lösarna och kända begränsningar.
-- [Arkitektur](ARCHITECTURE.md) – hur motorn är uppbyggd och hur nya element,
-  material och steg läggs till.
-- [Appen](app/README.md) – gränssnittets delar och hur appen byggs.
+- [Technical reference](docs/REFERENCE.md) – the scripting language, the
+  command line, all elements, materials and analysis types, the solvers and
+  known limitations.
+- [Architecture](ARCHITECTURE.md) – how the engine is structured and how new
+  elements, materials and steps are added.
+- [The app](app/README.md) – the parts of the interface and how the app is
+  built.
 
-## Licens
+## License
 
-RustyFEM är öppen källkod och licensieras under valfri av
+RustyFEM is open source and licensed under either of
 
-- Apache License, Version 2.0 ([LICENSE-APACHE](LICENSE-APACHE)), eller
-- MIT-licensen ([LICENSE-MIT](LICENSE-MIT)).
+- Apache License, Version 2.0 ([LICENSE-APACHE](LICENSE-APACHE)), or
+- MIT license ([LICENSE-MIT](LICENSE-MIT))
 
-Copyright © 2026 Nick Westin. Programvara från tredje part omfattas av sina
-egna licenser, se [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md).
+at your option.
 
-### Bidrag
+Copyright © 2026 Nick Westin. Third-party software is covered by its own
+licenses, see [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md).
 
-Bidrag är välkomna. Om du inte uttryckligen anger något annat licensieras
-varje bidrag som du avsiktligt skickar in för att ingå i RustyFEM, enligt
-definitionen i Apache-2.0-licensen, under båda licenserna ovan utan
-ytterligare villkor.
+The program is provided without warranty and must not be used for the design
+of real structures – see [DISCLAIMER.md](DISCLAIMER.md).
+
+### Contribution
+
+Contributions are welcome. Unless you explicitly state otherwise, any
+contribution intentionally submitted for inclusion in the work by you, as
+defined in the Apache-2.0 license, shall be dual licensed as above, without
+any additional terms or conditions.

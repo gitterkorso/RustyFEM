@@ -1,16 +1,16 @@
-//! Område cavity: vätske- och gasfyllda håligheter (ytbaserade kaviteter).
+//! Area cavity: liquid- and gas-filled cavities (surface-based cavities).
 //!
 //! - *FLUID CAVITY, NAME=, BEHAVIOR=, REF NODE=, SURFACE= (ADDED VOLUME=,
-//!   AMBIENT PRESSURE=; dataraden är tjockleken för plana modeller).
-//! - *FLUID BEHAVIOR, NAME= följt av *FLUID DENSITY, *FLUID BULK MODULUS,
-//!   *FLUID EXPANSION (hydraulisk vätska) eller *MOLECULAR WEIGHT och
-//!   *CAPACITY (ideal gas). Underalternativen sparas i ordning i
-//!   `FeModel::extra` och knyts till närmast föregående *FLUID BEHAVIOR av
+//!   AMBIENT PRESSURE=; the data line is the thickness for planar models).
+//! - *FLUID BEHAVIOR, NAME= followed by *FLUID DENSITY, *FLUID BULK MODULUS,
+//!   *FLUID EXPANSION (hydraulic fluid) or *MOLECULAR WEIGHT and
+//!   *CAPACITY (ideal gas). The suboptions are stored in order in
+//!   `FeModel::extra` and attached to the nearest preceding *FLUID BEHAVIOR by
 //!   `interactions/cavity.rs`.
-//! - *FLUID FLUX (i steg): massflöde in i kaviteten.
-//! - *INITIAL CONDITIONS, TYPE=FLUID PRESSURE (anropas från `temperature.rs`).
+//! - *FLUID FLUX (in steps): mass flow into the cavity.
+//! - *INITIAL CONDITIONS, TYPE=FLUID PRESSURE (called from `temperature.rs`).
 //!
-//! Allt räknas i `interactions/cavity.rs`.
+//! Everything is computed in `interactions/cavity.rs`.
 
 use crate::fem::model::RawKeyword;
 use crate::inp::{store_model, store_step, InpCtx, Keyword, Kind};
@@ -34,25 +34,25 @@ pub static KEYWORDS: &[Keyword] = &[
     Keyword { name: "MOLECULAR WEIGHT", kind: Kind::Model, handler: store_model },
 ];
 
-/// Underalternativen till *FLUID BEHAVIOR (i den ordning de kan stå).
+/// The suboptions of *FLUID BEHAVIOR (in the order they may appear).
 pub const BEHAVIOR_OPTIONS: &[&str] = &["FLUID DENSITY", "FLUID BULK MODULUS", "FLUID EXPANSION", "MOLECULAR WEIGHT", "CAPACITY"];
 
 fn fluid_behavior(ctx: &mut InpCtx, kw: &RawKeyword) -> Result<()> {
     if kw.has("USER") {
-        return kw.err("USER (UFLUID) stöds inte ännu");
+        return kw.err("USER (UFLUID) is not supported yet");
     }
     if kw.param("NAME").is_none() {
-        return kw.err("*FLUID BEHAVIOR kräver NAME=");
+        return kw.err("*FLUID BEHAVIOR requires NAME=");
     }
     store_model(ctx, kw)
 }
 
-/// Nyckelord som påverkar resultatet men inte stöds ännu.
+/// Keywords that affect the result but are not supported yet.
 fn unsupported(_ctx: &mut InpCtx, kw: &RawKeyword) -> Result<()> {
-    kw.err(format!("*{} stöds inte ännu (se docs/REFERENS.md, Begränsningar)", kw.name))
+    kw.err(format!("*{} is not supported yet (see docs/REFERENCE.md, Limitations)", kw.name))
 }
 
-/// *INITIAL CONDITIONS, TYPE=FLUID PRESSURE: sparas och läses av `interactions/cavity.rs`.
+/// *INITIAL CONDITIONS, TYPE=FLUID PRESSURE: stored and read by `interactions/cavity.rs`.
 pub fn initial_fluid_pressure(ctx: &mut InpCtx, kw: &RawKeyword) -> Result<()> {
     store_model(ctx, kw)
 }

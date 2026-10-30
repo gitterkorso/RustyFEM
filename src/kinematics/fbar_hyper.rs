@@ -1,40 +1,40 @@
-//! Hyperelastiska kontinuumelement vid NLGEOM: F-bar (CPE4, C3D8) och plan
-//! spänning (CPS4, CPS3), totalformulering utan inkrementell rotation.
+//! Hyperelastic continuum elements with NLGEOM: F-bar (CPE4, C3D8) and plane
+//! stress (CPS4, CPS3), total formulation without incremental rotation.
 //!
-//! Hyperelastisk spänning beror bara på F, så elementet räknas direkt från
-//! förskjutningen (ingen Jaumann-integrering som för hypoelastiska material i
+//! Hyperelastic stress depends only on F, so the element is computed directly from
+//! the displacement (no Jaumann integration as for hypoelastic materials in
 //! `continuum.rs`):
 //!
-//! **F-bar** (Nagtegaal m.fl. 1974; Simo, Taylor & Pister 1985; de Souza Neto
-//! m.fl. 1996, med volymmedelvärdet i stället för mittpunktsvärdet):
-//! F̄ = (J̄/J)^(1/n) F i de n volymriktningarna (n = 3 i 3D, n = 2 i planet vid
-//! plan töjning) med J̄ = v/V. Den inre kraften är variationen av
+//! **F-bar** (Nagtegaal et al. 1974; Simo, Taylor & Pister 1985; de Souza Neto
+//! et al. 1996, with the volume average instead of the midpoint value):
+//! F̄ = (J̄/J)^(1/n) F in the n volumetric directions (n = 3 in 3D, n = 2 in the plane for
+//! plane strain) with J̄ = v/V. The internal force is the variation of
 //! Π = Σ_q W(F̄_q) w_q:
 //!
 //!   f·δu = Σ_q w_q τ̄_q : [∇ₓδu + (1/n)(δv/v − div δu) I_n],   τ̄ = τ(F̄)
 //!
-//! **Volymtimglasstyvhet**: för hyperelastiska material i CPE4 och C3D8 läggs
-//! till en styvhet mot att den lokala volymändringen avviker från
-//! elementets medelvärde, som inte syns i spänningen S. Den är kontrollerad
-//! med ett trettiotal enelementsprov med föreskriven inhomogen
-//! deformation (Neo-Hooke, Mooney–Rivlin, Yeoh, förvrängda element):
-//! energin per referensvolym är
+//! **Volumetric hourglass stiffness**: for hyperelastic materials in CPE4 and C3D8 a
+//! stiffness is added against the local volume change deviating from
+//! the element average, which is not visible in the stress S. It is verified
+//! with some thirty single-element tests with prescribed inhomogeneous
+//! deformation (Neo-Hooke, Mooney–Rivlin, Yeoh, distorted elements):
+//! the energy per reference volume is
 //!
 //!   W_h = c μ0 (x²/2 − ln x − 1/2),   x = J/J̄,
 //!
-//! med μ0 = materialets initiala skjuvmodul, c = 5/6 i 3D och c = 1 vid plan
-//! töjning. Bidraget till kraften blir Σ_q w_q c μ0 (x_q² − 1)(div_q δu − δv/v),
-//! oberoende av kompressionsmodulen; vid små töjningar motsvarar det
-//! (5/3) μ0 ∫ (ε_v − ε̄_v)² dV i 3D och 2 μ0 ∫ (...)² dA i planet.
+//! with μ0 = the initial shear modulus of the material, c = 5/6 in 3D and c = 1 for plane
+//! strain. The contribution to the force is Σ_q w_q c μ0 (x_q² − 1)(div_q δu − δv/v),
+//! independent of the bulk modulus; at small strains it corresponds to
+//! (5/3) μ0 ∫ (ε_v − ε̄_v)² dV in 3D and 2 μ0 ∫ (...)² dA in the plane.
 //!
-//! **Plan spänning**: λ3 = F33 löses så att τ33 = 0 och vikten är den verkliga
-//! tjockleken, t dA = J t0 dA0 / j_planet, dvs f = Σ ∇N·τ w0 med τ = J σ
-//! (kontrollerat för kompressibla material; den hypoelastiska
-//! grenen antar volymbeständighet).
+//! **Plane stress**: λ3 = F33 is solved so that τ33 = 0, and the weight is the actual
+//! thickness, t dA = J t0 dA0 / j_plane, i.e. f = Σ ∇N·τ w0 with τ = J σ
+//! (verified for compressible materials; the hypoelastic
+//! branch assumes volume preservation).
 //!
-//! Tangenten är den exakta linjäriseringen (symmetrisk, eftersom kraften är
-//! en energivariation): materialdelen med C^(τJ) av F̄ och spinntermer,
-//! geometrisk styvhet, projektionens andraderivator och timglastermen.
+//! The tangent is the exact linearization (symmetric, since the force is
+//! an energy variation): the material part with C^(τJ) of F̄ and spin terms,
+//! geometric stiffness, the second derivatives of the projection, and the hourglass term.
 
 use super::continuum::{defgrad, log_strain_out, symmetrize, tensor_to_vec};
 use super::tensor::{self as t, M3};
@@ -44,7 +44,7 @@ use crate::materials::hyperelastic_split::{self as hs, HyperModel};
 use crate::materials::{MaterialModel, StressMode};
 use crate::model::{fail, Result};
 
-/// Koefficienten c för volymtimglasstyvheten (n = antal volymriktningar).
+/// The coefficient c for the volumetric hourglass stiffness (n = number of volumetric directions).
 pub fn hourglass_coef(nv: usize) -> f64 {
     if nv == 3 {
         5.0 / 6.0
@@ -53,8 +53,8 @@ pub fn hourglass_coef(nv: usize) -> f64 {
     }
 }
 
-/// Anropas först i `continuum::response`: tar hand om hyperelastiska material
-/// i F-bar-element och i plan spänning, annars `None`.
+/// Called first in `continuum::response`: handles hyperelastic materials
+/// in F-bar elements and in plane stress, otherwise `None`.
 #[allow(clippy::too_many_arguments)]
 pub fn try_response(
     _ctx: &ElemCtx,
@@ -78,7 +78,7 @@ pub fn try_response(
         return Ok(None);
     }
     if h.incompressible() {
-        return fail("*HYPERELASTIC med D1 = 0 (helt inkompressibelt) kräver hybridelement (C3D8H, CPE4H, ...)");
+        return fail("*HYPERELASTIC with D1 = 0 (fully incompressible) requires hybrid elements (C3D8H, CPE4H, ...)");
     }
     let r = eval_hist(mode, ips, bbar, h, u, tangent, true, Some(state_old))?;
     *state_new = r.state;
@@ -91,17 +91,17 @@ pub struct Eval {
     pub state: Vec<f64>,
 }
 
-/// Kinematik per integrationspunkt.
+/// Kinematics per integration point.
 struct Pt {
     w0: f64,
-    /// lokal volymkvot (n-blocket av F) och hela det F̄
+    /// local volume ratio (the n block of F) and the full F̄
     j: f64,
     fb: M3,
-    /// ∇ₓN för alla noder
+    /// ∇ₓN for all nodes
     g: Vec<[f64; 3]>,
 }
 
-/// Plan spänning: kondensera Δτ33 = 0 ur 6×6-tangenten (komponenterna 11, 22, 12).
+/// Plane stress: condense Δτ33 = 0 out of the 6×6 tangent (components 11, 22, 12).
 fn condense_ps(c: &[[f64; 6]; 6]) -> [[f64; 3]; 3] {
     let idx = [0usize, 1, 3];
     let mut r = [[0.0; 3]; 3];
@@ -113,14 +113,14 @@ fn condense_ps(c: &[[f64; 6]; 6]) -> [[f64; 3]; 3] {
     r
 }
 
-/// Inre kraft, tangent och tillstånd (spänning + NLGEOM-tillägget med LE).
+/// Internal force, tangent and state (stress + the NLGEOM extension with LE).
 pub fn eval(mode: StressMode, ips: &[Ip], bbar: Bbar, h: &dyn HyperModel, u: &[f64], tangent: bool, hourglass: bool) -> Result<Eval> {
     eval_hist(mode, ips, bbar, h, u, tangent, hourglass, None)
 }
 
-/// Som `eval`, med materialets historievariabler (`HyperModel::n_hist`, t.ex.
-/// *MULLINS EFFECT) ur elementtillståndet vid inkrementets början; de ligger
-/// efter spänningen i varje punkt (stride = ncomp + n_hist).
+/// Like `eval`, with the material's history variables (`HyperModel::n_hist`, e.g.
+/// *MULLINS EFFECT) from the element state at the start of the increment; they are stored
+/// after the stress at each point (stride = ncomp + n_hist).
 #[allow(clippy::too_many_arguments)]
 pub fn eval_hist(mode: StressMode, ips: &[Ip], bbar: Bbar, h: &dyn HyperModel, u: &[f64], tangent: bool, hourglass: bool, hist_old: Option<&[f64]>) -> Result<Eval> {
     let nips = ips.len();
@@ -175,7 +175,7 @@ pub fn eval_hist(mode: StressMode, ips: &[Ip], bbar: Bbar, h: &dyn HyperModel, u
     };
     let mut state = vec![0.0; nips * stride];
     let mut ext = vec![0.0; 12 * nips];
-    // summan av koefficienterna framför Δ(δv/v) (projektion och timglas)
+    // sum of the coefficients in front of Δ(δv/v) (projection and hourglass)
     let mut mg_coef = 0.0;
     for (q, p) in pts.iter_mut().enumerate() {
         if nv > 0 {
@@ -219,7 +219,7 @@ pub fn eval_hist(mode: StressMode, ips: &[Ip], bbar: Bbar, h: &dyn HyperModel, u
             continue;
         }
         let k = &mut kmat;
-        // ΔL̄ per frihetsgrad (9 komponenter, radvis ij)
+        // ΔL̄ per degree of freedom (9 components, row-wise ij)
         let mut lb = vec![[0.0f64; 9]; nd];
         for b in 0..nn {
             for kk in 0..ndim {
@@ -235,7 +235,7 @@ pub fn eval_hist(mode: StressMode, ips: &[Ip], bbar: Bbar, h: &dyn HyperModel, u
                 }
             }
         }
-        // materialdel: Dvᵀ C Dv (ingenjörsskjuvning)
+        // material part: Dvᵀ C Dv (engineering shear)
         let ct = hs::jaumann_tangent(&|f: &M3| hs::kirchhoff_hist(h, f, old_of(q), &mut vec![0.0; nh]), &p.fb)?;
         let dv: Vec<[f64; 6]> = lb
             .iter()
@@ -261,7 +261,7 @@ pub fn eval_hist(mode: StressMode, ips: &[Ip], bbar: Bbar, h: &dyn HyperModel, u
                 }
             }
         }
-        // spinndel: δL̄ : (ΔW τ − τ ΔW)
+        // spin part: δL̄ : (ΔW τ − τ ΔW)
         for c in 0..nd {
             let l = &lb[c];
             let lm: M3 = [[l[0], l[1], l[2]], [l[3], l[4], l[5]], [l[6], l[7], l[8]]];
@@ -278,7 +278,7 @@ pub fn eval_hist(mode: StressMode, ips: &[Ip], bbar: Bbar, h: &dyn HyperModel, u
                 k[r * nd + c] += w0 * s;
             }
         }
-        // geometrisk del −τ : (∇δu ∇Δu) och projektionens/timglasets T_q
+        // geometric part −τ : (∇δu ∇Δu) and the T_q of the projection/hourglass
         let tg: Vec<[f64; 3]> = p.g.iter().map(|gb| t::mv(&tau, *gb)).collect();
         let pq = if nv > 0 { pn / nv as f64 } else { 0.0 };
         for a in 0..nn {
@@ -294,7 +294,7 @@ pub fn eval_hist(mode: StressMode, ips: &[Ip], bbar: Bbar, h: &dyn HyperModel, u
             }
         }
         if nv > 0 {
-            // timglas: 2 x² (G_q − Ḡ)(G_q − Ḡ)ᵀ
+            // hourglass: 2 x² (G_q − Ḡ)(G_q − Ḡ)ᵀ
             if hc != 0.0 {
                 let d: Vec<f64> = (0..nd).map(|r| p.g[r / ndim][r % ndim] - gbar[r]).collect();
                 for r in 0..nd {

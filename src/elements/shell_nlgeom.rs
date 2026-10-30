@@ -1,43 +1,43 @@
-//! Skal och membran (S4, S4R, S3, S3R, M3D4, M3D3) vid NLGEOM=YES:
-//! elementoberoende korotationell formulering (Rankin–Nour-Omid 1988,
+//! Shells and membranes (S4, S4R, S3, S3R, M3D4, M3D3) with NLGEOM=YES:
+//! element-independent corotational formulation (Rankin–Nour-Omid 1988,
 //! Felippa–Haugen 2005, Battini–Pacoste 2002).
 //!
-//! Elementets stelkroppsrörelse avskiljs med ett medföljande system E(x)
-//! (normalen från diagonalerna för fyrhörningar respektive från två kanter för
-//! trianglar, 1-axeln längs elementets ξ-riktning respektive första kanten).
-//! Stelkroppsrotationen är R_r = E E₀ᵀ, och de deformationella förskjutningarna
-//! uttrycks i referenslägets orientering:
+//! The element's rigid body motion is separated with a co-rotating frame E(x)
+//! (the normal from the diagonals for quadrilaterals and from two edges for
+//! triangles, the 1-axis along the element's ξ direction and the first edge, respectively).
+//! The rigid body rotation is R_r = E E₀ᵀ, and the deformational displacements
+//! are expressed in the orientation of the reference position:
 //!
-//! - u_dₐ = R_rᵀ (xₐ − x_c) − (Xₐ − X_c)  (x_c = nodernas medelpunkt),
-//! - θ_dₐ = log(R_rᵀ Rₐ)  (nodens rotation relativt elementets).
+//! - u_dₐ = R_rᵀ (xₐ − x_c) − (Xₐ − X_c)  (x_c = the mean of the nodes),
+//! - θ_dₐ = log(R_rᵀ Rₐ)  (the node's rotation relative to the element's).
 //!
-//! Töjningsenergin är Φ = ½ dᵀ (K₀ − Kₘ) d + Φₘ(x), där K₀ är elementets
-//! linjära styvhet i referensläget (samma formulering som i linjär analys) och
-//! membrandelen räknas med logaritmisk töjning direkt ur nodlägena:
-//! Φₘ = Σ ½ t A εᵀ D ε med ε = ½ ln C, C = gᵀg (ytans metrik i de lokala
-//! referensaxlarna, gα = ∂x/∂Xα), i membranets integrationspunkter (en punkt i
-//! mitten för S4/S4R, konstant töjning för S3/S3R/M3D3, 2×2 för M3D4). Kₘ = ∂²Φₘ
-//! i referensläget är exakt den linjära membrandelen, så den dras av från K₀
-//! (M3D4/M3D3 blir rena Hencky-membran). Det motsvarar finita
-//! membrantöjningar med tvärsnittets standardvärde POISSON = 0,5 (konstant
-//! volym, t = t₀·exp(−(e11 + e22)), Kirchhoff- = Cauchyspänning); se
+//! The strain energy is Φ = ½ dᵀ (K₀ − Kₘ) d + Φₘ(x), where K₀ is the element's
+//! linear stiffness in the reference position (the same formulation as in linear analysis) and
+//! the membrane part is computed with logarithmic strain directly from the nodal positions:
+//! Φₘ = Σ ½ t A εᵀ D ε with ε = ½ ln C, C = gᵀg (the surface metric in the local
+//! reference axes, gα = ∂x/∂Xα), at the membrane integration points (one point at
+//! the center for S4/S4R, constant strain for S3/S3R/M3D3, 2×2 for M3D4). Kₘ = ∂²Φₘ
+//! in the reference position is exactly the linear membrane part, so it is subtracted from K₀
+//! (M3D4/M3D3 become pure Hencky membranes). This corresponds to finite
+//! membrane strains with the section default POISSON = 0.5 (constant
+//! volume, t = t₀·exp(−(e11 + e22)), Kirchhoff = Cauchy stress); see
 //! tests/cases/nlgeom_struct.
 //!
-//! Kraft och tangent är derivator av Φ med avseende på nodförskjutningar och
-//! rumsliga spinn (R ← exp([δw]) R, som NLGEOM-steget uppdaterar noder med tre
-//! rotationer): f = Jᵀ K d + ∇Φₘ och K = Jᵀ K J + Σᵢ (K d)ᵢ ∂²dᵢ + ∂²Φₘ, där
-//! J = ∂d/∂q och ∂²dᵢ räknas exakt med hyperduala tal. Tangenten är därmed
-//! konsistent och symmetrisk.
+//! Force and tangent are derivatives of Φ with respect to nodal displacements and
+//! spatial spins (R ← exp([δw]) R, as the NLGEOM step updates nodes with three
+//! rotations): f = Jᵀ K d + ∇Φₘ and K = Jᵀ K J + Σᵢ (K d)ᵢ ∂²dᵢ + ∂²Φₘ, where
+//! J = ∂d/∂q and ∂²dᵢ are computed exactly with hyper-dual numbers. The tangent is therefore
+//! consistent and symmetric.
 //!
-//! Böjning, tvärskjuvning, timglas och drill förutsätter små deformationella
-//! töjningar men tillåter godtyckligt stora rotationer. En formulering med
-//! skjuvtöjningen som sinus av vinkeln mellan direktör och yta, tvärkraften
-//! längs den roterade normalen och krökningen per aktuell längd skiljer sig
-//! med storleksordningen töjningen. Utdata (S, SF, SM) räknas med de
-//! deformationella förskjutningarna i elementets lokala axlar, som följer med
-//! elementets rotation, med den logaritmiska membrantöjningen och membrankrafter
-//! med aktuell tjocklek; membranen skriver S och LE. Tryck (*DLOAD P) följer den
-//! deformerade ytan (`kinematics::pressure`).
+//! Bending, transverse shear, hourglass and drill assume small deformational
+//! strains but allow arbitrarily large rotations. A formulation with
+//! the shear strain as the sine of the angle between director and surface, the transverse force
+//! along the rotated normal and the curvature per current length differs
+//! by the order of the strain. Output (S, SF, SM) is computed with the
+//! deformational displacements in the element's local axes, which follow
+//! the element's rotation, with the logarithmic membrane strain and membrane forces
+//! with the current thickness; the membranes write S and LE. Pressure (*DLOAD P) follows the
+//! deformed surface (`kinematics::pressure`).
 
 use crate::elements::beam_timoshenko::nlgeom::{chain, log_so3, mtm, mtv, spun};
 use crate::elements::{ElemCtx, ElemResponse};
@@ -45,7 +45,7 @@ use crate::kinematics::hyperdual::{self as hd, Hd, T3, V3};
 use crate::kinematics::tensor as t;
 use crate::model::{fail, Result};
 
-/// Medföljande system E (kolumner e₁, e₂, e₃) för nodlägena `x`.
+/// Co-rotating frame E (columns e₁, e₂, e₃) for the nodal positions `x`.
 fn frame<const N: usize>(x: &[V3<N>]) -> T3<N> {
     let sub = |a: &V3<N>, b: &V3<N>| -> V3<N> { std::array::from_fn(|i| a[i] - b[i]) };
     let unit = |v: V3<N>| -> V3<N> {
@@ -67,11 +67,11 @@ fn frame<const N: usize>(x: &[V3<N>]) -> T3<N> {
     std::array::from_fn(|i| [e1[i], e2[i], e3[i]])
 }
 
-/// Deformationella förskjutningar d (nodvis, `nd` = 3 eller 6 per nod).
-/// `var(a, c)` ger störningen för nod a, komponent c (0–2 förskjutning, 3–5 spinn).
+/// Deformational displacements d (node-wise, `nd` = 3 or 6 per node).
+/// `var(a, c)` gives the perturbation for node a, component c (0–2 displacement, 3–5 spin).
 fn deformational<const N: usize>(x0: &[[f64; 3]], u: &[f64], nd: usize, var: &dyn Fn(usize, usize) -> Hd<N>) -> Option<Vec<Hd<N>>> {
     let nn = x0.len();
-    // nodlägen relativt nod 1 (minskar avrundningsfelet)
+    // nodal positions relative to node 1 (reduces the rounding error)
     let rel0: Vec<[f64; 3]> = x0.iter().map(|p| std::array::from_fn(|i| p[i] - x0[0][i])).collect();
     let xs: Vec<V3<N>> = (0..nn)
         .map(|a| std::array::from_fn(|i| var(a, i) + (rel0[a][i] + u[nd * a + i] - u[i])))
@@ -102,23 +102,23 @@ fn deformational<const N: usize>(x0: &[[f64; 3]], u: &[f64], nd: usize, var: &dy
 }
 
 fn too_large(ctx: &ElemCtx, name: &str) -> crate::model::FemError {
-    crate::model::FemError(format!("element {} ({name}): för stor rotation av en nod relativt elementet (≥ 180°)", ctx.label))
+    crate::model::FemError(format!("element {} ({name}): too large rotation of a node relative to the element (≥ 180°)", ctx.label))
 }
 
-/// Integrationsregel för membrandelen.
+/// Integration rule for the membrane part.
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum MemRule {
-    /// En punkt i mitten (S4R, S4).
+    /// One point at the center (S4R, S4).
     Center,
-    /// 2×2 gausspunkter (M3D4).
+    /// 2×2 Gauss points (M3D4).
     Gauss4,
-    /// Konstant töjning (S3, S3R, M3D3).
+    /// Constant strain (S3, S3R, M3D3).
     Tri,
 }
 
-/// Membrandelens data: formfunktionernas derivator mot de lokala
-/// referenskoordinaterna och vikt (area) per integrationspunkt, tjocklek och
-/// plan spänningsmatris.
+/// Membrane part data: the derivatives of the shape functions w.r.t. the local
+/// reference coordinates and weight (area) per integration point, thickness and
+/// plane stress matrix.
 pub struct Membrane {
     ips: Vec<(Vec<[f64; 2]>, f64)>,
     t: f64,
@@ -149,8 +149,8 @@ impl Membrane {
         Ok(Membrane { ips, t: sec.t, d: sec.d })
     }
 
-    /// Logaritmiska membrantöjningar [e11, e22, 2·e12] (lokala referensaxlar)
-    /// i integrationspunkterna för nodlägena `x`.
+    /// Logarithmic membrane strains [e11, e22, 2·e12] (local reference axes)
+    /// at the integration points for the nodal positions `x`.
     pub fn strains<const N: usize>(&self, x: &[V3<N>]) -> Vec<[Hd<N>; 3]> {
         self.ips
             .iter()
@@ -165,7 +165,7 @@ impl Membrane {
             .collect()
     }
 
-    /// Φₘ = Σ ½ t A εᵀ D ε med logaritmisk töjning.
+    /// Φₘ = Σ ½ t A εᵀ D ε with logarithmic strain.
     fn energy<const N: usize>(&self, x: &[V3<N>]) -> Hd<N> {
         let mut w = Hd::cst(0.0);
         for (e, (_, a)) in self.strains(x).iter().zip(&self.ips) {
@@ -184,7 +184,7 @@ impl Membrane {
     }
 }
 
-/// g(z) = atanh(√z)/√z med derivator mot z (serie för små z).
+/// g(z) = atanh(√z)/√z with derivatives w.r.t. z (series for small z).
 fn atanh_coef(z: f64) -> (f64, f64, f64) {
     if z < 1e-2 {
         let (mut f, mut d1, mut d2) = (0.0, 0.0, 0.0);
@@ -208,10 +208,10 @@ fn atanh_coef(z: f64) -> (f64, f64, f64) {
     (at / r, hr / (2.0 * r), hrr / (4.0 * z) - hr / (4.0 * r * r * r))
 }
 
-/// ln C för en symmetrisk positivt definit 2×2-matris C = [[a, b], [b, c]] som
-/// Voigt-vektor [l11, l22, 2·l12]: ln C = α I + β C med s = (a + c)/2,
-/// q = ((a − c)/2)² + b², β = g(q/s²)/s och α = ½ ln(s² − q) − g(q/s²). Uttrycket
-/// är glatt även när egenvärdena sammanfaller (som i referensläget).
+/// ln C for a symmetric positive definite 2×2 matrix C = [[a, b], [b, c]] as
+/// the Voigt vector [l11, l22, 2·l12]: ln C = α I + β C with s = (a + c)/2,
+/// q = ((a − c)/2)² + b², β = g(q/s²)/s and α = ½ ln(s² − q) − g(q/s²). The expression
+/// is smooth even when the eigenvalues coincide (as in the reference position).
 fn log2<const N: usize>(a: Hd<N>, b: Hd<N>, c: Hd<N>) -> [Hd<N>; 3] {
     let s = (a + c) * 0.5;
     let h = (a - c) * 0.5;
@@ -227,13 +227,13 @@ fn log2<const N: usize>(a: Hd<N>, b: Hd<N>, c: Hd<N>) -> [Hd<N>; 3] {
     [alpha + beta * a, alpha + beta * c, beta * b * 2.0]
 }
 
-/// Nodlägen relativt nod 1 som hyperduala tal (förskjutning `u` plus störning).
+/// Nodal positions relative to node 1 as hyper-dual numbers (displacement `u` plus perturbation).
 pub fn positions_hd<const N: usize>(x0: &[[f64; 3]], u: &[f64], nd: usize, var: &dyn Fn(usize, usize) -> Hd<N>) -> Vec<V3<N>> {
     positions(x0, u, nd, var)
 }
 
-/// Deformationella förskjutningar och rotationer (6 per nod) som hyperduala
-/// tal (område struct_nonlin: skal med integrering genom tjockleken).
+/// Deformational displacements and rotations (6 per node) as hyper-dual
+/// numbers (area struct_nonlin: shells with integration through the thickness).
 pub fn deformational_hd<const N: usize>(ctx: &ElemCtx, name: &str, u: &[f64], var: &dyn Fn(usize, usize) -> Hd<N>) -> Result<Vec<Hd<N>>> {
     deformational::<N>(&ctx.x, u, 6, var).ok_or_else(|| too_large(ctx, name))
 }
@@ -242,8 +242,8 @@ fn positions<const N: usize>(x0: &[[f64; 3]], u: &[f64], nd: usize, var: &dyn Fn
     (0..x0.len()).map(|a| std::array::from_fn(|i| var(a, i) + (x0[a][i] - x0[0][i] + u[nd * a + i] - u[i]))).collect()
 }
 
-/// Logaritmiska membrantöjningar [e11, e22, 2·e12] per integrationspunkt
-/// (regeln `rule`), för utdata.
+/// Logarithmic membrane strains [e11, e22, 2·e12] per integration point
+/// (the rule `rule`), for output.
 pub fn membrane_strains(ctx: &ElemCtx, name: &str, u: &[f64], rule: MemRule) -> Result<Vec<[f64; 3]>> {
     let nn = ctx.x.len();
     let nd = u.len() / nn;
@@ -255,8 +255,8 @@ pub fn membrane_strains(ctx: &ElemCtx, name: &str, u: &[f64], rule: MemRule) -> 
 fn response_n<const N: usize>(ctx: &ElemCtx, name: &str, k0: &[f64], u: &[f64], nd: usize, mem: Option<&Membrane>, tangent: bool) -> Result<ElemResponse> {
     let var = |a: usize, c: usize| -> Hd<N> { if c < nd { Hd::var(0.0, nd * a + c) } else { Hd::cst(0.0) } };
     let d = deformational::<N>(&ctx.x, u, nd, &var).ok_or_else(|| too_large(ctx, name))?;
-    // membrandelen med logaritmisk töjning: Φ = ½ dᵀ (K₀ − Kₘ) d + Φₘ(x), där
-    // Kₘ = ∂²Φₘ i referensläget är membrandelen av den linjära styvheten
+    // the membrane part with logarithmic strain: Φ = ½ dᵀ (K₀ − Kₘ) d + Φₘ(x), where
+    // Kₘ = ∂²Φₘ in the reference position is the membrane part of the linear stiffness
     let (krest, phim) = match mem {
         Some(m) => {
             let zero = vec![0.0; u.len()];
@@ -281,7 +281,7 @@ fn response_n<const N: usize>(ctx: &ElemCtx, name: &str, k0: &[f64], u: &[f64], 
         }
     }
     if fint.iter().any(|v| !v.is_finite()) {
-        return fail(format!("element {} ({name}): ogiltig deformerad geometri", ctx.label));
+        return fail(format!("element {} ({name}): invalid deformed geometry", ctx.label));
     }
     let k = tangent.then(|| {
         // K = Jᵀ K₀ J + Σ sᵢ Hᵢ
@@ -321,7 +321,7 @@ fn response_n<const N: usize>(ctx: &ElemCtx, name: &str, k0: &[f64], u: &[f64], 
                 }
             }
         }
-        // symmetrisera avrundningen
+        // symmetrize the rounding
         for p in 0..N {
             for q in 0..p {
                 let v = 0.5 * (k[p * N + q] + k[q * N + p]);
@@ -334,8 +334,8 @@ fn response_n<const N: usize>(ctx: &ElemCtx, name: &str, k0: &[f64], u: &[f64], 
     Ok(ElemResponse { fint, k })
 }
 
-/// Inre kraft och tangent vid NLGEOM för ett skal (6 frihetsgrader per nod)
-/// eller membran (3 per nod) med linjär styvhet `k0` i referensläget.
+/// Internal force and tangent with NLGEOM for a shell (6 degrees of freedom per node)
+/// or membrane (3 per node) with the linear stiffness `k0` in the reference position.
 pub fn response(ctx: &ElemCtx, name: &str, k0: &[f64], u: &[f64], rule: MemRule, tangent: bool) -> Result<ElemResponse> {
     let nn = ctx.x.len();
     let nd = u.len() / nn;
@@ -346,13 +346,13 @@ pub fn response(ctx: &ElemCtx, name: &str, k0: &[f64], u: &[f64], rule: MemRule,
         (3, 6) => response_n::<18>(ctx, name, k0, u, nd, m, tangent),
         (4, 3) => response_n::<12>(ctx, name, k0, u, nd, m, tangent),
         (3, 3) => response_n::<9>(ctx, name, k0, u, nd, m, tangent),
-        _ => fail(format!("element {} ({name}): NLGEOM stöds inte för {nn} noder", ctx.label)),
+        _ => fail(format!("element {} ({name}): NLGEOM is not supported for {nn} nodes", ctx.label)),
     }
 }
 
-/// Membrankrafterna SF1–SF3 med aktuell tjocklek t = t₀·exp(−(e11 + e22)):
-/// Standardvärdet för skal vid NLGEOM är tvärsnittets Poissons tal 0,5
-/// (konstant volym).
+/// The membrane forces SF1–SF3 with the current thickness t = t₀·exp(−(e11 + e22)):
+/// The default for shells with NLGEOM is the section Poisson's ratio 0.5
+/// (constant volume).
 pub fn scale_membrane_forces(out: &mut [crate::elements::IpField], e: [f64; 3]) {
     let f = (-(e[0] + e[1])).exp();
     for fld in out.iter_mut().filter(|f| f.name == "SF") {
@@ -364,7 +364,7 @@ pub fn scale_membrane_forces(out: &mut [crate::elements::IpField], e: [f64; 3]) 
     }
 }
 
-/// Deformationella förskjutningar (i referenslägets orientering) för utdata.
+/// Deformational displacements (in the orientation of the reference position) for output.
 pub fn deformational_u(ctx: &ElemCtx, name: &str, u: &[f64]) -> Result<Vec<f64>> {
     let nn = ctx.x.len();
     let nd = u.len() / nn;
@@ -373,9 +373,9 @@ pub fn deformational_u(ctx: &ElemCtx, name: &str, u: &[f64]) -> Result<Vec<f64>>
     Ok(d.iter().map(|v| v.v).collect())
 }
 
-/// Geometrisk styvhet för S4R: membrankrafterna `nm` med enpunktsintegrering
-/// i mitten (som elementets övriga membran- och böjtermer), samma för u, v och w.
-/// `x` är de plana lokala nodkoordinaterna; resultatet i lokala frihetsgrader.
+/// Geometric stiffness for S4R: the membrane forces `nm` with one-point integration
+/// at the center (like the element's other membrane and bending terms), the same for u, v and w.
+/// `x` are the planar local nodal coordinates; the result in local degrees of freedom.
 pub fn geometric_s4r(x: &[[f64; 2]], nm: [f64; 3]) -> Vec<f64> {
     let n = 24;
     let mut k = vec![0.0; n * n];
@@ -396,7 +396,7 @@ pub fn geometric_s4r(x: &[[f64; 2]], nm: [f64; 3]) -> Vec<f64> {
 mod tests {
     use super::*;
 
-    /// Stelkroppsrörelse ger inga deformationella förskjutningar.
+    /// Rigid body motion gives no deformational displacements.
     #[test]
     fn rigid_motion_is_strain_free() {
         let x0 = [[0.0, 0.0, 0.0], [1.0, 0.1, 0.0], [1.2, 1.0, 0.1], [0.1, 0.9, 0.0]];
@@ -417,7 +417,7 @@ mod tests {
         }
     }
 
-    /// Deformationella förskjutningar och deras derivator mot differenser.
+    /// Deformational displacements and their derivatives against differences.
     #[test]
     fn derivatives_match_differences() {
         let x0 = [[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.2, 0.8, 0.0]];

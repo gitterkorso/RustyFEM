@@ -1,6 +1,6 @@
-# 3D-block (C3D8) inspänt i ena änden, böjning + vridning i den andra.
+# 3D block (C3D8) clamped at one end, bending + torsion at the other.
 material steel E=210e9 nu=0.3
 box x=0..0.8 y=0..0.1 z=0..0.1 size=0.025
 fix x=0
 load x=0.8 fz=-2000
-load x=0.8 y=0 fy=500       # kant i y=0 på änden – ger vridning
+load x=0.8 y=0 fy=500       # edge at y=0 on the end – gives torsion

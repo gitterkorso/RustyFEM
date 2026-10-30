@@ -1,14 +1,14 @@
-//! Analysinfrastruktur: omstart, submodellering, substrukturer och matriser.
+//! Analysis infrastructure: restart, submodeling, substructures and matrices.
 //!
 //! - *RESTART, WRITE/READ (`steps/restart.rs`)
-//! - *SUBMODEL och *BOUNDARY, SUBMODEL, STEP= (`steps/submodel.rs`;
-//!   *BOUNDARY anropar `boundary_submodel`)
+//! - *SUBMODEL and *BOUNDARY, SUBMODEL, STEP= (`steps/submodel.rs`;
+//!   *BOUNDARY calls `boundary_submodel`)
 //! - *SUBSTRUCTURE GENERATE, *RETAINED NODAL DOFS (`steps/substructure.rs`),
-//!   *SUBSTRUCTURE PROPERTY (tvärsnitt för TYPE=Zn, `elements/matrix_element.rs`)
+//!   *SUBSTRUCTURE PROPERTY (section for TYPE=Zn, `elements/matrix_element.rs`)
 //! - *MATRIX GENERATE, *MATRIX OUTPUT (`steps/matrix_generate.rs`)
-//! - *IMPORT (tillstånd från en tidigare analys, `steps/restart.rs`)
-//! - *MATRIX INPUT, *MATRIX ASSEMBLE: matriserna blir ett matriselement över
-//!   matrisens noder (`elements/matrix_element.rs`)
+//! - *IMPORT (state from a previous analysis, `steps/restart.rs`)
+//! - *MATRIX INPUT, *MATRIX ASSEMBLE: the matrices become a matrix element over
+//!   the matrix's nodes (`elements/matrix_element.rs`)
 
 use crate::fem::dof::{self, Dof};
 use crate::fem::model::{parse_f64, BcBlock, DataLine, RawKeyword, SectionDef, SectionKind};
@@ -29,40 +29,40 @@ pub static KEYWORDS: &[Keyword] = &[
     Keyword { name: "SUBSTRUCTURE PROPERTY", kind: Kind::Model, handler: substructure_property },
 ];
 
-/// Markering på nyckelord vars noder redan är omräknade till modellens index.
+/// Marker on keywords whose nodes have already been converted to model indices.
 pub const RESOLVED: &str = "_RESOLVED";
 
 fn restart(ctx: &mut InpCtx, kw: &RawKeyword) -> Result<()> {
     if kw.has("READ") {
         if ctx.step.is_some() {
-            return kw.err("*RESTART, READ ska stå i modelldata (före första *STEP)");
+            return kw.err("*RESTART, READ must appear in model data (before the first *STEP)");
         }
         if kw.param("STEP").is_none() {
-            return kw.err("*RESTART, READ saknar STEP=");
+            return kw.err("*RESTART, READ lacks STEP=");
         }
         return store_model(ctx, kw);
     }
     if !kw.has("WRITE") {
-        return kw.err("ange WRITE eller READ");
+        return kw.err("give WRITE or READ");
     }
     if ctx.step.is_some() { store_step(ctx, kw) } else { store_model(ctx, kw) }
 }
 
 fn dof_range(kw: &RawKeyword, d: &DataLine, first: Option<&String>, last: Option<&String>) -> Result<Vec<Dof>> {
     let Some(first) = first.and_then(|s| parse_label(s)) else {
-        return kw.err_at(d.line, "första frihetsgraden saknas");
+        return kw.err_at(d.line, "the first degree of freedom is missing");
     };
     let last = match last.map(|s| s.trim()).filter(|s| !s.is_empty()) {
-        Some(s) => parse_label(s).ok_or_else(|| FemError(format!("{} rad {}: '{s}' är ingen frihetsgrad", kw.file, d.line)))?,
+        Some(s) => parse_label(s).ok_or_else(|| FemError(format!("{} line {}: '{s}' is not a degree of freedom", kw.file, d.line)))?,
         None => first,
     };
     if first < 1 || last < first {
-        return kw.err_at(d.line, "ogiltigt frihetsgradsintervall");
+        return kw.err_at(d.line, "invalid degree-of-freedom range");
     }
     let mut v = Vec::new();
     for k in first..=last {
         if dof::slot(k as Dof).is_none() {
-            return kw.err_at(d.line, format!("frihetsgrad {k} stöds inte (1–7 och 11)"));
+            return kw.err_at(d.line, format!("degree of freedom {k} is not supported (1–7 and 11)"));
         }
         v.push(k as Dof);
     }
@@ -72,12 +72,12 @@ fn dof_range(kw: &RawKeyword, d: &DataLine, first: Option<&String>, last: Option
 fn submodel(ctx: &mut InpCtx, kw: &RawKeyword) -> Result<()> {
     if let Some(t) = kw.param_upper("TYPE") {
         if t != "NODE" {
-            return kw.err(format!("TYPE={t} stöds inte (bara nodbaserad submodellering)"));
+            return kw.err(format!("TYPE={t} is not supported (only node-based submodeling)"));
         }
     }
     for p in ["SHELL TO SOLID", "SHELL THICKNESS"] {
         if kw.has(p) {
-            return kw.err(format!("{p} (skal-till-solid-submodellering) stöds inte"));
+            return kw.err(format!("{p} (shell-to-solid submodeling) is not supported"));
         }
     }
     let mut nodes = Vec::new();
@@ -87,24 +87,24 @@ fn submodel(ctx: &mut InpCtx, kw: &RawKeyword) -> Result<()> {
         }
     }
     if nodes.is_empty() {
-        return kw.err("*SUBMODEL saknar drivna noder");
+        return kw.err("*SUBMODEL has no driven nodes");
     }
     ctx.mesh().add_to_nset(crate::steps::submodel::DRIVEN_NSET, &nodes);
     store_model(ctx, kw)
 }
 
-/// *BOUNDARY, SUBMODEL, STEP=n: drivna frihetsgrader (värdena sätts av
-/// `steps::submodel::prepare` när analysen startar).
+/// *BOUNDARY, SUBMODEL, STEP=n: driven degrees of freedom (the values are set by
+/// `steps::submodel::prepare` when the analysis starts).
 pub fn boundary_submodel(ctx: &mut InpCtx, kw: &RawKeyword) -> Result<()> {
     if ctx.step.is_none() {
-        return kw.err("*BOUNDARY, SUBMODEL får bara stå i ett steg");
+        return kw.err("*BOUNDARY, SUBMODEL may only appear in a step");
     }
     let gstep = match kw.param("STEP") {
-        Some(v) => parse_label(v).filter(|&n| n > 0).ok_or_else(|| FemError(format!("{}: STEP={v} ska vara ett positivt heltal", kw.location())))?,
+        Some(v) => parse_label(v).filter(|&n| n > 0).ok_or_else(|| FemError(format!("{}: STEP={v} must be a positive integer", kw.location())))?,
         None => 1,
     };
     if kw.has("AMPLITUDE") {
-        return kw.err("AMPLITUDE= med SUBMODEL stöds inte");
+        return kw.err("AMPLITUDE= with SUBMODEL is not supported");
     }
     let mut block = BcBlock {
         op_new: kw.param_upper("OP").is_some_and(|o| o == "NEW"),
@@ -115,7 +115,7 @@ pub fn boundary_submodel(ctx: &mut InpCtx, kw: &RawKeyword) -> Result<()> {
     };
     for d in &kw.data {
         if d.fields.len() < 2 {
-            return kw.err_at(d.line, "skriv 'nodset, första dof[, sista dof]'");
+            return kw.err_at(d.line, "write 'nset, first dof[, last dof]'");
         }
         let nodes = ctx.node_ref(kw, d.line, &d.fields[0], None)?;
         let dofs = dof_range(kw, d, d.fields.get(1), d.fields.get(2))?;
@@ -152,7 +152,7 @@ fn retained(ctx: &mut InpCtx, kw: &RawKeyword) -> Result<()> {
 fn substructure_property(ctx: &mut InpCtx, kw: &RawKeyword) -> Result<()> {
     let elset = required(kw, "ELSET")?.to_uppercase();
     if kw.data.len() > 2 {
-        ctx.warn(kw, "spegling (tredje dataraden) stöds inte och ignoreras");
+        ctx.warn(kw, "mirroring (third data line) is not supported and is ignored");
     }
     ctx.mesh().sections.push(SectionDef { elset, material: String::new(), material_index: None, kind: SectionKind::Other, raw: kw.clone() });
     Ok(())
@@ -161,25 +161,25 @@ fn substructure_property(ctx: &mut InpCtx, kw: &RawKeyword) -> Result<()> {
 // ---------------------------------------------------------------------------
 // *MATRIX INPUT / *MATRIX ASSEMBLE
 
-/// Läser matrisens rader ("nod, dof, nod, dof, värde") från INPUT= eller
-/// dataraderna och sparar dem som datarader i nyckelordet.
+/// Reads the matrix lines ("node, dof, node, dof, value") from INPUT= or
+/// the data lines and stores them as data lines in the keyword.
 fn matrix_input(ctx: &mut InpCtx, kw: &RawKeyword) -> Result<()> {
     required(kw, "NAME")?;
     if let Some(t) = kw.param_upper("MATRIX TYPE") {
         if t != "SYMMETRIC" && t != "UNSYMMETRIC" {
-            return kw.err(format!("MATRIX TYPE={t} ska vara SYMMETRIC eller UNSYMMETRIC"));
+            return kw.err(format!("MATRIX TYPE={t} must be SYMMETRIC or UNSYMMETRIC"));
         }
     }
     if let Some(f) = kw.param_upper("FORMAT") {
         if f != "MATRIX INPUT" && f != "LABELS" {
-            return kw.err(format!("FORMAT={f} stöds inte (bara FORMAT=MATRIX INPUT)"));
+            return kw.err(format!("FORMAT={f} is not supported (only FORMAT=MATRIX INPUT)"));
         }
     }
     let mut out = kw.clone();
     if let Some(file) = kw.param("INPUT") {
         let dir = ctx.dir.clone().unwrap_or_else(|| std::path::PathBuf::from("."));
         let path = dir.join(file.trim().trim_matches('"'));
-        let text = std::fs::read_to_string(&path).map_err(|e| FemError(format!("{}: kunde inte läsa {}: {e}", kw.location(), path.display())))?;
+        let text = std::fs::read_to_string(&path).map_err(|e| FemError(format!("{}: could not read {}: {e}", kw.location(), path.display())))?;
         out.data.clear();
         for (i, line) in text.lines().enumerate() {
             let t = line.trim();
@@ -193,13 +193,13 @@ fn matrix_input(ctx: &mut InpCtx, kw: &RawKeyword) -> Result<()> {
             ctx.included.push(path);
         }
     }
-    // kontrollera raderna redan nu
+    // check the lines right away
     for d in &out.data {
         if d.fields.len() != 5 {
-            return kw.err_at(d.line, format!("en matrisrad ska vara 'nod, dof, nod, dof, värde' (raden har {} fält)", d.fields.len()));
+            return kw.err_at(d.line, format!("a matrix line must be 'node, dof, node, dof, value' (the line has {} fields)", d.fields.len()));
         }
         if parse_f64(&d.fields[4]).is_none() {
-            return kw.err_at(d.line, format!("'{}' är inget tal", d.fields[4]));
+            return kw.err_at(d.line, format!("'{}' is not a number", d.fields[4]));
         }
     }
     store_model(ctx, &out)
@@ -210,15 +210,15 @@ fn matrix_node(ctx: &mut InpCtx, kw: &RawKeyword, d: &DataLine, tok: &str) -> Re
     let n = ctx.node_ref(kw, d.line, tok, inst_name.as_deref())?;
     match n.as_slice() {
         [one] => Ok(*one),
-        _ => kw.err_at(d.line, format!("'{tok}' ska vara ett nodnummer")),
+        _ => kw.err_at(d.line, format!("'{tok}' must be a node label")),
     }
 }
 
-/// Skapar ett matriselement av matriserna som *MATRIX INPUT har läst.
+/// Creates a matrix element from the matrices that *MATRIX INPUT has read.
 fn matrix_assemble(ctx: &mut InpCtx, kw: &RawKeyword) -> Result<()> {
     for p in ["VISCOUS DAMPING", "STRUCTURAL DAMPING", "LOAD"] {
         if kw.has(p) {
-            return kw.err(format!("{p}= stöds inte ännu (bara STIFFNESS= och MASS=)"));
+            return kw.err(format!("{p}= is not supported yet (only STIFFNESS= and MASS=)"));
         }
     }
     let find = |ctx: &InpCtx, name: &str| -> Option<RawKeyword> {
@@ -236,27 +236,27 @@ fn matrix_assemble(ctx: &mut InpCtx, kw: &RawKeyword) -> Result<()> {
         if let Some(name) = kw.param(p) {
             match find(ctx, name) {
                 Some(m) => mats.push((i, m)),
-                None => return kw.err(format!("{p}={name}: ingen *MATRIX INPUT med NAME={name}")),
+                None => return kw.err(format!("{p}={name}: no *MATRIX INPUT with NAME={name}")),
             }
         }
     }
     if mats.is_empty() {
-        return kw.err("ange STIFFNESS= och/eller MASS=");
+        return kw.err("give STIFFNESS= and/or MASS=");
     }
-    // (nod, dof) → värden
+    // (node, dof) → values
     let mut entries: Vec<BTreeMap<((usize, Dof), (usize, Dof)), f64>> = vec![BTreeMap::new(), BTreeMap::new()];
     let mut dofs: BTreeMap<usize, Vec<Dof>> = BTreeMap::new();
     for (which, m) in &mats {
         let scale = match m.param("SCALE FACTOR") {
-            Some(s) => parse_f64(s).ok_or_else(|| FemError(format!("{}: SCALE FACTOR={s} är inget tal", m.location())))?,
+            Some(s) => parse_f64(s).ok_or_else(|| FemError(format!("{}: SCALE FACTOR={s} is not a number", m.location())))?,
             None => 1.0,
         };
         let sym = m.param_upper("MATRIX TYPE").is_none_or(|t| t == "SYMMETRIC");
         for d in &m.data {
             let na = matrix_node(ctx, m, d, &d.fields[0])?;
             let nb = matrix_node(ctx, m, d, &d.fields[2])?;
-            let da = parse_label(&d.fields[1]).filter(|&x| dof::slot(x as Dof).is_some()).ok_or_else(|| FemError(format!("{} rad {}: '{}' är ingen frihetsgrad", m.file, d.line, d.fields[1])))? as Dof;
-            let db = parse_label(&d.fields[3]).filter(|&x| dof::slot(x as Dof).is_some()).ok_or_else(|| FemError(format!("{} rad {}: '{}' är ingen frihetsgrad", m.file, d.line, d.fields[3])))? as Dof;
+            let da = parse_label(&d.fields[1]).filter(|&x| dof::slot(x as Dof).is_some()).ok_or_else(|| FemError(format!("{} line {}: '{}' is not a degree of freedom", m.file, d.line, d.fields[1])))? as Dof;
+            let db = parse_label(&d.fields[3]).filter(|&x| dof::slot(x as Dof).is_some()).ok_or_else(|| FemError(format!("{} line {}: '{}' is not a degree of freedom", m.file, d.line, d.fields[3])))? as Dof;
             let v = parse_f64(&d.fields[4]).unwrap_or(0.0) * scale;
             entries[*which].insert(((na, da), (nb, db)), v);
             if sym {
@@ -295,7 +295,7 @@ fn matrix_assemble(ctx: &mut InpCtx, kw: &RawKeyword) -> Result<()> {
     let name = format!("MATRIX-{}", kw.param("STIFFNESS").or(kw.param("MASS")).unwrap_or("").to_uppercase());
     let et = crate::elements::matrix_element::MatrixElement::leak(&name, node_dofs, k, m, false);
     let inst = ctx.mesh_instance();
-    // elementnummer som inte krockar med användarens
+    // element labels that do not clash with the user's
     let label = 1_000_000_000 + ctx.mesh_ref().elements.len() as i64;
     let id = ctx.mesh().add_element(et, inst, label, nodes).or_else(|e| kw.err(e.0))?;
     if let Some(set) = kw.param("ELSET") {
@@ -307,7 +307,7 @@ fn matrix_assemble(ctx: &mut InpCtx, kw: &RawKeyword) -> Result<()> {
 // ---------------------------------------------------------------------------
 // *IMPORT
 
-/// Sparar *IMPORT med elementseten omräknade till elementindex.
+/// Stores *IMPORT with the element sets converted to element indices.
 fn import(ctx: &mut InpCtx, kw: &RawKeyword) -> Result<()> {
     let mut out = kw.clone();
     out.params.push((RESOLVED.into(), String::new()));

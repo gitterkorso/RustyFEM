@@ -1,21 +1,21 @@
-//! Termoreologiskt enkel temperaturinverkan (*TRS) för viskoelasticitet.
+//! Thermorheologically simple temperature effects (*TRS) for viscoelasticity.
 //!
-//! Den reducerade tiden ξ(t) = ∫ ds/A(θ(s)) ersätter tiden i relaxations-
-//! funktionerna:
+//! The reduced time ξ(t) = ∫ ds/A(θ(s)) replaces time in the relaxation
+//! functions:
 //!
-//! - DEFINITION=WLF (standard): log₁₀ A = −C1 (θ − θ0)/(C2 + θ − θ0), data θ0, C1, C2;
-//!   för θ ≤ θ0 − C2 är svaret elastiskt med momentana moduler (A = ∞),
+//! - DEFINITION=WLF (default): log₁₀ A = −C1 (θ − θ0)/(C2 + θ − θ0), data θ0, C1, C2;
+//!   for θ ≤ θ0 − C2 the response is elastic with instantaneous moduli (A = ∞),
 //! - DEFINITION=ARRHENIUS: ln A = E0/R (1/(θ − θZ) − 1/(θ0 − θZ)), data θ0, E0
-//!   (R och θZ från *PHYSICAL CONSTANTS) eller θ0, tomt, E0/R,
-//! - DEFINITION=TABULAR: log₁₀ A mot temperaturen (linjär interpolation,
-//!   konstant utanför tabellen).
+//!   (R and θZ from *PHYSICAL CONSTANTS) or θ0, empty, E0/R,
+//! - DEFINITION=TABULAR: log₁₀ A versus temperature (linear interpolation,
+//!   constant outside the table).
 //!
-//! I tidsplanet (*VISCOELASTIC, TIME=PRONY) omsluter `ViscoTrs` den vanliga
-//! viskoelastiska modellen (`viscoelastic.rs`) och ger den inkrementet i
-//! reducerad tid Δξ = Δt (1/A₁ − 1/A₀)/ln(A₀/A₁) med A vid inkrementets början
-//! och slut (exakt integral när ln A ändras linjärt i tiden; kontrollerat
-//! med temperaturramp och temperatursteg). I frekvensplanet
-//! används den reducerade vinkelfrekvensen ωr = A(θ) ω (`viscoelastic_freq.rs`).
+//! In the time domain (*VISCOELASTIC, TIME=PRONY) `ViscoTrs` wraps the usual
+//! viscoelastic model (`viscoelastic.rs`) and gives it the increment in
+//! reduced time Δξ = Δt (1/A₁ − 1/A₀)/ln(A₀/A₁) with A at the start and end of
+//! the increment (exact integral when ln A varies linearly in time; verified
+//! with temperature ramp and temperature step). In the frequency domain
+//! the reduced angular frequency ωr = A(θ) ω is used (`viscoelastic_freq.rs`).
 
 use super::time_dependence::TimeDependence;
 use super::{MatInput, MatOutput, MaterialFactory, MaterialModel, StressMode};
@@ -24,26 +24,26 @@ use crate::model::{fail, Result};
 use std::sync::Arc;
 
 pub static FACTORIES: &[MaterialFactory] = &[MaterialFactory {
-    name: "viskoelasticitet i tidsplanet med *TRS (reducerad tid)",
+    name: "time-domain viscoelasticity with *TRS (reduced time)",
     consumes: &["ELASTIC", "HYPERELASTIC", "VISCOELASTIC", "TRS"],
     priority: 30,
     build: Some(build),
 }];
 
-/// Förskjutningsfunktionen A(θ).
+/// The shift function A(θ).
 #[derive(Debug, Clone)]
 pub enum Trs {
     Wlf { t0: f64, c1: f64, c2: f64 },
-    /// θ0 och antingen E0 (kräver R) eller E0/R.
+    /// θ0 and either E0 (requires R) or E0/R.
     Arrhenius { t0: f64, e0: f64, e0_r: Option<f64> },
-    /// (log₁₀ A, θ) i stigande temperatur.
+    /// (log₁₀ A, θ) in ascending temperature.
     Tabular(Vec<(f64, f64)>),
 }
 
 impl Trs {
     pub fn parse(kw: &RawKeyword) -> Result<Trs> {
         if kw.has("DEPENDENCIES") {
-            return kw.err("fältberoende *TRS stöds inte ännu");
+            return kw.err("field-dependent *TRS is not yet supported");
         }
         let def = kw.param_upper("DEFINITION").unwrap_or_else(|| "WLF".into());
         if def == "TABULAR" {
@@ -53,40 +53,40 @@ impl Trs {
                 let (la, th) = (v.first().copied().unwrap_or(0.0), v.get(1).copied().unwrap_or(0.0));
                 if let Some(&(_, tl)) = t.last() {
                     if !(th > tl) {
-                        return kw.err_at(d.line, "temperaturerna i *TRS, DEFINITION=TABULAR ska öka");
+                        return kw.err_at(d.line, "the temperatures in *TRS, DEFINITION=TABULAR must increase");
                     }
                 }
                 t.push((la, th));
             }
             if t.is_empty() {
-                return kw.err("tabellen för förskjutningsfunktionen saknas");
+                return kw.err("the table for the shift function is missing");
             }
             return Ok(Trs::Tabular(t));
         }
         if kw.data.len() != 1 {
-            return kw.err("*TRS har en datarad");
+            return kw.err("*TRS has one data line");
         }
         let v = kw.first_floats()?;
         let g = |i: usize| v.get(i).copied().unwrap_or(0.0);
         match def.as_str() {
             "WLF" => {
                 if g(2) == 0.0 {
-                    return kw.err("WLF kräver C2 ≠ 0");
+                    return kw.err("WLF requires C2 ≠ 0");
                 }
                 Ok(Trs::Wlf { t0: g(0), c1: g(1), c2: g(2) })
             }
             "ARRHENIUS" => {
                 let e0_r = v.get(2).copied().filter(|&x| x != 0.0);
                 if e0_r.is_none() && g(1) == 0.0 {
-                    return kw.err("ARRHENIUS kräver aktiveringsenergin E0 eller E0/R");
+                    return kw.err("ARRHENIUS requires the activation energy E0 or E0/R");
                 }
                 Ok(Trs::Arrhenius { t0: g(0), e0: g(1), e0_r })
             }
-            o => kw.err(format!("DEFINITION={o} stöds inte ännu (WLF, ARRHENIUS, TABULAR)")),
+            o => kw.err(format!("DEFINITION={o} is not yet supported (WLF, ARRHENIUS, TABULAR)")),
         }
     }
 
-    /// A(θ) med absoluta nollpunkten `tz` och gaskonstanten `r` (för ARRHENIUS).
+    /// A(θ) with absolute zero `tz` and the gas constant `r` (for ARRHENIUS).
     pub fn shift(&self, theta: f64, tz: f64, r: f64) -> Result<f64> {
         match self {
             Trs::Wlf { t0, c1, c2 } => {
@@ -98,13 +98,13 @@ impl Trs {
             }
             Trs::Arrhenius { t0, e0, e0_r } => {
                 if !tz.is_finite() {
-                    return fail("*TRS, DEFINITION=ARRHENIUS kräver *PHYSICAL CONSTANTS, ABSOLUTE ZERO=");
+                    return fail("*TRS, DEFINITION=ARRHENIUS requires *PHYSICAL CONSTANTS, ABSOLUTE ZERO=");
                 }
                 let k = match e0_r {
                     Some(x) => *x,
                     None => {
                         if !(r > 0.0) {
-                            return fail("*TRS, DEFINITION=ARRHENIUS med E0 kräver *PHYSICAL CONSTANTS, UNIVERSAL GAS CONSTANT=");
+                            return fail("*TRS, DEFINITION=ARRHENIUS with E0 requires *PHYSICAL CONSTANTS, UNIVERSAL GAS CONSTANT=");
                         }
                         e0 / r
                     }
@@ -125,7 +125,7 @@ impl Trs {
     }
 }
 
-/// Viskoelasticitet i tidsplanet med reducerad tid.
+/// Time-domain viscoelasticity with reduced time.
 pub struct ViscoTrs {
     inner: Arc<dyn MaterialModel>,
     trs: Trs,
@@ -134,10 +134,10 @@ pub struct ViscoTrs {
 fn build(def: &MaterialDef) -> Result<Option<Arc<dyn MaterialModel>>> {
     let Some(tk) = def.behavior("TRS") else { return Ok(None) };
     let Some(vk) = def.behavior("VISCOELASTIC") else {
-        return tk.err("*TRS kräver *VISCOELASTIC");
+        return tk.err("*TRS requires *VISCOELASTIC");
     };
     if vk.has("FREQUENCY") {
-        // frekvensplanet: `viscoelastic_freq.rs`
+        // frequency domain: `viscoelastic_freq.rs`
         return Ok(None);
     }
     let trs = Trs::parse(tk)?;
@@ -145,7 +145,7 @@ fn build(def: &MaterialDef) -> Result<Option<Arc<dyn MaterialModel>>> {
     d2.behaviors.retain(|b| b.name != "TRS");
     let inner = super::build(&d2)?;
     if inner.time_dependence().is_none() {
-        return tk.err("*TRS kräver ett tidsberoende viskoelastiskt material");
+        return tk.err("*TRS requires a time-dependent viscoelastic material");
     }
     Ok(Some(Arc::new(ViscoTrs { inner, trs })))
 }
@@ -180,8 +180,8 @@ impl MaterialModel for ViscoTrs {
     fn update(&self, input: &MatInput, state_old: &[f64], state_new: &mut [f64]) -> Result<MatOutput> {
         let td = self.td();
         let (tz, r) = (td.absolute_zero(), td.gas_constant());
-        // 1/A vid inkrementets början och slut; Δξ = Δt (b1 − b0)/ln(b1/b0), exakt
-        // när ln A är linjär i tiden under inkrementet
+        // 1/A at the start and end of the increment; Δξ = Δt (b1 − b0)/ln(b1/b0), exact
+        // when ln A is linear in time during the increment
         let b1 = 1.0 / self.trs.shift(input.temperature, tz, r)?;
         let b0 = 1.0 / self.trs.shift(input.temperature - input.dtemp, tz, r)?;
         let dxi = if !(b0 > 0.0 && b1 > 0.0) {

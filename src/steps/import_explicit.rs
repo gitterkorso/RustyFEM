@@ -1,38 +1,38 @@
-//! Område gaps1: *IMPORT från explicit till implicit analys
-//! (inkluderas från `restart.rs`).
+//! Area gaps1: *IMPORT from explicit to implicit analysis
+//! (included from `restart.rs`).
 //!
-//! Tillståndet från en explicit analys är i dynamisk, inte statisk, jämvikt.
-//! Obalanskrafterna F0 = ∫Bᵀσ dV (med det
-//! importerade läget och tillståndet) läggs därför på som yttre last och
-//! avvecklas linjärt under första steget; i stegets slut återstår de residualspänningar som
-//! hör till statisk jämvikt. Samma mekanism som för begynnelsespänningar
+//! The state from an explicit analysis is in dynamic, not static, equilibrium.
+//! The out-of-balance forces F0 = ∫Bᵀσ dV (with the
+//! imported configuration and state) are therefore applied as an external load and
+//! ramped down linearly during the first step; at the end of the step the residual stresses that
+//! belong to static equilibrium remain. The same mechanism as for initial stresses
 //! (`materials::initial_state::UNBALANCE`, `fem/system.rs`, `steps/nlgeom.rs`).
 //!
-//! Hastigheterna importeras inte till ett statiskt steg.
+//! The velocities are not imported into a static step.
 
 use crate::fem::assembly::Prepared;
 use crate::fem::dof::SLOTS;
 use crate::fem::state::SolutionState;
 use crate::model::{FemError, Result};
 
-/// *IMPORT, UPDATE=YES: den importerade konfigurationen blir ny
-/// referenskonfiguration. Nodernas koordinater i den gamla indatatexten
-/// (*NODE-blocken i definitionsordning, en nod per datarad) flyttas med
-/// förskjutningarna `u` (nodindex i samma ordning); förskjutningarna
-/// räknas sedan från den nya konfigurationen. Elementtillstånden (spänning,
-/// materialtillstånd och den integrerade töjningen som materialen räknar
-/// med) behålls oförändrade.
+/// *IMPORT, UPDATE=YES: the imported configuration becomes the new
+/// reference configuration. The node coordinates in the old input text
+/// (the *NODE blocks in definition order, one node per data line) are moved by
+/// the displacements `u` (node index in the same order); the displacements
+/// are then measured from the new configuration. The element states (stress,
+/// material state and the integrated strain that the materials work
+/// with) are kept unchanged.
 pub fn move_nodes(blocks: &mut [crate::fem::model::RawKeyword], u: &[crate::fem::dof::NodeVec]) -> Result<()> {
     let mut k = 0usize;
     for b in blocks.iter_mut().filter(|b| b.name == "NODE") {
         if b.has("INPUT") || b.has("SYSTEM") {
-            return b.err("*IMPORT, UPDATE=YES: *NODE med INPUT= eller SYSTEM= stöds inte");
+            return b.err("*IMPORT, UPDATE=YES: *NODE with INPUT= or SYSTEM= is not supported");
         }
         for d in b.data.iter_mut() {
             if d.fields.first().is_none_or(|f| f.trim().is_empty()) {
                 continue;
             }
-            let Some(du) = u.get(k) else { return crate::model::fail("*IMPORT, UPDATE=YES: fler noder i indatatexten än i omstartfilen") };
+            let Some(du) = u.get(k) else { return crate::model::fail("*IMPORT, UPDATE=YES: more nodes in the input text than in the restart file") };
             for c in 0..3 {
                 let x = d.fields.get(c + 1).and_then(|s| crate::fem::model::parse_f64(s)).unwrap_or(0.0);
                 let v = format!("{:.17e}", x + du[c]);
@@ -46,12 +46,12 @@ pub fn move_nodes(blocks: &mut [crate::fem::model::RawKeyword], u: &[crate::fem:
         }
     }
     if k != u.len() {
-        return crate::model::fail(format!("*IMPORT, UPDATE=YES: {k} noder i indatatexten men {} i omstartfilen", u.len()));
+        return crate::model::fail(format!("*IMPORT, UPDATE=YES: {k} nodes in the input text but {} in the restart file", u.len()));
     }
     Ok(())
 }
 
-/// Den gamla analysen var explicit (*DYNAMIC, EXPLICIT).
+/// The old analysis was explicit (*DYNAMIC, EXPLICIT).
 pub fn deck_is_explicit(deck: &str) -> bool {
     deck.lines().any(|l| {
         let u = l.trim_start().to_uppercase();
@@ -59,7 +59,7 @@ pub fn deck_is_explicit(deck: &str) -> bool {
     })
 }
 
-/// Obalanskrafterna F0 för det importerade tillståndet; sparas i
+/// The out-of-balance forces F0 for the imported state; stored in
 /// `state.vectors` under `initial_state::UNBALANCE`.
 pub fn set_unbalance(prep: &Prepared, state: &mut SolutionState) -> Result<()> {
     let model = prep.model;

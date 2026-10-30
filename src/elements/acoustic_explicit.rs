@@ -1,15 +1,15 @@
-//! Område acoustics2: akustiska element för explicit dynamik med reducerad
-//! integration, AC2D4R, AC3D8R och ACAX4R (frihetsgrad 8, POR).
+//! Area acoustics2: acoustic elements for explicit dynamics with reduced
+//! integration, AC2D4R, AC3D8R and ACAX4R (degree of freedom 8, POR).
 //!
-//! Elementen har samma geometri som AC2D4, AC3D8 och ACAX4
-//! (`elements/acoustic.rs`) och används av den explicita akustiska
-//! stegtypen (`steps/acoustic_explicit.rs`). Styvheten K_f = ∫ ∇N·∇N/ρ dV
-//! integreras fullt (2 × 2 respektive 2 × 2 × 2 punkter); för det linjära
-//! akustiska problemet motsvarar det en punkt med fullständig
-//! hourglass-styvhet för rätvinkliga plana element och hexaedrar
-//! (tests/cases/acoustics2/). För ACAX4R är hourglass-styvheten vid
-//! axisymmetri inte verifierad.
-//! Massan är diagonal (radsummerad).
+//! The elements have the same geometry as AC2D4, AC3D8 and ACAX4
+//! (`elements/acoustic.rs`) and are used by the explicit acoustic
+//! step type (`steps/acoustic_explicit.rs`). The stiffness K_f = ∫ ∇N·∇N/ρ dV
+//! is fully integrated (2 × 2 and 2 × 2 × 2 points, respectively); for the linear
+//! acoustic problem this corresponds to one point with full
+//! hourglass stiffness for rectangular plane elements and hexahedra
+//! (tests/cases/acoustics2/). For ACAX4R the hourglass stiffness under
+//! axisymmetry is not verified.
+//! The mass is diagonal (row-summed).
 
 use super::acoustic::AcousticElem;
 use super::api::ElementType;
@@ -23,7 +23,7 @@ pub static TYPES: &[&dyn ElementType] = &[&AC2D4R, &AC3D8R, &ACAX4R];
 
 static ALL: &[&AcousticElem] = &[&AC2D4R, &AC3D8R, &ACAX4R];
 
-/// Elementet med namnet `name` (anropas från `acoustic::lookup`).
+/// The element named `name` (called from `acoustic::lookup`).
 pub fn lookup(name: &str) -> Option<&'static AcousticElem> {
     ALL.iter().copied().find(|e| e.name == name)
 }

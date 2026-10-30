@@ -1,16 +1,16 @@
-//! Nyckelord för område physics3: kavitetsstrålning, påtvingad konvektion,
-//! brottmekanik i kontakt (VCCT) och lågfrekvent elektromagnetism.
+//! Keywords for Area physics3: cavity radiation, forced convection,
+//! fracture mechanics in contact (VCCT) and low-frequency electromagnetics.
 //!
-//! - *SURFACE PROPERTY, *EMISSIVITY, *CAVITY DEFINITION: modelldata, sparas i
-//!   `FeModel::extra` och tolkas av `steps/heat_cavity.rs`.
+//! - *SURFACE PROPERTY, *EMISSIVITY, *CAVITY DEFINITION: model data, stored in
+//!   `FeModel::extra` and parsed by `steps/heat_cavity.rs`.
 //! - *RADIATION VIEW FACTOR, *RADIATION SYMMETRY, *REFLECTION, *PERIODIC,
-//!   *CYCLIC, *MOTION: stegdata (stegets `extra`), samma tolkare. *PERIODIC,
-//!   *CYCLIC och *MOTION ger fel där tills de stöds.
-//! - *MASS FLOW RATE: stegdata för DCC-elementen (`steps/heat_convection.rs`).
-//! - *ELECTROMAGNETIC (procedur, `steps/electromagnetic.rs`) och *MAGNETIC
-//!   PERMEABILITY (materialbeteende, `materials/electromagnetic.rs`).
+//!   *CYCLIC, *MOTION: step data (the step's `extra`), same parser. *PERIODIC,
+//!   *CYCLIC and *MOTION give an error there until they are supported.
+//! - *MASS FLOW RATE: step data for the DCC elements (`steps/heat_convection.rs`).
+//! - *ELECTROMAGNETIC (procedure, `steps/electromagnetic.rs`) and *MAGNETIC
+//!   PERMEABILITY (material behavior, `materials/electromagnetic.rs`).
 //! - *RADIATION PRINT, *RADIATION OUTPUT, *RADIATION FILE, *VIEW FACTOR
-//!   OUTPUT: utdatabegäran som inte påverkar lösningen (ignoreras).
+//!   OUTPUT: output requests that do not affect the solution (ignored).
 
 use crate::inp::keywords::material::behavior;
 use crate::inp::{ignore, procedure, store_model, store_step, Keyword, Kind};

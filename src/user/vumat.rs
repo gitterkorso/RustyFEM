@@ -1,92 +1,92 @@
-//! VUMAT: användarmaterial i explicit dynamik (*USER MATERIAL i
-//! *DYNAMIC, EXPLICIT) med det etablerade VUMAT-gränssnittet.
+//! VUMAT: user materials in explicit dynamics (*USER MATERIAL in
+//! *DYNAMIC, EXPLICIT) with the established VUMAT interface.
 //!
-//! Gränssnittet är gjort för ett block av materialpunkter; RustyFEM anropar
-//! med en punkt i taget (NBLOCK = 1), så fälten i `VumatArgs` är värdena för
-//! den punkten. Komponentordningen är VUMAT:s: 3D (NDIR = 3, NSHR = 3)
-//! 11, 22, 33, 12, 23, 31 och plan töjning (3, 1) 11, 22, 33, 12. Töjningen
-//! anges med tensorskjuvkomponenter (inte ingenjörsskjuvning).
-//! Deformationsgradienten och sträckningen U (F = RU) har 3D-ordningen
+//! The interface is designed for a block of material points; RustyFEM calls it
+//! with one point at a time (NBLOCK = 1), so the fields in `VumatArgs` are the values for
+//! that point. The component order is VUMAT's: 3D (NDIR = 3, NSHR = 3)
+//! 11, 22, 33, 12, 23, 31 and plane strain (3, 1) 11, 22, 33, 12. The strain
+//! is given with tensor shear components (not engineering shear).
+//! The deformation gradient and the stretch U (F = RU) have the 3D order
 //! 11, 22, 33, 12, 23, 31, 21, 32, 13 (DEFGRADNEW/STRETCHNEW).
 //!
-//! Spänning och töjningsinkrement ges i den globala
-//! basen med RustyFEMs Jaumann-rotation (`kinematics/continuum.rs`), inte i
-//! en Green–Naghdi-bas. Utan stora rotationer är det samma sak.
-//! RELSPININC är rotationsinkrementet ur ΔR (Hughes–Winget) mellan
-//! deformationsgradienterna.
+//! Stress and strain increments are given in the global
+//! basis with RustyFEM's Jaumann rotation (`kinematics/continuum.rs`), not in
+//! a Green–Naghdi basis. Without large rotations this is the same thing.
+//! RELSPININC is the rotation increment from ΔR (Hughes–Winget) between
+//! the deformation gradients.
 //!
-//! En VUMAT har ingen tangent; `Vumat::elastic_moduli` ger de elastiska
-//! moduler som stabilitetsgränsen och volymviskositeten behöver (i
-//! stället för att skatta dem ur spännings- och töjningsinkrementen).
+//! A VUMAT has no tangent; `Vumat::elastic_moduli` gives the elastic
+//! moduli needed by the stability limit and the bulk viscosity (instead
+//! of estimating them from the stress and strain increments).
 //!
 //! ```rust,ignore
 //! use rustyfem::user::vumat::{self, Vumat, VumatArgs};
-//! struct MinVumat;
-//! impl Vumat for MinVumat {
-//!     fn vumat(&self, a: &mut VumatArgs) -> rustyfem::Result<()> { /* som i Fortran */ Ok(()) }
+//! struct MyVumat;
+//! impl Vumat for MyVumat {
+//!     fn vumat(&self, a: &mut VumatArgs) -> rustyfem::Result<()> { /* as in Fortran */ Ok(()) }
 //!     fn elastic_moduli(&self, props: &[f64]) -> Option<(f64, f64)> { Some((props[0], props[1])) }
 //! }
-//! vumat::register("MIN_", std::sync::Arc::new(MinVumat)); // material MIN_*
+//! vumat::register("MY_", std::sync::Arc::new(MyVumat)); // material MY_*
 //! ```
 
 use crate::model::{fail, Result};
 use std::sync::{Arc, OnceLock, RwLock};
 
-/// Argumenten till en VUMAT för en materialpunkt (Fortran-namnen i kommentarerna).
+/// The arguments to a VUMAT for one material point (the Fortran names in the comments).
 pub struct VumatArgs<'a> {
     /// NDIR, NSHR, NSTATEV.
     pub ndir: usize,
     pub nshr: usize,
     pub nstatev: usize,
-    /// LANNEAL (alltid 0).
+    /// LANNEAL (always 0).
     pub lanneal: i32,
-    /// STEPTIME, TOTALTIME (vid inkrementets början), DT.
+    /// STEPTIME, TOTALTIME (at the start of the increment), DT.
     pub step_time: f64,
     pub total_time: f64,
     pub dt: f64,
     /// CMNAME.
     pub cmname: &'a str,
-    /// COORDMP (0) och CHARLENGTH.
+    /// COORDMP (0) and CHARLENGTH.
     pub coord_mp: [f64; 3],
     pub char_length: f64,
     /// PROPS.
     pub props: &'a [f64],
-    /// DENSITY (aktuell).
+    /// DENSITY (current).
     pub density: f64,
-    /// STRAININC (tensorskjuvning), RELSPININC.
+    /// STRAININC (tensor shear), RELSPININC.
     pub strain_inc: &'a [f64],
     pub rel_spin_inc: [f64; 3],
     /// TEMPOLD, TEMPNEW.
     pub temp_old: f64,
     pub temp_new: f64,
-    /// STRETCHOLD, STRETCHNEW, DEFGRADOLD, DEFGRADNEW (3D: 6, 6, 9, 9 värden).
+    /// STRETCHOLD, STRETCHNEW, DEFGRADOLD, DEFGRADNEW (3D: 6, 6, 9, 9 values).
     pub stretch_old: [f64; 6],
     pub stretch_new: [f64; 6],
     pub defgrad_old: [f64; 9],
     pub defgrad_new: [f64; 9],
-    /// STRESSOLD, STATEOLD, ENERINTERNOLD, ENERINELASOLD (per massenhet).
+    /// STRESSOLD, STATEOLD, ENERINTERNOLD, ENERINELASOLD (per unit mass).
     pub stress_old: &'a [f64],
     pub state_old: &'a [f64],
     pub ener_intern_old: f64,
     pub ener_inelas_old: f64,
-    /// Utdata: STRESSNEW, STATENEW, ENERINTERNNEW, ENERINELASNEW.
+    /// Output: STRESSNEW, STATENEW, ENERINTERNNEW, ENERINELASNEW.
     pub stress_new: &'a mut [f64],
     pub state_new: &'a mut [f64],
     pub ener_intern_new: &'a mut f64,
     pub ener_inelas_new: &'a mut f64,
 }
 
-/// En användarmaterialmodell med VUMAT:s semantik.
+/// A user material model with VUMAT semantics.
 pub trait Vumat: Send + Sync {
-    /// Namn för meddelanden.
+    /// Name for messages.
     fn name(&self) -> String {
         "VUMAT".into()
     }
 
-    /// Sätter STRESSNEW, STATENEW och energierna.
+    /// Sets STRESSNEW, STATENEW and the energies.
     fn vumat(&self, a: &mut VumatArgs) -> Result<()>;
 
-    /// Elastiska moduler (E, ν) för stabilitetsgränsen ur PROPS.
+    /// Elastic moduli (E, ν) for the stability limit from PROPS.
     fn elastic_moduli(&self, _props: &[f64]) -> Option<(f64, f64)> {
         None
     }
@@ -99,8 +99,8 @@ fn registry() -> &'static Registry {
     R.get_or_init(|| RwLock::new(samples()))
 }
 
-/// Registrerar en VUMAT för material vars namn börjar med `prefix` (versaler
-/// spelar ingen roll). En VUMAT går före en UMAT med samma materialnamn.
+/// Registers a VUMAT for materials whose name starts with `prefix` (case
+/// does not matter). A VUMAT takes precedence over a UMAT with the same material name.
 pub fn register(prefix: &str, v: Arc<dyn Vumat>) {
     let p = prefix.trim().to_uppercase();
     let mut r = registry().write().unwrap_or_else(|e| e.into_inner());
@@ -108,35 +108,35 @@ pub fn register(prefix: &str, v: Arc<dyn Vumat>) {
     r.push((p, v));
 }
 
-/// VUMAT för materialet `cmname` (längsta registrerade prefix).
+/// The VUMAT for material `cmname` (longest registered prefix).
 pub fn find(cmname: &str) -> Option<Arc<dyn Vumat>> {
     let up = cmname.trim().to_uppercase();
     let r = registry().read().unwrap_or_else(|e| e.into_inner());
     r.iter().filter(|(p, _)| !p.is_empty() && up.starts_with(p.as_str())).max_by_key(|(p, _)| p.len()).map(|(_, v)| v.clone())
 }
 
-// ---------------------------------------------------------------- exempel
+// ---------------------------------------------------------------- examples
 
-/// Linjärt elastisk VUMAT, PROPS = (E, ν). Material `EXEMPEL_VELASTISK*`.
+/// Linear elastic VUMAT, PROPS = (E, ν). Material `EXAMPLE_VELASTIC*`.
 pub struct ElasticVumat;
 
-/// von Mises-plasticitet med isotropt hårdnande som *PLASTIC (styckvis
-/// linjär flytspänning): PROPS = (E, ν, σ₁, εᵖ₁, σ₂, εᵖ₂, ...), STATEV(1) =
-/// PEEQ. Radiell återföring. Material `EXEMPEL_VMISES*`.
+/// von Mises plasticity with isotropic hardening like *PLASTIC (piecewise
+/// linear yield stress): PROPS = (E, ν, σ₁, εᵖ₁, σ₂, εᵖ₂, ...), STATEV(1) =
+/// PEEQ. Radial return. Material `EXAMPLE_VMISES*`.
 pub struct MisesVumat;
 
 fn lame(e: f64, nu: f64) -> (f64, f64) {
     (e * nu / ((1.0 + nu) * (1.0 - 2.0 * nu)), e / (2.0 * (1.0 + nu)))
 }
 
-/// Elastisk prediktor σ + λ tr(Δε) I + 2μ Δε (tensorskjuvning).
+/// Elastic predictor σ + λ tr(Δε) I + 2μ Δε (tensor shear).
 fn trial(a: &VumatArgs, lam: f64, mu: f64) -> Vec<f64> {
     let nd = a.ndir;
     let tr: f64 = a.strain_inc[..nd].iter().sum();
     (0..nd + a.nshr).map(|i| a.stress_old[i] + 2.0 * mu * a.strain_inc[i] + if i < nd { lam * tr } else { 0.0 }).collect()
 }
 
-/// Specifik inre energi: e += ½(σₙ + σₙ₊₁) : Δε / ρ.
+/// Specific internal energy: e += ½(σₙ + σₙ₊₁) : Δε / ρ.
 fn energy(a: &VumatArgs, s_new: &[f64]) -> f64 {
     let n = a.ndir + a.nshr;
     let w: f64 = (0..n).map(|i| 0.5 * (a.stress_old[i] + s_new[i]) * a.strain_inc[i] * if i < a.ndir { 1.0 } else { 2.0 }).sum();
@@ -145,12 +145,12 @@ fn energy(a: &VumatArgs, s_new: &[f64]) -> f64 {
 
 impl Vumat for ElasticVumat {
     fn name(&self) -> String {
-        "exempel: elastisk VUMAT".into()
+        "example: elastic VUMAT".into()
     }
 
     fn vumat(&self, a: &mut VumatArgs) -> Result<()> {
         if a.props.len() < 2 {
-            return fail("EXEMPEL_VELASTISK kräver PROPS = (E, ν)");
+            return fail("EXAMPLE_VELASTIC requires PROPS = (E, ν)");
         }
         let (lam, mu) = lame(a.props[0], a.props[1]);
         let s = trial(a, lam, mu);
@@ -182,15 +182,15 @@ fn yield_stress(tab: &[(f64, f64)], p: f64) -> (f64, f64) {
 
 impl Vumat for MisesVumat {
     fn name(&self) -> String {
-        "exempel: von Mises-VUMAT".into()
+        "example: von Mises VUMAT".into()
     }
 
     fn vumat(&self, a: &mut VumatArgs) -> Result<()> {
         if a.props.len() < 4 || a.props.len() % 2 != 0 {
-            return fail("EXEMPEL_VMISES kräver PROPS = (E, ν, σ₁, εᵖ₁, σ₂, εᵖ₂, ...)");
+            return fail("EXAMPLE_VMISES requires PROPS = (E, ν, σ₁, εᵖ₁, σ₂, εᵖ₂, ...)");
         }
         if a.nstatev < 1 {
-            return fail("EXEMPEL_VMISES kräver *DEPVAR 1 (PEEQ)");
+            return fail("EXAMPLE_VMISES requires *DEPVAR 1 (PEEQ)");
         }
         let (lam, mu) = lame(a.props[0], a.props[1]);
         let tab: Vec<(f64, f64)> = a.props[2..].chunks(2).map(|c| (c[0], c[1])).collect();
@@ -200,7 +200,7 @@ impl Vumat for MisesVumat {
         let p_old = a.state_old[0];
         let m = s[..nd].iter().sum::<f64>() / 3.0;
         let dev: Vec<f64> = (0..n).map(|i| s[i] - if i < nd { m } else { 0.0 }).collect();
-        // ndir = 3 i 3D och plan töjning: s₃₃ ingår i normaldelen
+        // ndir = 3 in 3D and plane strain: s₃₃ is part of the direct components
         let j2: f64 = (0..n).map(|i| dev[i] * dev[i] * if i < nd { 1.0 } else { 2.0 }).sum();
         let q = (1.5 * j2).sqrt();
         let (sy0, _) = yield_stress(&tab, p_old);
@@ -235,5 +235,5 @@ impl Vumat for MisesVumat {
 }
 
 fn samples() -> Vec<(String, Arc<dyn Vumat>)> {
-    vec![("EXEMPEL_VELASTISK".into(), Arc::new(ElasticVumat)), ("EXEMPEL_VMISES".into(), Arc::new(MisesVumat))]
+    vec![("EXAMPLE_VELASTIC".into(), Arc::new(ElasticVumat)), ("EXAMPLE_VMISES".into(), Arc::new(MisesVumat))]
 }

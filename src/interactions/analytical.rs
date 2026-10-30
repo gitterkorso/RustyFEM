@@ -1,42 +1,42 @@
-//! Kontakt mot analytiska stela ytor: *SURFACE, TYPE=SEGMENTS (plana och
-//! axisymmetriska modeller), TYPE=CYLINDER och TYPE=REVOLUTION (3D) med
-//! *RIGID BODY, ANALYTICAL SURFACE=, REF NODE= som masteryta i *CONTACT PAIR.
+//! Contact against analytical rigid surfaces: *SURFACE, TYPE=SEGMENTS (planar and
+//! axisymmetric models), TYPE=CYLINDER and TYPE=REVOLUTION (3D) with
+//! *RIGID BODY, ANALYTICAL SURFACE=, REF NODE= as the master surface in *CONTACT PAIR.
 //!
-//! Geometri:
-//! - profilen är sammanhängande segment i ett plan: START, LINE (slutpunkt),
-//!   CIRCL (slutpunkt, centrum; den kortare bågen, < 179,74°) och PARAB
-//!   (mittpunkt, slutpunkt; andragradskurva med mittpunkten i parametern ½),
-//! - SEGMENTS: globala (X, Y) eller (r, z); CYLINDER: lokala (x, y) med origo a,
-//!   x-axeln mot b och genereringsvektorn a → c längs negativa lokala z
-//!   (c justeras vinkelrätt mot ab), oändlig längs genereringsvektorn;
-//!   REVOLUTION: (r, z) med origo a och symmetriaxeln a → b (lokala z),
-//! - utåtnormalen är n = e₃ × s (s = profilens riktning, e₃ = planets normal),
-//!   dvs. riktningen vriden 90° moturs i profilplanet,
-//! - inne i en *PART: profilen i partens system (CYLINDER: a = origo, b på
-//!   x-axeln, c på negativa z-axeln; REVOLUTION: a = origo, r längs x, axeln
-//!   längs y), placerad med instansens förflyttning och rotation.
+//! Geometry:
+//! - the profile is connected segments in a plane: START, LINE (end point),
+//!   CIRCL (end point, center; the shorter arc, < 179.74°) and PARAB
+//!   (midpoint, end point; quadratic curve with the midpoint at parameter ½),
+//! - SEGMENTS: global (X, Y) or (r, z); CYLINDER: local (x, y) with origin a,
+//!   the x-axis towards b and the generator vector a → c along negative local z
+//!   (c is adjusted to be perpendicular to ab), infinite along the generator vector;
+//!   REVOLUTION: (r, z) with origin a and the symmetry axis a → b (local z),
+//! - the outward normal is n = e₃ × s (s = profile direction, e₃ = plane normal),
+//!   i.e. the direction rotated 90° counterclockwise in the profile plane,
+//! - inside a *PART: the profile in the part's system (CYLINDER: a = origin, b on
+//!   the x-axis, c on the negative z-axis; REVOLUTION: a = origin, r along x, the axis
+//!   along y), placed with the instance's translation and rotation.
 //!
-//! Ytan följer referensnoden R exakt (även utan NLGEOM, som brukligt för
-//! analytiska ytor): x = x_R + R(θ_R)(X − X_R). Slavnoden projiceras på ytan i
-//! kroppens referensläge, p_b = X_R + Rᵀ(x_s − x_R); närmaste punkten q och
-//! normalen n förs tillbaka med R. Gapet är g = n · (x_s − q).
+//! The surface follows the reference node R exactly (even without NLGEOM, as is usual for
+//! analytical surfaces): x = x_R + R(θ_R)(X − X_R). The slave node is projected onto the surface in
+//! the body's reference configuration, p_b = X_R + Rᵀ(x_s − x_R); the closest point q and
+//! the normal n are mapped back with R. The gap is g = n · (x_s − q).
 //!
-//! Diskretisering: nod mot yta (standard för *CONTACT PAIR i implicit analys).
-//! Finite sliding: närmaste punkt i varje utvärdering; SMALL SLIDING:
-//! tangentplanet i slavnodens projektion i referensläget, som följer kroppen.
-//! Normalkontakt och friktion som i `contact.rs` (HARD med styv
-//! straffkoefficient 1e8 · elementstyvhet/area mot stel yta, PENALTY,
-//! LINEAR/EXPONENTIAL, Coulomb med straffreglerad fastläge och kritisk elastisk
-//! glidning SLIP TOLERANCE · slavytornas medelstorlek). Den relativa glidningen
-//! räknas i kroppens system (slavnodens rörelse relativt ytan).
+//! Discretization: node to surface (default for *CONTACT PAIR in implicit analysis).
+//! Finite sliding: closest point in every evaluation; SMALL SLIDING:
+//! the tangent plane at the slave node's projection in the reference configuration, which follows the body.
+//! Normal contact and friction as in `contact.rs` (HARD with a stiff
+//! penalty coefficient 1e8 · element stiffness/area against a rigid surface, PENALTY,
+//! LINEAR/EXPONENTIAL, Coulomb with penalty-regularized sticking and critical elastic
+//! slip SLIP TOLERANCE · mean size of the slave faces). The relative slip
+//! is computed in the body's system (slave node motion relative to the surface).
 //!
-//! Variationen δg = n · (δu_s − δu_R − δw × a) med a = q − x_R ger krafterna
-//! f_s = A(−p n + τ), f_R = −f_s och M_R = −a × f_s på referensnoden och
-//! tangenten A Gᵀ (p' n nᵀ + K_t) G (utan ytans krökningsterm, som bara
-//! påverkar konvergensen).
+//! The variation δg = n · (δu_s − δu_R − δw × a) with a = q − x_R gives the forces
+//! f_s = A(−p n + τ), f_R = −f_s and M_R = −a × f_s on the reference node and
+//! the tangent A Gᵀ (p' n nᵀ + K_t) G (without the surface curvature term, which only
+//! affects convergence).
 //!
-//! Begränsningar: inte SURFACE TO SURFACE, ingen FILLET RADIUS, inga
-//! användarytor (TYPE=USER/RSURFU), ingen *CLEARANCE.
+//! Limitations: no SURFACE TO SURFACE, no FILLET RADIUS, no
+//! user surfaces (TYPE=USER/RSURFU), no *CLEARANCE.
 
 use super::contact::{self, PairProps};
 use super::geom::{self, Facet};
@@ -50,17 +50,17 @@ use std::sync::Mutex;
 
 pub static FACTORIES: &[InteractionFactory] = &[InteractionFactory { keywords: &["CONTACT PAIR"], build }];
 
-/// Straffkoefficient för hård kontakt (direkt metod) mot en analytisk yta,
-/// relativt slavsidans elementstyvhet. Lägre än för stela element (1e8): med
-/// krökta ytor och koordinater av storleken 1 ger avrundningen i närmaste
-/// punkten (~1e-16) annars ett kraftbrus över konvergenskraven, och gapets
-/// linjäriseringsfel vid glidning blir för stort. Genomträngningen blir
-/// ~1e-7 av deformationen.
+/// Penalty coefficient for hard contact (direct method) against an analytical surface,
+/// relative to the slave side's element stiffness. Lower than for rigid elements (1e8): with
+/// curved surfaces and coordinates of order 1, round-off in the closest
+/// point (~1e-16) otherwise gives force noise above the convergence criteria, and the gap's
+/// linearization error during sliding becomes too large. The penetration becomes
+/// ~1e-7 of the deformation.
 const HARD_FACTOR_ANALYTICAL: f64 = 1e7;
 
-// ---------------------------------------------------------------- namn och placering
+// ---------------------------------------------------------------- names and placement
 
-/// Placeringen som parameter (`_PLACE`) för nyckelord från en part.
+/// The placement as a parameter (`_PLACE`) for keywords from a part.
 pub fn encode_placement(p: &Placement) -> String {
     let t = p.translation;
     match p.rotation {
@@ -76,12 +76,12 @@ fn decode_placement(s: &str) -> Placement {
     Placement { translation: [g(0), g(1), g(2)], rotation }
 }
 
-/// Instansens placering för ett nyckelord från en part (ingen om det står på modellnivå).
+/// The instance placement for a keyword from a part (none if it is at model level).
 pub fn placement_of(kw: &RawKeyword) -> Option<Placement> {
     kw.param("_PLACE").map(decode_placement)
 }
 
-/// Ett namn i nyckelordet: med instansprefix om nyckelordet kommer från en part.
+/// A name in the keyword: with instance prefix if the keyword comes from a part.
 pub fn scoped(kw: &RawKeyword, token: &str) -> String {
     let t = token.trim().to_uppercase();
     match kw.param("_INSTANCE") {
@@ -90,19 +90,19 @@ pub fn scoped(kw: &RawKeyword, token: &str) -> String {
     }
 }
 
-/// Är ytan en analytisk stel yta?
+/// Is the surface an analytical rigid surface?
 pub fn is_analytical(m: &FeModel, name: &str) -> bool {
     m.surfaces.get(&name.trim().to_uppercase()).is_some_and(|s| crate::inp::keywords::analytical::is_analytical_type(&s.kind))
 }
 
-// ---------------------------------------------------------------- profil
+// ---------------------------------------------------------------- profile
 
 #[derive(Debug, Clone)]
 enum Seg {
     Line { a: [f64; 2], b: [f64; 2] },
-    /// Centrum, radie, startvinkel och (signerad) vinkeländring.
+    /// Center, radius, start angle and (signed) angle change.
     Arc { c: [f64; 2], r: f64, t0: f64, dt: f64 },
-    /// Andragradskurva genom p0 (t = 0), pm (t = ½) och p1 (t = 1).
+    /// Quadratic curve through p0 (t = 0), pm (t = ½) and p1 (t = 1).
     Parab { p0: [f64; 2], pm: [f64; 2], p1: [f64; 2] },
 }
 
@@ -117,7 +117,7 @@ fn len2(a: [f64; 2]) -> f64 {
 }
 
 impl Seg {
-    /// (punkt, enhetstangent i profilens riktning) vid parametern t ∈ [0, 1].
+    /// (point, unit tangent in the profile direction) at parameter t ∈ [0, 1].
     fn eval(&self, t: f64) -> ([f64; 2], [f64; 2]) {
         match *self {
             Seg::Line { a, b } => {
@@ -141,7 +141,7 @@ impl Seg {
         }
     }
 
-    /// Närmaste punktens parameter (oklämd för linje och båge).
+    /// Parameter of the closest point (unclamped for line and arc).
     fn closest_t(&self, p: [f64; 2]) -> f64 {
         match *self {
             Seg::Line { a, b } => {
@@ -151,7 +151,7 @@ impl Seg {
             Seg::Arc { c, t0, dt, .. } => {
                 let phi = (p[1] - c[1]).atan2(p[0] - c[0]);
                 let mut rel = phi - t0;
-                // relativ vinkel i (−π, π] kring bågens mitt
+                // relative angle in (−π, π] around the arc's midpoint
                 let mid = 0.5 * dt;
                 while rel - mid > std::f64::consts::PI {
                     rel -= 2.0 * std::f64::consts::PI;
@@ -162,7 +162,7 @@ impl Seg {
                 rel / dt
             }
             Seg::Parab { .. } => {
-                // startvärde från en grov sökning, sedan Newton på (x(t) − p) · x'(t) = 0
+                // initial value from a coarse search, then Newton on (x(t) − p) · x'(t) = 0
                 let mut best = (f64::INFINITY, 0.0);
                 for k in 0..=20 {
                     let t = k as f64 / 20.0;
@@ -197,8 +197,8 @@ impl Seg {
     }
 }
 
-/// Närmaste punkt på profilen: (punkt, utåtnormal, signerat avstånd).
-/// `None` om punkten ligger utanför profilens ändar.
+/// Closest point on the profile: (point, outward normal, signed distance).
+/// `None` if the point lies beyond the ends of the profile.
 fn profile_closest(prof: &[Seg], p: [f64; 2]) -> Option<([f64; 2], [f64; 2], f64)> {
     let mut best: Option<(f64, usize, f64)> = None;
     for (i, s) in prof.iter().enumerate() {
@@ -216,18 +216,18 @@ fn profile_closest(prof: &[Seg], p: [f64; 2]) -> Option<([f64; 2], [f64; 2], f64
     let at_start = t <= tol;
     let at_end = t >= 1.0 - tol;
     if (at_start && i == 0) || (at_end && i + 1 == prof.len()) {
-        // utanför profilens ände: bara om punkten ligger rakt ovanför/under änden
+        // beyond the end of the profile: only if the point lies straight above/below the end
         let raw = prof[i].closest_t(p);
         if (at_start && raw < -1e-6) || (at_end && raw > 1.0 + 1e-6) {
             return None;
         }
     }
     if at_start || at_end {
-        // hörn mellan två segment: normalen mot punkten (medelnormalens sida)
+        // corner between two segments: the normal towards the point (on the side of the mean normal)
         let j = if at_start { i.wrapping_sub(1) } else { i + 1 };
         if let Some(o) = prof.get(j) {
             let (_, so) = o.eval(if at_start { 1.0 } else { 0.0 });
-            // släta övergångar (samma tangent) behandlas som en vanlig punkt på ytan
+            // smooth transitions (same tangent) are treated as an ordinary point on the surface
             let smooth = dot2(so, s) > 1.0 - 1e-10;
             let navg = [n[0] - so[1], n[1] + so[0]];
             let d = sub2(p, q);
@@ -243,9 +243,9 @@ fn profile_closest(prof: &[Seg], p: [f64; 2]) -> Option<([f64; 2], [f64; 2], f64
     Some((q, n, g))
 }
 
-/// Normalens ändring längs profilen i punkten `p`: (κ', s) med
-/// δn = κ' s (s · δp), där s är tangenten och κ' = κ/(1 + κ g) med κ > 0 för
-/// en konvex yta (normalen bort från krökningscentrum). Hörn: κ' = 1/avståndet.
+/// Change of the normal along the profile at the point `p`: (κ', s) with
+/// δn = κ' s (s · δp), where s is the tangent and κ' = κ/(1 + κ g) with κ > 0 for
+/// a convex surface (normal away from the center of curvature). Corner: κ' = 1/distance.
 fn profile_curvature(prof: &[Seg], p: [f64; 2]) -> Option<(f64, [f64; 2])> {
     let (q, n, g) = profile_closest(prof, p)?;
     let s = [n[1], -n[0]];
@@ -261,7 +261,7 @@ fn profile_curvature(prof: &[Seg], p: [f64; 2]) -> Option<(f64, [f64; 2])> {
     let (_, i, t) = best?;
     let (_, si) = prof[i].eval(t);
     if dot2(si, s).abs() < 1.0 - 1e-9 {
-        // hörn: normalen är riktningen mot punkten
+        // corner: the normal is the direction towards the point
         return Some((if g != 0.0 { 1.0 / g } else { 0.0 }, s));
     }
     let kappa = match prof[i] {
@@ -287,10 +287,10 @@ fn parse_profile(kw: &RawKeyword, recs: &[crate::fem::model::DataLine]) -> Resul
             continue;
         }
         let word = f[0].to_uppercase();
-        let v: Vec<f64> = f[1..].iter().filter(|s| !s.is_empty()).map(|s| parse_f64(s).ok_or(())).collect::<std::result::Result<_, _>>().or_else(|_| kw.err_at(d.line, "ogiltigt tal"))?;
+        let v: Vec<f64> = f[1..].iter().filter(|s| !s.is_empty()).map(|s| parse_f64(s).ok_or(())).collect::<std::result::Result<_, _>>().or_else(|_| kw.err_at(d.line, "invalid number"))?;
         let need = |k: usize| -> Result<()> {
             if v.len() < k {
-                return kw.err_at(d.line, format!("{word} kräver {k} koordinater"));
+                return kw.err_at(d.line, format!("{word} requires {k} coordinates"));
             }
             Ok(())
         };
@@ -298,18 +298,18 @@ fn parse_profile(kw: &RawKeyword, recs: &[crate::fem::model::DataLine]) -> Resul
             "START" => {
                 need(2)?;
                 if cur.is_some() {
-                    return kw.err_at(d.line, "START får bara stå först");
+                    return kw.err_at(d.line, "START may only appear first");
                 }
                 cur = Some([v[0], v[1]]);
             }
             "LINE" | "CIRCL" | "PARAB" | "PARABOLA" => {
-                let Some(a) = cur else { return kw.err_at(d.line, "profilen ska börja med START") };
+                let Some(a) = cur else { return kw.err_at(d.line, "the profile must start with START") };
                 match word.as_str() {
                     "LINE" => {
                         need(2)?;
                         let b = [v[0], v[1]];
                         if len2(sub2(b, a)) == 0.0 {
-                            return kw.err_at(d.line, "linjen har längden noll");
+                            return kw.err_at(d.line, "the line has zero length");
                         }
                         prof.push(Seg::Line { a, b });
                         cur = Some(b);
@@ -319,7 +319,7 @@ fn parse_profile(kw: &RawKeyword, recs: &[crate::fem::model::DataLine]) -> Resul
                         let (b, c) = ([v[0], v[1]], [v[2], v[3]]);
                         let (r0, r1) = (len2(sub2(a, c)), len2(sub2(b, c)));
                         if r0 == 0.0 || (r0 - r1).abs() > 1e-6 * r0 {
-                            return kw.err_at(d.line, "bågens start- och slutpunkt ligger inte på samma avstånd från centrum");
+                            return kw.err_at(d.line, "the arc's start and end points are not at the same distance from the center");
                         }
                         let t0 = (a[1] - c[1]).atan2(a[0] - c[0]);
                         let t1 = (b[1] - c[1]).atan2(b[0] - c[0]);
@@ -331,7 +331,7 @@ fn parse_profile(kw: &RawKeyword, recs: &[crate::fem::model::DataLine]) -> Resul
                             dt += 2.0 * std::f64::consts::PI;
                         }
                         if dt.abs() >= 179.74f64.to_radians() || dt == 0.0 {
-                            return kw.err_at(d.line, "bågen ska vara kortare än 179,74° (dela den i två)");
+                            return kw.err_at(d.line, "the arc must be shorter than 179.74° (split it in two)");
                         }
                         prof.push(Seg::Arc { c, r: r0, t0, dt });
                         cur = Some(b);
@@ -344,26 +344,26 @@ fn parse_profile(kw: &RawKeyword, recs: &[crate::fem::model::DataLine]) -> Resul
                     }
                 }
             }
-            other => return kw.err_at(d.line, format!("okänt segment '{other}' (START, LINE, CIRCL, PARAB)")),
+            other => return kw.err_at(d.line, format!("unknown segment '{other}' (START, LINE, CIRCL, PARAB)")),
         }
     }
     if prof.is_empty() {
-        return kw.err("den analytiska ytan saknar segment (LINE, CIRCL, PARAB)");
+        return kw.err("the analytical surface has no segments (LINE, CIRCL, PARAB)");
     }
     Ok(prof)
 }
 
-// ---------------------------------------------------------------- ytan
+// ---------------------------------------------------------------- the surface
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 enum Kind {
-    /// SEGMENTS eller CYLINDER: profilen i (x, y), z = ez.
+    /// SEGMENTS or CYLINDER: the profile in (x, y), z = ez.
     Swept,
-    /// REVOLUTION: profilen i (r, z) kring ez.
+    /// REVOLUTION: the profile in (r, z) around ez.
     Revolution,
 }
 
-/// En analytisk yta i referensläget (globala koordinater).
+/// An analytical surface in the reference configuration (global coordinates).
 #[derive(Debug, Clone)]
 pub struct AnalyticalSurface {
     kind: Kind,
@@ -379,14 +379,14 @@ fn unit(v: [f64; 3]) -> [f64; 3] {
 }
 
 impl AnalyticalSurface {
-    /// Läser ytan `name` (versaler, med instansprefix) ur modellens sparade *SURFACE.
+    /// Reads the surface `name` (upper case, with instance prefix) from the model's stored *SURFACE.
     pub fn from_model(m: &FeModel, name: &str) -> Result<AnalyticalSurface> {
         let up = name.trim().to_uppercase();
         let Some(kw) = m.extra.iter().find(|k| k.name == "SURFACE" && k.param("NAME").is_some_and(|n| scoped(k, n) == up)) else {
-            return fail(format!("den analytiska ytan {up} finns inte"));
+            return fail(format!("the analytical surface {up} does not exist"));
         };
         if kw.param("FILLET RADIUS").and_then(parse_f64).is_some_and(|r| r != 0.0) {
-            return kw.err("FILLET RADIUS stöds inte ännu");
+            return kw.err("FILLET RADIUS is not supported yet");
         }
         let ty = kw.param_upper("TYPE").unwrap_or_default();
         let recs: Vec<crate::fem::model::DataLine> = kw.records().into_iter().filter(|d| d.fields.iter().any(|s| !s.trim().is_empty())).collect();
@@ -395,7 +395,7 @@ impl AnalyticalSurface {
         let pts = |d: &crate::fem::model::DataLine, k: usize| -> Result<Vec<f64>> {
             let v = kw.floats(d)?;
             if v.len() < k {
-                return kw.err_at(d.line, format!("raden ska ha {k} koordinater"));
+                return kw.err_at(d.line, format!("the line must have {k} coordinates"));
             }
             Ok(v)
         };
@@ -403,28 +403,28 @@ impl AnalyticalSurface {
         let (kind, a, ex, ey, ez, first) = match ty.as_str() {
             "SEGMENTS" => {
                 if m.dim() != 2 {
-                    return kw.err("TYPE=SEGMENTS gäller plana och axisymmetriska modeller (använd CYLINDER eller REVOLUTION i 3D)");
+                    return kw.err("TYPE=SEGMENTS applies to planar and axisymmetric models (use CYLINDER or REVOLUTION in 3D)");
                 }
                 (Kind::Swept, [0.0; 3], x, y, z, 0)
             }
             "CYLINDER" => {
                 if !recs.first().is_some_and(|d| !is_word(d)) {
                     if !in_part {
-                        return kw.err("TYPE=CYLINDER kräver punkterna a, b och c på de två första dataraderna");
+                        return kw.err("TYPE=CYLINDER requires the points a, b and c on the first two data lines");
                     }
                     (Kind::Swept, [0.0; 3], x, y, z, 0)
                 } else {
                     let v1 = pts(&recs[0], 6)?;
-                    let Some(d2) = recs.get(1).filter(|d| !is_word(d)) else { return kw.err("punkten c (genereringsvektorn) saknas på andra dataraden") };
+                    let Some(d2) = recs.get(1).filter(|d| !is_word(d)) else { return kw.err("point c (the generator vector) is missing on the second data line") };
                     let v2 = pts(d2, 3)?;
                     let a = [v1[0], v1[1], v1[2]];
                     let ex = unit(sub([v1[3], v1[4], v1[5]], a));
                     let g = sub([v2[0], v2[1], v2[2]], a);
                     let g = sub(g, scale(ex, dot(g, ex)));
                     if norm(g) == 0.0 {
-                        return kw.err("punkten c ligger på linjen ab");
+                        return kw.err("point c lies on the line ab");
                     }
-                    // genereringsvektorn a → c är negativa lokala z-axeln
+                    // the generator vector a → c is the negative local z-axis
                     let ez = scale(unit(g), -1.0);
                     let ey = cross(ez, ex);
                     (Kind::Swept, a, ex, ey, ez, 2)
@@ -433,9 +433,9 @@ impl AnalyticalSurface {
             "REVOLUTION" => {
                 if !recs.first().is_some_and(|d| !is_word(d)) {
                     if !in_part {
-                        return kw.err("TYPE=REVOLUTION kräver punkterna a och b på första dataraden");
+                        return kw.err("TYPE=REVOLUTION requires the points a and b on the first data line");
                     }
-                    // i en part: r längs x, symmetriaxeln längs y
+                    // in a part: r along x, the symmetry axis along y
                     (Kind::Revolution, [0.0; 3], x, [0.0, 0.0, -1.0], y, 0)
                 } else {
                     let v1 = pts(&recs[0], 6)?;
@@ -447,7 +447,7 @@ impl AnalyticalSurface {
                     (Kind::Revolution, a, ex, ey, ez, 1)
                 }
             }
-            other => return kw.err(format!("TYPE={other} stöds inte för analytiska ytor")),
+            other => return kw.err(format!("TYPE={other} is not supported for analytical surfaces")),
         };
         let prof = parse_profile(kw, &recs[first..])?;
         let mut s = AnalyticalSurface { kind, a, ex, ey, ez, prof };
@@ -460,9 +460,9 @@ impl AnalyticalSurface {
         Ok(s)
     }
 
-    /// Normalens variation för punkten `p` (referensläget): δn = Σ κ'ᵢ tᵢ (tᵢ · δp)
-    /// med tangentriktningarna tᵢ (profilens riktning och, för REVOLUTION,
-    /// omkretsriktningen med κ' = n_r / r).
+    /// Variation of the normal for the point `p` (reference configuration): δn = Σ κ'ᵢ tᵢ (tᵢ · δp)
+    /// with the tangent directions tᵢ (the profile direction and, for REVOLUTION,
+    /// the circumferential direction with κ' = n_r / r).
     pub fn curvatures(&self, p: [f64; 3]) -> Vec<(f64, [f64; 3])> {
         let d = sub(p, self.a);
         let zc = dot(d, self.ez);
@@ -486,8 +486,8 @@ impl AnalyticalSurface {
         }
     }
 
-    /// Närmaste punkt och utåtnormal för punkten `p` (referensläget):
-    /// (punkt, normal, signerat avstånd).
+    /// Closest point and outward normal for the point `p` (reference configuration):
+    /// (point, normal, signed distance).
     pub fn closest(&self, p: [f64; 3]) -> Option<([f64; 3], [f64; 3], f64)> {
         let d = sub(p, self.a);
         let zc = dot(d, self.ez);
@@ -512,24 +512,24 @@ impl AnalyticalSurface {
     }
 }
 
-// ---------------------------------------------------------------- kontakten
+// ---------------------------------------------------------------- the contact
 
 #[derive(Debug, Clone, Copy, Default)]
 struct NodeState {
     p: f64,
     gap: f64,
-    /// Elastisk glidning i kroppens system.
+    /// Elastic slip in the body's system.
     slip: [f64; 3],
-    /// Total glidning (rumslig, för CSLIP).
+    /// Total slip (spatial, for CSLIP).
     total_slip: [f64; 3],
     shear: [f64; 3],
     normal: [f64; 3],
     contact: bool,
-    /// Slavnodens läge i kroppens system.
+    /// The slave node's position in the body's system.
     pb: [f64; 3],
-    /// CPRESS (kontaktkraft / aktuell area).
+    /// CPRESS (contact force / current area).
     cpress: f64,
-    /// Antal utvärderingar som noden varit sluten i följd (kontaktstatus).
+    /// Number of consecutive evaluations the node has been closed (contact status).
     age: u32,
 }
 
@@ -537,12 +537,12 @@ struct NodeState {
 struct State {
     committed: Vec<NodeState>,
     trial: Vec<NodeState>,
-    /// Största kontakttrycket i senaste utvärderingen (för öppningstoleransen).
+    /// Largest contact pressure in the latest evaluation (for the opening tolerance).
     pmax: f64,
 }
 
-/// Area per slavnod (axisymmetriskt hela varvet, 2π r, som elementens
-/// krafter) i referensläget eller, med `u`, i aktuellt läge.
+/// Area per slave node (axisymmetric: the full revolution, 2π r, like the element
+/// forces) in the reference configuration or, with `u`, in the current configuration.
 fn slave_areas(m: &FeModel, facets: &[Facet], node_weights: &[(usize, f64)], nodes: &[usize], u: Option<&[NodeVec]>) -> Vec<f64> {
     let idx = |n: usize| nodes.binary_search(&n).unwrap();
     let mut area = vec![0.0; nodes.len()];
@@ -566,14 +566,14 @@ fn slave_areas(m: &FeModel, facets: &[Facet], node_weights: &[(usize, f64)], nod
 pub struct AnalyticalContact {
     name: String,
     nodes: Vec<usize>,
-    /// Slavnodernas area i referensläget.
+    /// Slave node areas in the reference configuration.
     area: Vec<f64>,
     facets: Vec<Facet>,
     node_weights: Vec<(usize, f64)>,
-    /// Hård kontakt med direkt metod (kraften ur straffet, CPRESS = kraft/area).
+    /// Hard contact with the direct method (force from the penalty, CPRESS = force/area).
     direct: bool,
     k_hard: Vec<f64>,
-    /// Slavsidans elementstyvhet per slavnod (gräns för krökningstermen i tangenten).
+    /// The slave side's element stiffness per slave node (bound for the curvature term in the tangent).
     k_elem: Vec<f64>,
     surf: AnalyticalSurface,
     refn: usize,
@@ -581,12 +581,12 @@ pub struct AnalyticalContact {
     props: PairProps,
     gamma: f64,
     dim: usize,
-    /// SMALL SLIDING: tangentplanet (punkt, normal) i kroppens system per slavnod.
+    /// SMALL SLIDING: the tangent plane (point, normal) in the body's system per slave node.
     anchors: Option<Vec<Option<([f64; 3], [f64; 3])>>>,
     state: Mutex<State>,
 }
 
-/// Referensnoden för den stela kropp som äger den analytiska ytan `surf`.
+/// The reference node of the rigid body that owns the analytical surface `surf`.
 fn rigid_ref(m: &FeModel, kw: &RawKeyword, surf: &str) -> Result<usize> {
     let up = surf.trim().to_uppercase();
     for rb in m.extra.iter().filter(|k| k.name == "RIGID BODY") {
@@ -597,11 +597,11 @@ fn rigid_ref(m: &FeModel, kw: &RawKeyword, surf: &str) -> Result<usize> {
         let r = crate::inp::required(rb, "REF NODE")?;
         let v = geom::node_ref(m, rb, &scoped(rb, r))?;
         if v.len() != 1 {
-            return rb.err(format!("REF NODE={r} ska vara en enda nod"));
+            return rb.err(format!("REF NODE={r} must be a single node"));
         }
         return Ok(v[0]);
     }
-    kw.err(format!("den analytiska ytan {up} ingår inte i någon *RIGID BODY, ANALYTICAL SURFACE="))
+    kw.err(format!("the analytical surface {up} is not part of any *RIGID BODY, ANALYTICAL SURFACE="))
 }
 
 fn build(m: &FeModel, kw: &RawKeyword) -> Result<Vec<Box<dyn Interaction>>> {
@@ -612,13 +612,13 @@ fn build(m: &FeModel, kw: &RawKeyword) -> Result<Vec<Box<dyn Interaction>>> {
             continue;
         }
         if is_analytical(m, f[0]) {
-            return kw.err_at(d.line, "en analytisk yta kan bara vara masteryta");
+            return kw.err_at(d.line, "an analytical surface can only be a master surface");
         }
         if kw.param_upper("TYPE").is_some_and(|t| t == "SURFACE TO SURFACE") {
-            return kw.err_at(d.line, "TYPE=SURFACE TO SURFACE mot en analytisk yta stöds inte ännu (använd NODE TO SURFACE)");
+            return kw.err_at(d.line, "TYPE=SURFACE TO SURFACE against an analytical surface is not supported yet (use NODE TO SURFACE)");
         }
         if m.extra.iter().any(|c| c.name == "CLEARANCE" && c.param_upper("MASTER").is_some_and(|x| x == f[1].to_uppercase())) {
-            return kw.err_at(d.line, "*CLEARANCE mot en analytisk yta stöds inte ännu");
+            return kw.err_at(d.line, "*CLEARANCE against an analytical surface is not supported yet");
         }
         let ip = crate::inp::required(kw, "INTERACTION")?;
         let props = PairProps::read(m, kw, ip)?;
@@ -647,11 +647,11 @@ impl AnalyticalContact {
         let node_weights: Vec<(usize, f64)> = if ss.kind == "NODE" { ss.nodes.clone() } else { Vec::new() };
         let area = slave_areas(m, &facets, &node_weights, &nodes, None);
         let sizes: Vec<f64> = facets.iter().map(|f| contact::facet_length(f, &geom::coords(m, f, None))).collect();
-        // straffkoefficient per slavnod
+        // penalty coefficient per slave node
         let mut k_hard = Vec::with_capacity(nodes.len());
         let mut k_elem = Vec::with_capacity(nodes.len());
         for (i, &n) in nodes.iter().enumerate() {
-            // slavsidans elementstyvhet i noden
+            // the slave side's element stiffness at the node
             let mut s = 0.0;
             let mut c = 0usize;
             for (e, el) in m.elements.iter().enumerate() {
@@ -668,7 +668,7 @@ impl AnalyticalContact {
                     let v: Vec<f64> = facets.iter().filter(|f| f.nodes.contains(&n)).map(|f| contact::default_penalty(m, f)).collect::<Result<_>>()?;
                     sc * v.iter().sum::<f64>() / v.len().max(1) as f64
                 }
-                // direkt: mycket styv straffkoefficient från slavsidans element
+                // direct: very stiff penalty coefficient from the slave side's elements
                 None => HARD_FACTOR_ANALYTICAL * ks / area[i].max(1e-300),
             };
             k_hard.push(k);
@@ -736,10 +736,10 @@ impl Interaction for AnalyticalContact {
         for (i, &sn) in self.nodes.iter().enumerate() {
             let old = st.committed[i];
             let prev_eval = st.trial[i];
-            // slavnoden i kroppens referensläge: p_b = X_s + d med
-            // d = (Rᵀ − I)(X_s − X_R) + Rᵀ(u_s − u_R); gapet räknas som
-            // n · (X_s − q) + n · d så att avrundningen i de stora koordinaterna
-            // inte ger brus i straffkraften mellan iterationerna
+            // the slave node in the body's reference configuration: p_b = X_s + d with
+            // d = (Rᵀ − I)(X_s − X_R) + Rᵀ(u_s − u_R); the gap is computed as
+            // n · (X_s − q) + n · d so that round-off in the large coordinates
+            // does not cause noise in the penalty force between iterations
             let xs0 = m.nodes[sn];
             let r0 = sub(xs0, self.xr0);
             let w = sub([u[sn][0], u[sn][1], u[sn][2]], [ur[0], ur[1], ur[2]]);
@@ -762,24 +762,24 @@ impl Interaction for AnalyticalContact {
             ns.gap = g;
             ns.normal = n;
             if crate::settings::with(|s| s.contact_debug) {
-                eprintln!("analytisk kontakt {} nod {}: g={g:.6e} n={n:?} a={a:?}", self.name, m.node_name(sn));
+                eprintln!("analytical contact {} node {}: g={g:.6e} n={n:?} a={a:?}", self.name, m.node_name(sn));
             }
             let h = -g;
             let kh = self.k_hard[i];
-            // hård kontakt med kontaktstatus: en sluten nod öppnas
-            // först vid dragtryck (utöver en liten tolerans), en öppen sluts vid
-            // överlappning; annars pendlar noder vid kontaktzonens kant mellan
-            // öppen (överlappning) och sluten (drag) från iteration till iteration
+            // hard contact with contact status: a closed node is opened
+            // only under tensile pressure (beyond a small tolerance), an open one closes on
+            // overclosure; otherwise nodes at the edge of the contact zone alternate between
+            // open (overclosure) and closed (tension) from iteration to iteration
             let (p, dp, closed) = if self.props.is_hard() {
                 let was = st.trial[i].contact;
                 let age = st.trial[i].age;
-                // en nod som just har slutits hålls sluten en iteration till:
-                // gapets linjärisering (krökt yta, tangentiell rörelse) ger annars
-                // ett litet fel som med den styva straffkoefficienten ser ut som drag
+                // a node that has just closed is kept closed for one more iteration:
+                // the gap linearization (curved surface, tangential motion) otherwise gives
+                // a small error that, with the stiff penalty coefficient, looks like tension
                 let closed = if was { age < 2 || kh * h >= -1e-8 * st.pmax } else { h > 0.0 };
                 ns.age = if closed && was { age.saturating_add(1) } else { 0 };
                 if closed != was && crate::settings::with(|s| s.contact_debug) {
-                    eprintln!("  status {}: {} h={h:.4e} x={pb:?}", m.node_name(sn), if closed { "sluten" } else { "öppen" });
+                    eprintln!("  status {}: {} h={h:.4e} x={pb:?}", m.node_name(sn), if closed { "closed" } else { "open" });
                 }
                 if closed { (kh * h, kh, true) } else { (0.0, 0.0, false) }
             } else {
@@ -789,16 +789,16 @@ impl Interaction for AnalyticalContact {
             pmax = pmax.max(p);
             ns.p = p;
             ns.contact = closed;
-            // friktion i kroppens system
+            // friction in the body's system
             let mut tau_b = [0.0; 3];
             let mut kt_b: Option<[[f64; 3]; 3]> = None;
             let dpb = sub(pb, old.pb);
             let dn = dot(dpb, nb);
             let ds = [dpb[0] - dn * nb[0], dpb[1] - dn * nb[1], dpb[2] - dn * nb[2]];
             let mu = self.props.mu();
-            // friktion bara för noder som var slutna i föregående utvärdering: en nod
-            // som just slöts (ofta med stor överlappning från extrapolationen) får
-            // annars en orimlig friktionskraft μp
+            // friction only for nodes that were closed in the previous evaluation: a node
+            // that has just closed (often with large overclosure from the extrapolation) would
+            // otherwise get an unreasonable friction force μp
             let fric = mu > 0.0 && ns.contact && p > 0.0 && prev_eval.contact && prev_eval.age >= 1;
             if ns.contact && !fric {
                 let d = tensor::mv(&rot, ds);
@@ -839,10 +839,10 @@ impl Interaction for AnalyticalContact {
                             kk[r][c] = f * (pt[r][c] - eh[r] * eh[c]);
                         }
                     }
-                    // fastnod i föregående utvärdering (eller glidning åt andra
-                    // hållet): fastlägets tangent. Glidningens tangent saknar styvhet
-                    // i glidriktningen, så Newton pendlar annars mellan glidning åt
-                    // båda hållen när noden egentligen fastnar.
+                    // stuck in the previous evaluation (or slipping in the other
+                    // direction): the sticking tangent. The slip tangent has no stiffness
+                    // in the slip direction, so Newton otherwise alternates between slipping in
+                    // both directions when the node actually sticks.
                     let prev = prev_eval;
                     let stuck_before = !prev.contact || norm(prev.slip) < gam * (1.0 - 1e-9) || dot(prev.slip, eh) < 0.0;
                     kt_b = Some(if stuck_before { pt.map(|row| row.map(|v| v * mu_p / gam)) } else { kk });
@@ -855,15 +855,15 @@ impl Interaction for AnalyticalContact {
             }
             let tau = tensor::mv(&rot, tau_b);
             if crate::settings::with(|s| s.contact_debug) {
-                eprintln!("  friktion {}: p={p:.4e} ds={ds:?} tau={tau:?} uR={:?} us={:?}", m.node_name(sn), &ur[..3], &u[sn][..3]);
+                eprintln!("  friction {}: p={p:.4e} ds={ds:?} tau={tau:?} uR={:?} us={:?}", m.node_name(sn), &ur[..3], &u[sn][..3]);
             }
             ns.shear = tau;
             st.trial[i] = ns;
             if !ns.contact && p == 0.0 {
                 continue;
             }
-            // kraften: direkt metod ur straffet (k = f · k_e / A₀), annars p · A i
-            // aktuellt läge; CPRESS = kraft / aktuell area (finite sliding)
+            // the force: direct method from the penalty (k = f · k_e / A₀), otherwise p · A in
+            // the current configuration; CPRESS = force / current area (finite sliding)
             let area = if self.direct { self.area[i] } else { area_cur[i] };
             st.trial[i].cpress = p * area / area_cur[i].max(1e-300);
             let tr = [-p * n[0] + tau[0], -p * n[1] + tau[1], -p * n[2] + tau[2]];
@@ -881,19 +881,19 @@ impl Interaction for AnalyticalContact {
                 }
             }
             let Some(k) = k.as_deref_mut() else { continue };
-            // D = p' n nᵀ + R K_t Rᵀ (rumsligt)
+            // D = p' n nᵀ + R K_t Rᵀ (spatial)
             let mut dmat = [[0.0; 3]; 3];
             for r1 in 0..3 {
                 for c in 0..3 {
                     dmat[r1][c] = dp * n[r1] * n[c];
                 }
             }
-            // ytans krökning (finite sliding): δ(−p n) = −p κ' t tᵀ δx. Bara för noder som
-            // var slutna redan i föregående utvärdering (en nod som just slöts kan ha
-            // ett stort tillfälligt straffryck, och termen är destabiliserande för
-            // konvexa ytor)
-            // termen begränsas till en fjärdedel av elementstyvheten i noden (ett
-            // stort tillfälligt straffryck i en iteration gör annars tangenten indefinit)
+            // surface curvature (finite sliding): δ(−p n) = −p κ' t tᵀ δx. Only for nodes that
+            // were already closed in the previous evaluation (a node that has just closed can have
+            // a large temporary penalty pressure, and the term is destabilizing for
+            // convex surfaces)
+            // the term is limited to a quarter of the element stiffness at the node (a
+            // large temporary penalty pressure in one iteration otherwise makes the tangent indefinite)
             if self.anchors.is_none() && p > 0.0 && prev_eval.contact {
                 for (kap, tb) in self.surf.curvatures(pb) {
                     let t = tensor::mv(&rot, tb);
@@ -913,7 +913,7 @@ impl Interaction for AnalyticalContact {
                     }
                 }
             }
-            // G: relativ förskjutning = δu_s − δu_R + a × δw
+            // G: relative displacement = δu_s − δu_R + a × δw
             let mut cols: Vec<(usize, Dof, [f64; 3])> = Vec::new();
             for d in 0..dim {
                 let mut e = [0.0; 3];
@@ -984,12 +984,12 @@ mod tests {
     use super::*;
 
     #[test]
-    fn profilens_normal_och_bage() {
-        // linje från (1, 0) till (−1, 0): normalen = riktningen vriden 90° moturs = (0, −1)
+    fn profile_normal_and_arc() {
+        // line from (1, 0) to (−1, 0): the normal = the direction rotated 90° counterclockwise = (0, −1)
         let p = vec![Seg::Line { a: [1.0, 0.0], b: [-1.0, 0.0] }];
         let (_, n, g) = profile_closest(&p, [0.2, 0.5]).unwrap();
         assert!((n[1] + 1.0).abs() < 1e-14 && (g + 0.5).abs() < 1e-14);
-        // kvartscirkel moturs kring origo med radien 2: normalen mot centrum
+        // quarter circle counterclockwise around the origin with radius 2: the normal towards the center
         let a = Seg::Arc { c: [0.0, 0.0], r: 2.0, t0: 0.0, dt: std::f64::consts::FRAC_PI_2 };
         let (q, n, g) = profile_closest(&[a], [3.0, 3.0]).unwrap();
         let s = 2.0 / 2f64.sqrt();

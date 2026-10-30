@@ -3,7 +3,7 @@ name = "rustyfem-app"
 version = "0.1.0"
 edition = "2021"
 license = "MIT OR Apache-2.0"
-description = "RustyFEM – app med grafiskt gränssnitt (Tauri)"
+description = "RustyFEM – app with a graphical user interface (Tauri)"
 
 [lib]
 name = "rustyfem_app_lib"

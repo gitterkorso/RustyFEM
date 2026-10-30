@@ -1,28 +1,28 @@
-//! Kinematiska villkor i explicit dynamik (inkluderas med `#[path]` från
-//! `explicit.rs`): kopplingselementens låsta komponenter
+//! Kinematic constraints in explicit dynamics (included with `#[path]` from
+//! `explicit.rs`): the locked components of connector elements
 //! (`Interaction::kinematic_constraints`).
 //!
-//! Centraldifferensmetoden eliminerar inga villkor, så villkorskrafterna λ
-//! räknas i varje inkrement så att det förutsagda läget uppfyller villkoren:
-//! med raderna C och värdena g i läget u och den fria accelerationen a_f ger
-//! g(u') ≈ g(u) + h C v + κ C a = 0, a = a_f − M⁻¹ Cᵀ λ, systemet
-//! (C M⁻¹ Cᵀ) λ = (g(u) + h C v)/κ + C a_f (Lagrange-multiplikatorer på
-//! lägesnivå, så att villkoren upprätthålls exakt). Kraften
-//! Cᵀ λ läggs till den inre kraften (och ingår därmed i reaktionerna), λ
-//! skrivs ut som kopplingselementens CTF/CTM. Föreskrivna frihetsgrader har
-//! ingen rörlighet (M⁻¹ = 0). Kopplingselementens tillstånd godkänns efter
-//! varje inkrement (`commit`).
+//! The central difference method eliminates no constraints, so the constraint forces λ
+//! are computed in each increment so that the predicted position satisfies the constraints:
+//! with the rows C and the values g at the position u and the free acceleration a_f,
+//! g(u') ≈ g(u) + h C v + κ C a = 0, a = a_f − M⁻¹ Cᵀ λ gives the system
+//! (C M⁻¹ Cᵀ) λ = (g(u) + h C v)/κ + C a_f (Lagrange multipliers at
+//! position level, so that the constraints are enforced exactly). The force
+//! Cᵀ λ is added to the internal force (and is thereby included in the reactions), λ
+//! is written out as the connector elements' CTF/CTM. Prescribed degrees of freedom have
+//! no mobility (M⁻¹ = 0). The connector element state is committed after
+//! each increment (`commit`).
 
 use super::mass::LumpedMass;
 use crate::fem::assembly::{DofMap, Prepared, NONE};
 use crate::fem::dof::{self, NodeVec, SLOTS};
 use crate::model::Result;
 
-/// Räknar villkorskrafterna och lägger dem i `fint` (accelerationen är
-/// M⁻¹(Σ `add` − `fint` − Σ `sub`)). `u` är läget där
-/// accelerationen gäller, `v` hastigheten som för läget vidare, `h` nästa
-/// inkrement och `kappa` accelerationens vikt i nästa läge. Returnerar sant om
-/// `fint` ändrades (accelerationen ska då räknas om).
+/// Computes the constraint forces and adds them to `fint` (the acceleration is
+/// M⁻¹(Σ `add` − `fint` − Σ `sub`)). `u` is the position where
+/// the acceleration applies, `v` the velocity that carries the position forward, `h` the next
+/// increment and `kappa` the weight of the acceleration in the next position. Returns true if
+/// `fint` changed (the acceleration must then be recomputed).
 #[allow(clippy::too_many_arguments)]
 pub fn project(p: &Prepared, dm: &DofMap, mass: &LumpedMass, nlgeom: bool, u: &[NodeVec], v: &[NodeVec], h: f64, kappa: f64, add: &[&[NodeVec]], fint: &mut [NodeVec], sub: &[&[NodeVec]]) -> Result<bool> {
     let mut rows: Vec<(usize, Vec<(usize, usize, f64)>, f64)> = Vec::new();
@@ -37,15 +37,15 @@ pub fn project(p: &Prepared, dm: &DofMap, mass: &LumpedMass, nlgeom: bool, u: &[
     }
     let nc = rows.len();
     if nc > 3000 {
-        return crate::model::fail(format!("för många kinematiska villkor i explicit dynamik ({nc})"));
+        return crate::model::fail(format!("too many kinematic constraints in explicit dynamics ({nc})"));
     }
     let free = |n: usize, s: usize| dm.eq[n][s] != NONE;
-    // fri acceleration a_f = M⁻¹ (Σ add − fint − Σ sub)
+    // free acceleration a_f = M⁻¹ (Σ add − fint − Σ sub)
     let accel = |n: usize| -> NodeVec {
         let r: NodeVec = std::array::from_fn(|s| add.iter().map(|o| o[n][s]).sum::<f64>() - fint[n][s] - sub.iter().map(|o| o[n][s]).sum::<f64>());
         mass.solve(n, &r, |s| free(n, s))
     };
-    // M⁻¹ cₖ per villkor (nodvis)
+    // M⁻¹ cₖ per constraint (nodal)
     let minv: Vec<Vec<(usize, NodeVec)>> = rows
         .iter()
         .map(|(_, r, _)| {
@@ -93,7 +93,7 @@ pub fn project(p: &Prepared, dm: &DofMap, mass: &LumpedMass, nlgeom: bool, u: &[
             fint[n][s] += c * lam[i];
         }
     }
-    // krafterna till interaktionerna (utdata)
+    // the forces to the interactions (output)
     let mut k = 0;
     while k < nc {
         let ii = rows[k].0;
@@ -106,14 +106,14 @@ pub fn project(p: &Prepared, dm: &DofMap, mass: &LumpedMass, nlgeom: bool, u: &[
     Ok(true)
 }
 
-/// Godkänner kopplingselementens tillstånd efter ett inkrement.
+/// Commits the connector element state after an increment.
 pub fn commit(p: &Prepared) {
     for it in p.interactions.iter().filter(|it| it.name().starts_with("*CONNECTOR")) {
         it.commit();
     }
 }
 
-/// Gausselimination med pivotering; singulära (redundanta) villkor ger λ = 0.
+/// Gaussian elimination with pivoting; singular (redundant) constraints give λ = 0.
 fn solve_dense(a: &mut [f64], b: &mut [f64], n: usize) -> Vec<f64> {
     let scale = (0..n).map(|i| a[i * n + i].abs()).fold(0.0, f64::max).max(1e-300);
     for k in 0..n {

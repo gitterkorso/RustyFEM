@@ -1,33 +1,33 @@
-//! Nodbaserad submodellering: *SUBMODEL och *BOUNDARY, SUBMODEL, STEP=n.
+//! Node-based submodelling: *SUBMODEL and *BOUNDARY, SUBMODEL, STEP=n.
 //!
-//! De drivna nodernas värden interpoleras från en global körning
-//! (`--global`). Globalmodellens resultat läses från
-//! - RustyFEMs resultatfil (`rustyfem run global.inp --out global.res`, RustyFEMs
-//!   textformat för resultat); nätet står i kommentarsrader `#XN`/`#XE`/`#XS` (se
-//!   `mesh_text`) som andra läsare hoppar över, eller
-//! - en omstartfil (`global.rfres`), vars indatatext ger nätet och vars
-//!   sparade tillstånd ger nodvärdena vid stegens slut.
+//! The values of the driven nodes are interpolated from a global run
+//! (`--global`). The results of the global model are read from
+//! - the RustyFEM result file (`rustyfem run global.inp --out global.res`, the RustyFEM
+//!   text format for results); the mesh is in comment lines `#XN`/`#XE`/`#XS` (see
+//!   `mesh_text`) that other readers skip, or
+//! - a restart file (`global.rfres`), whose input text gives the mesh and whose
+//!   saved states give the nodal values at the end of the steps.
 //!
-//! Filen anges i jobbkontexten (`restart::Job::global`, CLI:t
+//! The file is given in the job context (`restart::Job::global`, the CLI
 //! `rustyfem run sub.inp --global global.res`).
 //!
-//! För varje driven nod söks det globala element (bland GLOBAL ELSET= om det
-//! anges) som innehåller noden; de naturliga koordinaterna bestäms med Newton
-//! (Gauss–Newton för skal i 3D, dvs. projektion på mittytan) och värdet
-//! interpoleras med elementets formfunktioner. En nod utanför alla element
-//! drivs av närmaste punkt på det närmaste elementet (ingen extrapolation;
-//! kontrollerat i tests/cases/infrastructure) om avståndet är högst
-//! EXTERIOR TOLERANCE (standard 0,05) gånger globalmodellens medelelementstorlek
-//! eller ABSOLUTE EXTERIOR TOLERANCE; annars blir det fel.
+//! For each driven node the global element (among GLOBAL ELSET= if
+//! given) that contains the node is searched for; the natural coordinates are found with Newton
+//! (Gauss–Newton for shells in 3D, i.e. projection onto the midsurface) and the value
+//! is interpolated with the element shape functions. A node outside all elements
+//! is driven by the closest point on the closest element (no extrapolation;
+//! checked in tests/cases/infrastructure) if the distance is at most
+//! EXTERIOR TOLERANCE (default 0.05) times the mean element size of the global model
+//! or ABSOLUTE EXTERIOR TOLERANCE; otherwise it is an error.
 //!
-//! Förskjutningar (1–3), rotationer (4–6) och temperatur (11) kan drivas.
-//! Värdet vid globalstegets slut (sista framen) används som randvillkorets
-//! slutvärde och rampas över submodellens steg som ett vanligt *BOUNDARY;
-//! för en linjär globalmodell är det detsamma som tidsinterpolation.
+//! Displacements (1–3), rotations (4–6) and temperature (11) can be driven.
+//! The value at the end of the global step (the last frame) is used as the final value
+//! of the boundary condition and ramped over the submodel step like an ordinary *BOUNDARY;
+//! for a linear global model this is the same as time interpolation.
 //!
-//! Elementformer i globalmodellen: 3-, 4-, 6- och 8-nodiga plana, axisymmetriska
-//! element och skal/membran, samt tetraedrar (4, 10), kilar (6) och hexaedrar
-//! (8, 20). TYPE=SURFACE (spänningsbaserad submodellering) stöds inte.
+//! Element shapes in the global model: 3-, 4-, 6- and 8-node planar, axisymmetric
+//! elements and shells/membranes, as well as tetrahedra (4, 10), wedges (6) and hexahedra
+//! (8, 20). TYPE=SURFACE (stress-based submodelling) is not supported.
 
 use super::api::StepType;
 use crate::elements::Family;
@@ -39,17 +39,17 @@ use std::collections::{BTreeMap, HashMap};
 use std::fmt::Write as _;
 use std::path::Path;
 
-/// Inga egna steg-typer.
+/// No step types of its own.
 pub static STEP_TYPES: &[&dyn StepType] = &[];
 
-/// `BcBlock::kind` för *BOUNDARY, SUBMODEL (följt av ":" och globalsteget).
+/// `BcBlock::kind` for *BOUNDARY, SUBMODEL (followed by ":" and the global step).
 pub const SUBMODEL_KIND: &str = "SUBMODEL:";
 
-/// Nodset med submodellens drivna noder (från *SUBMODEL-dataraderna).
+/// Node set with the driven nodes of the submodel (from the *SUBMODEL data lines).
 pub const DRIVEN_NSET: &str = "__SUBMODEL_DRIVNA";
 
 // ---------------------------------------------------------------------------
-// Elementformer
+// Element shapes
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Shape {
@@ -108,7 +108,7 @@ impl Shape {
         }
     }
 
-    /// Antal naturliga koordinater.
+    /// Number of natural coordinates.
     fn pdim(self) -> usize {
         match self {
             Shape::T3 | Shape::T6 | Shape::Q4 | Shape::Q8 => 2,
@@ -125,7 +125,7 @@ impl Shape {
         }
     }
 
-    /// Närmaste punkt i referenselementet (ungefärlig för simplex).
+    /// Closest point in the reference element (approximate for simplices).
     fn clamp(self, x: [f64; 3]) -> [f64; 3] {
         let tri = |r: f64, s: f64| -> (f64, f64) {
             let (r, s) = (r.max(0.0), s.max(0.0));
@@ -151,7 +151,7 @@ impl Shape {
         }
     }
 
-    /// Formfunktionerna i den naturliga punkten `x` (.inp-formatets nodordning).
+    /// The shape functions at the natural point `x` (node order of the .inp format).
     pub fn n(self, x: [f64; 3]) -> Vec<f64> {
         let (r, s, t) = (x[0], x[1], x[2]);
         match self {
@@ -240,7 +240,7 @@ const H20P: [[f64; 3]; 20] = [
     [-1.0, 1.0, 0.0],
 ];
 
-/// Formen för en elementtyp (`None` = används inte för interpolation).
+/// The shape for an element type (`None` = not used for interpolation).
 pub fn shape_of(et: &dyn crate::elements::ElementType) -> Option<Shape> {
     let n = et.n_connectivity();
     let planar = matches!(et.family(), Family::Continuum2D | Family::Axisymmetric | Family::Shell | Family::Membrane) || (et.family() == Family::Heat && et.dim() == 2);
@@ -268,7 +268,7 @@ pub fn shape_of(et: &dyn crate::elements::ElementType) -> Option<Shape> {
 }
 
 // ---------------------------------------------------------------------------
-// Globalmodellens nät
+// Mesh of the global model
 
 #[derive(Debug, Clone)]
 struct GElem {
@@ -276,7 +276,7 @@ struct GElem {
     nodes: Vec<usize>,
 }
 
-/// Globalmodellens nät: noder, element med former och elementset.
+/// Mesh of the global model: nodes, elements with shapes and element sets.
 #[derive(Debug, Clone, Default)]
 pub struct GlobalMesh {
     pub dim: usize,
@@ -287,7 +287,7 @@ pub struct GlobalMesh {
     elsets: BTreeMap<String, Vec<usize>>,
 }
 
-/// Nätet som kommentarsrader för resultatfilen (läses av `GlobalMesh::parse`).
+/// The mesh as comment lines for the result file (read by `GlobalMesh::parse`).
 pub fn mesh_text(m: &FeModel) -> String {
     let mut s = String::from("# rustyfem-mesh 1\n");
     let _ = writeln!(s, "#XD;{}", m.dim());
@@ -323,13 +323,13 @@ fn split_ref(r: &str) -> Option<(String, i64)> {
 }
 
 impl GlobalMesh {
-    /// Nätet ur en modell.
+    /// The mesh from a model.
     pub fn from_model(m: &FeModel) -> GlobalMesh {
         let text = mesh_text(m);
         GlobalMesh::parse(&text).unwrap_or_default()
     }
 
-    /// Läser nätraderna i en resultatfil (`None` om de saknas).
+    /// Reads the mesh lines in a result file (`None` if they are missing).
     pub fn parse(text: &str) -> Option<GlobalMesh> {
         let mut g = GlobalMesh { dim: 3, ..Default::default() };
         let mut nmap: HashMap<(String, i64), usize> = HashMap::new();
@@ -369,7 +369,7 @@ impl GlobalMesh {
         any.then_some(g)
     }
 
-    /// Medelstorleken (diagonalen i elementets omslutande låda).
+    /// The mean size (the diagonal of the element bounding box).
     fn mean_size(&self) -> f64 {
         if self.elems.is_empty() {
             return 1.0;
@@ -400,8 +400,8 @@ impl GlobalMesh {
         x
     }
 
-    /// Naturliga koordinater för punkten `p` i elementet (Gauss–Newton) och
-    /// avståndet till elementet (0 inuti).
+    /// Natural coordinates for the point `p` in the element (Gauss–Newton) and
+    /// the distance to the element (0 inside).
     fn locate(&self, e: &GElem, p: [f64; 3]) -> ([f64; 3], f64) {
         let pd = e.shape.pdim();
         let sd = if self.dim == 2 { 2 } else { 3 };
@@ -410,7 +410,7 @@ impl GlobalMesh {
         for _ in 0..40 {
             let x = self.map(e, xi);
             let r: Vec<f64> = (0..sd).map(|k| x[k] - p[k]).collect();
-            // jakobian dx/dξ med centrala differenser
+            // Jacobian dx/dξ with central differences
             let mut jac = vec![[0.0; 3]; sd];
             for a in 0..pd {
                 let (mut xp, mut xm) = (xi, xi);
@@ -433,7 +433,7 @@ impl GlobalMesh {
             let Some(d) = solve_small(&a, &b, pd) else { break };
             let mut step = 0.0f64;
             for i in 0..pd {
-                // begränsa steget så att Newton inte rusar iväg från elementet
+                // limit the step so that Newton does not run away from the element
                 let di = d[i].clamp(-2.0, 2.0);
                 xi[i] += di;
                 step = step.max(di.abs());
@@ -445,7 +445,7 @@ impl GlobalMesh {
         let xc = e.shape.clamp(xi);
         let (a, b) = (self.map(e, xc), self.map(e, xi));
         let ins: f64 = (0..sd).map(|k| (a[k] - b[k]).powi(2)).sum::<f64>().sqrt();
-        // projektionens avstånd: för fullt dimensionerade element är punkten själv
+        // distance of the projection: for fully dimensioned elements the point itself is
         let off: f64 = if pd == sd { (0..sd).map(|k| (b[k] - p[k]).powi(2)).sum::<f64>().sqrt() } else { 0.0 };
         (xi, ins + off)
     }
@@ -483,19 +483,19 @@ fn solve_small(a: &[[f64; 3]; 3], b: &[f64; 3], n: usize) -> Option<[f64; 3]> {
 }
 
 // ---------------------------------------------------------------------------
-// Globalmodellens resultat
+// Results of the global model
 
-/// Globalmodellens nät och nodvärden (per slot) vid varje stegs slut.
+/// Mesh and nodal values (per slot) of the global model at the end of each step.
 pub struct GlobalSource {
     pub mesh: GlobalMesh,
-    /// (globalsteg 1-baserat, nodvärden i nätets nodordning).
+    /// (global step 1-based, nodal values in the node order of the mesh).
     pub steps: Vec<(usize, Vec<NodeVec>)>,
 }
 
 impl GlobalSource {
-    /// Läser en resultatfil (RustyFEMs textformat med nät) eller en omstartfil (.rfres).
+    /// Reads a result file (the RustyFEM text format with mesh) or a restart file (.rfres).
     pub fn load(path: &Path) -> Result<GlobalSource> {
-        let bytes = std::fs::read(path).map_err(|e| FemError(format!("kunde inte läsa globalmodellen {}: {e}", path.display())))?;
+        let bytes = std::fs::read(path).map_err(|e| FemError(format!("could not read the global model {}: {e}", path.display())))?;
         if bytes.starts_with(b"RUSTYFEM-RESTART") {
             let rf = super::restart::RestartFile::from_bytes(&bytes)?;
             let m = rf.model(path.parent().unwrap_or(Path::new(".")))?;
@@ -506,7 +506,7 @@ impl GlobalSource {
         let text = String::from_utf8_lossy(&bytes);
         let Some(mesh) = GlobalMesh::parse(&text) else {
             return fail(format!(
-                "{} saknar globalmodellens nät – skriv den med 'rustyfem run global.inp --out {}' eller använd omstartfilen",
+                "{} lacks the mesh of the global model – write it with 'rustyfem run global.inp --out {}' or use the restart file",
                 path.display(),
                 path.file_name().map(|s| s.to_string_lossy().to_string()).unwrap_or_default()
             ));
@@ -515,7 +515,7 @@ impl GlobalSource {
         Ok(Self::from_results(mesh, &rs))
     }
 
-    /// Nodvärden ur resultaten (sista framen i varje steg).
+    /// Nodal values from the results (the last frame in each step).
     pub fn from_results(mesh: GlobalMesh, rs: &ResultSet) -> GlobalSource {
         let mut steps = Vec::new();
         for st in &rs.steps {
@@ -541,16 +541,16 @@ impl GlobalSource {
     }
 }
 
-/// Interpolationen för en driven nod: globala noder och vikter.
+/// The interpolation for a driven node: global nodes and weights.
 #[derive(Debug, Clone)]
 pub struct Driver {
     pub nodes: Vec<usize>,
     pub weights: Vec<f64>,
-    /// Avstånd till närmaste element (0 inuti).
+    /// Distance to the closest element (0 inside).
     pub distance: f64,
 }
 
-/// Inställningar från *SUBMODEL.
+/// Settings from *SUBMODEL.
 struct Options {
     elset: Option<Vec<usize>>,
     tol: f64,
@@ -559,13 +559,13 @@ struct Options {
 fn options(kw: &RawKeyword, g: &GlobalMesh) -> Result<Options> {
     if let Some(t) = kw.param_upper("TYPE") {
         if t != "NODE" {
-            return kw.err(format!("TYPE={t} stöds inte (bara nodbaserad submodellering, TYPE=NODE)"));
+            return kw.err(format!("TYPE={t} is not supported (only node-based submodelling, TYPE=NODE)"));
         }
     }
     let num = |k: &str| -> Result<Option<f64>> {
         match kw.param(k) {
             None => Ok(None),
-            Some(v) => crate::fem::model::parse_f64(v).map(Some).ok_or_else(|| FemError(format!("{}: {k}={v} är inget tal", kw.location()))),
+            Some(v) => crate::fem::model::parse_f64(v).map(Some).ok_or_else(|| FemError(format!("{}: {k}={v} is not a number", kw.location()))),
         }
     };
     let rel = num("EXTERIOR TOLERANCE")?.unwrap_or(0.05);
@@ -585,7 +585,7 @@ fn options(kw: &RawKeyword, g: &GlobalMesh) -> Result<Options> {
                     .or_else(|| g.elsets.iter().find(|(k, _)| k.rsplit_once('.').is_some_and(|(_, s)| s == up)).map(|(_, v)| v));
                 match set {
                     Some(s) => all.extend(s.iter().copied()),
-                    None => return kw.err(format!("GLOBAL ELSET={up} finns inte i globalmodellen")),
+                    None => return kw.err(format!("GLOBAL ELSET={up} does not exist in the global model")),
                 }
             }
             Some(all)
@@ -595,7 +595,7 @@ fn options(kw: &RawKeyword, g: &GlobalMesh) -> Result<Options> {
 }
 
 impl GlobalMesh {
-    /// Interpolationen för punkten `p` (se modulens dokumentation).
+    /// The interpolation for the point `p` (see the module documentation).
     pub fn driver(&self, p: [f64; 3], elset: Option<&[usize]>, tol: f64) -> std::result::Result<Driver, f64> {
         let all: Vec<usize>;
         let cand: &[usize] = match elset {
@@ -612,7 +612,7 @@ impl GlobalMesh {
             let margin = tol + 1e-9 * bbox_diag(&b);
             let sd = if self.dim == 2 { 2 } else { 3 };
             let pd = e.shape.pdim();
-            // skal i 3D: lådan förstoras i normalens riktning (projektion)
+            // shell in 3D: the box is enlarged in the normal direction (projection)
             let extra = if pd < sd { 0.5 * bbox_diag(&b) } else { 0.0 };
             if (0..sd).any(|k| p[k] < b[0][k] - margin - extra || p[k] > b[1][k] + margin + extra) {
                 continue;
@@ -627,8 +627,8 @@ impl GlobalMesh {
         }
         match best {
             Some((d, ei, xi)) if d <= tol + 1e-12 => {
-                // utanför elementet: närmaste punkt på elementet
-                // (ingen extrapolation)
+                // outside the element: closest point on the element
+                // (no extrapolation)
                 let e = &self.elems[ei];
                 Ok(Driver { nodes: e.nodes.clone(), weights: e.shape.n(e.shape.clamp(xi)), distance: d })
             }
@@ -638,18 +638,18 @@ impl GlobalMesh {
     }
 }
 
-/// Byter *BOUNDARY, SUBMODEL mot vanliga randvillkor med värden från
-/// globalmodellen. `None` om modellen inte är en submodell.
+/// Replaces *BOUNDARY, SUBMODEL with ordinary boundary conditions with values from
+/// the global model. `None` if the model is not a submodel.
 pub fn prepare(model: &FeModel) -> Result<Option<FeModel>> {
     let uses = model.steps.iter().any(|s| s.bcs.iter().any(|b| b.kind.starts_with(SUBMODEL_KIND)));
     if !uses {
         return Ok(None);
     }
     let Some(kw) = model.extra.iter().find(|k| k.name == "SUBMODEL") else {
-        return fail("*BOUNDARY, SUBMODEL kräver *SUBMODEL i modelldata");
+        return fail("*BOUNDARY, SUBMODEL requires *SUBMODEL in the model data");
     };
     let Some(path) = super::restart::job().and_then(|j| j.global) else {
-        return kw.err("submodellen kräver globalmodellens resultat (rustyfem run sub.inp --global global.res)");
+        return kw.err("the submodel requires the results of the global model (rustyfem run sub.inp --global global.res)");
     };
     let g = GlobalSource::load(&path)?;
     let opts = options(kw, &g.mesh)?;
@@ -661,18 +661,18 @@ pub fn prepare(model: &FeModel) -> Result<Option<FeModel>> {
             let Some(gs) = b.kind.strip_prefix(SUBMODEL_KIND) else { continue };
             let gstep: usize = gs.parse().unwrap_or(1);
             let Some(vals) = g.values(gstep) else {
-                return fail(format!("{}: globalmodellen ({}) saknar steg {gstep}", b.source, path.display()));
+                return fail(format!("{}: the global model ({}) has no step {gstep}", b.source, path.display()));
             };
             for item in b.items.iter_mut() {
                 let (n, d, _) = *item;
                 if driven.binary_search(&n).is_err() {
-                    return fail(format!("{}: nod {} är inte en driven nod i *SUBMODEL", b.source, model.node_name(n)));
+                    return fail(format!("{}: node {} is not a driven node in *SUBMODEL", b.source, model.node_name(n)));
                 }
                 if !cache.contains_key(&n) {
                     let dr = g.mesh.driver(model.nodes[n], opts.elset.as_deref(), opts.tol).map_err(|dist| {
-                        let how = if dist.is_finite() { format!("avståndet till närmaste element är {dist:.4e}") } else { "inget element i närheten".into() };
+                        let how = if dist.is_finite() { format!("the distance to the closest element is {dist:.4e}") } else { "no element nearby".into() };
                         FemError(format!(
-                            "{}: driven nod {} ligger utanför globalmodellen ({how}, tolerans {:.4e}; öka EXTERIOR TOLERANCE)",
+                            "{}: driven node {} lies outside the global model ({how}, tolerance {:.4e}; increase EXTERIOR TOLERANCE)",
                             kw.location(),
                             model.node_name(n),
                             opts.tol

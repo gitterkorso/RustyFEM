@@ -1,14 +1,14 @@
-//! Modellen: geometri, material, stöd och laster på ett ställe.
+//! The model: geometry, materials, supports and loads in one place.
 //!
-//! Skillnader mot arbetsflödet med indatafiler (.inp):
-//! - ingen part/instance/assembly: geometri läggs direkt i modellen och noder
-//!   på samma plats slås ihop automatiskt (balkar fäster i plattor osv.)
-//! - ingen separat mesh-modul: varje geometrikommando meshar sig självt
-//! - stöd och laster väljs med geometri (`Sel::x(0.0)`) i stället för set
-//! - laster anges som totalkraft och fördelas konsistent över valda ytor/kanter
-//! - ett enda linjärt statiskt steg
+//! Differences from the workflow with input files (.inp):
+//! - no part/instance/assembly: geometry is added directly to the model and nodes
+//!   at the same location are merged automatically (beams attach to plates etc.)
+//! - no separate mesh module: each geometry command meshes itself
+//! - supports and loads are selected by geometry (`Sel::x(0.0)`) instead of sets
+//! - loads are given as a total force and distributed consistently over the selected faces/edges
+//! - a single linear static step
 //!
-//! Modellen löses genom att översättas till kärnans `FeModel` (se `crate::legacy`).
+//! The model is solved by translating it into the core `FeModel` (see `crate::legacy`).
 
 use crate::results::Results;
 use crate::section::BeamSection;
@@ -47,7 +47,7 @@ pub enum Dim {
     Three,
 }
 
-/// Elementtyper, namngivna som i .inp-formatet.
+/// Element types, named as in the .inp format.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum ElemKind {
     T2D2,
@@ -66,7 +66,7 @@ impl ElemKind {
         format!("{:?}", self)
     }
 
-    /// Frihetsgrader per nod (index i UX..RZ).
+    /// Degrees of freedom per node (index into UX..RZ).
     pub fn node_dofs(self) -> &'static [usize] {
         use ElemKind::*;
         match self {
@@ -118,12 +118,12 @@ impl Material {
         self
     }
 
-    /// Stål i SI-enheter (Pa, kg/m³).
+    /// Steel in SI units (Pa, kg/m³).
     pub fn steel() -> Self {
         Material::new("steel", 210e9, 0.3).with_density(7850.0)
     }
 
-    /// Aluminium i SI-enheter (Pa, kg/m³).
+    /// Aluminium in SI units (Pa, kg/m³).
     pub fn aluminium() -> Self {
         Material::new("aluminium", 70e9, 0.33).with_density(2700.0)
     }
@@ -135,10 +135,10 @@ impl Material {
 
 #[derive(Debug, Clone)]
 pub enum Section {
-    /// Kontinuumelement; `thickness` används bara i 2D.
+    /// Continuum element; `thickness` is only used in 2D.
     Solid { material: usize, thickness: f64 },
     Truss { material: usize, area: f64 },
-    /// `n1` är balkens första tvärsnittsaxel.
+    /// `n1` is the first cross-section axis of the beam.
     Beam { material: usize, profile: BeamSection, n1: [f64; 3] },
 }
 
@@ -157,11 +157,11 @@ pub struct Element {
     pub section: usize,
 }
 
-/// Nodurval med geometri. Exempel: `Sel::x(0.0)`, `Sel::x(2.0).and_y_in(0.0, 0.1)`.
+/// Node selection by geometry. Example: `Sel::x(0.0)`, `Sel::x(2.0).and_y_in(0.0, 0.1)`.
 #[derive(Debug, Clone)]
 pub enum Sel {
     All,
-    /// Lista av (axel, min, max).
+    /// List of (axis, min, max).
     Box(Vec<(usize, f64, f64)>),
     Point([f64; 3]),
     Nodes(Vec<usize>),
@@ -196,7 +196,7 @@ impl Sel {
         Sel::Nodes(ids)
     }
 
-    /// Lägg till ett villkor `lo <= koordinat[axis] <= hi`.
+    /// Add a condition `lo <= coordinate[axis] <= hi`.
     pub fn and(self, axis: usize, lo: f64, hi: f64) -> Self {
         match self {
             Sel::Box(mut c) => {
@@ -238,18 +238,18 @@ impl Sel {
                 .collect::<Vec<_>>()
                 .join(" "),
             Sel::Point(p) => format!("at=({},{},{})", p[0], p[1], p[2]),
-            Sel::Nodes(n) => format!("{} noder", n.len()),
+            Sel::Nodes(n) => format!("{} nodes", n.len()),
         }
     }
 }
 
 #[derive(Debug, Clone)]
 pub enum Fixity {
-    /// Alla frihetsgrader låsta (inspänning).
+    /// All degrees of freedom constrained (clamped).
     Fixed,
-    /// Translationer låsta, rotationer fria (led).
+    /// Translations constrained, rotations free (pinned).
     Pinned,
-    /// Valda frihetsgrader med föreskrivet värde.
+    /// Selected degrees of freedom with a prescribed value.
     Dofs(Vec<(usize, f64)>),
 }
 
@@ -261,13 +261,13 @@ pub struct Support {
 
 #[derive(Debug, Clone)]
 pub enum Load {
-    /// Total kraft [fx,fy,fz] och moment [mx,my,mz] på urvalet.
+    /// Total force [fx,fy,fz] and moment [mx,my,mz] on the selection.
     Force { sel: Sel, f: [f64; 6] },
-    /// Normaltryck (positivt = trycker in i materialet) på urvalets randytor.
+    /// Normal pressure (positive = pushes into the material) on the boundary faces of the selection.
     Pressure { sel: Sel, p: f64 },
 }
 
-/// En randkant (2D) eller randyta (3D) på ett kontinuumelement.
+/// A boundary edge (2D) or boundary face (3D) of a continuum element.
 pub(crate) struct Facet {
     pub nodes: Vec<usize>,
     pub elem: usize,
@@ -276,11 +276,11 @@ pub(crate) struct Facet {
 #[derive(Debug, Clone)]
 pub struct Model {
     pub dim: Dim,
-    /// Plant töjningstillstånd i stället för plan spänning (2D).
+    /// Plane strain instead of plane stress (2D).
     pub plane_strain: bool,
-    /// Meshar 2D-ytor med trianglar i stället för fyrhörningar.
+    /// Meshes 2D regions with triangles instead of quadrilaterals.
     pub triangles: bool,
-    /// Avstånd under vilket noder slås ihop. Sätt före geometrin.
+    /// Distance below which nodes are merged. Set before the geometry.
     pub merge_tol: f64,
     pub nodes: Vec<[f64; 3]>,
     pub elements: Vec<Element>,
@@ -326,7 +326,7 @@ impl Model {
         }
     }
 
-    /// Plan modell (x-y). Plan spänning om inte `plane_strain` sätts.
+    /// Plane model (x-y). Plane stress unless `plane_strain` is set.
     pub fn new_2d() -> Self {
         Self::with_dim(Dim::Two)
     }
@@ -335,7 +335,7 @@ impl Model {
         Self::with_dim(Dim::Three)
     }
 
-    /// Lägger till (eller ersätter, vid samma namn) ett material.
+    /// Adds a material (or replaces one with the same name).
     pub fn material(&mut self, mat: Material) -> usize {
         if let Some(i) = self.materials.iter().position(|m| m.name == mat.name) {
             self.materials[i] = mat;
@@ -351,7 +351,7 @@ impl Model {
         [(p[0] / h).floor() as i64, (p[1] / h).floor() as i64, (p[2] / h).floor() as i64]
     }
 
-    /// Lägger till en nod, eller returnerar en befintlig nod på samma plats.
+    /// Adds a node, or returns an existing node at the same location.
     pub fn add_node(&mut self, mut p: [f64; 3]) -> usize {
         if self.dim == Dim::Two {
             p[2] = 0.0;
@@ -388,31 +388,31 @@ impl Model {
 
     fn check_material(&self, material: usize) -> Result<()> {
         if material >= self.materials.len() {
-            return fail(format!("material nr {material} finns inte – lägg till det med Model::material först"));
+            return fail(format!("material no. {material} does not exist – add it with Model::material first"));
         }
         Ok(())
     }
 
-    /// Rektangulär platta mellan hörnen `p0` och `p1`, meshad med elementstorlek `size`.
+    /// Rectangular plate between the corners `p0` and `p1`, meshed with element size `size`.
     pub fn plate(&mut self, p0: [f64; 2], p1: [f64; 2], thickness: f64, size: f64, material: usize) -> Result<Range<usize>> {
         let (x0, x1) = (p0[0].min(p1[0]), p0[0].max(p1[0]));
         let (y0, y1) = (p0[1].min(p1[1]), p0[1].max(p1[1]));
         self.quad_region([[x0, y0], [x1, y0], [x1, y1], [x0, y1]], thickness, size, material)
     }
 
-    /// Godtycklig fyrhörning (fyra hörn i följd), strukturerat meshad.
+    /// Arbitrary quadrilateral (four corners in order), with a structured mesh.
     pub fn quad_region(&mut self, corners: [[f64; 2]; 4], thickness: f64, size: f64, material: usize) -> Result<Range<usize>> {
         if self.dim != Dim::Two {
-            return fail("plattor (plate/quad) kräver en 2D-modell – använd box för 3D");
+            return fail("plates (plate/quad) require a 2D model – use box for 3D");
         }
         if !(thickness > 0.0) || !(size > 0.0) {
-            return fail("tjocklek och elementstorlek måste vara större än noll");
+            return fail("thickness and element size must be greater than zero");
         }
         self.check_material(material)?;
         let mut c = corners;
         let area2: f64 = (0..4).map(|i| c[i][0] * c[(i + 1) % 4][1] - c[(i + 1) % 4][0] * c[i][1]).sum();
         if area2.abs() < 1e-300 {
-            return fail("fyrhörningen har ingen area");
+            return fail("the quadrilateral has no area");
         }
         if area2 < 0.0 {
             c.swap(1, 3);
@@ -450,20 +450,20 @@ impl Model {
         Ok(start..self.elements.len())
     }
 
-    /// Rätblock mellan hörnen `p0` och `p1`, meshat med hexaedrar (C3D8).
+    /// Rectangular block between the corners `p0` and `p1`, meshed with hexahedra (C3D8).
     pub fn box_solid(&mut self, p0: [f64; 3], p1: [f64; 3], size: f64, material: usize) -> Result<Range<usize>> {
         if self.dim != Dim::Three {
-            return fail("box kräver en 3D-modell");
+            return fail("box requires a 3D model");
         }
         if !(size > 0.0) {
-            return fail("elementstorlek måste vara större än noll");
+            return fail("element size must be greater than zero");
         }
         self.check_material(material)?;
         let lo = [p0[0].min(p1[0]), p0[1].min(p1[1]), p0[2].min(p1[2])];
         let hi = [p0[0].max(p1[0]), p0[1].max(p1[1]), p0[2].max(p1[2])];
         let n: Vec<usize> = (0..3).map(|a| (((hi[a] - lo[a]) / size).ceil() as usize).max(1)).collect();
         if (0..3).any(|a| hi[a] - lo[a] <= 0.0) {
-            return fail("box måste ha utsträckning i alla tre riktningar");
+            return fail("box must have an extent in all three directions");
         }
         let sec = self.add_section(Section::Solid { material, thickness: 1.0 });
         let idx = |i: usize, j: usize, k: usize| (k * (n[1] + 1) + j) * (n[0] + 1) + i;
@@ -501,10 +501,10 @@ impl Model {
         Ok(start..self.elements.len())
     }
 
-    /// Balk från `a` till `b` uppdelad i `divisions` element (B23 i 2D, B33 i 3D).
+    /// Beam from `a` to `b` divided into `divisions` elements (B23 in 2D, B33 in 3D).
     ///
-    /// Tvärsnittets höjd (i11) ligger i riktningen `up`: standard är y i 2D och
-    /// z i 3D (x för vertikala balkar i 3D).
+    /// The cross-section height (i11) lies in the direction `up`: the default is y in 2D and
+    /// z in 3D (x for vertical beams in 3D).
     pub fn beam(
         &mut self,
         a: [f64; 3],
@@ -519,7 +519,7 @@ impl Model {
         let d = sub(b, a);
         let l = norm(d);
         if l <= self.merge_tol {
-            return fail("balken har ingen längd");
+            return fail("the beam has no length");
         }
         let t = scale(d, 1.0 / l);
         let n1 = if self.dim == Dim::Two {
@@ -527,12 +527,12 @@ impl Model {
         } else {
             let mut upv = up.unwrap_or([0.0, 0.0, 1.0]);
             if norm(upv) == 0.0 {
-                return fail("up-riktningen får inte vara nollvektorn");
+                return fail("the up direction must not be the zero vector");
             }
             upv = scale(upv, 1.0 / norm(upv));
             if dot(upv, t).abs() > 0.999 {
                 if up.is_some() {
-                    return fail("up-riktningen är parallell med balken");
+                    return fail("the up direction is parallel to the beam");
                 }
                 upv = [1.0, 0.0, 0.0];
             }
@@ -551,43 +551,43 @@ impl Model {
         Ok(start..self.elements.len())
     }
 
-    /// Stång (endast axialkraft) från `a` till `b`.
+    /// Truss (axial force only) from `a` to `b`.
     pub fn truss(&mut self, a: [f64; 3], b: [f64; 3], area: f64, material: usize) -> Result<usize> {
         self.check_material(material)?;
         if !(area > 0.0) {
-            return fail("stångens area måste vara större än noll");
+            return fail("the truss area must be greater than zero");
         }
         let na = self.add_node(a);
         let nb = self.add_node(b);
         if na == nb {
-            return fail("stången har ingen längd");
+            return fail("the truss has no length");
         }
         let kind = if self.dim == Dim::Two { ElemKind::T2D2 } else { ElemKind::T3D2 };
         let sec = self.add_section(Section::Truss { material, area });
         Ok(self.add_element(kind, vec![na, nb], sec))
     }
 
-    /// Inspänning: alla frihetsgrader låsta.
+    /// Clamped: all degrees of freedom constrained.
     pub fn fix(&mut self, sel: Sel) {
         self.supports.push(Support { sel, fixity: Fixity::Fixed });
     }
 
-    /// Led: translationer låsta, rotationer fria.
+    /// Pinned: translations constrained, rotations free.
     pub fn pin(&mut self, sel: Sel) {
         self.supports.push(Support { sel, fixity: Fixity::Pinned });
     }
 
-    /// Valda frihetsgrader med föreskrivna värden, t.ex. `&[(UY, 0.0)]`.
+    /// Selected degrees of freedom with prescribed values, e.g. `&[(UY, 0.0)]`.
     pub fn support(&mut self, sel: Sel, dofs: &[(usize, f64)]) {
         self.supports.push(Support { sel, fixity: Fixity::Dofs(dofs.to_vec()) });
     }
 
-    /// Total kraft på urvalet. Över ytor/kanter fördelas den som jämnt tryck.
+    /// Total force on the selection. Over faces/edges it is distributed as uniform pressure.
     pub fn force(&mut self, sel: Sel, f: [f64; 3]) {
         self.loads.push(Load::Force { sel, f: [f[0], f[1], f[2], 0.0, 0.0, 0.0] });
     }
 
-    /// Totalt moment på urvalet (kräver balknoder).
+    /// Total moment on the selection (requires beam nodes).
     pub fn moment(&mut self, sel: Sel, m: [f64; 3]) {
         self.loads.push(Load::Force { sel, f: [0.0, 0.0, 0.0, m[0], m[1], m[2]] });
     }
@@ -596,12 +596,12 @@ impl Model {
         self.loads.push(Load::Pressure { sel, p });
     }
 
-    /// Tyngdacceleration, t.ex. `[0.0, -9.81, 0.0]`. Kräver densitet på materialen.
+    /// Gravitational acceleration, e.g. `[0.0, -9.81, 0.0]`. Requires density on the materials.
     pub fn set_gravity(&mut self, g: [f64; 3]) {
         self.gravity = Some(g);
     }
 
-    /// Faktisk elementtyp (plan spänning/töjning avgörs av modellen).
+    /// Actual element type (plane stress/strain is decided by the model).
     pub fn elem_kind(&self, e: &Element) -> ElemKind {
         match (e.kind, self.plane_strain) {
             (ElemKind::CPS4, true) => ElemKind::CPE4,
@@ -627,7 +627,7 @@ impl Model {
         (norm(sub(hi, lo)) * 1e-6).max(self.merge_tol)
     }
 
-    /// Noderna som ett urval träffar.
+    /// The nodes hit by a selection.
     pub fn select(&self, sel: &Sel) -> Result<Vec<usize>> {
         let tol = self.sel_tol();
         let n = self.nodes.len();
@@ -644,7 +644,7 @@ impl Model {
                     }) {
                         let q = self.nodes[near];
                         return fail(format!(
-                            "ingen nod vid ({}, {}, {}); närmaste nod ligger vid ({}, {}, {})",
+                            "no node at ({}, {}, {}); the nearest node is at ({}, {}, {})",
                             p[0], p[1], p[2], q[0], q[1], q[2]
                         ));
                     }
@@ -653,20 +653,20 @@ impl Model {
             }
             Sel::Nodes(ids) => {
                 if let Some(&bad) = ids.iter().find(|&&i| i >= n) {
-                    return fail(format!("nod {bad} finns inte"));
+                    return fail(format!("node {bad} does not exist"));
                 }
                 ids.clone()
             }
         };
         if v.is_empty() {
-            return fail(format!("urvalet '{}' träffade inga noder", sel.describe()));
+            return fail(format!("the selection '{}' matched no nodes", sel.describe()));
         }
         Ok(v)
     }
 
     pub fn check(&self) -> Result<()> {
         if self.elements.is_empty() {
-            return fail("modellen har inga element – lägg till geometri (plate, quad, box, beam, truss)");
+            return fail("the model has no elements – add geometry (plate, quad, box, beam, truss)");
         }
         for s in &self.sections {
             self.check_material(s.material())?;
@@ -674,7 +674,7 @@ impl Model {
         Ok(())
     }
 
-    /// Bitmask per nod över vilka frihetsgrader som finns (från anslutna element).
+    /// Bitmask per node of the degrees of freedom present (from connected elements).
     pub fn active_dofs(&self) -> Vec<u8> {
         let mut act = vec![0u8; self.nodes.len()];
         for e in &self.elements {
@@ -689,7 +689,7 @@ impl Model {
         act
     }
 
-    /// Alla låsta frihetsgrader som (nod, frihetsgrad, värde).
+    /// All constrained degrees of freedom as (node, dof, value).
     pub fn constraints(&self, active: &[u8]) -> Result<Vec<(usize, usize, f64)>> {
         let mut map: BTreeMap<(usize, usize), f64> = BTreeMap::new();
         for s in &self.supports {
@@ -706,7 +706,7 @@ impl Model {
                     Fixity::Dofs(list) => {
                         for &(d, v) in list {
                             if self.dim == Dim::Two && matches!(d, UZ | RX | RY) {
-                                return fail(format!("frihetsgraden {} finns inte i en 2D-modell", DOF_NAMES[d]));
+                                return fail(format!("the degree of freedom {} does not exist in a 2D model", DOF_NAMES[d]));
                             }
                             if on(d) {
                                 map.insert((n, d), v);
@@ -717,7 +717,7 @@ impl Model {
             }
         }
         if map.is_empty() {
-            return fail("modellen saknar stöd – lägg till t.ex. fix/pin/support");
+            return fail("the model has no supports – add e.g. fix/pin/support");
         }
         Ok(map.into_iter().map(|((n, d), v)| (n, d, v)).collect())
     }
@@ -747,7 +747,7 @@ impl Model {
         v
     }
 
-    /// För varje nod på randytan: (nod, ∫N dA, ∫N n dA) med utåtriktad normal n.
+    /// For each node on the boundary face: (node, ∫N dA, ∫N n dA) with outward normal n.
     fn facet_integrals(&self, f: &Facet) -> Vec<(usize, f64, [f64; 3])> {
         let e = &self.elements[f.elem];
         let ne = e.nodes.len() as f64;
@@ -807,7 +807,7 @@ impl Model {
         (0..4).map(|i| (f.nodes[i], w[i], scale(nw[i], sign))).collect()
     }
 
-    /// Ekvivalenta nodlaster från alla laster och tyngdkraft.
+    /// Equivalent nodal loads from all loads and gravity.
     pub fn nodal_loads(&self, active: &[u8]) -> Result<Vec<[f64; 6]>> {
         let mut f = vec![[0.0; 6]; self.nodes.len()];
         let mut facets: Option<Vec<Facet>> = None;
@@ -815,7 +815,7 @@ impl Model {
             match load {
                 Load::Force { sel, f: ff } => {
                     if self.dim == Dim::Two && (ff[2] != 0.0 || ff[3] != 0.0 || ff[4] != 0.0) {
-                        return fail("fz, mx och my finns inte i en 2D-modell");
+                        return fail("fz, mx and my do not exist in a 2D model");
                     }
                     let nodes = self.select(sel)?;
                     let set: HashSet<usize> = nodes.iter().copied().collect();
@@ -846,7 +846,7 @@ impl Model {
                         let rot: Vec<usize> = nodes.iter().copied().filter(|&n| active[n] & (1 << d) != 0).collect();
                         if rot.is_empty() {
                             return fail(format!(
-                                "momentet {} på '{}' kräver noder med rotationsfrihetsgrad (balkar)",
+                                "the moment {} on '{}' requires nodes with rotational degrees of freedom (beams)",
                                 ["mx", "my", "mz"][d - 3],
                                 sel.describe()
                             ));
@@ -869,7 +869,7 @@ impl Model {
                         }
                     }
                     if !any {
-                        return fail(format!("tryck på '{}' kräver en randkant/randyta på plattor eller block", sel.describe()));
+                        return fail(format!("pressure on '{}' requires a boundary edge/face on plates or blocks", sel.describe()));
                     }
                 }
             }
@@ -891,7 +891,7 @@ impl Model {
                 }
             }
             if !any {
-                return fail("tyngdkraft kräver att minst ett material har densitet (rho)");
+                return fail("gravity requires at least one material with density (rho)");
             }
         }
         Ok(f)

@@ -1,40 +1,40 @@
-//! Rörkrökar med deformerbart tvärsnitt (område beams3): ELBOW31, ELBOW32,
-//! ELBOW31B och ELBOW31C med `*BEAM SECTION, SECTION=ELBOW`.
+//! Pipe elbows with a deformable section (area beams3): ELBOW31, ELBOW32,
+//! ELBOW31B and ELBOW31C with `*BEAM SECTION, SECTION=ELBOW`.
 //!
-//! Elementen är skal runt röret: balkaxelns förskjutning och rotation
-//! interpoleras linjärt (ELBOW31/31B/31C) eller kvadratiskt (ELBOW32) längs
-//! axeln och tvärsnittets ovalisering, välvning och normalens lutning med
-//! Fourierserier runt röret (se `elbow_kin.rs` för kinematiken).
+//! The elements are shells around the pipe: the displacement and rotation of the beam axis
+//! are interpolated linearly (ELBOW31/31B/31C) or quadratically (ELBOW32) along
+//! the axis, and the ovalization, warping and normal inclination of the section with
+//! Fourier series around the pipe (see `elbow_kin.rs` for the kinematics).
 //!
-//! - Integrering: en station längs axeln (ELBOW31/31B/31C) eller
-//!   tvåpunkts Gauss (ELBOW32), `nc` (minst 8) likformigt fördelade punkter
-//!   runt röret med punkt 1 vid intradosen och Simpsons regel genom väggen
-//!   (plan spänning i varje punkt).
-//! - Tvärskjuvningen γ_t = n · x,S bestraffas med (5/6)·G·t·f per punkt,
-//!   f = 1/(1 + 0,25·10⁻⁴·A/t²) med punktens area A; med noll moder bara i
-//!   punkt 1. ELBOW31B/C saknar γ₃ och straffet.
-//! - Ovaliseringsfrihetsgraderna (interna noder) ligger på genererade
-//!   noder med nummer −(6·10¹² + 16·nod + k) (ELBOW31/32, delas av elementen i
-//!   noden, så att ovaliseringen är kontinuerlig) respektive
-//!   −(7·10¹² + 16·element + k) (ELBOW31B/C, per element), sex frihetsgrader
-//!   (1–6) per genererad nod. `setup` skapar dem när filen är läst.
-//! - Massan: per frihetsgrad en massa per längdenhet (translationer
-//!   ρt·2πr₀, rotationer ρtπr₀³, ovaliseringen ρtr₀∫ψ²dφ, γ₃ ingen) gånger
-//!   nodkvadratur längs axeln (L/2 per nod) för tvånodselementen och
-//!   konsistent ∫HₘHₙ dS för ELBOW32, utan kopplingar mellan komponenterna.
-//! - Laster: PI/PE kräver den effektiva diametern D och verkar på radien
-//!   D/2 (mantelyta och slutna ändar, i jämvikt för krökta element), GRAV och
-//!   BX/BY/BZ bara på axelns translationer.
-//! - `*BOUNDARY` NOWARP (välvning och normalens lutning), NOOVAL (u_r och u_t
-//!   för p ≥ 1) och NODEFORM (allt) verkar på de genererade noderna.
-//! - Utdata: S och E (S11 längs röret, S22 runt, S12) i inner- och
-//!   ytterytan i varje punkt runt röret (sektionspunkt (k − 1)·nt + j),
-//!   SF1 och SM1 (kring a2), SM2 (kring a1, krökens plan), SM3 (vridning)
-//!   integrerade ur spänningarna, samt materialets utdata (PEEQ, ...).
+//! - Integration: one station along the axis (ELBOW31/31B/31C) or
+//!   two-point Gauss (ELBOW32), `nc` (at least 8) uniformly distributed points
+//!   around the pipe with point 1 at the intrados, and Simpson's rule through the wall
+//!   (plane stress at each point).
+//! - The transverse shear γ_t = n · x,S is penalized with (5/6)·G·t·f per point,
+//!   f = 1/(1 + 0.25·10⁻⁴·A/t²) with the point's area A; with zero modes only at
+//!   point 1. ELBOW31B/C lack γ₃ and the penalty.
+//! - The ovalization degrees of freedom (internal nodes) lie on generated
+//!   nodes with the number −(6·10¹² + 16·node + k) (ELBOW31/32, shared by the elements at
+//!   the node, so that the ovalization is continuous) and
+//!   −(7·10¹² + 16·element + k) (ELBOW31B/C, per element), respectively, six degrees of freedom
+//!   (1–6) per generated node. `setup` creates them when the file has been read.
+//! - The mass: per degree of freedom a mass per unit length (translations
+//!   ρt·2πr₀, rotations ρtπr₀³, the ovalization ρtr₀∫ψ²dφ, γ₃ none) times
+//!   nodal quadrature along the axis (L/2 per node) for the two-node elements and
+//!   consistent ∫HₘHₙ dS for ELBOW32, without couplings between the components.
+//! - Loads: PI/PE require the effective diameter D and act on the radius
+//!   D/2 (lateral surface and closed ends, in equilibrium for curved elements), GRAV and
+//!   BX/BY/BZ only on the translations of the axis.
+//! - `*BOUNDARY` NOWARP (warping and normal inclination), NOOVAL (u_r and u_t
+//!   for p ≥ 1) and NODEFORM (everything) act on the generated nodes.
+//! - Output: S and E (S11 along the pipe, S22 around, S12) at the inner and
+//!   outer surfaces at each point around the pipe (section point (k − 1)·nt + j),
+//!   SF1 and SM1 (about a2), SM2 (about a1, the plane of the elbow), SM3 (torsion)
+//!   integrated from the stresses, and the material's output (PEEQ, ...).
 //!
-//! Plasticitet och andra materialmodeller med plan spänning fungerar
-//! (geometriskt linjärt); NLGEOM, temperaturfält genom väggen, *MPC ELBOW och
-//! HPI/HPE är inte implementerade.
+//! Plasticity and other material models with plane stress work
+//! (geometrically linear); NLGEOM, temperature fields through the wall, *MPC ELBOW and
+//! HPI/HPE are not implemented.
 
 #[path = "elbow_kin.rs"]
 pub mod kin;
@@ -50,16 +50,16 @@ use std::sync::{Mutex, OnceLock};
 
 const DOF6: [Dof; 6] = [U1, U2, U3, UR1, UR2, UR3];
 
-/// Markörer för *BOUNDARY NOWARP, NOOVAL och NODEFORM (ersätts av `setup`).
+/// Markers for *BOUNDARY NOWARP, NOOVAL and NODEFORM (replaced by `setup`).
 pub const NOWARP: Dof = 201;
 pub const NOOVAL: Dof = 202;
 pub const NODEFORM: Dof = 203;
 
-/// Nummerbaser för de genererade noderna.
+/// Number bases for the generated nodes.
 const NODE_BASE: i64 = 6_000_000_000_000;
 const ELEM_BASE: i64 = 7_000_000_000_000;
 
-/// Elementtypen som den står i *ELEMENT (innan `setup` vet antalet moder).
+/// The element type as given in *ELEMENT (before `setup` knows the number of modes).
 pub struct ElbowBase {
     name: &'static str,
     nn: usize,
@@ -77,8 +77,8 @@ fn base_of(name: &str) -> Option<&'static ElbowBase> {
     [&ELBOW31, &ELBOW32, &ELBOW31B, &ELBOW31C].into_iter().find(|b| b.name == name)
 }
 
-/// Läser *BEAM SECTION, SECTION=ELBOW: r, t, R; orienteringspunkt;
-/// punkter genom väggen, punkter runt röret, antal moder.
+/// Reads *BEAM SECTION, SECTION=ELBOW: r, t, R; orientation point;
+/// points through the wall, points around the pipe, number of modes.
 pub fn section(raw: &RawKeyword) -> Result<Sec> {
     let recs = raw.records();
     let line = |i: usize| -> Result<Vec<f64>> {
@@ -87,7 +87,7 @@ pub fn section(raw: &RawKeyword) -> Result<Sec> {
                 let mut v = Vec::new();
                 for s in &d.fields {
                     let s = s.trim();
-                    v.push(if s.is_empty() { 0.0 } else { crate::fem::model::parse_f64(s).ok_or_else(|| crate::model::FemError(format!("{} rad {}: '{s}' är inget tal", raw.file, d.line)))? });
+                    v.push(if s.is_empty() { 0.0 } else { crate::fem::model::parse_f64(s).ok_or_else(|| crate::model::FemError(format!("{} line {}: '{s}' is not a number", raw.file, d.line)))? });
                 }
                 Ok(v)
             }
@@ -96,27 +96,27 @@ pub fn section(raw: &RawKeyword) -> Result<Sec> {
     };
     let l0 = line(0)?;
     if l0.len() < 2 || !(l0[0] > 0.0) || !(l0[1] > 0.0) || l0[1] >= 2.0 * l0[0] {
-        return raw.err("SECTION=ELBOW: första dataraden ska vara ytterradie r, väggtjocklek t (0 < t < 2r) och torusradie R");
+        return raw.err("SECTION=ELBOW: the first data line must be outer radius r, wall thickness t (0 < t < 2r) and torus radius R");
     }
     let l1 = line(1)?;
     if l1.len() < 3 {
-        return raw.err("SECTION=ELBOW: andra dataraden ska ange orienteringspunktens koordinater");
+        return raw.err("SECTION=ELBOW: the second data line must give the coordinates of the orientation point");
     }
     let l2 = line(2)?;
     let nt = l2.first().copied().filter(|&v| v > 0.0).unwrap_or(5.0) as usize;
     let nc = l2.get(1).copied().filter(|&v| v > 0.0).unwrap_or(20.0) as usize;
     let nmod = l2.get(2).copied().unwrap_or(0.0).max(0.0) as usize;
     if nt % 2 == 0 {
-        return raw.err("SECTION=ELBOW: antalet integrationspunkter genom väggen ska vara udda");
+        return raw.err("SECTION=ELBOW: the number of integration points through the wall must be odd");
     }
     if nmod > 6 {
-        return raw.err("SECTION=ELBOW: högst 6 ovaliseringsmoder");
+        return raw.err("SECTION=ELBOW: at most 6 ovalization modes");
     }
     Ok(Sec { r: l0[0], t: l0[1], big_r: l0.get(2).copied().unwrap_or(0.0).max(0.0), opt: [l1[0], l1[1], l1[2]], nt, nc: nc.max(8), nmod })
 }
 
-/// En konfigurerad elementtyp (variant, antal moder, punkter) med de
-/// genererade noderna sist i nodlistan.
+/// A configured element type (variant, number of modes, points) with the
+/// generated nodes last in the node list.
 pub struct Elbow {
     name: &'static str,
     nn: usize,
@@ -124,11 +124,11 @@ pub struct Elbow {
     nmod: usize,
     nc: usize,
     nt: usize,
-    /// Frihetsgrader per genererad nod (i elementets ordning).
+    /// Degrees of freedom per generated node (in the element's order).
     gen: Vec<usize>,
 }
 
-/// Antalet genererade noder (sex frihetsgrader var) för `n` frihetsgrader.
+/// The number of generated nodes (six degrees of freedom each) for `n` degrees of freedom.
 fn chunks(n: usize) -> Vec<usize> {
     (0..n.div_ceil(6)).map(|i| (n - 6 * i).min(6)).collect()
 }
@@ -144,11 +144,11 @@ fn configured(base: &ElbowBase, sec: &Sec) -> &'static Elbow {
         })
 }
 
-/// Skapar ovaliseringsnoderna och byter elementtyp för ELBOW-elementen samt
-/// ersätter NOWARP/NOOVAL/NODEFORM med randvillkor på de genererade noderna
-/// (anropas när filen är läst, efter `FeModel::finalize`).
+/// Creates the ovalization nodes and changes the element type for the ELBOW elements and
+/// replaces NOWARP/NOOVAL/NODEFORM with boundary conditions on the generated nodes
+/// (called when the file has been read, after `FeModel::finalize`).
 pub fn setup(m: &mut FeModel) -> Result<()> {
-    // största antalet frihetsgrader per användarnod (ELBOW31/32)
+    // the largest number of degrees of freedom per user node (ELBOW31/32)
     let mut need: HashMap<usize, usize> = HashMap::new();
     let mut todo = Vec::new();
     for e in 0..m.elements.len() {
@@ -157,11 +157,11 @@ pub fn setup(m: &mut FeModel) -> Result<()> {
             continue;
         }
         let Some(si) = m.elements[e].section else {
-            return fail(format!("element {} ({}) saknar *BEAM SECTION, SECTION=ELBOW", m.elements[e].label, base.name));
+            return fail(format!("element {} ({}) has no *BEAM SECTION, SECTION=ELBOW", m.elements[e].label, base.name));
         };
         let raw = &m.sections[si].raw;
         if !raw.param_upper("SECTION").is_some_and(|s| s == "ELBOW") {
-            return raw.err(format!("{} kräver *BEAM SECTION, SECTION=ELBOW", base.name));
+            return raw.err(format!("{} requires *BEAM SECTION, SECTION=ELBOW", base.name));
         }
         let sec = section(raw)?;
         let nf = kin::fields(base.var, sec.nmod).len();
@@ -204,7 +204,7 @@ pub fn setup(m: &mut FeModel) -> Result<()> {
         m.elements[e].nodes.extend(extra);
         m.elements[e].etype = ty;
     }
-    // randvillkor på tvärsnittets deformation
+    // boundary conditions on the section deformation
     let max_nf = kin::fields(Variant::Full, 6).len();
     let all_fields = kin::fields(Variant::Full, 6);
     let expand = |items: &mut Vec<(usize, Dof, f64)>, warnings: &mut Vec<String>| {
@@ -215,14 +215,14 @@ pub fn setup(m: &mut FeModel) -> Result<()> {
                 continue;
             }
             let Some(list) = gen_nodes.get(&n) else {
-                warnings.push(format!("NOWARP/NOOVAL/NODEFORM på nod {} ignoreras: noden hör inte till ELBOW31/ELBOW32", n));
+                warnings.push(format!("NOWARP/NOOVAL/NODEFORM on node {} ignored: the node does not belong to ELBOW31/ELBOW32", n));
                 continue;
             };
             let nf = need[&n].min(max_nf);
             for (k, f) in all_fields.iter().enumerate().take(nf) {
-                // se tests/cases/beams3/elbow31_krok_frekvens*:
-                // NOWARP låser välvningen och normalens lutning, NOOVAL u_r och u_t
-                // för p ≥ 1, NODEFORM allt
+                // see tests/cases/beams3/elbow31_krok_frekvens*:
+                // NOWARP fixes the warping and the normal inclination, NOOVAL u_r and u_t
+                // for p ≥ 1, NODEFORM everything
                 let hit = match d {
                     NOWARP => matches!(f.comp, Comp::Y3 | Comp::G3),
                     NOOVAL => f.p >= 1 && matches!(f.comp, Comp::Ur | Comp::Ut),
@@ -270,11 +270,11 @@ impl ElementType for ElbowBase {
         if self.nn == 2 { 3 } else { 21 }
     }
     fn stiffness(&self, _ctx: &ElemCtx) -> Result<Vec<f64>> {
-        fail(format!("intern: {} är inte förberett (elbow::setup)", self.name))
+        fail(format!("internal: {} is not prepared (elbow::setup)", self.name))
     }
 }
 
-/// Materialdata i elementet.
+/// Material data in the element.
 struct Mat<'a> {
     model: &'a dyn crate::materials::MaterialModel,
     g: f64,
@@ -290,7 +290,7 @@ impl Elbow {
     fn mat<'a>(&self, ctx: &ElemCtx<'a>) -> Result<Mat<'a>> {
         let model = ctx.material(self.name)?;
         let Some((e, nu)) = model.elastic_moduli() else {
-            return not_implemented(&format!("materialet {} (kräver elasticitet med E och ν för tvärskjuvningen)", model.name()), self.name);
+            return not_implemented(&format!("the material {} (requires elasticity with E and ν for the transverse shear)", model.name()), self.name);
         };
         Ok(Mat { model, g: e / (2.0 * (1.0 + nu)) })
     }
@@ -299,7 +299,7 @@ impl Elbow {
         (if self.nn == 2 { 1 } else { 2 }) * self.nc * self.nt
     }
 
-    /// Simpsons regel genom väggen: (h, vikt).
+    /// Simpson's rule through the wall: (h, weight).
     fn thickness(&self, t: f64) -> Vec<(f64, f64)> {
         let n = self.nt;
         if n == 1 {
@@ -314,7 +314,7 @@ impl Elbow {
             .collect()
     }
 
-    /// Tvärskjuvningen bestraffas i punkt k?
+    /// Is the transverse shear penalized at point k?
     fn shear_at(&self, k: usize) -> bool {
         self.var == Variant::Full && (self.nmod > 0 || k == 0)
     }
@@ -323,7 +323,7 @@ impl Elbow {
         3 + mat.model.n_state()
     }
 
-    /// Nodtemperaturen (medelvärde av användarnoderna) vid inkrementets slut och ändringen.
+    /// The nodal temperature (mean of the user nodes) at the end of the increment and the change.
     fn temperature(&self, ctx: &ElemCtx) -> (f64, f64) {
         if ctx.temp.len() < self.nn || ctx.temp_old.len() < self.nn {
             return (0.0, 0.0);
@@ -333,7 +333,7 @@ impl Elbow {
         (t, t - t0)
     }
 
-    /// Inre kraft, tangent och nytt tillstånd.
+    /// Internal force, tangent and new state.
     fn respond(&self, ctx: &ElemCtx, u: &[f64], du: &[f64], so: &[f64], sn: &mut Vec<f64>, tangent: bool) -> Result<ElemResponse> {
         if ctx.nlgeom {
             return not_implemented("NLGEOM", self.name);
@@ -342,12 +342,12 @@ impl Elbow {
         let mat = self.mat(ctx)?;
         let nd = geo.nd;
         if u.len() != nd {
-            return fail(format!("intern: {} har {} frihetsgrader, väntade {nd}", self.name, u.len()));
+            return fail(format!("internal: {} has {} degrees of freedom, expected {nd}", self.name, u.len()));
         }
         let stride = self.stride(&mat);
         let np = self.n_points();
         if so.len() != np * stride {
-            return fail(format!("intern: {} har fel tillståndslängd", self.name));
+            return fail(format!("internal: {} has the wrong state length", self.name));
         }
         sn.resize(np * stride, 0.0);
         let (temperature, dtemp) = self.temperature(ctx);
@@ -434,11 +434,11 @@ impl Elbow {
         Ok(ElemResponse { fint, k: tangent.then_some(k) })
     }
 
-    /// Massmatrisen: per frihetsgrad en massa per längdenhet (translationer
-    /// ρt·2πr₀, rotationer ρtπr₀³, ovalisering ρtr₀∫ψ²dφ, γ₃ ingen) gånger
-    /// axelns massmatris: nodkvadratur (L/2 per nod) för tvånodselementen,
-    /// konsistent ∫HₘHₙ dS för ELBOW32 och L för ELBOW31B/C:s elementvisa
-    /// ovalisering. Inga kopplingar mellan olika frihetsgrader i en nod.
+    /// The mass matrix: per degree of freedom a mass per unit length (translations
+    /// ρt·2πr₀, rotations ρtπr₀³, ovalization ρtr₀∫ψ²dφ, γ₃ none) times
+    /// the mass matrix of the axis: nodal quadrature (L/2 per node) for the two-node elements,
+    /// consistent ∫HₘHₙ dS for ELBOW32 and L for the element-wise ovalization
+    /// of ELBOW31B/C. No couplings between different degrees of freedom at a node.
     fn mass_matrix(&self, ctx: &ElemCtx) -> Result<Vec<f64>> {
         let (geo, sec) = self.geo(ctx)?;
         let rho = ctx.density;
@@ -484,7 +484,7 @@ impl Elbow {
         Ok(m)
     }
 
-    /// Spänningar och töjningar per punkt (station, punkt runt röret, punkt genom väggen).
+    /// Stresses and strains per point (station, point around the pipe, point through the wall).
     fn point_values(&self, ctx: &ElemCtx, u: &[f64], state: &[f64]) -> Result<Vec<([f64; 3], [f64; 3])>> {
         let mat = self.mat(ctx)?;
         let stride = self.stride(&mat);
@@ -508,7 +508,7 @@ impl Elbow {
     }
 }
 
-/// Gauss–Legendres punkter och vikter på [−1, 1] (Newton på Legendrepolynomet).
+/// Gauss–Legendre points and weights on [−1, 1] (Newton on the Legendre polynomial).
 fn gauss_legendre(n: usize) -> Vec<(f64, f64)> {
     let n = n.max(1);
     let mut out = Vec::with_capacity(n);
@@ -516,7 +516,7 @@ fn gauss_legendre(n: usize) -> Vec<(f64, f64)> {
         let mut x = -(std::f64::consts::PI * (i as f64 + 0.75) / (n as f64 + 0.5)).cos();
         let mut dp = 1.0;
         for _ in 0..100 {
-            // P_n(x) och derivatan med rekursionen
+            // P_n(x) and the derivative with the recursion
             let (mut p0, mut p1) = (1.0, x);
             for k in 2..=n {
                 let p2 = ((2 * k - 1) as f64 * x * p1 - (k - 1) as f64 * p0) / k as f64;
@@ -595,7 +595,7 @@ impl ElementType for Elbow {
     }
 
     fn mass(&self, ctx: &ElemCtx, _kind: MassKind) -> Result<Vec<f64>> {
-        // samma massa för konsistent och diagonal
+        // the same mass for consistent and diagonal
         self.mass_matrix(ctx)
     }
 
@@ -611,24 +611,24 @@ impl ElementType for Elbow {
             _ => None,
         };
         if let Some(p) = pressure {
-            // den effektiva diametern D (fjärde fältet) krävs: trycket
-            // verkar på en yta med radien ρ = D/2 runt axeln, mantelytan med
-            // p ρ (1 + ρκ sin φ)(R·δx̄ + δu_r) och ändytorna (slutet rör) med
-            // p πρ² längs bågens tangent i noderna, så att elementets last är i
-            // jämvikt
+            // the effective diameter D (fourth field) is required: the pressure
+            // acts on a surface with the radius ρ = D/2 around the axis, the lateral surface with
+            // p ρ (1 + ρκ sin φ)(R·δx̄ + δu_r) and the end faces (closed pipe) with
+            // p πρ² along the arc tangent at the nodes, so that the element load is in
+            // equilibrium
             let Some(diam) = load.extra.first().copied().filter(|d| *d > 0.0) else {
-                return fail(format!("{}: tryck {} kräver den effektiva diametern (fjärde fältet på *DLOAD-raden)", self.name, load.kind));
+                return fail(format!("{}: pressure {} requires the effective diameter (fourth field on the *DLOAD line)", self.name, load.kind));
             };
             let rho = diam / 2.0;
-            // mantelytan integreras längs den krökta axeln med riktarna som
-            // vrids längs bågen (sexpunkts Gauss; med stationerna blir
-            // lasten inte i jämvikt i krökta element)
+            // the lateral surface is integrated along the curved axis with the directors
+            // rotated along the arc (six-point Gauss; with the stations the
+            // load is not in equilibrium in curved elements)
             let [ma1, ma2, ma3] = geo.frame(geo.l / 2.0);
             for (xi, wx) in gauss_legendre(6) {
                 let s = geo.l / 2.0 * (1.0 + xi);
                 let ws = wx * geo.l / 2.0;
                 let (h, _) = geo.shape(xi);
-                // bågens riktare i S (vriden κ(S − L/2) kring A1 från mitten)
+                // the arc directors at S (rotated κ(S − L/2) about A1 from the center)
                 let be = geo.kap * (s - geo.l / 2.0);
                 let a2 = [0, 1, 2].map(|c| ma2[c] * be.cos() + ma3[c] * be.sin());
                 for kc in 0..self.nc {
@@ -665,10 +665,10 @@ impl ElementType for Elbow {
             return Ok(f);
         }
         let Some(b) = super::common::body_load_vector(&load.kind, load.magnitude, &load.extra, ctx.density, self.name)? else {
-            return not_implemented(&format!("lasttypen {}", load.kind), self.name);
+            return not_implemented(&format!("load type {}", load.kind), self.name);
         };
-        // volymkraft: bara axelns translationer, t·2πr₀·∫Hₙ dS gånger kraften per volym
-        // (väggens moment och ovaliseringen får ingen last)
+        // body force: only the translations of the axis, t·2πr₀·∫Hₙ dS times the force per volume
+        // (the wall moments and the ovalization get no load)
         for (s, ws) in geo.stations() {
             let xi = 2.0 * s / geo.l - 1.0;
             let (h, _) = geo.shape(xi);
@@ -690,7 +690,7 @@ impl ElementType for Elbow {
         let mut e = IpField::new("E", &["E11", "E22", "E12"]);
         let mut sf = IpField::new("SF", &["SF1"]);
         let mut sm = IpField::new("SM", &["SM1", "SM2", "SM3"]);
-        // materialets utdata (PEEQ, ...) i samma punkter som S
+        // the material's output (PEEQ, ...) at the same points as S
         let mat = self.mat(ctx)?;
         let stride = self.stride(&mat);
         let names = mat.model.output_names();

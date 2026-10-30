@@ -1,30 +1,30 @@
-//! Timoshenkobalkar (skjuvdeformerbara): B21, B22 (plana) och B31, B32 (rumsliga).
+//! Timoshenko beams (shear deformable): B21, B22 (planar) and B31, B32 (spatial).
 //!
-//! Formulering (Timoshenko-balk, se t.ex. Bathe kap. 5.4 eller Zienkiewicz–Taylor
-//! vol. 2 kap. 10): förskjutningar och rotationer interpoleras oberoende med
-//! linjära (B21/B31) eller kvadratiska (B22/B32) formfunktioner. Generaliserade
-//! töjningar i lokala axlar (t, n1, n2):
+//! Formulation (Timoshenko beam, see e.g. Bathe ch. 5.4 or Zienkiewicz–Taylor
+//! vol. 2 ch. 10): displacements and rotations are interpolated independently with
+//! linear (B21/B31) or quadratic (B22/B32) shape functions. Generalized
+//! strains in local axes (t, n1, n2):
 //!
-//! - ε = u',  κ1 = θ1',  κ2 = θ2',  τ = θt'  (vridning)
-//! - γ1 = v1' − θ2,  γ2 = v2' + θ1  (skjuvning)
+//! - ε = u',  κ1 = θ1',  κ2 = θ2',  τ = θt'  (twist)
+//! - γ1 = v1' − θ2,  γ2 = v2' + θ1  (shear)
 //!
-//! Integrering längs balken med reducerad gaussregel: 1 punkt för B21/B31,
-//! 2 punkter för B22/B32 (samma punkter som för utdata).
+//! Integration along the beam with a reduced Gauss rule: 1 point for B21/B31,
+//! 2 points for B22/B32 (the same points as for output).
 //!
-//! Tvärsnittets skjuvstyvhet är k·G·A med formfaktorn k per tvärsnittsform
-//! (eller värdena från *TRANSVERSE SHEAR STIFFNESS). Den skalas
-//! med en slankhetskompensation f = 1/(1 + ξ·l²·A/(12·I)), där l är
-//! elementlängden och ξ = 0,25 för linjära element. För kvadratiska element är
-//! korrektionen mycket liten (ξ·l² = 6,25·10⁻⁶·l²).
+//! The section shear stiffness is k·G·A with the form factor k per section shape
+//! (or the values from *TRANSVERSE SHEAR STIFFNESS). It is scaled
+//! with a slenderness compensation f = 1/(1 + ξ·l²·A/(12·I)), where l is
+//! the element length and ξ = 0.25 for linear elements. For quadratic elements
+//! the correction is very small (ξ·l² = 6.25·10⁻⁶·l²).
 //!
-//! Massa: B21/B31 har diagonal massa (translation ρAL/2, rotationströghet
-//! ρ·I·L/2 per nod), B22/B32 konsistent massa med rotationströghet.
-//! NLGEOM och geometrisk styvhet (alla snittkrafter) i
+//! Mass: B21/B31 have diagonal mass (translation ρAL/2, rotary inertia
+//! ρ·I·L/2 per node), B22/B32 consistent mass with rotary inertia.
+//! NLGEOM and geometric stiffness (all section forces) in
 //! `beam_timoshenko_nlgeom.rs`.
 //!
-//! Laster (*DLOAD): PX, PY, PZ (globala, per längdenhet), P1, P2 (i tvärsnittets
-//! 1- och 2-riktning), GRAV. Utdata: SF (SF1 = normalkraft, SF2/SF3 tvärkrafter)
-//! och SM (SM1, SM2 böjmoment, SM3 vridmoment) per integrationspunkt.
+//! Loads (*DLOAD): PX, PY, PZ (global, per unit length), P1, P2 (in the section
+//! 1 and 2 directions), GRAV. Output: SF (SF1 = axial force, SF2/SF3 transverse shear forces)
+//! and SM (SM1, SM2 bending moments, SM3 torque) per integration point.
 
 use super::api::{not_implemented, ElemCtx, ElemResponse, ElementType, Family, IpField, MassKind};
 #[path = "beam_timoshenko_section.rs"]
@@ -33,10 +33,10 @@ pub mod section;
 pub mod nlgeom;
 #[path = "beam_timoshenko_plastic.rs"]
 pub mod plastic;
-// område gaps1: *BEAM GENERAL SECTION, SECTION=NONLINEAR GENERAL
+// area gaps1: *BEAM GENERAL SECTION, SECTION=NONLINEAR GENERAL
 #[path = "beam_nonlinear_general.rs"]
 mod nlg;
-// område coupled2: skjuvdelen av styvheten för materialdämpning i modala steg
+// area coupled2: the shear part of the stiffness for material damping in modal steps
 #[path = "beam_timoshenko_damping.rs"]
 pub mod damping;
 
@@ -60,13 +60,13 @@ pub static B32: TimoBeam = TimoBeam { name: "B32", dim: 3, nn: 3 };
 pub static TYPES: &[&dyn ElementType] = &[&B21, &B22, &B31, &B32];
 
 impl TimoBeam {
-    /// Område beams2: varianter med eget namn (hybridbalkarna B21H, ...).
+    /// Area beams2: variants with their own name (the hybrid beams B21H, ...).
     pub const fn named(name: &'static str, dim: usize, nn: usize) -> TimoBeam {
         TimoBeam { name, dim, nn }
     }
 }
 
-/// Gausspunkter (ξ, vikt) på [−1, 1].
+/// Gauss points (ξ, weight) on [−1, 1].
 pub(crate) fn gauss(n: usize) -> &'static [(f64, f64)] {
     const G1: &[(f64, f64)] = &[(0.0, 2.0)];
     const G2P: &[(f64, f64)] = &[(-common::G2, 1.0), (common::G2, 1.0)];
@@ -78,8 +78,8 @@ pub(crate) fn gauss(n: usize) -> &'static [(f64, f64)] {
     }
 }
 
-/// Formfunktioner och derivator (d/dξ) för 2 eller 3 noder. Nodordning:
-/// längs balken, för B22/B32 är nod 2 mittnoden.
+/// Shape functions and derivatives (d/dξ) for 2 or 3 nodes. Node order:
+/// along the beam, for B22/B32 node 2 is the midside node.
 pub(crate) fn shape(nn: usize, xi: f64) -> (Vec<f64>, Vec<f64>) {
     if nn == 2 {
         (vec![0.5 * (1.0 - xi), 0.5 * (1.0 + xi)], vec![-0.5, 0.5])
@@ -88,13 +88,13 @@ pub(crate) fn shape(nn: usize, xi: f64) -> (Vec<f64>, Vec<f64>) {
     }
 }
 
-/// Geometri och tvärsnitt för ett element.
+/// Geometry and section for an element.
 pub struct BeamGeom {
-    /// Lokala axlar [t, n1, n2].
+    /// Local axes [t, n1, n2].
     pub axes: [[f64; 3]; 3],
-    /// Längd mellan ändnoderna.
+    /// Length between the end nodes.
     pub l: f64,
-    /// |dx/dξ| per integrationspunkt i en given regel beräknas i `jac`.
+    /// |dx/dξ| per integration point in a given rule is computed in `jac`.
     pub x: Vec<[f64; 3]>,
     pub sec: SectionProps,
 }
@@ -112,14 +112,14 @@ impl BeamGeom {
     }
 }
 
-/// Lokala axlar: n1 ungefärlig (standard (0, 0, −1)), n2 = t × n1.
+/// Local axes: n1 approximate (default (0, 0, −1)), n2 = t × n1.
 pub fn beam_axes(t: [f64; 3], n1a: Option<[f64; 3]>, dim: usize, label: i64, name: &str) -> Result<[[f64; 3]; 3]> {
     let n1a = if dim == 2 { [0.0, 0.0, -1.0] } else { n1a.unwrap_or([0.0, 0.0, -1.0]) };
     let n2 = cross(t, n1a);
     let ln2 = norm(n2);
     if ln2 < 1e-6 * norm(n1a).max(1e-300) {
         return fail(format!(
-            "element {label} ({name}) är parallellt med tvärsnittets n1-riktning – ange n1 på tvärsnittets andra datarad"
+            "element {label} ({name}) is parallel to the section n1 direction – give n1 on the second data line of the section"
         ));
     }
     let n2 = scale(n2, 1.0 / ln2);
@@ -144,46 +144,46 @@ impl TimoBeam {
         let d = sub(b, a);
         let l = norm(d);
         if l == 0.0 {
-            return fail(format!("element {} ({}) har ingen längd", ctx.label, self.name));
+            return fail(format!("element {} ({}) has zero length", ctx.label, self.name));
         }
         if self.dim == 2 && (d[2].abs() > 1e-12 * l) {
-            return fail(format!("element {} ({}): plana balkar måste ligga i x–y-planet", ctx.label, self.name));
+            return fail(format!("element {} ({}): planar beams must lie in the x–y plane", ctx.label, self.name));
         }
         let t = scale(d, 1.0 / l);
         let n1 = sec.beam().and_then(|b| b.n1);
         let axes = beam_axes(t, n1, self.dim, ctx.label, self.name)?;
-        // område beams3: nodnormaler vridna kring axeln ger medelvinkeln (beam_twist.rs)
+        // area beams3: nodal normals twisted about the axis give the mean angle (beam_twist.rs)
         let (axes, _) = super::beam_twist::mean_axes(ctx, self.nn, self.dim, axes, l);
         Ok(BeamGeom { axes, l, x: ctx.x.clone(), sec: props })
     }
 
-    /// Skjuvstyvheter (γ1, γ2) med slankhetskompensation.
+    /// Shear stiffnesses (γ1, γ2) with slenderness compensation.
     pub(crate) fn shear_stiffness(&self, g: &BeamGeom) -> (f64, f64) {
         let s = &g.sec;
         let xi_l2 = if self.quadratic() { 6.25e-6 * g.l * g.l } else { 0.25 * g.l * g.l };
         let fp = |i: f64| if i > 0.0 { 1.0 / (1.0 + xi_l2 * s.a / (12.0 * i)) } else { 1.0 };
-        // område beams2: tröghetsmoment för kompensationen (I, HEX) och
-        // hybridbalkarnas skjuvstyvhet (kondenserad matris: faktor 1 + 10⁻⁶)
+        // area beams2: moments of inertia for the compensation (I, HEX) and
+        // the shear stiffness of the hybrid beams (condensed matrix: factor 1 + 10⁻⁶)
         let (i22, i11) = (if s.i22s > 0.0 { s.i22s } else { s.i22c }, if s.i11s > 0.0 { s.i11s } else { s.i11c });
         let hyb = if self.name.ends_with('H') { 1.0 + 1e-6 } else { 1.0 };
-        // γ1 (utböjning längs n1) hör ihop med böjning kring n2 (I22), γ2 med I11.
+        // γ1 (deflection along n1) belongs with bending about n2 (I22), γ2 with I11.
         (hyb * s.k13 * fp(i22), hyb * s.k23 * fp(i11))
     }
 
-    /// Tvärsnittets styvhetsmatris (6×6) för [ε, κ1, κ2, τ, γ1, γ2].
+    /// The section stiffness matrix (6×6) for [ε, κ1, κ2, τ, γ1, γ2].
     pub(crate) fn section_matrix(&self, g: &BeamGeom) -> [[f64; 6]; 6] {
         let s = &g.sec;
         let (k1, k2) = self.shear_stiffness(g);
         let e = s.e;
         let mut c = [[0.0; 6]; 6];
-        // axialkraft och böjning kring referensaxeln (origo i tvärsnittet)
+        // axial force and bending about the reference axis (origin in the section)
         c[0][0] = e * s.a;
         c[0][1] = e * s.s1;
         c[0][2] = -e * s.s2;
         c[1][1] = e * s.i11;
         c[1][2] = -e * s.i12;
         c[2][2] = e * s.i22;
-        // vridning kring skjuvcentrum och skjuvning
+        // torsion about the shear center and shear
         let (x1s, x2s) = (s.x1s, s.x2s);
         c[3][3] = s.g * s.j + k1 * x2s * x2s + k2 * x1s * x1s;
         c[3][4] = -k1 * x2s;
@@ -198,7 +198,7 @@ impl TimoBeam {
         c
     }
 
-    /// B-matris (6 × 6nn) i lokala frihetsgrader [u, v1, v2, θt, θ1, θ2] per nod.
+    /// B matrix (6 × 6nn) in local degrees of freedom [u, v1, v2, θt, θ1, θ2] per node.
     pub(crate) fn bmat(&self, g: &BeamGeom, xi: f64) -> (Vec<f64>, f64) {
         let nn = self.nn;
         let (n, dn) = shape(nn, xi);
@@ -220,12 +220,12 @@ impl TimoBeam {
         (b, j)
     }
 
-    /// Transformation globalt → lokalt för 6 frihetsgrader per nod.
+    /// Transformation global → local for 6 degrees of freedom per node.
     pub(crate) fn transform(&self, g: &BeamGeom) -> Vec<f64> {
         common::block_diag(&g.axes, 2 * self.nn)
     }
 
-    /// Lokal styvhet (6nn × 6nn).
+    /// Local stiffness (6nn × 6nn).
     fn local_stiffness(&self, g: &BeamGeom) -> Vec<f64> {
         let nd = 6 * self.nn;
         let c = self.section_matrix(g);
@@ -259,7 +259,7 @@ impl TimoBeam {
         k
     }
 
-    /// Plockar ut de plana frihetsgraderna (u1, u2, ur3) ur en 3D-matris/vektor.
+    /// Extracts the planar degrees of freedom (u1, u2, ur3) from a 3D matrix/vector.
     fn planar_index(&self) -> Vec<usize> {
         (0..self.nn).flat_map(|i| [6 * i, 6 * i + 1, 6 * i + 5]).collect()
     }
@@ -304,8 +304,8 @@ impl TimoBeam {
         common::congruence(&kl, &t, 6 * self.nn)
     }
 
-    /// Inre kraft och tangent med sektionspunkter (område struct_nonlin,
-    /// beam_timoshenko_plastic.rs), geometriskt linjärt.
+    /// Internal force and tangent with section points (area struct_nonlin,
+    /// beam_timoshenko_plastic.rs), geometrically linear.
     fn plastic_response(&self, ctx: &ElemCtx, u: &[f64], so: &[f64], sn: &mut Vec<f64>, tangent: bool) -> Result<ElemResponse> {
         let g = self.geom(ctx)?;
         let fib = plastic::Fibers::new(ctx, self.name)?;
@@ -363,13 +363,13 @@ impl TimoBeam {
         Ok(ElemResponse { fint: self.reduce_vector(&fg), k })
     }
 
-    /// Snittkrafter [N, M1, M2, T, V1, V2] per integrationspunkt.
+    /// Section forces [N, M1, M2, T, V1, V2] per integration point.
     pub fn section_forces(&self, ctx: &ElemCtx, u: &[f64]) -> Result<Vec<[f64; 6]>> {
         let g = self.geom(ctx)?;
         let t = self.transform(&g);
         let ul = common::matvec(&t, &self.expand_vector(u));
         let mut c = self.section_matrix(&g);
-        // område beams3: koppling axialtöjning–vridning för vridna B31 (beam_twist.rs)
+        // area beams3: axial strain–twist coupling for twisted B31 (beam_twist.rs)
         let (_, tau) = super::beam_twist::mean_axes(ctx, self.nn, self.dim, g.axes, g.l);
         if tau != 0.0 && g.sec.a > 0.0 {
             let cp = g.sec.e * (g.sec.i11 + g.sec.i22) * tau;
@@ -431,7 +431,7 @@ impl ElementType for TimoBeam {
         }
         let g = self.geom(ctx)?;
         let mut k = self.global_stiffness(&g);
-        // område beams3: koppling axialtöjning–vridning för vridna B31 (beam_twist.rs)
+        // area beams3: axial strain–twist coupling for twisted B31 (beam_twist.rs)
         let (_, tau) = super::beam_twist::mean_axes(ctx, self.nn, self.dim, g.axes, g.l);
         if tau != 0.0 {
             let s = &g.sec;
@@ -445,7 +445,7 @@ impl ElementType for TimoBeam {
 
     fn internal_force(&self, ctx: &ElemCtx, u: &[f64], _du: &[f64], _so: &[f64], _sn: &mut Vec<f64>, tangent: bool) -> Result<ElemResponse> {
         if ctx.nlgeom {
-            // område nlgeom_struct: geometriskt exakt balk (beam_timoshenko_nlgeom.rs)
+            // area nlgeom_struct: geometrically exact beam (beam_timoshenko_nlgeom.rs)
             return nlgeom::response(self, ctx, u, _du, _so, _sn, tangent);
         }
         if nlg::is_nlg(ctx) {
@@ -463,18 +463,18 @@ impl ElementType for TimoBeam {
         let s = &g.sec;
         let rho = s.rho;
         let nd = 6 * self.nn;
-        // lokal massmatris per nodpar: translation ρA, rotation ρ·[Ip, I11, I22],
-        // koppling translation–rotation från tyngdpunktens läge.
+        // local mass matrix per node pair: translation ρA, rotation ρ·[Ip, I11, I22],
+        // translation–rotation coupling from the centroid position.
         let block = |w: f64| -> [[f64; 6]; 6] {
             let mut m = [[0.0; 6]; 6];
             let ma = rho * s.a * w;
             for d in 0..3 {
                 m[d][d] = ma;
             }
-            // r_c = c1 n1 + c2 n2; rotationens bidrag till hastighet: θ × r_c
+            // r_c = c1 n1 + c2 n2; the contribution of the rotation to the velocity: θ × r_c
             let (c1, c2) = (s.c1, s.c2);
             // u_t += θ1 c2 − θ2 c1 ; v1 += −θt c2 ; v2 += θt c1
-            let mut cpl = [[0.0; 3]; 3]; // translation (rad) × rotation (kolumn)
+            let mut cpl = [[0.0; 3]; 3]; // translation (row) × rotation (column)
             cpl[0][1] = c2;
             cpl[0][2] = -c1;
             cpl[1][0] = -c2;
@@ -495,7 +495,7 @@ impl ElementType for TimoBeam {
         let mut ml = vec![0.0; nd * nd];
         let lumped = !self.quadratic() || kind == MassKind::Lumped;
         if lumped {
-            // ∫N dx per nod
+            // ∫N dx per node
             let mut wsum = vec![0.0; self.nn];
             for &(xi, w) in gauss(3) {
                 let (n, _) = shape(self.nn, xi);
@@ -531,7 +531,7 @@ impl ElementType for TimoBeam {
         }
         let t = self.transform(&g);
         let mut mg = common::congruence(&ml, &t, nd);
-        // område beams3: rotationströgheten i nodernas egna riktningar (beam_twist.rs)
+        // area beams3: the rotary inertia in the nodes' own directions (beam_twist.rs)
         if lumped {
             if let Some(jr) = super::beam_twist::rotary(ctx, self.nn, self.dim, rho, [s.i11 + s.i22, s.i11, s.i22]) {
                 for (i, ji) in jr.iter().enumerate() {
@@ -547,8 +547,8 @@ impl ElementType for TimoBeam {
     }
 
     fn geometric_stiffness(&self, ctx: &ElemCtx, u: &[f64], _state: &[f64]) -> Result<Vec<f64>> {
-        // område nlgeom_struct: spänningsdelen av NLGEOM-tangenten (normalkraft,
-        // tvärkrafter, moment och vridning; beam_timoshenko_nlgeom.rs)
+        // area nlgeom_struct: the stress part of the NLGEOM tangent (axial force,
+        // transverse shear forces, moments and torsion; beam_timoshenko_nlgeom.rs)
         let forces = self.section_forces(ctx, u)?;
         nlgeom::geometric(self, ctx, &forces)
     }
@@ -565,10 +565,10 @@ impl ElementType for TimoBeam {
                 let b = common::body_load_vector("GRAV", load.magnitude, &load.extra, g.sec.rho, self.name)?.unwrap();
                 scale(b, g.sec.a)
             }
-            _ => return not_implemented(&format!("lasttypen {}", load.kind), self.name),
+            _ => return not_implemented(&format!("load type {}", load.kind), self.name),
         };
         if self.dim == 2 && q[2] != 0.0 {
-            return fail(format!("{}: last i z-led på en plan balk", self.name));
+            return fail(format!("{}: load in the z direction on a planar beam", self.name));
         }
         let mut f = vec![0.0; 6 * self.nn];
         for &(xi, w) in gauss(3) {
@@ -597,7 +597,7 @@ impl ElementType for TimoBeam {
     }
 
     fn output(&self, ctx: &ElemCtx, u: &[f64], _state: &[f64]) -> Result<Vec<IpField>> {
-        // område struct_nonlin: med sektionspunkter ur det lagrade tillståndet
+        // area struct_nonlin: with section points from the stored state
         let fib = if plastic::is_plastic(ctx) { Some(plastic::Fibers::new(ctx, self.name)?) } else { None };
         let ng = self.n_gauss();
         let pst: Option<Vec<f64>> = fib.as_ref().map(|fb| {
@@ -614,14 +614,14 @@ impl ElementType for TimoBeam {
             _ if ctx.nlgeom => nlgeom::section_forces(self, ctx, u, _state)?,
             _ => self.section_forces(ctx, u)?,
         };
-        // böjmomenten redovisas kring tyngdpunkten och vridmomentet
-        // kring skjuvcentrum (snittkrafterna ovan gäller referensaxeln)
+        // the bending moments are reported about the centroid and the torque
+        // about the shear center (the section forces above refer to the reference axis)
         let s = self.geom(ctx)?.sec;
         let (c1, c2) = (s.c1, s.c2);
         let (x1s, x2s) = (s.x1s, s.x2s);
         let (mut sf, mut sm) = if self.dim == 2 {
-            // för plana balkar heter komponenterna SF11, SF22, SF12
-            // (normalkraft, tvärkraft, 0) och SM1, SM2, SM3 (moment, 0, 0).
+            // for planar beams the components are named SF11, SF22, SF12
+            // (axial force, transverse shear force, 0) and SM1, SM2, SM3 (moment, 0, 0).
             (IpField::new("SF", &["SF11", "SF22", "SF12"]), IpField::new("SM", &["SM1", "SM2", "SM3"]))
         } else {
             (IpField::new("SF", &["SF1", "SF2", "SF3"]), IpField::new("SM", &["SM1", "SM2", "SM3"]))

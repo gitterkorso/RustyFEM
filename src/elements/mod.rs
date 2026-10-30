@@ -1,9 +1,9 @@
-//! Elementbibliotek med register per elementnamn.
+//! Element library with a registry by element name.
 //!
-//! En fil per elementfamilj. Varje modul exporterar
-//! `pub static TYPES: &[&dyn ElementType]`. Registrera en ny modul med EN rad
-//! i listan nedan (alfabetisk ordning). Gränssnittet finns i `api.rs`,
-//! gemensamma byggstenar i `common.rs`.
+//! One file per element family. Each module exports
+//! `pub static TYPES: &[&dyn ElementType]`. Register a new module with ONE line
+//! in the list below (alphabetical order). The interface is in `api.rs`,
+//! shared building blocks in `common.rs`.
 
 mod api;
 pub mod common;
@@ -15,7 +15,7 @@ use std::sync::OnceLock;
 macro_rules! element_modules {
     ($($m:ident),* $(,)?) => {
         $(pub mod $m;)*
-        /// Alla registrerade elementtyper.
+        /// All registered element types.
         pub fn all() -> Vec<&'static dyn ElementType> {
             let mut v: Vec<&'static dyn ElementType> = Vec::new();
             $(v.extend($m::TYPES.iter().copied());)*
@@ -24,7 +24,7 @@ macro_rules! element_modules {
     };
 }
 
-// En rad per elementfamilj, i alfabetisk ordning.
+// One line per element family, in alphabetical order.
 element_modules! {
     acoustic,
     acoustic_explicit,
@@ -79,19 +79,19 @@ fn table() -> &'static HashMap<&'static str, &'static dyn ElementType> {
         let mut m = HashMap::new();
         for t in all() {
             if m.insert(t.name(), t).is_some() {
-                panic!("elementtypen {} är registrerad två gånger", t.name());
+                panic!("element type {} is registered twice", t.name());
             }
         }
         m
     })
 }
 
-/// Elementtyp för ett elementnamn (versaler), t.ex. "CPS4".
+/// Element type for an element name (upper case), e.g. "CPS4".
 pub fn lookup(name: &str) -> Option<&'static dyn ElementType> {
     table().get(name.to_uppercase().as_str()).copied()
 }
 
-/// Namnen på alla registrerade elementtyper, sorterade.
+/// Names of all registered element types, sorted.
 pub fn names() -> Vec<&'static str> {
     let mut v: Vec<&str> = table().keys().copied().collect();
     v.sort_unstable();

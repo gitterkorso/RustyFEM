@@ -1,33 +1,33 @@
-//! Fördefinierade fältvariabler (field variables):
+//! Predefined field variables:
 //!
-//! - `*INITIAL CONDITIONS, TYPE=FIELD, VARIABLE=n`: nodvärden vid start
-//!   (noder som inte anges har värdet 0),
-//! - `*FIELD, VARIABLE=n` i ett steg: nodvärden vid stegets slut
-//!   (OP=MOD standard, OP=NEW återställer variabeln till startvärdena).
-//!   Värdena rampas linjärt över steget från föregående värde (eller sätts
-//!   direkt med AMPLITUDE=STEP på *STEP) och ärvs till följande steg,
-//! - `*FIELD, USER, VARIABLE=n`: värdena i noderna ges av UFIELD
-//!   (`user::routines::Ufield`) vid varje tidpunkt.
+//! - `*INITIAL CONDITIONS, TYPE=FIELD, VARIABLE=n`: nodal values at the start
+//!   (nodes that are not given have the value 0),
+//! - `*FIELD, VARIABLE=n` in a step: nodal values at the end of the step
+//!   (OP=MOD default, OP=NEW resets the variable to the initial values).
+//!   The values are ramped linearly over the step from the previous value (or set
+//!   directly with AMPLITUDE=STEP on *STEP) and are inherited by following steps,
+//! - `*FIELD, USER, VARIABLE=n`: the values at the nodes are given by UFIELD
+//!   (`user::routines::Ufield`) at every point in time.
 //!
-//! Nodreferenserna löses upp när filen läses (`inp/keywords/user2.rs`):
-//! dataraderna blir [nodindex, värde] med parametern `_NODINDEX` och
-//! variabelnumret i `VARIABLE`. Materialen läser fälten i punkten via
-//! `user::context` (elementets nodvärden, interpolerade i
-//! integrationspunkten) och interpolerar materialdata med DEPENDENCIES=
+//! The node references are resolved when the file is read (`inp/keywords/user2.rs`):
+//! the data lines become [node index, value] with the parameter `_NODINDEX` and
+//! the variable number in `VARIABLE`. The materials read the fields at the point via
+//! `user::context` (the element's nodal values, interpolated at the
+//! integration point) and interpolate material data with DEPENDENCIES=
 //! (`field_dependent.rs`).
 
 use crate::fem::model::{FeModel, RawKeyword};
 use crate::model::{fail, Result};
 use std::sync::Arc;
 
-/// Datarader med upplösta noder (samma markör som temperaturfältet).
+/// Data lines with resolved nodes (same marker as the temperature field).
 pub const RESOLVED: &str = crate::materials::thermal::RESOLVED;
 
 pub static FACTORIES: &[super::MaterialFactory] = &[];
 
 #[derive(Clone)]
 struct UserPart {
-    /// Variabel (0-baserad), noder och namnet som rutinen väljs med.
+    /// Variable (0-based), nodes and the name the routine is selected by.
     var: usize,
     nodes: Vec<usize>,
     routine: Arc<dyn crate::user::routines::Ufield>,
@@ -44,7 +44,7 @@ struct Segment {
     user: Vec<UserPart>,
 }
 
-/// Fältvariablerna i noderna som funktion av total tid (nn × nfield, nodvis).
+/// The field variables at the nodes as a function of total time (nn × nfield, node by node).
 #[derive(Clone)]
 pub struct FieldHistory {
     nf: usize,
@@ -59,7 +59,7 @@ fn variable(kw: &RawKeyword) -> Result<usize> {
         None => Ok(1),
         Some(v) => match crate::inp::parse_label(v) {
             Some(n) if n >= 1 => Ok(n as usize),
-            _ => kw.err(format!("VARIABLE={v} ska vara ett heltal ≥ 1")),
+            _ => kw.err(format!("VARIABLE={v} must be an integer ≥ 1")),
         },
     }
 }
@@ -81,7 +81,7 @@ fn timeless(p: &str) -> bool {
 }
 
 impl FieldHistory {
-    /// Fälthistorien, eller `None` om modellen saknar fältvariabler.
+    /// The field history, or `None` if the model has no field variables.
     pub fn build(model: &FeModel) -> Result<Option<FieldHistory>> {
         let is_ic = |k: &&RawKeyword| k.name == "INITIAL CONDITIONS" && k.has(RESOLVED) && k.param_upper("TYPE").as_deref() == Some("FIELD");
         let ic: Vec<&RawKeyword> = model.extra.iter().filter(is_ic).collect();
@@ -118,7 +118,7 @@ impl FieldHistory {
                 if k.has("USER") {
                     let name = k.param("_NAME").unwrap_or("").to_string();
                     let Some(routine) = crate::user::routines::find_ufield(&name)? else {
-                        return crate::user::routines::missing("UFIELD", "nodsetet", &name);
+                        return crate::user::routines::missing("UFIELD", "node set", &name);
                     };
                     let nodes = k.data.iter().filter_map(|d| k.floats(d).ok().and_then(|x| x.first().map(|&n| n as usize))).collect();
                     user.push(UserPart { var, nodes, routine });
@@ -134,12 +134,12 @@ impl FieldHistory {
         Ok(Some(FieldHistory { nf, initial, segments, labels: model.node_label.clone(), coords: model.nodes.clone() }))
     }
 
-    /// Antal fältvariabler (största VARIABLE=).
+    /// Number of field variables (largest VARIABLE=).
     pub fn nfield(&self) -> usize {
         self.nf
     }
 
-    /// Fältvariablerna i noderna `nodes` vid total tid `time` (nodvis, `nfield` per nod).
+    /// The field variables at the nodes `nodes` at total time `time` (node by node, `nfield` per node).
     pub fn at(&self, nodes: &[usize], time: f64) -> Vec<f64> {
         let nf = self.nf;
         let mut out = Vec::with_capacity(nodes.len() * nf);
@@ -149,7 +149,7 @@ impl FieldHistory {
                 for &n in nodes {
                     out.extend_from_slice(&self.initial[n * nf..(n + 1) * nf]);
                 }
-                // UFIELD gäller även vid stegets början
+                // UFIELD also applies at the start of the step
                 if let Some(s) = self.segments.first() {
                     self.apply_user(s, nodes, time.max(0.0), &mut out);
                 }
@@ -177,7 +177,7 @@ impl FieldHistory {
         out
     }
 
-    /// UFIELD för noderna i stegets *FIELD, USER.
+    /// UFIELD for the nodes in the step's *FIELD, USER.
     fn apply_user(&self, seg: &Segment, nodes: &[usize], time: f64, out: &mut [f64]) {
         if seg.user.is_empty() {
             return;
@@ -199,9 +199,9 @@ impl FieldHistory {
                     dtemp: 0.0,
                     nfield: nf,
                 };
-                // fel i rutinen kan inte returneras härifrån: värdet behålls
+                // errors in the routine cannot be returned from here: the value is kept
                 if let Err(e) = u.routine.ufield(&mut a) {
-                    eprintln!("varning: UFIELD i nod {}: {e}", a.node);
+                    eprintln!("warning: UFIELD at node {}: {e}", a.node);
                 }
             }
         }
@@ -209,13 +209,13 @@ impl FieldHistory {
 }
 
 // ---------------------------------------------------------------------------
-// Interpolation i temperatur och fältvariabler (DEPENDENCIES=)
+// Interpolation in temperature and field variables (DEPENDENCIES=)
 // ---------------------------------------------------------------------------
 
-/// Tabell med beroenden: varje post har egenskapsvärden följda av de
-/// oberoende variablerna (inre först: t.ex. [T, f1, ..., fn], för *PLASTIC
-/// [ε̄p, T, f1, ..., fn]). Posterna står i ordning: den inre variabeln
-/// varierar snabbast, den yttre (fn) långsammast.
+/// Table with dependencies: each entry has property values followed by the
+/// independent variables (inner first: e.g. [T, f1, ..., fn], for *PLASTIC
+/// [ε̄p, T, f1, ..., fn]). The entries are ordered: the inner variable
+/// varies fastest, the outer (fn) slowest.
 #[derive(Debug, Clone)]
 pub struct DepTable {
     pub nprops: usize,
@@ -224,10 +224,10 @@ pub struct DepTable {
 }
 
 impl DepTable {
-    /// Läser posterna ur dataraderna: `nprops` egenskaper, temperatur och
-    /// `ndep` fältvariabler per post; högst 8 värden per rad (indataregel,
-    /// längre poster fortsätter på nästa rad). `inner` extra oberoende
-    /// variabler står mellan egenskaperna och temperaturen (*PLASTIC: ε̄p).
+    /// Reads the entries from the data lines: `nprops` properties, temperature and
+    /// `ndep` field variables per entry; at most 8 values per line (input rule,
+    /// longer entries continue on the next line). `inner` extra independent
+    /// variables lie between the properties and the temperature (*PLASTIC: ε̄p).
     pub fn parse(kw: &RawKeyword, nprops: usize, inner: usize, ndep: usize) -> Result<DepTable> {
         let per = nprops + inner + 1 + ndep;
         let lines_per = per.div_ceil(8);
@@ -238,7 +238,7 @@ impl DepTable {
             let mut v = Vec::new();
             for k in 0..lines_per {
                 let Some(d) = data.get(i + k) else {
-                    return kw.err_at(data[i].line, format!("posten ska ha {per} värden (DEPENDENCIES={ndep})"));
+                    return kw.err_at(data[i].line, format!("the entry must have {per} values (DEPENDENCIES={ndep})"));
                 };
                 let mut x = kw.floats(d)?;
                 x.truncate(8);
@@ -252,29 +252,29 @@ impl DepTable {
             i += lines_per;
         }
         if rows.is_empty() {
-            return kw.err("datarad saknas");
+            return kw.err("data line is missing");
         }
         Ok(DepTable { nprops: nprops + inner, nvars: 1 + ndep, rows })
     }
 
-    /// Värdena (de `nprops` första kolumnerna) vid de oberoende variablerna `x`
-    /// (samma ordning som i posten). Hierarkisk linjär interpolation: först i
-    /// den yttersta variabeln mellan grupperna med samma värde, sedan inåt;
-    /// konstant utanför tabellen.
+    /// The values (the first `nprops` columns) at the independent variables `x`
+    /// (same order as in the entry). Hierarchical linear interpolation: first in
+    /// the outermost variable between the groups with the same value, then inwards;
+    /// constant outside the table.
     pub fn eval(&self, x: &[f64]) -> Vec<f64> {
         let idx: Vec<usize> = (0..self.rows.len()).collect();
         eval_rows(&self.rows, &idx, self.nprops, self.nvars, x)
     }
 }
 
-/// Interpolerar posterna `idx` i variabel `level` (0 = inre) och inåt.
+/// Interpolates the entries `idx` in variable `level` (0 = inner) and inwards.
 fn eval_rows(rows: &[Vec<f64>], idx: &[usize], np: usize, level_count: usize, x: &[f64]) -> Vec<f64> {
     if level_count == 0 || idx.len() == 1 {
         return rows[idx[0]][..np].to_vec();
     }
     let lv = level_count - 1;
     let col = np + lv;
-    // grupper med samma värde i variabeln (i ordning)
+    // groups with the same value in the variable (in order)
     let mut groups: Vec<(f64, Vec<usize>)> = Vec::new();
     for &r in idx {
         let v = rows[r][col];
@@ -299,7 +299,7 @@ fn eval_rows(rows: &[Vec<f64>], idx: &[usize], np: usize, level_count: usize, x:
     va.iter().zip(&vb).map(|(p, q)| p + s * (q - p)).collect()
 }
 
-/// Felmeddelande om fälthistorien används utan fält.
+/// Error message when the field history is used without fields.
 pub fn require_fields() -> Result<()> {
-    fail("materialet har DEPENDENCIES= men modellen har inga fältvariabler (*FIELD, *INITIAL CONDITIONS, TYPE=FIELD)")
+    fail("the material has DEPENDENCIES= but the model has no field variables (*FIELD, *INITIAL CONDITIONS, TYPE=FIELD)")
 }

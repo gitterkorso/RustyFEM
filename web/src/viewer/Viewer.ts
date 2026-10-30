@@ -1,9 +1,9 @@
-// Modellfönstret i ren Three.js (PLAN.md, Fas 3).
+// The viewport in plain Three.js (PLAN.md, Phase 3).
 //
-// Nodkoordinater, förskjutningar och nodvärden ligger i delade
-// BufferAttribute-objekt som ytor, kanter, balkar och plockning använder.
-// Ett nytt fält eller en ny frame skriver bara om arrayerna; inga nya
-// geometrier skapas per bildruta. Bilden ritas bara när något ändrats.
+// Node coordinates, displacements and nodal values live in shared
+// BufferAttribute objects used by surfaces, edges, beams and picking.
+// A new field or a new frame only rewrites the arrays; no new
+// geometries are created per frame. The image is only redrawn when something has changed.
 
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
@@ -28,7 +28,7 @@ export interface ViewOptions {
   dark: boolean;
 }
 
-/** Värde som betyder "fältet saknas" i shadern. */
+/** Value that means "field missing" in the shader. */
 const NONE = -1e30;
 
 const surfaceVert = /* glsl */ `
@@ -88,7 +88,7 @@ uniform float opacity;
 out vec4 fragColor;
 void main() { fragColor = vec4(color, opacity); }`;
 
-// Breda linjer (balkar, stänger): varje segment är en rektangel i skärmplanet.
+// Wide lines (beams, trusses): each segment is a rectangle in the screen plane.
 const fatVert = /* glsl */ `
 in vec3 pa;
 in vec3 pb;
@@ -185,9 +185,9 @@ const DIRS: Record<ViewDir, [THREE.Vector3, THREE.Vector3]> = {
 };
 
 /**
- * Laster grupperade för etiketter: noder med samma riktning som ligger nära
- * varandra (en utbredd last, en kant) blir en grupp med summan. Avståndsgränsen
- * är 2,5 × medianavståndet till närmaste nod, högst en fjärdedel av modellens radie.
+ * Loads grouped for labels: nodes with the same direction that lie close to
+ * each other (a distributed load, an edge) become one group with the sum. The distance limit
+ * is 2.5 × the median distance to the nearest node, at most a quarter of the model's radius.
  */
 function loadGroups(items: { n: number; d: THREE.Vector3; mag: number }[], P: Float32Array, radius: number) {
   const out: { center: THREE.Vector3; d: THREE.Vector3; total: number; count: number }[] = [];
@@ -255,7 +255,7 @@ export class Viewer {
   private fat: THREE.Mesh | null = null;
   private symbolGroup = new THREE.Group();
   private highlight = new THREE.Group();
-  /** Noder som ett urval i verktygspanelen träffar (förhandsvisning). */
+  /** Nodes hit by a selection in the tool panel (preview). */
   private marks = new THREE.Group();
   private pickTarget = new THREE.WebGLRenderTarget(1, 1);
   private center = new THREE.Vector3();
@@ -429,7 +429,7 @@ export class Viewer {
     this.fat = null;
   }
 
-  /** Ny geometri. `keepView` behåller kameran (efter en redigering). */
+  /** New geometry. `keepView` keeps the camera (after an edit). */
   setMesh(m: MeshData, keepView = false) {
     this.clear();
     this.mesh = m;
@@ -480,7 +480,7 @@ export class Viewer {
       this.root.add(p);
     }
     this.buildPick();
-    // storlek och mitt (bara använda noder)
+    // size and center (used nodes only)
     const box = new THREE.Box3();
     const v = new THREE.Vector3();
     const used = new Uint8Array(n);
@@ -558,7 +558,7 @@ export class Viewer {
   private buildPick() {
     const m = this.mesh!;
     if (m.tris.length) {
-      // icke-indexerad kopia med element-id per hörn
+      // non-indexed copy with element id per vertex
       const nt = m.triElem.length;
       const g = new THREE.BufferGeometry();
       const pos = new Float32Array(nt * 9);
@@ -601,7 +601,7 @@ export class Viewer {
     a.needsUpdate = true;
   }
 
-  /** Förskjutningar per nod (null = odeformerat). */
+  /** Displacements per node (null = undeformed). */
   setDisplacement(d: Float32Array | null) {
     if (!this.disp || !this.mesh) return;
     const arr = this.disp.array as Float32Array;
@@ -627,7 +627,7 @@ export class Viewer {
     this.requestRender();
   }
 
-  /** Nodvärden för konturer (null = ingen kontur). */
+  /** Nodal values for contours (null = no contour). */
   setField(values: Float32Array | null, min: number, max: number) {
     if (!this.val || !this.mesh) return;
     const arr = this.val.array as Float32Array;
@@ -660,7 +660,7 @@ export class Viewer {
     this.requestRender();
   }
 
-  /** Förstoring av förskjutningarna. */
+  /** Magnification of the displacements. */
   setScale(s: number) {
     this.scale = s;
     this.surfMat.uniforms.scale.value = s;
@@ -668,7 +668,7 @@ export class Viewer {
     this.requestRender();
   }
 
-  /** Animera en mod (skalan pendlar) eller stoppa. */
+  /** Animate a mode (the scale oscillates) or stop. */
   animateMode(on: boolean) {
     if (on) {
       this.animating = { kind: "mode", base: this.scale, t0: performance.now() };
@@ -680,7 +680,7 @@ export class Viewer {
     }
   }
 
-  /** Stöd och laster. `fmt` skriver lastvärden (belopp, moment?) som etiketter; null = inga etiketter. */
+  /** Supports and loads. `fmt` writes load values (magnitude, moment?) as labels; null = no labels. */
   setSymbols(sym: Symbols | null, fmt: ((v: number, moment: boolean) => string) | null = null) {
     for (const c of [...this.symbolGroup.children]) {
       this.symbolGroup.remove(c);
@@ -702,9 +702,9 @@ export class Viewer {
     const p = new THREE.Vector3();
     if (sym.bcNodes.length) this.addSupports(sym, size);
     if (sym.loadNodes.length) {
-      // Pilar med spetsen i angreppspunkten och skaftet uppströms, i lastens riktning.
-      // Geometrin ligger längs +y med spetsen i origo; längden (skalan i y) följer
-      // beloppet, relativt den största lasten av samma slag (minst 45 %).
+      // Arrows with the tip at the point of application and the shaft upstream, in the load's direction.
+      // The geometry lies along +y with the tip at the origin; the length (the scale in y) follows
+      // the magnitude, relative to the largest load of the same kind (at least 45 %).
       const len = size * 3.2;
       const headLen = size * 0.9;
       const head = new THREE.ConeGeometry(size * 0.32, headLen, 14);
@@ -712,7 +712,7 @@ export class Viewer {
       head.translate(0, headLen / 2, 0);
       const shaft = new THREE.CylinderGeometry(size * 0.085, size * 0.085, 1, 8);
       shaft.translate(0, 0.5, 0);
-      // moment: dubbelpil (andra spetsen bakom den första)
+      // moment: double arrow (the second tip behind the first)
       const head2 = head.clone().translate(0, headLen * 0.75, 0);
       const forceMat = new THREE.MeshBasicMaterial({ color: 0xe0559a, depthTest: false, transparent: true });
       const momentMat = new THREE.MeshBasicMaterial({ color: 0xa371f7, depthTest: false, transparent: true });
@@ -736,7 +736,7 @@ export class Viewer {
           const inst = new THREE.InstancedMesh(geo, moment ? momentMat : forceMat, sel.length);
           sel.forEach((it, i) => {
             const l = len * (0.45 + 0.55 * (it.mag / max));
-            // +y i geometrin pekar uppströms, dvs. mot −d
+            // +y in the geometry points upstream, i.e. towards −d
             q.setFromUnitVectors(up, it.d.clone().negate());
             p.fromArray(P, it.n * 3).addScaledVector(it.d, -offset);
             m.compose(p, q, new THREE.Vector3(1, Math.max(stretch(l), 0), 1));
@@ -759,9 +759,9 @@ export class Viewer {
   }
 
   /**
-   * Stödsymboler: inspänning (triangel på platta), led (triangel på linje) och
-   * rullstöd (triangel på hjul, en per låst translation, riktad längs den låsta
-   * riktningen). Masken har U1–U3 i bit 0–2 och UR1–UR3 i bit 3–5.
+   * Support symbols: fixed (triangle on a slab), pinned (triangle on a line) and
+   * roller (triangle on wheels, one per locked translation, oriented along the locked
+   * direction). The mask has U1–U3 in bits 0–2 and UR1–UR3 in bits 3–5.
    */
   private addSupports(sym: Symbols, s: number) {
     const P = this.mesh!.positions;
@@ -769,7 +769,7 @@ export class Viewer {
     const axes = [new THREE.Vector3(1, 0, 0), new THREE.Vector3(0, 1, 0), new THREE.Vector3(0, 0, 1)];
     const up = axes[1];
     const nt = is2d ? 2 : 3;
-    // noder i balkar/stänger kan ha rotationer; kontinuumnoder har bara translationer
+    // nodes in beams/trusses can have rotations; continuum nodes only have translations
     const lineNode = new Set<number>(this.mesh!.lines);
     const fixT: THREE.Matrix4[] = [], pinT: THREE.Matrix4[] = [], rollT: THREE.Matrix4[] = [], rotT: THREE.Matrix4[] = [];
     const q = new THREE.Quaternion();
@@ -793,7 +793,7 @@ export class Viewer {
         rotT.push(new THREE.Matrix4().compose(p, q.identity(), one));
       }
     }
-    // geometrin i lokal ram: spetsen i noden, symbolen nedåt längs −y
+    // the geometry in a local frame: the tip at the node, the symbol downward along −y
     const depth = is2d ? s * 0.05 : s * 1.3;
     const tri = new THREE.ConeGeometry(s * 0.55, s, is2d ? 3 : 4);
     if (!is2d) tri.rotateY(Math.PI / 4);
@@ -818,11 +818,11 @@ export class Viewer {
     add([tri, slab], fixMat, fixT);
     add([tri, line], pinMat, pinT);
     add([tri, ...wheels, rollLine], rollMat, rollT);
-    // bara rotationer låsta: en liten kub i noden
+    // only rotations locked: a small cube at the node
     add([new THREE.BoxGeometry(s * 0.45, s * 0.45, s * 0.45)], rotMat, rotT);
   }
 
-  /** Textetikett som alltid ligger överst (höjd `h` i modellens längdenhet). */
+  /** Text label that is always on top (height `h` in the model's length unit). */
   private label(text: string, at: THREE.Vector3, h: number, color: string): THREE.Sprite {
     const px = 56;
     const c = document.createElement("canvas");
@@ -849,7 +849,7 @@ export class Viewer {
     return sp;
   }
 
-  /** Markerar ett element (null = ingen markering). */
+  /** Highlights an element (null = no highlight). */
   setHighlight(h: Hit | null) {
     for (const c of [...this.highlight.children]) {
       this.highlight.remove(c);
@@ -899,7 +899,7 @@ export class Viewer {
     this.requestRender();
   }
 
-  /** Markerar noder (förhandsvisning av ett urval; null eller tom = ingen). */
+  /** Marks nodes (preview of a selection; null or empty = none). */
   setMarked(nodes: number[] | null) {
     for (const c of [...this.marks.children]) {
       this.marks.remove(c);
@@ -956,7 +956,7 @@ export class Viewer {
     this.controls.target.copy(this.center);
     this.camera.lookAt(this.center);
     this.camera.updateMatrixWorld();
-    // zooma så att modellens låda (sedd från kameran) fyller fönstret
+    // zoom so that the model's box (seen from the camera) fills the window
     const inv = this.camera.matrixWorldInverse;
     const c = new THREE.Vector3().copy(this.center).applyMatrix4(inv);
     let ex = 0;
@@ -1008,14 +1008,14 @@ export class Viewer {
       this.frameReq = requestAnimationFrame(this.render);
     }
     const r = this.renderer;
-    // setViewport/setScissor tar CSS-pixlar (renderern multiplicerar med pixelRatio)
+    // setViewport/setScissor take CSS pixels (the renderer multiplies by pixelRatio)
     const w = r.domElement.clientWidth;
     const h = r.domElement.clientHeight;
     r.setViewport(0, 0, w, h);
     r.setScissorTest(false);
     r.clear();
     r.render(this.scene, this.camera);
-    // axelkors nere till vänster
+    // axis triad in the lower left corner
     const s = 84;
     r.clearDepth();
     r.setScissorTest(true);
@@ -1040,7 +1040,7 @@ export class Viewer {
     this.onPick(this.pick(e.clientX, e.clientY, d.touch));
   };
 
-  /** GPU-plockning: element-id som färg i en liten dold bild runt markören. */
+  /** GPU picking: element id as color in a small hidden image around the cursor. */
   pick(clientX: number, clientY: number, touch: boolean): Hit | null {
     if (!this.mesh) return null;
     const rect = this.canvas.getBoundingClientRect();
@@ -1107,7 +1107,7 @@ export class Viewer {
     return best >= 0 ? { kind: "node", index: best } : null;
   }
 
-  /** Mäter bildtiden: `frames` bilder medan kameran roterar ett varv (ms per bild). */
+  /** Measures the frame time: `frames` frames while the camera rotates one turn (ms per frame). */
   benchmark(frames: number): number {
     const gl = this.renderer.getContext();
     const target = this.controls.target.clone();
@@ -1130,7 +1130,7 @@ export class Viewer {
     return ms;
   }
 
-  /** Antal trianglar och linjesegment som ritas. */
+  /** Number of triangles and line segments drawn. */
   get stats() {
     return { triangles: this.mesh?.triElem.length ?? 0, segments: (this.mesh?.edges.length ?? 0) / 2 + (this.mesh?.lineElem.length ?? 0) };
   }

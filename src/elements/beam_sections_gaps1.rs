@@ -1,21 +1,21 @@
-//! Område gaps1: tvärsnitten CHANNEL och HAT (bara *BEAM GENERAL SECTION;
-//! inkluderas från `beams2_sections.rs`).
+//! Area gaps1: the sections CHANNEL and HAT (only *BEAM GENERAL SECTION;
+//! included from `beams2_sections.rs`).
 //!
-//! Båda räknas som öppna tunnväggiga tvärsnitt med mittlinjemodell, som
-//! ARBITRARY: segmentkedjan nedan går genom väggarnas mittlinjer och
-//! egenskaperna (area, ytmoment kring origo, J = Σ l t³/3, skjuvcentrum ur
-//! sektoriella storheter) räknas av `arbitrary_props`.
+//! Both are treated as open thin-walled sections with a midline model, like
+//! ARBITRARY: the segment chain below runs through the wall midlines and
+//! the properties (area, area moments about the origin, J = Σ l t³/3, shear center from
+//! sectorial quantities) are computed by `arbitrary_props`.
 //!
-//! - CHANNEL (l, h, b₁, b₂, t₁, t₂, t₃, o): livet till vänster, flänsarna åt
-//!   +1. l är avståndet från underflänsens underkant till origo längs 2, o
-//!   avståndet från livets yttre kant till origo längs 1.
-//! - HAT (l, h, b, b₁, b₂, t₁, t₂, t₃): symmetrisk kring 2-axeln, överfläns
-//!   b₁ × t₁, bottenflänsar b₂ × t₂, sneda liv t₃, total bredd b; l från
-//!   bottenflänsarnas underkant till origo.
+//! - CHANNEL (l, h, b₁, b₂, t₁, t₂, t₃, o): web on the left, flanges towards
+//!   +1. l is the distance from the bottom edge of the lower flange to the origin along 2, o
+//!   the distance from the outer edge of the web to the origin along 1.
+//! - HAT (l, h, b, b₁, b₂, t₁, t₂, t₃): symmetric about the 2-axis, top flange
+//!   b₁ × t₁, bottom flanges b₂ × t₂, inclined webs t₃, total width b; l from
+//!   the bottom edge of the bottom flanges to the origin.
 
 use super::*;
 
-/// Data för ARBITRARY (antal, x, y, x, y, t, x, y, t, ...) ur punkterna och tjocklekarna.
+/// Data for ARBITRARY (count, x, y, x, y, t, x, y, t, ...) from the points and thicknesses.
 fn chain(points: &[[f64; 2]], t: &[f64]) -> Vec<f64> {
     let mut v = vec![t.len() as f64, points[0][0], points[0][1], points[1][0], points[1][1], t[0]];
     for k in 1..t.len() {
@@ -26,26 +26,26 @@ fn chain(points: &[[f64; 2]], t: &[f64]) -> Vec<f64> {
 
 pub fn channel_props(v: &[f64]) -> Result<SectionProps> {
     if v.len() < 8 {
-        return fail("SECTION=CHANNEL kräver l, h, b1, b2, t1, t2, t3, o på första dataraden");
+        return fail("SECTION=CHANNEL requires l, h, b1, b2, t1, t2, t3, o on the first data line");
     }
     let (l, h, b1, b2, t1, t2, t3, o) = (v[0], v[1], v[2], v[3], v[4], v[5], v[6], v[7]);
     if !(h > 0.0 && b1 > 0.0 && b2 > 0.0 && t1 > 0.0 && t2 > 0.0 && t3 > 0.0) {
-        return fail("SECTION=CHANNEL: måtten h, b1, b2, t1, t2, t3 ska vara positiva");
+        return fail("SECTION=CHANNEL: the dimensions h, b1, b2, t1, t2, t3 must be positive");
     }
     let xw = -o + t3 / 2.0;
     let yb = -l + t1 / 2.0;
     let yt = -l + h - t2 / 2.0;
     let pts = [[-o + b1, yb], [xw, yb], [xw, yt], [-o + b2, yt]];
     let mut p = arbitrary_props(&chain(&pts, &[t1, t3, t2]))?;
-    // area och ytmoment exakt för rektanglarna
-    // (flänsarna hela bredden, livet mellan flänsarna); J och skjuvcentrum
-    // från mittlinjemodellen
+    // area and area moments exact for the rectangles
+    // (flanges full width, web between the flanges); J and shear center
+    // from the midline model
     let rects = [(-o, -o + b1, -l, -l + t1), (-o, -o + b2, -l + h - t2, -l + h), (-o, -o + t3, -l + t1, -l + h - t2)];
     exact_rects(&mut p, &rects);
     Ok(p)
 }
 
-/// Area och ytmoment kring origo för axelparallella rektanglar (x0, x1, y0, y1).
+/// Area and area moments about the origin for axis-parallel rectangles (x0, x1, y0, y1).
 fn exact_rects(p: &mut SectionProps, rects: &[(f64, f64, f64, f64)]) {
     let (mut a, mut s1, mut s2, mut i11, mut i22, mut i12) = (0.0, 0.0, 0.0, 0.0, 0.0, 0.0);
     for &(x0, x1, y0, y1) in rects {
@@ -67,11 +67,11 @@ fn exact_rects(p: &mut SectionProps, rects: &[(f64, f64, f64, f64)]) {
 
 pub fn hat_props(v: &[f64]) -> Result<SectionProps> {
     if v.len() < 8 {
-        return fail("SECTION=HAT kräver l, h, b, b1, b2, t1, t2, t3 på första dataraden");
+        return fail("SECTION=HAT requires l, h, b, b1, b2, t1, t2, t3 on the first data line");
     }
     let (l, h, b, b1, b2, t1, t2, t3) = (v[0], v[1], v[2], v[3], v[4], v[5], v[6], v[7]);
     if !(h > 0.0 && b > 0.0 && b1 > 0.0 && b2 > 0.0 && t1 > 0.0 && t2 > 0.0 && t3 > 0.0) {
-        return fail("SECTION=HAT: måtten ska vara positiva");
+        return fail("SECTION=HAT: the dimensions must be positive");
     }
     let yb = -l + t2 / 2.0;
     let yt = -l + h - t1 / 2.0;

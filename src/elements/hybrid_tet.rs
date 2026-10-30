@@ -1,45 +1,45 @@
-//! C3D4H: linjär hybridtetraeder med kontinuerligt nodvis tryckfält.
+//! C3D4H: linear hybrid tetrahedron with a continuous nodal pressure field.
 //!
-//! Formulering (*ELASTIC och *HYPERELASTIC NEO HOOKE, även med D1 = 0):
+//! Formulation (*ELASTIC and *HYPERELASTIC NEO HOOKE, also with D1 = 0):
 //!
-//! - Trycket q (positivt vid kompression) interpoleras linjärt från
-//!   hörnnoderna och är **kontinuerligt** mellan elementen. Det lagras
-//!   på en intern nod per nätnod (frihetsgrad 1): `setup`
-//!   (anropas när .inp-filen är läst) skapar en trycknod per hörnnod och
-//!   material, med nummer −(3·10⁹ + 64·nod + materialindex), som läggs sist
-//!   i elementets nodlista (noderna 5–8, frihetsgrad 1). Trycknoden är en
-//!   förskjutningsfrihetsgrad, så att Newtons konvergenskriterier per fält
-//!   gäller även tryckekvationerna; variabeln skalas med μ (q = μ · u₅..₈),
-//!   så att den blir dimensionslös och ekvationerna får kraftliknande
-//!   storlek. Systemet blir en sadelpunkt, och modeller med C3D4H löses med
-//!   den indefinita lösaren (`auto_solver`, anropas i `steps::run`).
-//! - Elementet har en integrationspunkt; där används elementets medeltryck
-//!   q̄ = Σ qᵢ / 4. Med m = ∫N dV = V/4 per nod och tryckmassan
-//!   M = ∫NNᵀ dV = V/20 (1 + δᵢⱼ) är blocken (linjär elasticitet, μ, K)
+//! - The pressure q (positive in compression) is interpolated linearly from
+//!   the corner nodes and is **continuous** between the elements. It is stored
+//!   on one internal node per mesh node (degree of freedom 1): `setup`
+//!   (called when the .inp file has been read) creates one pressure node per corner node and
+//!   material, with the number −(3·10⁹ + 64·node + material index), which is appended
+//!   to the element's node list (nodes 5–8, degree of freedom 1). The pressure node is a
+//!   displacement degree of freedom, so that Newton's per-field convergence criteria
+//!   also apply to the pressure equations; the variable is scaled by μ (q = μ · u₅..₈),
+//!   so that it becomes dimensionless and the equations get force-like
+//!   magnitude. The system becomes a saddle point, and models with C3D4H are solved with
+//!   the indefinite solver (`auto_solver`, called in `steps::run`).
+//! - The element has one integration point; there the element's mean pressure
+//!   q̄ = Σ qᵢ / 4 is used. With m = ∫N dV = V/4 per node and the pressure mass
+//!   M = ∫NNᵀ dV = V/20 (1 + δᵢⱼ) the blocks are (linear elasticity, μ, K)
 //!
 //!   K_uu = V Bᵀ D_dev B + β K V d dᵀ,   K_uq = −(1 − β) d mᵀ,
 //!   K_qq = −(1 − β)/K [m mᵀ/V + α (M − m mᵀ/V)] − c α/μ (M − m mᵀ/V)
 //!
-//!   med d = volymtöjningsraden (tr B), β = 10⁻⁶ (som de andra
-//!   hybridelementen, inte för hyperelastiska material), α = 0,005 och c = 1
-//!   för helt inkompressibla material (ν = 0,5, D1 = 0), annars 0. Termen
-//!   med α är en stabilisering av trycket mot elementets medelvärde
-//!   (polynomprojektion); den gör sadelpunktsproblemet entydigt även för
-//!   helt inkompressibla material (`tests/hybrid2.rs`).
-//! - Hydrostatisk spänning i punkten: (1 − β)(−q̄) + β (−p_mat).
+//!   with d = the volumetric strain row (tr B), β = 10⁻⁶ (like the other
+//!   hybrid elements, not for hyperelastic materials), α = 0.005 and c = 1
+//!   for fully incompressible materials (ν = 0.5, D1 = 0), otherwise 0. The term
+//!   with α is a stabilization of the pressure against the element mean
+//!   (polynomial projection); it makes the saddle point problem unique even for
+//!   fully incompressible materials (`tests/hybrid2.rs`).
+//! - Hydrostatic stress at the point: (1 − β)(−q̄) + β (−p_mat).
 //!
-//! Andra material vid små töjningar (plasticitet m.m.): spänningen räknas av
-//! materialet och dess hydrostatiska del byts ut mot (1 − β)(−q̄), med den
-//! elastiska kompressionsmodulen K i tryckekvationen
-//! (1 − β) m (p_mat − q̄)/K (exakt för isotrop elasticitet + tryckoberoende
-//! plasticitet, t.ex. Mises).
+//! Other materials at small strains (plasticity etc.): the stress is computed by
+//! the material and its hydrostatic part is replaced by (1 − β)(−q̄), with the
+//! elastic bulk modulus K in the pressure equation
+//! (1 − β) m (p_mat − q̄)/K (exact for isotropic elasticity + pressure-independent
+//! plasticity, e.g. Mises).
 //!
-//! NLGEOM med hyperelastiskt material: energin
-//! Π = Σₑ V₀ [W_dev(F) + p (J − 1) − U*(p)] med p = −q̄ och U* volymenergins
-//! Legendretransform (U* = 0 för D1 = 0), samma stabilisering som ovan med
-//! K = K₀. Den deviatoriska delen räknas med `hybrid::nl_eval_hist`
-//! (Lagrangemultiplikator med konstant bas). *ELASTIC/plasticitet vid NLGEOM
-//! stöds inte.
+//! NLGEOM with a hyperelastic material: the energy
+//! Π = Σₑ V₀ [W_dev(F) + p (J − 1) − U*(p)] with p = −q̄ and U* the Legendre
+//! transform of the volumetric energy (U* = 0 for D1 = 0), the same stabilization as above with
+//! K = K₀. The deviatoric part is computed with `hybrid::nl_eval_hist`
+//! (Lagrange multiplier with a constant basis). *ELASTIC/plasticity with NLGEOM
+//! is not supported.
 
 use super::api::{not_implemented, ElemCtx, ElemResponse, ElementType, Family, IpField, MassKind};
 use super::common::{self, Ip};
@@ -57,10 +57,10 @@ pub static C3D4H: NodalTet = NodalTet;
 
 pub static TYPES: &[&dyn ElementType] = &[&C3D4H];
 
-/// Stabiliseringskonstanten α (oberoende av ν).
+/// The stabilization constant α (independent of ν).
 pub const ALPHA: f64 = 0.005;
 
-/// Nummer för trycknoden till nod `label` och material nummer `m`.
+/// Number of the pressure node for node `label` and material number `m`.
 pub fn pressure_label(label: i64, m: usize) -> i64 {
     -(3_000_000_000 + 64 * label + m as i64)
 }
@@ -69,8 +69,8 @@ fn base() -> &'static Solid {
     &sh::C3D4
 }
 
-/// Lägger till trycknoderna (en per hörnnod och material) sist i varje
-/// C3D4H-elements nodlista. Anropas från `inp` när filen är läst.
+/// Appends the pressure nodes (one per corner node and material) to each
+/// C3D4H element's node list. Called from `inp` when the file has been read.
 pub fn setup(model: &mut FeModel) -> Result<()> {
     let mut mats: Vec<String> = Vec::new();
     let mut made: HashMap<(usize, usize), usize> = HashMap::new();
@@ -87,7 +87,7 @@ pub fn setup(model: &mut FeModel) -> Result<()> {
             }
         };
         if mi >= 64 {
-            return fail("C3D4H: högst 64 material med C3D4H-element stöds");
+            return fail("C3D4H: at most 64 materials with C3D4H elements are supported");
         }
         let mut extra = Vec::with_capacity(4);
         for a in 0..4 {
@@ -108,13 +108,13 @@ pub fn setup(model: &mut FeModel) -> Result<()> {
     Ok(())
 }
 
-/// Har modellen element med nodvisa tryckfrihetsgrader (C3D4H)?
+/// Does the model have elements with nodal pressure degrees of freedom (C3D4H)?
 pub fn model_has_nodal_pressure(model: &FeModel) -> bool {
     model.elements.iter().any(|e| e.etype.name() == "C3D4H")
 }
 
-/// Den indefinita lösaren utan varning om negativa egenvärden (sadelpunkts-
-/// systemet har lika många negativa egenvärden som tryckfrihetsgrader).
+/// The indefinite solver without a warning about negative eigenvalues (the saddle point
+/// system has as many negative eigenvalues as pressure degrees of freedom).
 struct QuietIndefinite;
 
 static QUIET: QuietIndefinite = QuietIndefinite;
@@ -128,8 +128,8 @@ impl crate::solver::LinearSolver for QuietIndefinite {
     }
 }
 
-/// Lösaren för ett steg: den indefinita i stället för standardlösaren
-/// (`direct`) när modellen har C3D4H, om användaren inte valt lösare.
+/// The solver for a step: the indefinite one instead of the default solver
+/// (`direct`) when the model has C3D4H, unless the user has chosen a solver.
 pub fn auto_solver(model: &FeModel, solver: &'static dyn crate::solver::LinearSolver, forced: bool) -> &'static dyn crate::solver::LinearSolver {
     if !forced && solver.name() == "direct" && model_has_nodal_pressure(model) {
         return &QUIET;
@@ -137,13 +137,13 @@ pub fn auto_solver(model: &FeModel, solver: &'static dyn crate::solver::LinearSo
     solver
 }
 
-/// Hur elementet räknas för materialet.
+/// How the element is computed for the material.
 enum Kind {
-    /// Linjär elasticitet (även hyperelastiskt utan NLGEOM): μ, 1/K, β, inkompressibelt.
+    /// Linear elasticity (also hyperelastic without NLGEOM): μ, 1/K, β, incompressible.
     Linear { mu: f64, kinv: f64, beta: f64, incomp: bool },
-    /// Annat material vid små töjningar: elastisk kompressionsmodul K, μ, inkompressibelt.
+    /// Other material at small strains: elastic bulk modulus K, μ, incompressible.
     General { k: f64, mu: f64, incomp: bool },
-    /// Hyperelastiskt vid NLGEOM.
+    /// Hyperelastic with NLGEOM.
     Hyper,
 }
 
@@ -151,7 +151,7 @@ fn kind(ctx: &ElemCtx, mat: &dyn MaterialModel) -> Result<Kind> {
     if let Some(h) = mat.hyperelastic() {
         if ctx.nlgeom {
             if h.kirchhoff_full(&crate::kinematics::tensor::I3).is_some() {
-                return fail(format!("{}: *HYPERFOAM stöds inte i C3D4H", ctx.label));
+                return fail(format!("{}: *HYPERFOAM is not supported in C3D4H", ctx.label));
             }
             return Ok(Kind::Hyper);
         }
@@ -159,10 +159,10 @@ fn kind(ctx: &ElemCtx, mat: &dyn MaterialModel) -> Result<Kind> {
         return Ok(Kind::Linear { mu: h.mu0(), kinv, beta: 0.0, incomp: h.incompressible() });
     }
     if ctx.nlgeom {
-        return not_implemented("NLGEOM med andra material än *HYPERELASTIC", "C3D4H");
+        return not_implemented("NLGEOM with materials other than *HYPERELASTIC", "C3D4H");
     }
     let Some((e, nu)) = mat.elastic_moduli() else {
-        return fail(format!("{}: C3D4H kräver ett material med isotrop elasticitet (E, ν)", ctx.label));
+        return fail(format!("{}: C3D4H requires a material with isotropic elasticity (E, ν)", ctx.label));
     };
     let mu = e / (2.0 * (1.0 + nu));
     let k = e / (3.0 * (1.0 - 2.0 * nu));
@@ -173,7 +173,7 @@ fn kind(ctx: &ElemCtx, mat: &dyn MaterialModel) -> Result<Kind> {
     Ok(Kind::General { k, mu, incomp })
 }
 
-/// Skalan s i q = s · u (trycknodernas frihetsgrad): skjuvmodulen.
+/// The scale s in q = s · u (the degree of freedom of the pressure nodes): the shear modulus.
 fn scale(mat: &dyn MaterialModel) -> f64 {
     if let Some(h) = mat.hyperelastic() {
         return h.mu0();
@@ -181,7 +181,7 @@ fn scale(mat: &dyn MaterialModel) -> f64 {
     mat.elastic_moduli().map_or(1.0, |(e, nu)| e / (2.0 * (1.0 + nu)))
 }
 
-/// Delar elementvektorn (12 förskjutningar, 4 skalade tryck) i förskjutningar och tryck.
+/// Splits the element vector (12 displacements, 4 scaled pressures) into displacements and pressures.
 fn split(v: &[f64], s: f64) -> (Vec<f64>, [f64; 4]) {
     let mut q = [0.0; 4];
     for a in 0..4 {
@@ -190,19 +190,19 @@ fn split(v: &[f64], s: f64) -> (Vec<f64>, [f64; 4]) {
     (v[..12].to_vec(), q)
 }
 
-/// Index i elementvektorn för tryck i nod a.
+/// Index in the element vector of the pressure at node a.
 fn iq(a: usize) -> usize {
     12 + a
 }
 
-/// Kontext med bara hörnnoderna.
+/// Context with only the corner nodes.
 fn geo<'a>(ctx: &ElemCtx<'a>) -> ElemCtx<'a> {
     let mut c = ctx.clone();
     c.x.truncate(4);
     c
 }
 
-/// Stabiliseringsmatrisen S = M − m mᵀ/V (S_ii = 3V/80, S_ij = −V/80).
+/// The stabilization matrix S = M − m mᵀ/V (S_ii = 3V/80, S_ij = −V/80).
 fn smat(v: f64) -> [[f64; 4]; 4] {
     let mut s = [[-v / 80.0; 4]; 4];
     for (i, r) in s.iter_mut().enumerate() {
@@ -211,7 +211,7 @@ fn smat(v: f64) -> [[f64; 4]; 4] {
     s
 }
 
-/// Punkten, B och volymtöjningsraden.
+/// The point, B and the volumetric strain row.
 fn kin(ctx: &ElemCtx) -> Result<(Vec<Ip>, Vec<Vec<f64>>, Vec<f64>, f64)> {
     let el = base();
     let ips = el.ips(ctx)?;
@@ -222,7 +222,7 @@ fn kin(ctx: &ElemCtx) -> Result<(Vec<Ip>, Vec<Vec<f64>>, Vec<f64>, f64)> {
     Ok((ips, bs, dv, v))
 }
 
-/// Residual och tangent för hela elementet (fysiskt tryck q).
+/// Residual and tangent for the whole element (physical pressure q).
 struct Asm {
     f: Vec<f64>,
     k: Vec<f64>,
@@ -235,7 +235,7 @@ impl Asm {
     fn kadd(&mut self, i: usize, j: usize, v: f64) {
         self.k[i * 16 + j] += v;
     }
-    /// Byter till den skalade tryckvariabeln u = q/s (rader och kolumner × s).
+    /// Switches to the scaled pressure variable u = q/s (rows and columns × s).
     fn scaled(mut self, s: f64) -> Self {
         for i in 12..16 {
             self.f[i] *= s;
@@ -248,13 +248,13 @@ impl Asm {
     }
 }
 
-/// Tryckblockets bidrag −c_m (m mᵀ/V) − c_s S och dess del av residualen.
+/// The pressure block contribution −c_m (m mᵀ/V) − c_s S and its part of the residual.
 ///
-/// Med `fs_old` (små töjningar) är stabiliseringens kraft ett tillstånd som
-/// uppdateras med hela trycket i varje inkrement,
-/// F_s = F_s,n − c_s S q: resultatet beror då på antalet inkrement (ett
-/// inkrement ger den totala formen). Returnerar det nya F_s. Utan `fs_old`
-/// (hyperelastiskt vid NLGEOM) används den totala formen −c_s S q.
+/// With `fs_old` (small strains) the stabilization force is a state that
+/// is updated with the full pressure in each increment,
+/// F_s = F_s,n − c_s S q: the result then depends on the number of increments (one
+/// increment gives the total form). Returns the new F_s. Without `fs_old`
+/// (hyperelastic with NLGEOM) the total form −c_s S q is used.
 fn pressure_block(a: &mut Asm, q: &[f64; 4], v: f64, c_m: f64, c_s: f64, tangent: bool, fs_old: Option<&[f64]>) -> [f64; 4] {
     let s = smat(v);
     let mut fs = [0.0; 4];
@@ -272,7 +272,7 @@ fn pressure_block(a: &mut Asm, q: &[f64; 4], v: f64, c_m: f64, c_s: f64, tangent
     fs
 }
 
-/// Stabiliseringskraften vid inkrementets början (sist i tillståndet).
+/// The stabilization force at the start of the increment (last in the state).
 fn fs_of(so: &[f64], len: usize) -> [f64; 4] {
     if so.len() == len && len >= 4 {
         [so[len - 4], so[len - 3], so[len - 2], so[len - 1]]
@@ -281,7 +281,7 @@ fn fs_of(so: &[f64], len: usize) -> [f64; 4] {
     }
 }
 
-/// Kopplingen K_uq = K_qu = −(1 − β) d V/4.
+/// The coupling K_uq = K_qu = −(1 − β) d V/4.
 fn coupling(a: &mut Asm, dv: &[f64], v: f64, beta: f64) {
     for i in 0..12 {
         for k in 0..4 {
@@ -298,7 +298,7 @@ impl NodalTet {
         let (_, bs, dv, v) = kin(ctx)?;
         let b = &bs[0];
         let mut a = Asm::new();
-        // deviatoriskt D (ingenjörsskjuvning)
+        // deviatoric D (engineering shear)
         let mut dd = [[0.0; 6]; 6];
         for i in 0..3 {
             for j in 0..3 {
@@ -310,7 +310,7 @@ impl NodalTet {
         let eps = common::strain(b, u);
         let ev: f64 = eps[0] + eps[1] + eps[2];
         let qbar: f64 = q.iter().sum::<f64>() / 4.0;
-        // spänning: deviatorisk + (1 − β)(−q̄) + β K ε_v
+        // stress: deviatoric + (1 − β)(−q̄) + β K ε_v
         let mut sig: Vec<f64> = (0..6).map(|r| (0..6).map(|m| dd[r][m] * eps[m]).sum()).collect();
         for s in sig.iter_mut().take(3) {
             *s += -(1.0 - beta) * qbar + beta * kb * ev;
@@ -332,7 +332,7 @@ impl NodalTet {
             }
             coupling(&mut a, &dv, v, beta);
         }
-        // tryckekvationen: (1 − β)(V/4)(−ε_v) − (1 − β)/K [m mᵀ/V + α S] q − c α/μ S q
+        // the pressure equation: (1 − β)(V/4)(−ε_v) − (1 − β)/K [m mᵀ/V + α S] q − c α/μ S q
         for k in 0..4 {
             a.f[iq(k)] += -(1.0 - beta) * v / 4.0 * ev;
         }
@@ -375,7 +375,7 @@ impl NodalTet {
         if let Some(km) = &r.k {
             for i in 0..12 {
                 for j in 0..12 {
-                    // symmetrisk del av materialtangenten minus den ersatta volymdelen
+                    // symmetric part of the material tangent minus the replaced volumetric part
                     let kij = 0.5 * (km[i * 12 + j] + km[j * 12 + i]) - (1.0 - beta) * kb * v * dv[i] * dv[j];
                     a.kadd(i, j, kij);
                 }
@@ -422,11 +422,11 @@ impl NodalTet {
             Some((&[ph], 1.0)),
             Some(so),
         )?;
-        // volymtöjningen v(p) ur U'(1 + v) = p och dv/dp = 1/U''
+        // the volumetric strain v(p) from U'(1 + v) = p and dv/dp = 1/U''
         let (vp, dvdp) = if h.incompressible() { (0.0, 0.0) } else { conjugate(h, ph)? };
         let mut a = Asm::new();
         a.f[..12].copy_from_slice(&r.fint[..12]);
-        // ∂Π/∂p = V₀ (J − 1 − v(p)) med fint[12] = V₀ (J − 1); ∂p/∂qₖ = −1/4
+        // ∂Π/∂p = V₀ (J − 1 − v(p)) with fint[12] = V₀ (J − 1); ∂p/∂qₖ = −1/4
         let dpi = r.fint[12] - v * vp;
         for k in 0..4 {
             a.f[iq(k)] += -0.25 * dpi;
@@ -447,7 +447,7 @@ impl NodalTet {
                 }
             }
         }
-        // stabiliseringen som vid små töjningar (K = K₀)
+        // the stabilization as at small strains (K = K₀)
         let c_s = if h.incompressible() { ALPHA / h.mu0() } else { ALPHA / h.k0() };
         pressure_block(&mut a, q, v, 0.0, c_s, tangent, None);
         *sn = r.state;
@@ -477,7 +477,7 @@ impl NodalTet {
         Ok(ElemResponse { fint: a.f, k: tangent.then_some(k) })
     }
 
-    /// Bäddar in en matris för de tolv förskjutningarna i elementets 16 frihetsgrader.
+    /// Embeds a matrix for the twelve displacements into the element's 16 degrees of freedom.
     fn embed(m12: &[f64]) -> Vec<f64> {
         let mut k = vec![0.0; 256];
         for i in 0..12 {
@@ -487,14 +487,14 @@ impl NodalTet {
     }
 }
 
-/// Volymtöjningen v och dv/dp = 1/U''(1 + v) för hydrostatisk spänning p
-/// (U'(1 + v) = p), med Newton.
+/// The volumetric strain v and dv/dp = 1/U''(1 + v) for the hydrostatic stress p
+/// (U'(1 + v) = p), with Newton.
 fn conjugate(h: &dyn crate::materials::hyperelastic_split::HyperModel, p: f64) -> Result<(f64, f64)> {
     let mut v = p / h.k0();
     for _ in 0..50 {
         let (u1, u2) = h.vol(1.0 + v);
         if !(u2 > 0.0) {
-            return fail("C3D4H: volymenergin är inte konvex vid trycket");
+            return fail("C3D4H: the volumetric energy is not convex at the pressure");
         }
         let dv = (p - u1) / u2;
         v += dv;
@@ -540,11 +540,11 @@ impl ElementType for NodalTet {
         if let Some(h) = mat.hyperelastic() {
             return Ok(vec![0.0; 6 + h.n_hist()]);
         }
-        // spänning och stabiliseringskraften F_s (4)
+        // stress and the stabilization force F_s (4)
         if mat.is_linear() {
             return Ok(vec![0.0; 10]);
         }
-        // materialets tillstånd, den hydrostatiska korrektionen och F_s
+        // the material state, the hydrostatic correction and F_s
         let mut s = common::init_state(1, StressMode::ThreeD, mat);
         s.extend([0.0; 5]);
         Ok(s)
@@ -559,7 +559,7 @@ impl ElementType for NodalTet {
 
     fn internal_force(&self, ctx: &ElemCtx, u: &[f64], du: &[f64], so: &[f64], sn: &mut Vec<f64>, tangent: bool) -> Result<ElemResponse> {
         if ctx.x.len() != 8 {
-            return fail(format!("element {} (C3D4H) saknar trycknoder", ctx.label));
+            return fail(format!("element {} (C3D4H) has no pressure nodes", ctx.label));
         }
         self.response(ctx, u, du, so, sn, tangent)
     }
@@ -573,13 +573,13 @@ impl ElementType for NodalTet {
         let mat = ctx.material("C3D4H")?;
         let ips = base().ips(&g)?;
         let mut s = state.get(0..6).map(|v| v.to_vec()).unwrap_or_else(|| vec![0.0; 6]);
-        // allmänna material: spänningen plus den hydrostatiska korrektionen
+        // general materials: the stress plus the hydrostatic correction
         let general = !mat.is_linear() && mat.hyperelastic().is_none();
         let d = if general && state.len() > 10 { state[state.len() - 5] } else { 0.0 };
         for v in s.iter_mut().take(3) {
             *v += d;
         }
-        // samma uttryck som C3D4 (`geometric::continuum`), med spänningen först i tillståndet
+        // the same expression as C3D4 (`geometric::continuum`), with the stress first in the state
         let mut st = vec![0.0; common::ip_stride(StressMode::ThreeD, mat)];
         st[..6].copy_from_slice(&s);
         Ok(Self::embed(&super::geometric::continuum(StressMode::ThreeD, &ips, mat, &st)?))
@@ -606,7 +606,7 @@ impl ElementType for NodalTet {
         let mat = ctx.material("C3D4H")?;
         let ug = &u[..12];
         if !mat.is_linear() && mat.hyperelastic().is_none() {
-            // allmänna material: materialets utdata (PEEQ, ...) och den hydrostatiska korrektionen
+            // general materials: the material output (PEEQ, ...) and the hydrostatic correction
             let (_, bs, _, _) = kin(&g)?;
             let n = state.len().saturating_sub(5);
             let mut fields = common::output(StressMode::ThreeD, &bs, mat, ug, &state[..n]);

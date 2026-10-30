@@ -1,4 +1,4 @@
-// Små byggstenar: ikoner, knappar, fält och talformat.
+// Small building blocks: icons, buttons, fields and number formatting.
 
 import { useEffect, useState, type ReactNode } from "react";
 
@@ -69,7 +69,7 @@ export function IconButton(p: { icon: string; title: string; onClick?: () => voi
   );
 }
 
-/** Tal med fyra värdesiffror, exponent vid behov. */
+/** Number with four significant digits, exponent when needed. */
 export function fmt(v: number | null | undefined, digits = 4): string {
   if (v === null || v === undefined || !Number.isFinite(v)) return "–";
   if (v === 0) return "0";
@@ -79,13 +79,13 @@ export function fmt(v: number | null | undefined, digits = 4): string {
 }
 
 export function parseNum(s: string): number | null {
-  const t = s.trim().replace(",", ".").replace(/[dD]/, "e");
+  const t = s.trim().replace(/[dD]/, "e");
   if (!t) return null;
   const v = Number(t);
   return Number.isFinite(v) ? v : null;
 }
 
-/** Talfält som skickar värdet med Enter eller när fokus lämnar fältet. */
+/** Number field that commits the value on Enter or when focus leaves the field. */
 export function NumField(p: { value: number | null; onCommit: (v: number) => void; label?: string; unit?: string; disabled?: boolean; min?: number }) {
   const [text, setText] = useState(fmt(p.value, 6));
   const [bad, setBad] = useState(false);

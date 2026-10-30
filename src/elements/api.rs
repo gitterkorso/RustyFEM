@@ -1,89 +1,89 @@
-//! Elementgränssnittet: allt ett element kan bidra med till en analys.
+//! The element interface: everything an element can contribute to an analysis.
 //!
-//! Ett element implementerar `ElementType` för ett eller flera elementnamn och
-//! registreras i sin familjs `TYPES`-lista (se `elements/mod.rs`). Alla metoder
-//! utom de grundläggande har standardimplementationer som returnerar felet
-//! "inte implementerat för <element>", så en ny elementtyp kan börja med bara
-//! linjär styvhet och växa metod för metod.
+//! An element implements `ElementType` for one or more element names and
+//! is registered in its family's `TYPES` list (see `elements/mod.rs`). All methods
+//! except the basic ones have default implementations that return the error
+//! "not implemented for <element>", so a new element type can start with just
+//! linear stiffness and grow method by method.
 //!
-//! Konventioner:
-//! - Elementets frihetsgradsvektor är nodvis: för nod 0 alla `node_dofs(0)`,
-//!   sedan nod 1 osv. Matriser är täta, radvisa n×n (`Vec<f64>`).
-//! - Koordinater (`ElemCtx::x`) är referenskonfigurationen. `u` är total
-//!   förskjutning från referensläget, `du` ändringen sedan inkrementets början.
-//! - Elementets tillstånd (`state`) är en fri `Vec<f64>` som elementet själv
-//!   delar upp, typiskt per integrationspunkt: spänning + materialets tillstånd.
-//!   Kärnan sparar ett godkänt (`state_old`) och ett prövat (`state_new`) exemplar.
+//! Conventions:
+//! - The element's degree-of-freedom vector is node-wise: for node 0 all `node_dofs(0)`,
+//!   then node 1 etc. Matrices are dense, row-wise n×n (`Vec<f64>`).
+//! - Coordinates (`ElemCtx::x`) are the reference configuration. `u` is the total
+//!   displacement from the reference position, `du` the change since the start of the increment.
+//! - The element state (`state`) is a free-form `Vec<f64>` that the element itself
+//!   partitions, typically per integration point: stress + material state.
+//!   The core keeps one accepted (`state_old`) and one trial (`state_new`) copy.
 
 use crate::fem::dof::Dof;
 use crate::fem::model::{DistLoad, SectionDef};
 use crate::materials::MaterialModel;
 use crate::model::{fail, Result};
 
-/// Elementfamilj (för utdata, ytor och kontroller).
+/// Element family (for output, surfaces and checks).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Family {
-    /// Plana kontinuumelement (plan spänning/töjning).
+    /// Plane continuum elements (plane stress/strain).
     Continuum2D,
-    /// Axisymmetriska kontinuumelement.
+    /// Axisymmetric continuum elements.
     Axisymmetric,
     Continuum3D,
     Truss,
     Beam,
     Shell,
     Membrane,
-    /// Fjädrar, dämpare, massor, kopplingselement.
+    /// Springs, dashpots, masses, connector elements.
     Connector,
-    /// Värmeledning (endast NT11).
+    /// Heat conduction (NT11 only).
     Heat,
     Other,
 }
 
-/// Massmatris: konsistent eller diagonal (lumped).
+/// Mass matrix: consistent or diagonal (lumped).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MassKind {
     Consistent,
     Lumped,
 }
 
-/// Allt elementet behöver veta om sin omgivning.
+/// Everything the element needs to know about its surroundings.
 #[derive(Clone)]
 pub struct ElemCtx<'a> {
-    /// Elementets index i modellen och elementnummer.
+    /// The element's index in the model and element number.
     pub index: usize,
     pub label: i64,
-    /// Nodkoordinater i referensläget.
+    /// Nodal coordinates in the reference position.
     pub x: Vec<[f64; 3]>,
     pub section: Option<&'a SectionDef>,
     pub material: Option<&'a dyn MaterialModel>,
-    /// Densitet från *DENSITY (0 om den saknas).
+    /// Density from *DENSITY (0 if missing).
     pub density: f64,
-    /// Geometriskt olinjär analys (NLGEOM=YES).
+    /// Geometrically nonlinear analysis (NLGEOM=YES).
     pub nlgeom: bool,
-    /// Total tid vid inkrementets slut och inkrementets längd.
+    /// Total time at the end of the increment and the increment length.
     pub time: f64,
     pub dt: f64,
-    /// Nodtemperaturer (fördefinierat temperaturfält, *TEMPERATURE och
-    /// *INITIAL CONDITIONS, TYPE=TEMPERATURE) vid inkrementets slut respektive
-    /// början, i elementets nodordning. Tomma om modellen saknar temperaturfält.
-    /// Har modellen temperaturgradienter genom tjockleken (tredje fältet på
-    /// *TEMPERATURE) får skal och balkar 2·nn värden: nodtemperaturerna följda
-    /// av gradienterna (`fem::assembly::Prepared::ctx`).
+    /// Nodal temperatures (predefined temperature field, *TEMPERATURE and
+    /// *INITIAL CONDITIONS, TYPE=TEMPERATURE) at the end and start of the increment,
+    /// respectively, in the element's node order. Empty if the model has no temperature field.
+    /// If the model has temperature gradients through the thickness (third field on
+    /// *TEMPERATURE), shells and beams get 2·nn values: the nodal temperatures followed
+    /// by the gradients (`fem::assembly::Prepared::ctx`).
     pub temp: Vec<f64>,
     pub temp_old: Vec<f64>,
-    /// Lokal materialorientering från tvärsnittets ORIENTATION= (*ORIENTATION).
+    /// Local material orientation from the section's ORIENTATION= (*ORIENTATION).
     pub orientation: Option<&'a crate::materials::anisotropic::Orientation>,
 }
 
 impl<'a> ElemCtx<'a> {
-    /// Temperatur och temperaturändring i en integrationspunkt med
-    /// formfunktionerna `n` ((0, 0) om modellen saknar temperaturfält).
+    /// Temperature and temperature change at an integration point with
+    /// the shape functions `n` ((0, 0) if the model has no temperature field).
     ///
-    /// Första ordningens element använder medelvärdet av elementets
-    /// nodtemperaturer för termisk töjning (tests/cases/materials: C3D8
-    /// med sned mesh, CPS4 och T2D2).
-    /// Andra ordningens och inkompatibla kontinuumelement använder i stället
-    /// elementets temperaturinterpolation (`Solid::temperatures`).
+    /// First-order elements use the mean of the element's
+    /// nodal temperatures for thermal strain (tests/cases/materials: C3D8
+    /// with a skewed mesh, CPS4 and T2D2).
+    /// Second-order and incompatible-mode continuum elements instead use
+    /// the element's temperature interpolation (`Solid::temperatures`).
     pub fn temperature_at(&self, n: &[f64]) -> (f64, f64) {
         if self.temp.len() != n.len() || self.temp_old.len() != n.len() {
             return (0.0, 0.0);
@@ -94,7 +94,7 @@ impl<'a> ElemCtx<'a> {
         (t, t - t0)
     }
 
-    /// Temperatur och temperaturändring interpolerade med formfunktionerna `n`.
+    /// Temperature and temperature change interpolated with the shape functions `n`.
     pub fn temperature_interpolated(&self, n: &[f64]) -> (f64, f64) {
         if self.temp.len() != n.len() || self.temp_old.len() != n.len() {
             return (0.0, 0.0);
@@ -107,33 +107,33 @@ impl<'a> ElemCtx<'a> {
     pub fn section(&self, elem: &str) -> Result<&'a SectionDef> {
         match self.section {
             Some(s) => Ok(s),
-            None => fail(format!("element {} ({elem}) saknar tvärsnitt (*SOLID SECTION, *BEAM SECTION, ...)", self.label)),
+            None => fail(format!("element {} ({elem}) has no section (*SOLID SECTION, *BEAM SECTION, ...)", self.label)),
         }
     }
 
     pub fn material(&self, elem: &str) -> Result<&'a dyn MaterialModel> {
         match self.material {
             Some(m) => Ok(m),
-            None => fail(format!("element {} ({elem}) saknar material", self.label)),
+            None => fail(format!("element {} ({elem}) has no material", self.label)),
         }
     }
 }
 
-/// Inre kraft och (valfritt) tangentstyvhet.
+/// Internal force and (optionally) tangent stiffness.
 #[derive(Debug, Clone, Default)]
 pub struct ElemResponse {
     pub fint: Vec<f64>,
     pub k: Option<Vec<f64>>,
 }
 
-/// Ett utdatafält per integrationspunkt, t.ex. S med komponenterna S11, S22, S33, S12.
+/// One output field per integration point, e.g. S with the components S11, S22, S33, S12.
 #[derive(Debug, Clone, Default)]
 pub struct IpField {
-    /// Fältnamn: "S", "E", "PEEQ", "SF", "SM", ...
+    /// Field name: "S", "E", "PEEQ", "SF", "SM", ...
     pub name: String,
-    /// Komponentnamn (för skalärer samma som fältnamnet).
+    /// Component names (for scalars the same as the field name).
     pub labels: Vec<String>,
-    /// (integrationspunkt 1.., sektionspunkt 0 = ingen, värden)
+    /// (integration point 1.., section point 0 = none, values)
     pub points: Vec<(usize, usize, Vec<f64>)>,
 }
 
@@ -143,85 +143,85 @@ impl IpField {
     }
 }
 
-/// Fel för metoder som en elementtyp ännu inte har.
+/// Error for methods that an element type does not have yet.
 pub fn not_implemented<T>(what: &str, elem: &str) -> Result<T> {
-    fail(format!("{what} är inte implementerat för {elem}"))
+    fail(format!("{what} is not implemented for {elem}"))
 }
 
-/// En elementtyp, namngiven enligt .inp-formatet.
+/// An element type, named according to the .inp format.
 pub trait ElementType: Send + Sync {
-    /// Elementnamnet, t.ex. "CPS4".
+    /// The element name, e.g. "CPS4".
     fn name(&self) -> &'static str;
 
     fn family(&self) -> Family;
 
-    /// Rumsdimension (2 för plana element, 3 annars).
+    /// Spatial dimension (2 for plane elements, 3 otherwise).
     fn dim(&self) -> usize;
 
     fn n_nodes(&self) -> usize;
 
-    /// Antal noder på *ELEMENT-raden. Standard: alla noder. Element vars sista
-    /// noder anges i tvärsnittet (referensnoden för generaliserad plan töjning,
-    /// *SOLID SECTION, REF NODE=) har färre; de läggs till av `FeModel::finalize`
-    /// från `section_nodes`.
+    /// Number of nodes on the *ELEMENT line. Default: all nodes. Elements whose last
+    /// nodes are given in the section (the reference node for generalized plane strain,
+    /// *SOLID SECTION, REF NODE=) have fewer; they are added by `FeModel::finalize`
+    /// from `section_nodes`.
     fn n_connectivity(&self) -> usize {
         self.n_nodes()
     }
 
-    /// Noder (nodnummer i elementets instans) som läggs sist i elementets
-    /// nodlista utifrån tvärsnittet. Standard: inga.
+    /// Nodes (node numbers in the element's instance) that are appended to the element's
+    /// node list based on the section. Default: none.
     fn section_nodes(&self, _section: &SectionDef) -> Result<Vec<i64>> {
         Ok(Vec::new())
     }
 
-    /// Antal interna noder som `FeModel::finalize` skapar för elementet (i
-    /// elementets tyngdpunkt, sist i nodlistan),
-    /// t.ex. för hybridelementens tryckvariabler. Standard: inga. Elementet ska då
-    /// ha `n_connectivity()` = antalet noder på *ELEMENT-raden.
+    /// Number of internal nodes that `FeModel::finalize` creates for the element (at
+    /// the element centroid, last in the node list),
+    /// e.g. for the pressure variables of hybrid elements. Default: none. The element must then
+    /// have `n_connectivity()` = the number of nodes on the *ELEMENT line.
     fn internal_nodes(&self) -> usize {
         0
     }
 
-    /// Frihetsgrader för en nod (frihetsgradsnummer, se `fem::dof`). 1–7 och 11 stöds.
+    /// Degrees of freedom for a node (degree-of-freedom numbers, see `fem::dof`). 1–7 and 11 are supported.
     fn node_dofs(&self, local_node: usize) -> &'static [Dof];
 
-    /// Antal frihetsgrader i elementet.
+    /// Number of degrees of freedom in the element.
     fn n_dofs(&self) -> usize {
         (0..self.n_nodes()).map(|i| self.node_dofs(i).len()).sum()
     }
 
-    /// Antal integrationspunkter (för utdata och tillstånd).
+    /// Number of integration points (for output and state).
     fn n_ips(&self) -> usize {
         0
     }
 
-    /// VTK-celltyp för ParaView (0 = ingen).
+    /// VTK cell type for ParaView (0 = none).
     fn vtk_type(&self) -> u8 {
         0
     }
 
-    /// Elementets ytor i .inp-formatets numrering (yta 1 = index 0). Används för
-    /// *DLOAD P1..P6, randytor och kontakt.
+    /// The element faces in the .inp format numbering (face 1 = index 0). Used for
+    /// *DLOAD P1..P6, boundary surfaces and contact.
     fn faces(&self) -> &'static [&'static [usize]] {
         &[]
     }
 
-    /// Startvärde för elementets tillstånd (t.ex. noll spänning och materialets
-    /// starttillstånd i varje integrationspunkt).
+    /// Initial value of the element state (e.g. zero stress and the material's
+    /// initial state at each integration point).
     fn init_state(&self, _ctx: &ElemCtx) -> Result<Vec<f64>> {
         Ok(Vec::new())
     }
 
-    /// Linjär styvhetsmatris i globala koordinater.
+    /// Linear stiffness matrix in global coordinates.
     fn stiffness(&self, _ctx: &ElemCtx) -> Result<Vec<f64>> {
-        not_implemented("linjär styvhet", self.name())
+        not_implemented("linear stiffness", self.name())
     }
 
-    /// Inre kraft och tangent givet förskjutning och materialtillstånd.
+    /// Internal force and tangent given the displacement and material state.
     ///
-    /// Standard: `K u` med den linjära styvheten, men bara om materialet är
-    /// linjärt och analysen är geometriskt linjär. Element som ska användas
-    /// med olinjära material eller NLGEOM måste implementera metoden.
+    /// Default: `K u` with the linear stiffness, but only if the material is
+    /// linear and the analysis is geometrically linear. Elements to be used
+    /// with nonlinear materials or NLGEOM must implement the method.
     fn internal_force(
         &self,
         ctx: &ElemCtx,
@@ -232,11 +232,11 @@ pub trait ElementType: Send + Sync {
         tangent: bool,
     ) -> Result<ElemResponse> {
         if ctx.nlgeom {
-            return not_implemented("geometrisk olinjäritet (NLGEOM)", self.name());
+            return not_implemented("geometric nonlinearity (NLGEOM)", self.name());
         }
         if let Some(m) = ctx.material {
             if !m.is_linear() {
-                return not_implemented(&format!("olinjärt material ({})", m.name()), self.name());
+                return not_implemented(&format!("nonlinear material ({})", m.name()), self.name());
             }
         }
         let k = self.stiffness(ctx)?;
@@ -245,29 +245,29 @@ pub trait ElementType: Send + Sync {
         Ok(ElemResponse { fint, k: tangent.then_some(k) })
     }
 
-    /// Massmatris.
+    /// Mass matrix.
     fn mass(&self, _ctx: &ElemCtx, _kind: MassKind) -> Result<Vec<f64>> {
-        not_implemented("massmatris", self.name())
+        not_implemented("mass matrix", self.name())
     }
 
-    /// Geometrisk styvhet (spänningsstyvhet) för knäckning, givet aktuellt tillstånd.
+    /// Geometric stiffness (stress stiffness) for buckling, given the current state.
     fn geometric_stiffness(&self, _ctx: &ElemCtx, _u: &[f64], _state: &[f64]) -> Result<Vec<f64>> {
-        not_implemented("geometrisk styvhet", self.name())
+        not_implemented("geometric stiffness", self.name())
     }
 
-    /// Ekvivalenta nodkrafter för en fördelad last (*DLOAD). `u` är aktuell
-    /// förskjutning (för följande laster vid NLGEOM).
+    /// Equivalent nodal forces for a distributed load (*DLOAD). `u` is the current
+    /// displacement (for follower loads with NLGEOM).
     fn distributed_load(&self, _ctx: &ElemCtx, load: &DistLoad, _u: &[f64]) -> Result<Vec<f64>> {
-        not_implemented(&format!("lasttypen {}", load.kind), self.name())
+        not_implemented(&format!("load type {}", load.kind), self.name())
     }
 
-    /// ∫Nᵢ dV per nod (inklusive tjocklek eller tvärsnittsarea). Används för
-    /// egenvikt i .rusty-modeller och diagonal massa.
+    /// ∫Nᵢ dV per node (including thickness or cross-sectional area). Used for
+    /// self-weight in .rusty models and diagonal mass.
     fn volume_weights(&self, _ctx: &ElemCtx) -> Result<Vec<f64>> {
-        not_implemented("volymvikter", self.name())
+        not_implemented("volume weights", self.name())
     }
 
-    /// Utdata per integrationspunkt (S, E, PEEQ, SF, SM, ...).
+    /// Output per integration point (S, E, PEEQ, SF, SM, ...).
     fn output(&self, _ctx: &ElemCtx, _u: &[f64], _state: &[f64]) -> Result<Vec<IpField>> {
         Ok(Vec::new())
     }

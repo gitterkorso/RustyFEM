@@ -1,5 +1,5 @@
-# Två material: aluminiumblock med stålbalkar (B33) längs blockets övre kanter.
-# Balkarna följer kanten över flera noder, så deras rotation styrs av blocket.
+# Two materials: aluminium block with steel beams (B33) along the block's top edges.
+# The beams follow the edge over several nodes, so their rotation is controlled by the block.
 material steel
 material alu E=70e9 nu=0.33 rho=2700
 box x=0..0.4 y=0..0.4 z=0..0.1 size=0.05 material=alu

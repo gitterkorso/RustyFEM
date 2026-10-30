@@ -1,26 +1,26 @@
-//! Öppna tunnväggiga balkar med välvning: B31OS och B32OS (område beams2).
+//! Open thin-walled beams with warping: B31OS and B32OS (area beams2).
 //!
-//! Frihetsgrad 7 är välvningsamplituden w. Utöver Timoshenkobalkens
-//! generaliserade töjningar (`beam_timoshenko.rs`) finns w och bikrökningen
-//! χ = w'. Formuleringen kopplar w till vridningen τ = θt' med en styv elastisk
-//! bindning: med p = τ − w är tvärsnittets energi per längdenhet
+//! Degree of freedom 7 is the warping amplitude w. In addition to the Timoshenko beam's
+//! generalized strains (`beam_timoshenko.rs`) there are w and the bicurvature
+//! χ = w'. The formulation couples w to the twist τ = θt' with a stiff elastic
+//! constraint: with p = τ − w the section energy per unit length is
 //!
-//!   ½ [böjning och normalkraft som B31] + ½ G J τ² + ½ C_p p² + ½ E Γ χ²
+//!   ½ [bending and axial force as B31] + ½ G J τ² + ½ C_p p² + ½ E Γ χ²
 //!     + ½ k1 (γ1 − x2s τ − (c2 − x2s) p)² + ½ k2 (γ2 + x1s τ + (c1 − x1s) p)²,
 //!
-//! där C_p = G (0,8 Ip − J), Ip = I11 + I22 kring tyngdpunkten (c1, c2),
-//! (x1s, x2s) skjuvcentrum, Γ välvningskonstanten (`beams2_sections.rs`) och
-//! k1, k2 skjuvstyvheterna med slankhetskompensation som för B31/B32. Med fri
-//! välvning (w = τ) blir det precis B31/B32. Uttrycket och faktorn 0,8 är
-//! kontrollerade med tvärsnittsmatrisen för B31OS med I- och
-//! ARBITRARY-tvärsnitt (`tests/beams2.rs`). Integrering som B31/B32 (1 respektive 2
-//! gausspunkter); w interpoleras som förskjutningarna.
+//! where C_p = G (0.8 Ip − J), Ip = I11 + I22 about the centroid (c1, c2),
+//! (x1s, x2s) the shear center, Γ the warping constant (`beams2_sections.rs`) and
+//! k1, k2 the shear stiffnesses with slenderness compensation as for B31/B32. With free
+//! warping (w = τ) this is exactly B31/B32. The expression and the factor 0.8 are
+//! verified with the section matrix for B31OS with I and
+//! ARBITRARY sections (`tests/beams2.rs`). Integration as B31/B32 (1 and 2
+//! Gauss points, respectively); w is interpolated like the displacements.
 //!
-//! Utdata: SF, SM (SM3 = vridmoment kring skjuvcentrum) och BIMOM = E Γ χ.
-//! Massan är balkens (ingen tröghet för välvningen). Den geometriska
-//! styvheten (*BUCKLE, vippning) är Timoshenkobalkens från normalkraft, moment
-//! och tvärkrafter, utan bidrag från bimomentet. NLGEOM och olinjära material
-//! stöds inte.
+//! Output: SF, SM (SM3 = torque about the shear center) and BIMOM = E Γ χ.
+//! The mass is the beam's (no inertia for the warping). The geometric
+//! stiffness (*BUCKLE, lateral-torsional buckling) is the Timoshenko beam's from axial force, moments
+//! and transverse shear forces, without contribution from the bimoment. NLGEOM and nonlinear materials
+//! are not supported.
 
 use crate::elements::api::{not_implemented, ElemCtx, ElemResponse, ElementType, Family, IpField, MassKind};
 use crate::elements::beam_timoshenko::{self as timo, BeamGeom, TimoBeam};
@@ -39,10 +39,10 @@ pub static B32OS: OpenBeam = OpenBeam { name: "B32OS", base: &timo::B32 };
 
 const DOFS: &[Dof] = &[U1, U2, U3, UR1, UR2, UR3, WARP];
 
-/// Antal generaliserade töjningar: ε, κ1, κ2, τ, γ1, γ2, w, χ.
+/// Number of generalized strains: ε, κ1, κ2, τ, γ1, γ2, w, χ.
 const NE: usize = 8;
 
-/// Tecken på Ω₀ i kopplingen.
+/// Sign of Ω₀ in the coupling.
 const OMEGA_SIGN: f64 = -1.0;
 
 struct OsData {
@@ -58,11 +58,11 @@ impl OpenBeam {
     fn data(&self, ctx: &ElemCtx) -> Result<OsData> {
         let sec = ctx.section(self.name)?;
         let Some(b) = sec.beam() else {
-            return fail(format!("element {} ({}) kräver *BEAM SECTION eller *BEAM GENERAL SECTION", ctx.label, self.name));
+            return fail(format!("element {} ({}) requires *BEAM SECTION or *BEAM GENERAL SECTION", ctx.label, self.name));
         };
         if let Some(m) = ctx.material {
             if !m.is_linear() && b.moduli.is_none() {
-                return not_implemented(&format!("olinjärt material ({})", m.name()), self.name);
+                return not_implemented(&format!("nonlinear material ({})", m.name()), self.name);
             }
         }
         let g = self.base.geom(ctx)?;
@@ -86,8 +86,8 @@ impl OpenBeam {
         };
         add(s.g * s.j, &[(3, 1.0)]);
         if gamma <= 1e-9 * ip * ip / s.a {
-            // ingen välvning (t.ex. L): frihetsgrad 7 saknar egen styvhet;
-            // här en liten frikopplad styvhet så att systemet inte blir singulärt
+            // no warping (e.g. L): degree of freedom 7 has no stiffness of its own;
+            // here a small decoupled stiffness so that the system does not become singular
             add(k1, &[(4, 1.0), (3, -s.x2s)]);
             add(k2, &[(5, 1.0), (3, s.x1s)]);
             add(1e-12 * s.g * ip, &[(6, 1.0)]);
@@ -99,8 +99,8 @@ impl OpenBeam {
         add(k1, &[(4, 1.0), (3, -s.x2s - d2), (6, d2)]);
         add(k2, &[(5, 1.0), (3, s.x1s + d1), (6, -d1)]);
         add(s.e * gamma, &[(7, 1.0)]);
-        // välvningen i origo (Ω₀ ≠ 0 när origo ligger på tvärsnittet): fibertöjningen
-        // innehåller −Ω₀ χ, vilket kopplar χ till ε, κ1 och κ2
+        // the warping at the origin (Ω₀ ≠ 0 when the origin lies on the section): the fiber strain
+        // contains −Ω₀ χ, which couples χ to ε, κ1 and κ2
         let w = om0 * OMEGA_SIGN;
         d[0][7] += -s.e * w * s.a;
         d[1][7] += -s.e * w * s.s1;
@@ -112,7 +112,7 @@ impl OpenBeam {
         Ok(OsData { g, d })
     }
 
-    /// B-matris (NE × 7nn) i lokala frihetsgrader [u, v1, v2, θt, θ1, θ2, w] per nod.
+    /// B matrix (NE × 7nn) in local degrees of freedom [u, v1, v2, θt, θ1, θ2, w] per node.
     fn bmat(&self, g: &BeamGeom, xi: f64) -> (Vec<f64>, f64) {
         let nn = self.nn();
         let (b6, j) = self.base.bmat(g, xi);
@@ -179,7 +179,7 @@ impl OpenBeam {
         k
     }
 
-    /// Index för de sex vanliga frihetsgraderna per nod i elementvektorn.
+    /// Indices of the six ordinary degrees of freedom per node in the element vector.
     fn std_index(&self) -> Vec<usize> {
         (0..self.nn()).flat_map(|i| (0..6).map(move |k| 7 * i + k)).collect()
     }
@@ -208,7 +208,7 @@ impl OpenBeam {
         f
     }
 
-    /// Generaliserade snittkrafter D·e per integrationspunkt.
+    /// Generalized section forces D·e per integration point.
     fn forces(&self, ctx: &ElemCtx, u: &[f64]) -> Result<(OsData, Vec<[f64; NE]>)> {
         let os = self.data(ctx)?;
         let t = self.transform(&os.g);
@@ -256,7 +256,7 @@ impl ElementType for OpenBeam {
 
     fn internal_force(&self, ctx: &ElemCtx, u: &[f64], _du: &[f64], _so: &[f64], _sn: &mut Vec<f64>, tangent: bool) -> Result<ElemResponse> {
         if ctx.nlgeom {
-            return not_implemented("geometrisk olinjäritet (NLGEOM)", self.name);
+            return not_implemented("geometric nonlinearity (NLGEOM)", self.name);
         }
         let k = self.stiffness(ctx)?;
         Ok(ElemResponse { fint: common::matvec(&k, u), k: tangent.then_some(k) })

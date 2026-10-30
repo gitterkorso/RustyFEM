@@ -3,7 +3,7 @@ name = "rustyfem-session"
 version = "0.1.0"
 edition = "2021"
 license = "MIT OR Apache-2.0"
-description = "App-API för RustyFEM: session, ångra/gör om, körning med framsteg, visningsdata och projektfil"
+description = "App API for RustyFEM: session, undo/redo, runs with progress, display data and project file"
 
 [dependencies]
 rustyfem = { path = "../..", default-features = false }

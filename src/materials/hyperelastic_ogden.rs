@@ -1,25 +1,25 @@
-//! Hyperelasticitet: Ogden (*HYPERELASTIC, OGDEN, N=n) och Arruda–Boyce
+//! Hyperelasticity: Ogden (*HYPERELASTIC, OGDEN, N=n) and Arruda–Boyce
 //! (*HYPERELASTIC, ARRUDA-BOYCE).
 //!
-//! Ogden (Ogden 1972) i de deviatoriska huvudsträckningarna λ̄ = J^(−1/3) λ:
+//! Ogden (Ogden 1972) in the deviatoric principal stretches λ̄ = J^(−1/3) λ:
 //!
 //!   U = Σ_i 2μ_i/α_i² (λ̄1^α_i + λ̄2^α_i + λ̄3^α_i − 3) + Σ_k (1/D_k)(J − 1)^(2k)
 //!
-//! med data μ1, α1, ..., μn, αn, D1, ..., Dn (n ≤ 6) och μ0 = Σ μ_i. Den
-//! deviatoriska Kirchhoffspänningen har huvudvärdena
-//! τ_a = Σ_i (2μ_i/α_i)(λ̄_a^α_i − ⅓ Σ_b λ̄_b^α_i) i b̄:s egenriktningar.
+//! with data μ1, α1, ..., μn, αn, D1, ..., Dn (n ≤ 6) and μ0 = Σ μ_i. The
+//! deviatoric Kirchhoff stress has the principal values
+//! τ_a = Σ_i (2μ_i/α_i)(λ̄_a^α_i − ⅓ Σ_b λ̄_b^α_i) in the eigendirections of b̄.
 //!
-//! Arruda–Boyce (Arruda & Boyce 1993, åttakedjemodellen med fem termer i
-//! Langevin-utvecklingen):
+//! Arruda–Boyce (Arruda & Boyce 1993, the eight-chain model with five terms of
+//! the Langevin expansion):
 //!
 //!   U = μ Σ_{i=1}^{5} C_i/λ_m^(2i−2) (Ī1^i − 3^i) + (1/D)((J² − 1)/2 − ln J)
 //!
-//! med C = 1/2, 1/20, 11/1050, 19/7000, 519/673750, data μ, λ_m, D och
+//! with C = 1/2, 1/20, 11/1050, 19/7000, 519/673750, data μ, λ_m, D and
 //! μ0 = μ (1 + 3/(5λ_m²) + 99/(175λ_m⁴) + 513/(875λ_m⁶) + 42039/(67375λ_m⁸)).
 //!
-//! Båda implementerar `HyperModel`; materialpunktens `update` (CPS/CPE/C3D
-//! utan egen volymbehandling) använder de gemensamma funktionerna i
-//! `hyperelastic_split.rs`. D = 0 betyder helt inkompressibelt (hybridelement).
+//! Both implement `HyperModel`; the material point's `update` (CPS/CPE/C3D
+//! without their own volumetric treatment) uses the shared functions in
+//! `hyperelastic_split.rs`. D = 0 means fully incompressible (hybrid elements).
 
 use super::anisotropic::reduce_6x6;
 use super::hyperelastic_split::{self as hs, HyperModel};
@@ -30,7 +30,7 @@ use crate::model::{fail, FemError, Result};
 use std::sync::Arc;
 
 pub static FACTORIES: &[MaterialFactory] =
-    &[MaterialFactory { name: "hyperelasticitet (Ogden, Arruda–Boyce)", consumes: &["HYPERELASTIC"], priority: 10, build: Some(build) }];
+    &[MaterialFactory { name: "hyperelasticity (Ogden, Arruda–Boyce)", consumes: &["HYPERELASTIC"], priority: 10, build: Some(build) }];
 
 #[derive(Debug, Clone)]
 pub enum Form {
@@ -43,7 +43,7 @@ pub enum Form {
 #[derive(Debug, Clone)]
 pub struct HyperOgden {
     pub form: Form,
-    /// D_k (Ogden: polynom i J − 1; Arruda–Boyce: bara D)
+    /// D_k (Ogden: polynomial in J − 1; Arruda–Boyce: only D)
     pub d: Vec<f64>,
 }
 
@@ -55,20 +55,20 @@ fn build(def: &MaterialDef) -> Result<Option<Arc<dyn MaterialModel>>> {
     if !ogden && !kw.has("ARRUDA-BOYCE") {
         return Ok(None);
     }
-    // område materials4: TEST DATA INPUT anpassas i hyperelastic_fit.rs
+    // feature area materials4: TEST DATA INPUT is fitted in hyperelastic_fit.rs
     if super::hyperelastic_fit::claims(kw) {
         return Ok(None);
     }
     if def.behavior("ELASTIC").is_some() {
-        return kw.err("*HYPERELASTIC och *ELASTIC i samma material stöds inte");
+        return kw.err("*HYPERELASTIC and *ELASTIC in the same material are not supported");
     }
     for p in ["TEST DATA INPUT", "USER", "TYPE", "PROPERTIES"] {
         if kw.has(p) {
-            return kw.err(format!("parametern {p} stöds inte ännu"));
+            return kw.err(format!("parameter {p} is not supported yet"));
         }
     }
     if kw.has("MODULI") && kw.param_upper("MODULI").as_deref() != Some("LONG TERM") {
-        return kw.err("MODULI stöds bara som LONG TERM");
+        return kw.err("MODULI is only supported as LONG TERM");
     }
     let mut v = Vec::new();
     for d in kw.records() {
@@ -76,32 +76,32 @@ fn build(def: &MaterialDef) -> Result<Option<Arc<dyn MaterialModel>>> {
     }
     let m = if ogden {
         let n = match kw.param("N") {
-            Some(s) => s.trim().parse::<usize>().ok().filter(|&n| (1..=6).contains(&n)).ok_or_else(|| FemError(format!("{}: N={s} ska vara 1–6", kw.location())))?,
+            Some(s) => s.trim().parse::<usize>().ok().filter(|&n| (1..=6).contains(&n)).ok_or_else(|| FemError(format!("{}: N={s} must be 1–6", kw.location())))?,
             None => 1,
         };
         let need = 3 * n;
         if v.len() < need {
-            return kw.err(format!("OGDEN, N={n} kräver {need} konstanter, {} angivna", v.len()));
+            return kw.err(format!("OGDEN, N={n} requires {need} constants, {} given", v.len()));
         }
         let terms: Vec<(f64, f64)> = (0..n).map(|i| (v[2 * i], v[2 * i + 1])).collect();
         if terms.iter().any(|&(_, a)| a == 0.0) {
-            return kw.err("OGDEN: α_i = 0 är inte tillåtet");
+            return kw.err("OGDEN: α_i = 0 is not allowed");
         }
         HyperOgden { form: Form::Ogden(terms), d: v[2 * n..3 * n].to_vec() }
     } else {
         if v.len() < 3 {
-            return kw.err(format!("ARRUDA-BOYCE kräver 3 konstanter (μ, λm, D), {} angivna", v.len()));
+            return kw.err(format!("ARRUDA-BOYCE requires 3 constants (μ, λm, D), {} given", v.len()));
         }
         if !(v[1] > 1.0) {
-            return kw.err("ARRUDA-BOYCE: λm ska vara större än 1");
+            return kw.err("ARRUDA-BOYCE: λm must be greater than 1");
         }
         HyperOgden { form: Form::ArrudaBoyce(v[0], v[1]), d: vec![v[2]] }
     };
     if m.d[0] < 0.0 || (m.d[0] == 0.0 && m.d.iter().any(|&x| x != 0.0)) {
-        return kw.err("D1 < 0, eller D1 = 0 med D2/D3 ≠ 0, stöds inte (D1 = 0 betyder helt inkompressibelt)");
+        return kw.err("D1 < 0, or D1 = 0 with D2/D3 ≠ 0, is not supported (D1 = 0 means fully incompressible)");
     }
     if !(m.mu0() > 0.0) {
-        return kw.err("den initiala skjuvmodulen ska vara positiv");
+        return kw.err("the initial shear modulus must be positive");
     }
     Ok(Some(Arc::new(m)))
 }
@@ -128,7 +128,7 @@ impl HyperModel for HyperOgden {
     fn tau_dev(&self, f: &M3) -> Result<M3> {
         let j = t::det(f);
         if !(j > 0.0) {
-            return fail("hyperelastiskt material: J ≤ 0 (elementet har vänts ut och in)");
+            return fail("hyperelastic material: J ≤ 0 (the element has been turned inside out)");
         }
         let bb = t::scale(&t::mul_bt(f, f), j.powf(-2.0 / 3.0));
         match &self.form {
@@ -148,7 +148,7 @@ impl HyperModel for HyperOgden {
             }
             Form::Ogden(terms) => {
                 let (ev, vecs) = t::eig_sym(&bb);
-                // huvudsträckningar λ̄_a = √(egenvärden av b̄)
+                // principal stretches λ̄_a = √(eigenvalues of b̄)
                 let lam: [f64; 3] = ev.map(|e| e.max(1e-300).sqrt());
                 let mut ta = [0.0; 3];
                 for &(m, al) in terms {
@@ -158,7 +158,7 @@ impl HyperModel for HyperOgden {
                         ta[a] += 2.0 * m / al * (p[a] - s);
                     }
                 }
-                // τ = Σ τ_a n_a ⊗ n_a (kolumn a i `vecs` är egenvektorn)
+                // τ = Σ τ_a n_a ⊗ n_a (column a in `vecs` is the eigenvector)
                 Ok(std::array::from_fn(|i| std::array::from_fn(|k| (0..3).map(|a| ta[a] * vecs[i][a] * vecs[k][a]).sum())))
             }
         }
@@ -207,14 +207,14 @@ impl HyperModel for HyperOgden {
     }
 }
 
-/// Materialpunktens spänningsuppdatering för en `HyperModel` (Cauchyspänning och
-/// C^(τJ)/J, samma konvention som `hyperelastic.rs`).
+/// The material point's stress update for a `HyperModel` (Cauchy stress and
+/// C^(τJ)/J, same convention as `hyperelastic.rs`).
 pub fn update_hyper(h: &dyn HyperModel, input: &MatInput) -> Result<MatOutput> {
     let Some(f0) = input.defgrad else {
-        return fail("*HYPERELASTIC kräver NLGEOM=YES på *STEP");
+        return fail("*HYPERELASTIC requires NLGEOM=YES on *STEP");
     };
     if h.incompressible() {
-        return fail("*HYPERELASTIC med D1 = 0 (helt inkompressibelt) kräver hybridelement (C3D8H, CPE4H, ...)");
+        return fail("*HYPERELASTIC with D1 = 0 (fully incompressible) requires hybrid elements (C3D8H, CPE4H, ...)");
     }
     let mode = input.mode;
     let mut f = f0;
@@ -227,7 +227,7 @@ pub fn update_hyper(h: &dyn HyperModel, input: &MatInput) -> Result<MatOutput> {
             f[2][2] = 1.0;
             f[2][2] = hs::plane_stress_stretch(h, &f)?;
         }
-        StressMode::Uniaxial => return fail("*HYPERELASTIC OGDEN/ARRUDA-BOYCE stöds inte i stänger"),
+        StressMode::Uniaxial => return fail("*HYPERELASTIC OGDEN/ARRUDA-BOYCE is not supported in trusses"),
         _ => {}
     }
     let j = t::det(&f);
@@ -271,7 +271,7 @@ impl MaterialModel for HyperOgden {
 
     fn tangent_linear(&self, mode: StressMode) -> Result<Vec<f64>> {
         if self.incompressible() {
-            return fail("*HYPERELASTIC med D1 = 0 (helt inkompressibelt) kräver hybridelement (C3D8H, CPE4H, ...)");
+            return fail("*HYPERELASTIC with D1 = 0 (fully incompressible) requires hybrid elements (C3D8H, CPE4H, ...)");
         }
         let (mu, k) = (self.mu0(), self.k0());
         let lam = k - 2.0 * mu / 3.0;

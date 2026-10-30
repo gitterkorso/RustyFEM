@@ -1,9 +1,9 @@
-//! Läsare för indatafiler (.inp).
+//! Reader for input files in .inp format.
 //!
-//! Filen delas upp i nyckelordsblock (`reader.rs`). Varje nyckelord hanteras
-//! av en registrerad hanterare (`keywords/`), så nya nyckelord läggs till i
-//! egna filer utan att ändra läsaren. Okända nyckelord ger en varning, eller
-//! ett fel om de finns i listan över nyckelord som påverkar resultatet
+//! The file is split into keyword blocks (`reader.rs`). Each keyword is handled
+//! by a registered handler (`keywords/`), so new keywords are added in
+//! their own files without changing the reader. Unknown keywords give a warning, or
+//! an error if they are in the list of keywords that affect the result
 //! (`unsupported.rs`).
 
 mod api;
@@ -19,7 +19,7 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
 
-/// En inläst modell med varningar och inkluderade filer.
+/// A loaded model with warnings and included files.
 pub struct InpModel {
     pub model: FeModel,
     pub warnings: Vec<String>,
@@ -32,19 +32,19 @@ fn table() -> &'static HashMap<&'static str, &'static Keyword> {
         let mut m = HashMap::new();
         for k in keywords::all() {
             if m.insert(k.name, k).is_some() {
-                panic!("nyckelordet *{} är registrerat två gånger", k.name);
+                panic!("keyword *{} is registered twice", k.name);
             }
         }
         m
     })
 }
 
-/// Hanteraren för ett nyckelord (versaler, utan '*').
+/// The handler for a keyword (upper case, without '*').
 pub fn lookup(name: &str) -> Option<&'static Keyword> {
     table().get(name).copied()
 }
 
-/// Alla registrerade nyckelord, sorterade.
+/// All registered keywords, sorted.
 pub fn names() -> Vec<&'static str> {
     let mut v: Vec<&str> = table().keys().copied().collect();
     v.sort_unstable();
@@ -52,17 +52,17 @@ pub fn names() -> Vec<&'static str> {
 }
 
 fn dispatch(ctx: &mut InpCtx, blocks: Vec<crate::fem::model::RawKeyword>) -> Result<()> {
-    // *PARAMETER och <namn> (parameters.rs)
+    // *PARAMETER and <name> (parameters.rs)
     let blocks = parameters::expand(blocks)?;
     for kw in &blocks {
         let Some(k) = lookup(&kw.name) else {
             if unsupported::AFFECTS_RESULTS.contains(&kw.name.as_str()) {
-                return kw.err("nyckelordet stöds inte ännu och påverkar resultatet");
+                return kw.err("the keyword is not supported yet and affects the result");
             }
-            ctx.warn(kw, "okänt nyckelord ignoreras");
+            ctx.warn(kw, "unknown keyword ignored");
             continue;
         };
-        // område cavity: *DAMAGE INITIATION/EVOLUTION/STABILIZATION under *COHESIVE BEHAVIOR (kohesiv kontakt)
+        // Area cavity: *DAMAGE INITIATION/EVOLUTION/STABILIZATION under *COHESIVE BEHAVIOR (cohesive contact)
         if k.kind == Kind::Behavior && ctx.material.is_none() && keywords::cohesive_contact::surface_damage(ctx, kw)? {
             continue;
         }
@@ -70,41 +70,41 @@ fn dispatch(ctx: &mut InpCtx, blocks: Vec<crate::fem::model::RawKeyword>) -> Res
             ctx.material = None;
         }
         match k.kind {
-            Kind::Model if ctx.step.is_some() => return kw.err("modelldata får inte stå inne i ett steg"),
-            Kind::Step if ctx.step.is_none() => return kw.err("får bara stå inne i *STEP ... *END STEP"),
-            Kind::Behavior if ctx.material.is_none() => return kw.err("materialbeteenden ska stå direkt efter *MATERIAL"),
+            Kind::Model if ctx.step.is_some() => return kw.err("model data may not appear inside a step"),
+            Kind::Step if ctx.step.is_none() => return kw.err("may only appear inside *STEP ... *END STEP"),
+            Kind::Behavior if ctx.material.is_none() => return kw.err("material behaviors must appear directly after *MATERIAL"),
             _ => {}
         }
         (k.handler)(ctx, kw)?;
     }
     if ctx.step.is_some() {
-        return fail("filen slutar inne i ett steg – *END STEP saknas");
+        return fail("the file ends inside a step – *END STEP is missing");
     }
     if let Some((name, _)) = &ctx.part {
-        return fail(format!("parten {name} saknar *END PART"));
+        return fail(format!("part {name} lacks *END PART"));
     }
     ctx.model.warnings.extend(ctx.warnings.iter().cloned());
     ctx.model.finalize()?;
-    // område elements3: SAXA-elementens genererade plannoder (nod + 100000·k)
+    // Area elements3: the generated plane nodes of the SAXA elements (node + 100000·k)
     crate::elements::elements3::saxa::setup(&mut ctx.model)?;
-    // område beams3: rörkrökarnas ovaliseringsnoder och NOWARP/NOOVAL/NODEFORM
+    // Area beams3: the elbows' ovalization nodes and NOWARP/NOOVAL/NODEFORM
     crate::elements::elbow::setup(&mut ctx.model)?;
     // *RIGID BODY, POSITION=CENTER OF MASS
     crate::interactions::rigid_body::reposition(&mut ctx.model)?;
-    // *CONTACT PAIR, ADJUST= och *CONTACT INITIALIZATION DATA (område contact3);
-    // före normalerna eftersom slavnoderna flyttas
+    // *CONTACT PAIR, ADJUST= and *CONTACT INITIALIZATION DATA (Area contact3);
+    // before the normals since the slave nodes are moved
     crate::interactions::contact::adjust_slaves(&mut ctx.model)?;
-    // område hybrid2: C3D4H:s trycknoder (en per hörnnod och material, elements/hybrid_tet.rs)
+    // Area hybrid2: the pressure nodes of C3D4H (one per corner node and material, elements/hybrid_tet.rs)
     crate::elements::hybrid_tet::setup(&mut ctx.model)?;
-    // *ENRICHMENT: XFEM-element och berikningsnoder (elements/xfem.rs)
+    // *ENRICHMENT: XFEM elements and enrichment nodes (elements/xfem.rs)
     crate::elements::xfem::setup(&mut ctx.model)?;
-    // område explicit_adv: kontinuumelement som omvandlas till SPH-partiklar
+    // Area explicit_adv: continuum elements that are converted to SPH particles
     crate::steps::explicit::adv::conversion::apply(&mut ctx.model)?;
-    // område normals: medelvärdesbildade nodnormaler och *NORMAL
+    // Area normals: averaged nodal normals and *NORMAL
     crate::elements::normals::apply(&mut ctx.model)
 }
 
-/// Läser en .inp-fil (med *INCLUDE).
+/// Reads an .inp file (with *INCLUDE).
 pub fn read_file(path: &Path) -> Result<InpModel> {
     let mut ctx = InpCtx::default();
     ctx.dir = path.parent().map(|p| p.to_path_buf());
@@ -113,13 +113,13 @@ pub fn read_file(path: &Path) -> Result<InpModel> {
     Ok(InpModel { warnings: ctx.warnings.clone(), included: ctx.included.clone(), model: ctx.model })
 }
 
-/// Läser .inp-text. Relativa *INCLUDE tolkas från `dir`.
+/// Reads .inp text. Relative *INCLUDE paths are resolved from `dir`.
 pub fn read_str(text: &str, dir: &Path) -> Result<InpModel> {
     read_str_with(text, dir, &reader::fs_resolver)
 }
 
-/// Läser .inp-text med *INCLUDE-filerna från en filresolver (t.ex. appens
-/// dokumentmapp eller en projektfil i stället för filsystemet).
+/// Reads .inp text with the *INCLUDE files from a file resolver (e.g. the app's
+/// document folder or a project file instead of the file system).
 pub fn read_str_with(text: &str, dir: &Path, resolve: reader::Resolver) -> Result<InpModel> {
     let mut ctx = InpCtx::default();
     ctx.dir = Some(dir.to_path_buf());

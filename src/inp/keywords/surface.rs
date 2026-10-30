@@ -1,9 +1,9 @@
-//! *SURFACE (TYPE=ELEMENT eller NODE). Ytorna lagras i `FeModel::surfaces`
-//! och används av kontakt, tie/coupling och ytlaster (*DSLOAD).
+//! *SURFACE (TYPE=ELEMENT or NODE). The surfaces are stored in `FeModel::surfaces`
+//! and used by contact, tie/coupling and surface loads (*DSLOAD).
 //!
-//! Dataraderna: `element/elset, ytbeteckning` (t.ex. S3, SPOS) för
-//! elementytor, `nod/nset[, area]` för nodytor. En rad med bara ett elset
-//! utan beteckning ger elementens fria ytor – det stöds inte ännu.
+//! Data lines: `element/elset, face identifier` (e.g. S3, SPOS) for
+//! element faces, `node/nset[, area]` for node-based surfaces. A line with only an elset
+//! and no identifier gives the elements' free faces – that is not supported yet.
 
 use crate::fem::model::{parse_f64, RawKeyword, Surface};
 use crate::inp::{required, InpCtx, Keyword, Kind};
@@ -14,7 +14,7 @@ pub static KEYWORDS: &[Keyword] = &[Keyword { name: "SURFACE", kind: Kind::Model
 fn surface(ctx: &mut InpCtx, kw: &RawKeyword) -> Result<()> {
     let name = required(kw, "NAME")?.to_uppercase();
     let kind = kw.param_upper("TYPE").unwrap_or_else(|| "ELEMENT".into());
-    // analytiska stela ytor: inp/keywords/analytical.rs
+    // analytical rigid surfaces: inp/keywords/analytical.rs
     if crate::inp::keywords::analytical::is_analytical_type(&kind) {
         return crate::inp::keywords::analytical::surface(ctx, kw, &name);
     }
@@ -25,13 +25,13 @@ fn surface(ctx: &mut InpCtx, kw: &RawKeyword) -> Result<()> {
         match kind.as_str() {
             "ELEMENT" => {
                 let Some(face) = f.get(1) else {
-                    // område explicit_adv: partikelelement (PD3D, PC3D) har ingen ytbeteckning
+                    // Area explicit_adv: particle elements (PD3D, PC3D) have no face identifier
                     let es = ctx.elem_ref(kw, d.line, first, None)?;
                     if !es.is_empty() && es.iter().all(|&e| crate::elements::explicit_adv::is_particle(ctx.mesh().elements[e].etype.name())) {
                         sf.faces.extend(es.into_iter().map(|e| (e, "PARTICLE".to_string())));
                         continue;
                     }
-                    return kw.err_at(d.line, "ytbeteckning saknas (t.ex. S1) – fria ytor stöds inte ännu");
+                    return kw.err_at(d.line, "face identifier is missing (e.g. S1) – free faces are not supported yet");
                 };
                 let face = face.trim().to_uppercase();
                 for e in ctx.elem_ref(kw, d.line, first, None)? {
@@ -40,18 +40,18 @@ fn surface(ctx: &mut InpCtx, kw: &RawKeyword) -> Result<()> {
             }
             "NODE" => {
                 let w = match f.get(1) {
-                    Some(s) => parse_f64(s).ok_or_else(|| crate::model::FemError(format!("{} rad {}: '{s}' är inget tal", kw.file, d.line)))?,
+                    Some(s) => parse_f64(s).ok_or_else(|| crate::model::FemError(format!("{} line {}: '{s}' is not a number", kw.file, d.line)))?,
                     None => 1.0,
                 };
                 for n in ctx.node_ref(kw, d.line, first, None)? {
                     sf.nodes.push((n, w));
                 }
             }
-            other => return kw.err(format!("TYPE={other} stöds inte ännu (ELEMENT, NODE)")),
+            other => return kw.err(format!("TYPE={other} is not supported yet (ELEMENT, NODE)")),
         }
     }
     if ctx.mesh().surfaces.insert(name.clone(), sf).is_some() {
-        return kw.err(format!("ytan {name} är definierad två gånger"));
+        return kw.err(format!("surface {name} is defined twice"));
     }
     Ok(())
 }

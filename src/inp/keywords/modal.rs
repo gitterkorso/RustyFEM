@@ -1,10 +1,10 @@
-//! Nyckelord för de modala stegen: procedurerna *MODAL DYNAMIC,
-//! *STEADY STATE DYNAMICS och *RESPONSE SPECTRUM samt *BASE MOTION och
-//! *SELECT EIGENMODES (sparas i steget och läses av `steps/modal_basis.rs`).
+//! Keywords for the modal steps: the procedures *MODAL DYNAMIC,
+//! *STEADY STATE DYNAMICS and *RESPONSE SPECTRUM plus *BASE MOTION and
+//! *SELECT EIGENMODES (stored in the step and read by `steps/modal_basis.rs`).
 //!
-//! De modala procedurerna är linjära perturbationssteg (som
-//! *FREQUENCY): bara stegets egna laster gäller och tillståndet återställs
-//! efteråt, så laster i ett modalt steg följer inte med till nästa.
+//! The modal procedures are linear perturbation steps (like
+//! *FREQUENCY): only the step's own loads apply and the state is restored
+//! afterwards, so loads in a modal step do not carry over to the next one.
 
 use crate::fem::model::RawKeyword;
 use crate::inp::{procedure, store_step, InpCtx, Keyword, Kind};

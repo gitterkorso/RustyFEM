@@ -1,46 +1,46 @@
-//! Egenvärdeslösare för *FREQUENCY och *BUCKLE.
+//! Eigenvalue solver for *FREQUENCY and *BUCKLE.
 //!
-//! Det generaliserade symmetriska problemet skrivs på formen
+//! The generalized symmetric problem is written in the form
 //!
 //! ```text
-//!   Op x = (1/θ) B x,   Op = K − σM (frekvens) eller K₀ (knäckning)
+//!   Op x = (1/θ) B x,   Op = K − σM (frequency) or K₀ (buckling)
 //! ```
 //!
-//! där `Op` är positivt definit (faktoriseras med RustyFEMs glesa LDLᵀ) och `B`
-//! är symmetrisk: massmatrisen M (positivt semidefinit) vid egenfrekvenser,
-//! −K_σ (indefinit) vid knäckning. Operatorn A = Op⁻¹B är självadjungerad i
-//! skalärprodukten ⟨x, y⟩ = xᵀ Op y, och vi söker de θ som är störst till
-//! beloppet (egenvärdena närmast skiftet: λ = σ + 1/θ).
+//! where `Op` is positive definite (factorized with RustyFEM's sparse LDLᵀ) and `B`
+//! is symmetric: the mass matrix M (positive semidefinite) for natural frequencies,
+//! −K_σ (indefinite) for buckling. The operator A = Op⁻¹B is self-adjoint in
+//! the inner product ⟨x, y⟩ = xᵀ Op y, and we seek the θ of largest
+//! magnitude (the eigenvalues closest to the shift: λ = σ + 1/θ).
 //!
-//! Metoden är blockad subspace-iteration med skift-invert och Rayleigh–Ritz
+//! The method is block subspace iteration with shift-invert and Rayleigh–Ritz
 //! (Bathe, *Finite Element Procedures*, 11.6; Saad, *Numerical Methods for
-//! Large Eigenvalue Problems*, kap. 5):
+//! Large Eigenvalue Problems*, ch. 5):
 //!
-//! 1. Y = B X, X̄ = Op⁻¹ Y (en framåt-/bakåtsubstitution per vektor).
-//! 2. Ortonormera X̄ i Op-normen: G = X̄ᵀY = X̄ᵀ Op X̄ = U D Uᵀ, T = U D^{−½}
-//!    (riktningar med D ≈ 0 – t.ex. vektorer i B:s nollrum – tas bort).
-//! 3. Projicera: C = Tᵀ (X̄ᵀ B X̄) T, lös C v = θ v (Jacobi), X = X̄ T V.
-//! 4. Konvergens när ‖Op⁻¹B xᵢ − θᵢ xᵢ‖∞ ≤ tol · |θᵢ| ‖xᵢ‖∞ för alla sökta moder.
+//! 1. Y = B X, X̄ = Op⁻¹ Y (one forward/backward substitution per vector).
+//! 2. Orthonormalize X̄ in the Op norm: G = X̄ᵀY = X̄ᵀ Op X̄ = U D Uᵀ, T = U D^{−½}
+//!    (directions with D ≈ 0 – e.g. vectors in the null space of B – are removed).
+//! 3. Project: C = Tᵀ (X̄ᵀ B X̄) T, solve C v = θ v (Jacobi), X = X̄ T V.
+//! 4. Converged when ‖Op⁻¹B xᵢ − θᵢ xᵢ‖∞ ≤ tol · |θᵢ| ‖xᵢ‖∞ for all requested modes.
 //!
-//! Subspace-iteration hanterar multipla egenvärden (symmetriska tvärsnitt)
-//! utan särskild behandling, vilket en enkelvektor-Lanczos inte gör.
-//! Stelkroppsmoder (singulär K) hanteras av anroparen med ett negativt skift.
+//! Subspace iteration handles multiple eigenvalues (symmetric cross-sections)
+//! without special treatment, which a single-vector Lanczos does not.
+//! Rigid body modes (singular K) are handled by the caller with a negative shift.
 //!
-//! Här finns också en enkel gles symmetrisk matris (`SymCsr`) för M och K_σ,
-//! och täta hjälprutiner (Cholesky, Jacobi) för de projicerade problemen.
+//! This module also contains a simple sparse symmetric matrix (`SymCsr`) for M and K_σ,
+//! and dense helper routines (Cholesky, Jacobi) for the projected problems.
 
 use super::{LinearSolver, SystemMatrix};
 use crate::model::{fail, Result};
 
-/// Lösarmodulen registrerar inga linjära lösare.
+/// The solver module registers no linear solvers.
 pub static SOLVERS: &[&dyn LinearSolver] = &[];
 
 // ---------------------------------------------------------------------------
-// Gles symmetrisk matris
+// Sparse symmetric matrix
 // ---------------------------------------------------------------------------
 
-/// Samlar bidrag (r, c, v) till en symmetrisk matris (båda trianglarna lagras
-/// efter `build`). Bidrag med r < c speglas automatiskt.
+/// Collects contributions (r, c, v) to a symmetric matrix (both triangles are stored
+/// after `build`). Contributions with r < c are mirrored automatically.
 #[derive(Debug, Clone, Default)]
 pub struct Triplets {
     pub n: usize,
@@ -52,8 +52,8 @@ impl Triplets {
         Triplets { n, items: Vec::new() }
     }
 
-    /// Adderar `v` till (r, c) och, om r ≠ c, till (c, r). Anropa bara för ena
-    /// triangeln (t.ex. r ≥ c) så att inget räknas dubbelt.
+    /// Adds `v` to (r, c) and, if r ≠ c, to (c, r). Call only for one
+    /// triangle (e.g. r ≥ c) so that nothing is counted twice.
     pub fn add(&mut self, r: usize, c: usize, v: f64) {
         if v != 0.0 {
             self.items.push((r as u32, c as u32, v));
@@ -91,7 +91,7 @@ impl Triplets {
     }
 }
 
-/// Gles symmetrisk matris i CSR-format med båda trianglarna.
+/// Sparse symmetric matrix in CSR format with both triangles.
 #[derive(Debug, Clone, Default)]
 pub struct SymCsr {
     pub n: usize,
@@ -108,7 +108,7 @@ impl SymCsr {
             .collect()
     }
 
-    /// Diagonalen.
+    /// The diagonal.
     pub fn diag(&self) -> Vec<f64> {
         (0..self.n)
             .map(|r| (self.rowptr[r]..self.rowptr[r + 1]).find(|&k| self.col[k] as usize == r).map_or(0.0, |k| self.val[k]))
@@ -120,7 +120,7 @@ impl SymCsr {
         dot(x, &self.mul(y))
     }
 
-    /// Adderar `s · A` (rader och kolumner < `m`) till den undre triangeln av `k`.
+    /// Adds `s · A` (rows and columns < `m`) to the lower triangle of `k`.
     pub fn add_to(&self, k: &mut dyn SystemMatrix, s: f64, m: usize) {
         for r in 0..self.n.min(m) {
             for idx in self.rowptr[r]..self.rowptr[r + 1] {
@@ -132,7 +132,7 @@ impl SymCsr {
         }
     }
 
-    /// Delmatrisen med rader och kolumner < m.
+    /// The submatrix with rows and columns < m.
     pub fn leading(&self, m: usize) -> SymCsr {
         let mut t = Triplets::new(m);
         for r in 0..m.min(self.n) {
@@ -152,11 +152,11 @@ pub fn dot(a: &[f64], b: &[f64]) -> f64 {
 }
 
 // ---------------------------------------------------------------------------
-// Täta hjälprutiner
+// Dense helper routines
 // ---------------------------------------------------------------------------
 
-/// Egenvärden och egenvektorer (kolumnvis, `v[i*n + j]` = komponent i av
-/// vektor j) för en tät symmetrisk n×n-matris med cyklisk Jacobi.
+/// Eigenvalues and eigenvectors (column-wise, `v[i*n + j]` = component i of
+/// vector j) for a dense symmetric n×n matrix using cyclic Jacobi.
 pub fn jacobi(a: &[f64], n: usize) -> (Vec<f64>, Vec<f64>) {
     let mut a = a.to_vec();
     let mut v = vec![0.0; n * n];
@@ -210,19 +210,19 @@ pub fn jacobi(a: &[f64], n: usize) -> (Vec<f64>, Vec<f64>) {
 // Subspace-iteration
 // ---------------------------------------------------------------------------
 
-/// Inställningar för `subspace`.
+/// Settings for `subspace`.
 #[derive(Debug, Clone)]
 pub struct EigenOptions {
-    /// Antal sökta egenpar.
+    /// Number of requested eigenpairs.
     pub nev: usize,
-    /// Antal iterationsvektorer (0 = min(2·nev, nev + 8)).
+    /// Number of iteration vectors (0 = min(2·nev, nev + 8)).
     pub vectors: usize,
-    /// Största antal iterationer.
+    /// Maximum number of iterations.
     pub max_iter: usize,
-    /// Relativ residualtolerans för egenvektorerna.
+    /// Relative residual tolerance for the eigenvectors.
     pub tol: f64,
-    /// Returnera senaste Ritz-paren även om toleransen inte nåtts inom
-    /// `max_iter` (för grova uppskattningar, t.ex. val av skift).
+    /// Return the latest Ritz pairs even if the tolerance was not reached within
+    /// `max_iter` (for rough estimates, e.g. choosing a shift).
     pub allow_unconverged: bool,
 }
 
@@ -232,8 +232,8 @@ impl Default for EigenOptions {
     }
 }
 
-/// Resultat: θ (störst till beloppet först) och motsvarande vektorer,
-/// normerade så att xᵀ Op x = 1.
+/// Result: θ (largest magnitude first) and the corresponding vectors,
+/// normalized so that xᵀ Op x = 1.
 #[derive(Debug, Clone, Default)]
 pub struct EigenResult {
     pub theta: Vec<f64>,
@@ -241,7 +241,7 @@ pub struct EigenResult {
     pub iterations: usize,
 }
 
-/// Enkel deterministisk slumpgenerator (xorshift) för startvektorer.
+/// Simple deterministic random generator (xorshift) for start vectors.
 struct Rng(u64);
 impl Rng {
     fn next(&mut self) -> f64 {
@@ -252,10 +252,10 @@ impl Rng {
     }
 }
 
-/// Löser Op x = (1/θ) B x för de `nev` θ som är störst till beloppet.
+/// Solves Op x = (1/θ) B x for the `nev` θ of largest magnitude.
 ///
-/// `op` måste vara faktoriserad. `bmul(x)` ger B x. Returnerar färre par än
-/// `nev` om B har lägre rang (t.ex. knäckningslast på få element).
+/// `op` must be factorized. `bmul(x)` gives B x. Returns fewer pairs than
+/// `nev` if B has lower rank (e.g. buckling load on few elements).
 pub fn subspace(n: usize, op: &dyn SystemMatrix, bmul: &dyn Fn(&[f64]) -> Vec<f64>, opts: &EigenOptions) -> Result<EigenResult> {
     if n == 0 || opts.nev == 0 {
         return Ok(EigenResult::default());
@@ -268,7 +268,7 @@ pub fn subspace(n: usize, op: &dyn SystemMatrix, bmul: &dyn Fn(&[f64]) -> Vec<f6
         op.solve(&mut x);
         x
     };
-    // startvektorer: B · slump (renar bort B:s nollrum)
+    // start vectors: B · random (removes the null space of B)
     let mut rng = Rng(0x9E37_79B9_7F4A_7C15);
     let mut y: Vec<Vec<f64>> = (0..q).map(|_| bmul(&(0..n).map(|_| rng.next()).collect::<Vec<_>>())).collect();
     let mut x: Vec<Vec<f64>> = Vec::new();
@@ -277,12 +277,12 @@ pub fn subspace(n: usize, op: &dyn SystemMatrix, bmul: &dyn Fn(&[f64]) -> Vec<f6
     for it in 1..=opts.max_iter {
         // X̄ = Op⁻¹ Y
         let xb: Vec<Vec<f64>> = y.iter().map(|yi| solve(yi)).collect();
-        // konvergenskontroll för föregående Ritz-vektorer: Op⁻¹ B x = X̄
+        // convergence check for the previous Ritz vectors: Op⁻¹ B x = X̄
         if !x.is_empty() {
             let k = nev.min(x.len());
-            // residual r = Op⁻¹Bx − θx mätt i Op-normen: ‖r‖² = rᵀ(Bx − θ·Op x).
-            // Op-normen väger ned avrundningsbrus i nästan singulära riktningar
-            // (stelkroppsmoder med litet skift).
+            // residual r = Op⁻¹Bx − θx measured in the Op norm: ‖r‖² = rᵀ(Bx − θ·Op x).
+            // The Op norm damps round-off noise in nearly singular directions
+            // (rigid body modes with a small shift).
             let res: Vec<f64> = (0..k)
                 .map(|i| {
                     let rr: f64 = (0..n).map(|j| (xb[i][j] - theta[i] * x[i][j]) * (y[i][j] - theta[i] * opx[i][j])).sum();
@@ -290,7 +290,7 @@ pub fn subspace(n: usize, op: &dyn SystemMatrix, bmul: &dyn Fn(&[f64]) -> Vec<f6
                 })
                 .collect();
             let ok = res.iter().all(|r| *r <= opts.tol);
-            // färre vektorer än sökt betyder att B har lägre rang: returnera det som finns
+            // fewer vectors than requested means B has lower rank: return what exists
             if ok && (x.len() >= nev || it > 5) {
                 let mut res = EigenResult { theta: theta[..k].to_vec(), vectors: x[..k].to_vec(), iterations: it - 1 };
                 normalize(&mut res, op, &solve, bmul);
@@ -298,7 +298,7 @@ pub fn subspace(n: usize, op: &dyn SystemMatrix, bmul: &dyn Fn(&[f64]) -> Vec<f6
             }
         }
         let m = xb.len();
-        // G = X̄ᵀ Y (Op-skalärprodukter), A = X̄ᵀ B X̄
+        // G = X̄ᵀ Y (Op inner products), A = X̄ᵀ B X̄
         let z: Vec<Vec<f64>> = xb.iter().map(|v| bmul(v)).collect();
         let mut g = vec![0.0; m * m];
         let mut a = vec![0.0; m * m];
@@ -312,8 +312,8 @@ pub fn subspace(n: usize, op: &dyn SystemMatrix, bmul: &dyn Fn(&[f64]) -> Vec<f6
                 a[j * m + i] = aij;
             }
         }
-        // kolumnskalning så att G har diagonalen 1 (vektorerna kan skilja många
-        // storleksordningar, t.ex. stelkroppsmoder mot elastiska moder)
+        // column scaling so that G has unit diagonal (the vectors can differ by many
+        // orders of magnitude, e.g. rigid body modes vs elastic modes)
         let gmax = (0..m).map(|i| g[i * m + i]).fold(0.0f64, f64::max);
         let sc: Vec<f64> = (0..m).map(|i| if g[i * m + i] > 1e-300 * gmax.max(1e-300) { 1.0 / g[i * m + i].sqrt() } else { 0.0 }).collect();
         for i in 0..m {
@@ -322,11 +322,11 @@ pub fn subspace(n: usize, op: &dyn SystemMatrix, bmul: &dyn Fn(&[f64]) -> Vec<f6
                 a[i * m + j] *= sc[i] * sc[j];
             }
         }
-        // T = S U D^{-1/2} för D > eps
+        // T = S U D^{-1/2} for D > eps
         let (d, u) = jacobi(&g, m);
         let dmax = d.iter().fold(0.0f64, |s, v| s.max(*v));
         if dmax <= 0.0 || gmax <= 0.0 {
-            return fail("egenvärdesproblemet saknar lösningar (B-matrisen är noll – saknas massa eller knäckningslast?)");
+            return fail("the eigenvalue problem has no solutions (the B matrix is zero – missing mass or buckling load?)");
         }
         let keep: Vec<usize> = (0..m).filter(|&j| d[j] > 1e-13 * dmax).collect();
         let r = keep.len();
@@ -371,8 +371,8 @@ pub fn subspace(n: usize, op: &dyn SystemMatrix, bmul: &dyn Fn(&[f64]) -> Vec<f6
         opx = (0..r).map(|jj| lincomb(&y, &w, r, jj, n)).collect();
         let bx: Vec<Vec<f64>> = (0..r).map(|jj| lincomb(&z, &w, r, jj, n)).collect();
         theta = order.iter().map(|&o| th[o]).collect();
-        // nästa block: Y = B X, fyll på med nya slumpvektorer om rangen minskat
-        // (vektorer i B:s nollrum försvinner igen i nästa ortonormering)
+        // next block: Y = B X, top up with new random vectors if the rank has decreased
+        // (vectors in the null space of B vanish again in the next orthonormalization)
         y = bx;
         while y.len() < q {
             y.push(bmul(&(0..n).map(|_| rng.next()).collect::<Vec<_>>()));
@@ -384,7 +384,7 @@ pub fn subspace(n: usize, op: &dyn SystemMatrix, bmul: &dyn Fn(&[f64]) -> Vec<f6
         normalize(&mut res, op, &|v: &[f64]| v.to_vec(), bmul);
         return Ok(res);
     }
-    fail(format!("egenvärdeslösaren konvergerade inte på {} iterationer", opts.max_iter))
+    fail(format!("the eigenvalue solver did not converge in {} iterations", opts.max_iter))
 }
 
 fn lincomb(vs: &[Vec<f64>], w: &[f64], r: usize, jj: usize, n: usize) -> Vec<f64> {
@@ -400,7 +400,7 @@ fn lincomb(vs: &[Vec<f64>], w: &[f64], r: usize, jj: usize, n: usize) -> Vec<f64
     out
 }
 
-/// Normerar vektorerna så att xᵀ Op x = 1 (Op x = B x / θ).
+/// Normalizes the vectors so that xᵀ Op x = 1 (Op x = B x / θ).
 fn normalize(res: &mut EigenResult, _op: &dyn SystemMatrix, _solve: &dyn Fn(&[f64]) -> Vec<f64>, bmul: &dyn Fn(&[f64]) -> Vec<f64>) {
     for (x, th) in res.vectors.iter_mut().zip(&res.theta) {
         let s = dot(x, &bmul(x)) / th;
@@ -412,10 +412,10 @@ fn normalize(res: &mut EigenResult, _op: &dyn SystemMatrix, _solve: &dyn Fn(&[f6
 }
 
 // ---------------------------------------------------------------------------
-// Faktorisering av en SymCsr med valfri linjär lösare
+// Factorization of a SymCsr with any linear solver
 // ---------------------------------------------------------------------------
 
-/// Summan Σ sᵢ Aᵢ av symmetriska matriser (delmatriserna < `n`).
+/// The sum Σ sᵢ Aᵢ of symmetric matrices (the submatrices < `n`).
 pub fn combine(terms: &[(&SymCsr, f64)], n: usize) -> SymCsr {
     let mut t = Triplets::new(n);
     for (a, s) in terms {
@@ -434,8 +434,8 @@ pub fn combine(terms: &[(&SymCsr, f64)], n: usize) -> SymCsr {
     t.build()
 }
 
-/// Spelar in assemblering (`zero`/`add`) i stället för att faktorisera, så att
-/// kärnans assemblering (element + interaktioner) kan ge en `SymCsr`.
+/// Records assembly (`zero`/`add`) instead of factorizing, so that
+/// the core assembly (elements + interactions) can produce a `SymCsr`.
 pub struct Recorder {
     n: usize,
     t: Triplets,
@@ -470,11 +470,11 @@ impl SystemMatrix for Recorder {
     fn solve(&self, _b: &mut [f64]) {}
 }
 
-/// Faktoriserad matris i egen numrering: `solve` permuterar till lösarens
-/// ekvationsordning och tillbaka.
+/// Factorized matrix in its own numbering: `solve` permutes to the solver's
+/// equation ordering and back.
 pub struct Factored {
     mat: Box<dyn SystemMatrix>,
-    /// Lösarens ekvationsnummer för varje ekvation i vår numrering.
+    /// The solver's equation number for each equation in our numbering.
     perm: Vec<usize>,
 }
 
@@ -502,10 +502,10 @@ impl SystemMatrix for Factored {
     }
 }
 
-/// Faktoriserar `a` med lösaren `solver`. `blocks` delar in ekvationerna i
-/// block (en nod, ett elements inre frihetsgrader) med koordinat för
-/// lösarens ordning; varje ekvation ska finnas i exakt ett block.
-/// Ger `Ok(Err(ekv))` om matrisen inte är positivt definit.
+/// Factorizes `a` with the solver `solver`. `blocks` divides the equations into
+/// blocks (a node, an element's internal degrees of freedom) with a coordinate for
+/// the solver's ordering; each equation must belong to exactly one block.
+/// Returns `Ok(Err(eq))` if the matrix is not positive definite.
 pub fn factor_sym(
     a: &SymCsr,
     blocks: &[([f64; 3], Vec<usize>)],
@@ -519,7 +519,7 @@ pub fn factor_sym(
         }
     }
     if block_of.contains(&usize::MAX) {
-        return fail("factor_sym: en ekvation saknar block");
+        return fail("factor_sym: an equation has no block");
     }
     let mut adj: Vec<Vec<usize>> = vec![Vec::new(); blocks.len()];
     for r in 0..n {

@@ -1,15 +1,15 @@
-//! Nyckelordshanterare, en fil per område.
+//! Keyword handlers, one file per area.
 //!
-//! Varje modul exporterar `pub static KEYWORDS: &[Keyword]`. Registrera en ny
-//! modul med EN rad i listan nedan (alfabetisk ordning). Ett nyckelord får
-//! bara registreras en gång (kontrolleras av ett test).
+//! Each module exports `pub static KEYWORDS: &[Keyword]`. Register a new
+//! module with ONE line in the list below (alphabetical order). A keyword may
+//! only be registered once (checked by a test).
 
 use super::Keyword;
 
 macro_rules! keyword_modules {
     ($($m:ident),* $(,)?) => {
         $(pub mod $m;)*
-        /// Alla registrerade nyckelord.
+        /// All registered keywords.
         pub fn all() -> Vec<&'static Keyword> {
             let mut v = Vec::new();
             $(v.extend($m::KEYWORDS.iter());)*
@@ -18,7 +18,7 @@ macro_rules! keyword_modules {
     };
 }
 
-// En rad per modul, i alfabetisk ordning.
+// One line per module, in alphabetical order.
 keyword_modules! {
     acoustic,
     acoustics2,

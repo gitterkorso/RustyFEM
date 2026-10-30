@@ -1,8 +1,8 @@
-//! Stegprocedurfunktioner: *MODEL CHANGE (borttagning och återaktivering av
-//! element och kontaktpar, tolkas av `steps/model_change.rs`).
+//! Step procedure features: *MODEL CHANGE (removal and reactivation of
+//! elements and contact pairs, parsed by `steps/model_change.rs`).
 //!
-//! *STATIC, STABILIZE läses av `steps/static_stabilize.rs` direkt ur
-//! procedurnyckelordet.
+//! *STATIC, STABILIZE is read by `steps/static_stabilize.rs` directly from
+//! the procedure keyword.
 
 use crate::fem::model::{DataLine, RawKeyword};
 use crate::inp::{InpCtx, Keyword, Kind};
@@ -10,12 +10,12 @@ use crate::model::Result;
 
 pub static KEYWORDS: &[Keyword] = &[Keyword { name: "MODEL CHANGE", kind: Kind::Step, handler: model_change }];
 
-/// Sparar *MODEL CHANGE i steget. För TYPE=ELEMENT ersätts dataraderna av
-/// elementens index ("#index") så att set i instanser löses upp här.
+/// Stores *MODEL CHANGE in the step. For TYPE=ELEMENT the data lines are replaced by
+/// the element indices ("#index") so that sets in instances are resolved here.
 fn model_change(ctx: &mut InpCtx, kw: &RawKeyword) -> Result<()> {
     let ty = kw.param_upper("TYPE").unwrap_or_else(|| "ELEMENT".into());
     if kw.has("ACTIVATE") && !kw.has("REMOVE") && !kw.has("ADD") {
-        // förbereder bara omstart: ingen ändring
+        // only prepares for restart: no change
         return Ok(());
     }
     let mut stored = kw.clone();

@@ -1,1 +1,1 @@
-{"default":{"identifier":"default","description":"Huvudfönstret: kommandon mot motorn och fildialoger","local":true,"windows":["main"],"permissions":["core:default","dialog:default"]}}
+{"default":{"identifier":"default","description":"Main window: engine commands and file dialogs","local":true,"windows":["main"],"permissions":["core:default","dialog:default"]}}

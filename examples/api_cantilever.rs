@@ -1,5 +1,5 @@
-//! Samma konsol som konsol_platta.rusty, men byggd direkt i Rust.
-//! Kör: cargo run --release --example api_konsol
+//! The same cantilever as cantilever_plate.rusty, but built directly in Rust.
+//! Run: cargo run --release --example api_cantilever
 
 use rustyfem::{Material, Model, Sel};
 
@@ -12,6 +12,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let r = m.solve()?;
     print!("{}", r.summary(&m));
-    r.write_vtk(&m, std::path::Path::new("api_konsol.vtk"))?;
+    r.write_vtk(&m, std::path::Path::new("api_cantilever.vtk"))?;
     Ok(())
 }

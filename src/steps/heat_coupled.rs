@@ -1,27 +1,27 @@
-//! *COUPLED TEMPERATURE-DISPLACEMENT (stationär eller transient) med de
-//! kopplade elementen i `elements/heat_coupled.rs` (C3D8T, CPE4T, CPS4T, CAX4T).
+//! *COUPLED TEMPERATURE-DISPLACEMENT (steady-state or transient) with the
+//! coupled elements in `elements/heat_coupled.rs` (C3D8T, CPE4T, CPS4T, CAX4T).
 //!
-//! Vid små töjningar utan värmealstring från deformationen (ingen plastisk
-//! dissipation, ingen spaltkonduktans) beror värmeledningen inte av
-//! förskjutningarna: tangentmatrisen är blocktriangulär,
+//! At small strains without heat generation from the deformation (no plastic
+//! dissipation, no gap conductance) the heat conduction does not depend on the
+//! displacements: the tangent matrix is block triangular,
 //!
 //! ```text
 //! [ K_uu  K_uT ] [Δu]   [R_u]
 //! [  0    K_TT ] [ΔT] = [R_T]
 //! ```
 //!
-//! och varje inkrement kan lösas exakt i två led: först temperaturen (samma
-//! system som *HEAT TRANSFER, `steps/heat.rs`), sedan jämvikten med den
-//! termiska töjningen ur temperaturen vid inkrementets början och slut
-//! (`steps/heat_stress.rs`; töjningen dras av i materialet, `materials/thermal.rs`). Lösningen är
-//! densamma som med den fullt kopplade Newtonmetoden (samma diskreta
-//! lösning som när hela systemet löses samtidigt).
+//! and each increment can be solved exactly in two stages: first the temperature (the same
+//! system as *HEAT TRANSFER, `steps/heat.rs`), then the equilibrium with the
+//! thermal strain from the temperature at the start and end of the increment
+//! (`steps/heat_stress.rs`; the strain is subtracted in the material, `materials/thermal.rs`). The solution is
+//! the same as with the fully coupled Newton method (the same discrete
+//! solution as when the whole system is solved simultaneously).
 //!
-//! Inkrementering: transient med fasta inkrement Δt0 (utan DELTMX) eller
-//! automatiskt efter DELTMX (samma regel som *HEAT TRANSFER); stationärt med
-//! inkrementet Δt0 (fasta inkrement). Laster: alla mekaniska laster och
-//! randvillkor samt värmeflödena (*CFLUX, *DFLUX, *FILM, *RADIATE).
-//! Utdata: U, NT11, RF, RFL11, S, E, HFL.
+//! Incrementation: transient with fixed increments Δt0 (without DELTMX) or
+//! automatic by DELTMX (the same rule as *HEAT TRANSFER); steady-state with
+//! the increment Δt0 (fixed increments). Loads: all mechanical loads and
+//! boundary conditions as well as the heat fluxes (*CFLUX, *DFLUX, *FILM, *RADIATE).
+//! Output: U, NT11, RF, RFL11, S, E, HFL.
 
 use super::api::{StepCtx, StepType};
 use super::heat::{ensure_initial, heat_controls, heat_loads, HeatSystem, INIT_KEY, TS};
@@ -42,7 +42,7 @@ pub static STEP_TYPES: &[&dyn StepType] = &[&CoupledTempDisp];
 
 const PROC: &str = "COUPLED TEMPERATURE-DISPLACEMENT";
 
-/// Ett inkrement [t0, t1] av ett delsystem med fast Δt.
+/// An increment [t0, t1] of a subsystem with fixed Δt.
 struct Sub<'a, S: NonlinearSystem> {
     sys: &'a mut S,
     t0: f64,
@@ -57,8 +57,8 @@ impl<S: NonlinearSystem> NonlinearSystem for Sub<'_, S> {
         self.sys.eq_field(eq)
     }
     fn is_linear(&self) -> bool {
-        // linjära delsystem löses med en enda lösning (ingen konvergenskontroll,
-        // som annars misslyckas när alla flöden är noll, t.ex. fri utvidgning)
+        // linear subsystems are solved with a single solve (no convergence check,
+        // which otherwise fails when all fluxes are zero, e.g. free expansion)
         self.sys.is_linear()
     }
     fn begin_increment(&mut self, _a: f64, _b: f64) -> Result<()> {
@@ -81,8 +81,8 @@ impl<S: NonlinearSystem> NonlinearSystem for Sub<'_, S> {
     }
 }
 
-/// Löser ett inkrement av delsystemet och godkänner det. Linjära delsystem
-/// löses med en enda lösning (`newton::solve_linear`).
+/// Solves an increment of the subsystem and accepts it. Linear subsystems
+/// are solved with a single solve (`newton::solve_linear`).
 fn solve_increment<S: NonlinearSystem>(sys: &mut S, ctrl: &Controls, t0: f64, t1: f64) -> Result<usize> {
     let sub = Controls { initial: 1.0, fixed: true, ..ctrl.clone() };
     let mut one = Sub { sys: &mut *sys, t0, t1 };
@@ -91,8 +91,8 @@ fn solve_increment<S: NonlinearSystem>(sys: &mut S, ctrl: &Controls, t0: f64, t1
     Ok(rep.iterations)
 }
 
-/// Delar upp stegets laster: värmeledningens (temperaturer och värmeflöden)
-/// och mekanikens (resten).
+/// Splits the loads of the step: those of the heat conduction (temperatures and heat fluxes)
+/// and those of the mechanics (the rest).
 fn split_loads(l: &StepLoads) -> (StepLoads, StepLoads) {
     let thermal_kind = |k: &str| k.starts_with("DFLUX:") || k.starts_with("FILM") || k.starts_with("RAD:");
     let mut th = l.clone();
@@ -112,8 +112,8 @@ fn temps(u: &[NodeVec]) -> Vec<f64> {
     u.iter().map(|v| v[TS]).collect()
 }
 
-/// Sammanslagen frame: förskjutningar, spänningar och reaktioner från
-/// mekaniken, temperaturer, HFL och reaktionsflöden från värmeledningen.
+/// Merged frame: displacements, stresses and reactions from
+/// the mechanics, temperatures, HFL and reaction fluxes from the heat conduction.
 fn frame(heat: &HeatSystem, mech: &ThermoSystem, value: f64, description: String) -> Result<FrameData> {
     let h = heat.frame(value, description.clone())?;
     let mut m = mech.frame(value, description)?;
@@ -127,7 +127,7 @@ fn frame(heat: &HeatSystem, mech: &ThermoSystem, value: f64, description: String
     for (a, b) in m.elem.iter_mut().zip(h.elem) {
         a.extend(b);
     }
-    // värmeflödet över termisk kontakt (HFL) från värmeledningsdelen
+    // the heat flux across thermal contact (HFL) from the heat conduction part
     m.node_extra.extend(h.node_extra);
     Ok(m)
 }
@@ -145,15 +145,15 @@ impl StepType for CoupledTempDisp {
         let prep = ctx.prep;
         let model = prep.model;
         if ctx.nlgeom {
-            return fail("*COUPLED TEMPERATURE-DISPLACEMENT med NLGEOM=YES stöds inte ännu");
+            return fail("*COUPLED TEMPERATURE-DISPLACEMENT with NLGEOM=YES is not supported yet");
         }
         if ctx.step.perturbation {
-            return fail("*COUPLED TEMPERATURE-DISPLACEMENT kan inte vara ett perturbationssteg");
+            return fail("*COUPLED TEMPERATURE-DISPLACEMENT cannot be a perturbation step");
         }
         for (e, el) in model.elements.iter().enumerate() {
             if crate::elements::heat_coupled::lookup(el.etype.name()).is_none() {
                 return fail(format!(
-                    "{}: *COUPLED TEMPERATURE-DISPLACEMENT kräver kopplade element (C3D8T, CPE4T, CPS4T, CAX4T), inte {}",
+                    "{}: *COUPLED TEMPERATURE-DISPLACEMENT requires coupled elements (C3D8T, CPE4T, CPS4T, CAX4T), not {}",
                     model.elem_name(e),
                     el.etype.name()
                 ));
@@ -164,7 +164,7 @@ impl StepType for CoupledTempDisp {
         ensure_initial(model, ctx.state)?;
         let mut loads = heat_loads(ctx.step, ctx.loads, hc.steady);
         if !had_init {
-            // randvillkor som rampas i det första steget utgår från begynnelsetemperaturen
+            // boundary conditions ramped in the first step start from the initial temperature
             for ((n, s), v) in loads.bc.iter_mut() {
                 if *s == TS && !ctx.state.bcs.contains_key(&(*n, *s)) {
                     v.0 = ctx.state.u[*n][TS];
@@ -176,9 +176,9 @@ impl StepType for CoupledTempDisp {
         let mut heat = HeatSystem::new(prep, th_loads, ctx.state, !hc.steady, ctx.solver, period)?;
         let mut mech = ThermoSystem::new(prep, &me_loads, ctx.state, ctx.solver, period, true)?;
         mech.coupled = (temps(&ctx.state.u), temps(&ctx.state.u));
-        // kontakt och spaltkonduktans: delsystemen beror av varandra och
-        // itereras i varje inkrement (heat_coupled_contact.rs)
-        // område coupled2: värme från plastisk dissipation (*INELASTIC HEAT FRACTION)
+        // contact and gap conductance: the subsystems depend on each other and
+        // are iterated in each increment (heat_coupled_contact.rs)
+        // area coupled2: heat from plastic dissipation (*INELASTIC HEAT FRACTION)
         let eta = crate::materials::inelastic_heat::fractions(model)?;
         let plastic = eta.iter().any(|&x| x > 0.0) && !hc.steady;
         let interacting = !prep.interactions.is_empty() || !heat.gaps.is_empty() || plastic;
@@ -195,14 +195,14 @@ impl StepType for CoupledTempDisp {
             mech.begin_increment(0.0, 0.0)?;
             mech.evaluate(false)?;
             let mut f0 = frame(&heat, &mech, 0.0, "Increment 0: Step Time = 0.0".into())?;
-            // frame 0 är begynnelsetillståndet: inga reaktioner
+            // frame 0 is the initial state: no reactions
             for r in f0.rf.iter_mut() {
                 *r = [0.0; SLOTS];
             }
             frames.push(f0);
         }
         if hc.deltmx > 0.0 && !hc.steady {
-            return fail("DELTMX i *COUPLED TEMPERATURE-DISPLACEMENT stöds inte ännu (ange fasta inkrement)");
+            return fail("DELTMX in *COUPLED TEMPERATURE-DISPLACEMENT is not supported yet (specify fixed increments)");
         }
         let ctrl = &hc.ctrl;
         let dt0 = ctrl.initial.clamp(1e-12, 1.0);
@@ -211,7 +211,7 @@ impl StepType for CoupledTempDisp {
         let mut iterations = 0usize;
         while t < 1.0 - 1e-12 {
             if inc >= ctrl.max_increments {
-                return fail(format!("steget nådde största antal inkrement ({}) – öka INC= på *STEP", ctrl.max_increments));
+                return fail(format!("the step reached the maximum number of increments ({}) – increase INC= on *STEP", ctrl.max_increments));
             }
             let t1 = (t + dt0).min(1.0);
             let t1 = if 1.0 - t1 < 1e-9 { 1.0 } else { t1 };
@@ -227,7 +227,7 @@ impl StepType for CoupledTempDisp {
             t = t1;
             inc += 1;
             if ctx.opts.verbose {
-                eprintln!("  inkrement {inc}: stegtid {:.6}", t * period);
+                eprintln!("  increment {inc}: step time {:.6}", t * period);
             }
             if all || t >= 1.0 - 1e-12 {
                 frames.push(frame(&heat, &mech, t * period, format!("Increment {inc}: Step Time = {:.4}", t * period))?);

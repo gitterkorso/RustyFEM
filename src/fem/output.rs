@@ -1,18 +1,18 @@
-//! Resultat per step och frame.
+//! Results per step and frame.
 //!
-//! `FrameData` är det steg-typerna skriver (vektorer per nod/element). För
-//! jämförelse med referensresultat och för fil-utdata görs den om till `Frame` med
-//! fält nycklade på (instans, nod) eller (instans, element, ip, sektionspunkt).
+//! `FrameData` is what the step types write (vectors per node/element). For
+//! comparison with reference results and for file output it is converted to `Frame` with
+//! fields keyed on (instance, node) or (instance, element, ip, section point).
 //!
-//! Textformatet "rustyfem-res 1" skrivs av RustyFEM (`rustyfem run fil.inp
-//! --out res.txt`) och används för referensresultaten i regressionstesterna:
+//! The text format "rustyfem-res 1" is written by RustyFEM (`rustyfem run file.inp
+//! --out res.txt`) and is used for the reference results in the regression tests:
 //!
 //! ```text
-//! STEP;stegnr;namn;procedur
-//! FRAME;stegnr;framenr;frameValue;mod;beskrivning
-//! N;FÄLT;instans;nod;KOMP=värde;...
-//! E;FÄLT;instans;element;ip;sektionspunkt;KOMP=värde;...
-//! H;stegnr;region;utdata;tid:värde;...
+//! STEP;stepno;name;procedure
+//! FRAME;stepno;frameno;frameValue;mode;description
+//! N;FIELD;instance;node;COMP=value;...
+//! E;FIELD;instance;element;ip;sectionpoint;COMP=value;...
+//! H;stepno;region;output;time:value;...
 //! ```
 
 use crate::elements::IpField;
@@ -22,24 +22,24 @@ use crate::model::{fail, Result};
 use std::collections::BTreeMap;
 use std::fmt::Write as _;
 
-/// Rå utdata för en frame, skriven av en steg-typ.
+/// Raw output for a frame, written by a step type.
 #[derive(Debug, Clone, Default)]
 pub struct FrameData {
-    /// Stegtid (eller egenvärde/frekvens i egenvärdessteg).
+    /// Step time (or eigenvalue/frequency in eigenvalue steps).
     pub value: f64,
-    /// Modnummer i egenvärdessteg, annars −1.
+    /// Mode number in eigenvalue steps, otherwise −1.
     pub mode: i64,
     pub description: String,
-    /// Nodvärden (förskjutning, rotation, temperatur) per slot.
+    /// Nodal values (displacement, rotation, temperature) per slot.
     pub u: Vec<NodeVec>,
-    /// Reaktioner i låsta frihetsgrader.
+    /// Reactions at constrained DOFs.
     pub rf: Vec<NodeVec>,
-    /// Aktiva respektive låsta slots per nod (bitmask).
+    /// Active and constrained slots per node, respectively (bit mask).
     pub active: Vec<u16>,
     pub constrained: Vec<u16>,
-    /// Utdata per element (tom om elementet saknar utdata).
+    /// Output per element (empty if the element has no output).
     pub elem: Vec<Vec<IpField>>,
-    /// Ytterligare nodfält (t.ex. "V", "A"): (fältnamn, komponentnamn, värden per nod).
+    /// Additional nodal fields (e.g. "V", "A"): (field name, component names, values per node).
     pub node_extra: Vec<(String, Vec<String>, Vec<Vec<f64>>)>,
 }
 
@@ -48,9 +48,9 @@ pub struct StepOutput {
     pub name: String,
     pub procedure: String,
     pub frames: Vec<FrameData>,
-    /// History-utdata: (region, namn, [(tid, värde)]).
+    /// History output: (region, name, [(time, value)]).
     pub history: Vec<(String, String, Vec<(f64, f64)>)>,
-    /// Antal inkrement och iterationer (för utskrift).
+    /// Number of increments and iterations (for printing).
     pub increments: usize,
     pub iterations: usize,
 }
@@ -58,11 +58,11 @@ pub struct StepOutput {
 #[derive(Debug, Clone, Default)]
 pub struct AnalysisOutput {
     pub steps: Vec<StepOutput>,
-    /// Antal obekanta i senaste lösningen.
+    /// Number of unknowns in the latest solution.
     pub n_eq: usize,
 }
 
-/// Ett fält: komponentnamn och värden per nyckel.
+/// A field: component names and values per key.
 #[derive(Debug, Clone)]
 pub struct Field<K: Ord> {
     pub labels: Vec<String>,
@@ -132,13 +132,13 @@ pub struct StepResult {
     pub history: Vec<HistoryOutput>,
 }
 
-/// Resultat för en hel analys (alla steps och frames).
+/// Results for a whole analysis (all steps and frames).
 #[derive(Debug, Clone, Default)]
 pub struct ResultSet {
     pub steps: Vec<StepResult>,
 }
 
-/// Normaliserar fältnamn: plana rotationer kan heta UR3/RM3.
+/// Normalizes field names: planar rotations may be called UR3/RM3.
 fn field_name(f: &str) -> &str {
     match f {
         "UR3" => "UR",
@@ -148,7 +148,7 @@ fn field_name(f: &str) -> &str {
 }
 
 impl Frame {
-    /// Bygger en frame med standardfältnamn från rå utdata.
+    /// Builds a frame with standard field names from raw output.
     pub fn from_data(model: &FeModel, d: &FrameData, index: usize) -> Frame {
         let mut fr = Frame { index, value: d.value, mode: d.mode, description: d.description.clone(), ..Default::default() };
         let dim = model.dim();
@@ -229,7 +229,7 @@ fn clean(s: &str) -> String {
 }
 
 impl ResultSet {
-    /// Skriver resultaten i textformatet "rustyfem-res 1".
+    /// Writes the results in the text format "rustyfem-res 1".
     pub fn to_text(&self) -> String {
         let mut s = String::from("# rustyfem-res 1\n");
         for st in &self.steps {
@@ -266,7 +266,7 @@ impl ResultSet {
         s
     }
 
-    /// Läser textformatet "rustyfem-res 1".
+    /// Reads the text format "rustyfem-res 1".
     pub fn parse(text: &str) -> Result<ResultSet> {
         let mut rs = ResultSet::default();
         for (no, line) in text.lines().enumerate() {
@@ -275,7 +275,7 @@ impl ResultSet {
                 continue;
             }
             let p: Vec<&str> = line.split(';').collect();
-            let bad = || crate::model::FemError(format!("resultatfil rad {}: oläsbar rad '{line}'", no + 1));
+            let bad = || crate::model::FemError(format!("results file line {}: unreadable line '{line}'", no + 1));
             let num = |s: &str| s.trim().parse::<f64>().map_err(|_| bad());
             let int = |s: &str| s.trim().parse::<i64>().map_err(|_| bad());
             let comps = |fields: &[&str]| -> Result<Vec<(String, f64)>> {
@@ -330,14 +330,14 @@ impl ResultSet {
                     }
                     st.history.push(HistoryOutput { region: p[2].to_string(), name: p[3].to_string(), data });
                 }
-                _ => return fail(format!("resultatfil rad {}: okänd rad '{line}'", no + 1)),
+                _ => return fail(format!("results file line {}: unknown line '{line}'", no + 1)),
             }
         }
         Ok(rs)
     }
 }
 
-/// Summa av en nodvektor över alla noder.
+/// Sum of a nodal vector over all nodes.
 pub fn sum_nodes(v: &[NodeVec]) -> NodeVec {
     let mut s = [0.0; SLOTS];
     for n in v {

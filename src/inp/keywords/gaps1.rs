@@ -1,10 +1,10 @@
-//! Område gaps1: nyckelord för tillståndsekvationer och balktvärsnitt.
+//! Area gaps1: keywords for equations of state and beam sections.
 //!
-//! - *DETONATION POINT: materialbeteende efter *EOS, TYPE=JWL (`materials/eos_forms.rs`).
-//! - *EOS COMPACTION: materialbeteende (P-α); ger fel tills modellen finns.
-//! - *AXIAL, *M1, *M2, *TORQUE: olinjära tvärsnittssamband för
+//! - *DETONATION POINT: material behavior after *EOS, TYPE=JWL (`materials/eos_forms.rs`).
+//! - *EOS COMPACTION: material behavior (P-α); gives an error until the model exists.
+//! - *AXIAL, *M1, *M2, *TORQUE: nonlinear section relations for
 //!   *BEAM GENERAL SECTION, SECTION=NONLINEAR GENERAL (`elements/beam_nonlinear_general.rs`).
-//!   De knyts till det senaste tvärsnittet (sparas som parametrar på dess `raw`).
+//!   They are attached to the latest section (stored as parameters on its `raw`).
 
 use crate::fem::model::{RawKeyword, SectionKind};
 use crate::inp::keywords::material::behavior;
@@ -20,16 +20,16 @@ pub static KEYWORDS: &[Keyword] = &[
     Keyword { name: "TORQUE", kind: Kind::Model, handler: section_behavior },
 ];
 
-/// Parameterprefixet för de olinjära sambanden på tvärsnittets `raw`.
+/// Parameter prefix for the nonlinear relations on the section's `raw`.
 pub const NLG_PARAM: &str = "_NLG_";
 
-/// *AXIAL/*M1/*M2/*TORQUE: kopplas till närmast föregående
-/// *BEAM GENERAL SECTION, SECTION=NONLINEAR GENERAL. Sambandet lagras som en
-/// parameter `_NLG_<NAMN>` = "slag;x1,y1;x2,y2;..." (slag LINEAR, ELASTIC eller
+/// *AXIAL/*M1/*M2/*TORQUE: attached to the nearest preceding
+/// *BEAM GENERAL SECTION, SECTION=NONLINEAR GENERAL. The relation is stored as a
+/// parameter `_NLG_<NAME>` = "kind;x1,y1;x2,y2;..." (kind LINEAR, ELASTIC or
 /// PLASTIC).
 fn section_behavior(ctx: &mut InpCtx, kw: &RawKeyword) -> Result<()> {
     if kw.has("DEPENDENCIES") {
-        return kw.err("DEPENDENCIES stöds inte för olinjära tvärsnittssamband");
+        return kw.err("DEPENDENCIES is not supported for nonlinear section relations");
     }
     let kind = if kw.has("LINEAR") {
         "LINEAR"
@@ -45,21 +45,21 @@ fn section_behavior(ctx: &mut InpCtx, kw: &RawKeyword) -> Result<()> {
             continue;
         }
         if v.len() > 2 && v[2] != 0.0 {
-            return kw.err_at(d.line, "temperaturberoende tvärsnittssamband stöds inte");
+            return kw.err_at(d.line, "temperature-dependent section relations are not supported");
         }
         text.push_str(&format!(";{:e},{:e}", v[0], v.get(1).copied().unwrap_or(0.0)));
     }
     let mesh = ctx.mesh();
     let Some(sec) = mesh.sections.iter_mut().rev().find(|s| s.raw.name == "BEAM GENERAL SECTION") else {
-        return kw.err(format!("*{} måste följa *BEAM GENERAL SECTION, SECTION=NONLINEAR GENERAL", kw.name));
+        return kw.err(format!("*{} must follow *BEAM GENERAL SECTION, SECTION=NONLINEAR GENERAL", kw.name));
     };
     if sec.raw.param_upper("SECTION").as_deref() != Some("NONLINEAR GENERAL") || !matches!(sec.kind, SectionKind::Beam(_)) {
-        return kw.err(format!("*{} kräver *BEAM GENERAL SECTION, SECTION=NONLINEAR GENERAL", kw.name));
+        return kw.err(format!("*{} requires *BEAM GENERAL SECTION, SECTION=NONLINEAR GENERAL", kw.name));
     }
     let key = format!("{NLG_PARAM}{}", kw.name);
     sec.raw.params.retain(|(k, _)| k != &key);
     sec.raw.params.push((key, text));
-    // olinjära samband: modellen löses med Newton (`interactions/gaps1.rs`)
+    // nonlinear relations: the model is solved with Newton (`interactions/gaps1.rs`)
     ctx.model.extra.push(kw.clone());
     Ok(())
 }

@@ -1,13 +1,13 @@
-//! *ANNEAL: glödgning mellan två steg.
+//! *ANNEAL: annealing between two steps.
 //!
-//! Spänningarna nollställs och materialpunkten görs spänningsfri i den
-//! aktuella deformerade geometrin (`MaterialModel::anneal`): för
-//! von Mises-plasticitet blir den plastiska töjningen lika med den totala
-//! töjningen (logaritmisk töjning vid NLGEOM, annars E) och PEEQ och mottensorerna noll.
-//! Hastigheter, accelerationer och reaktioner nollställs; förskjutningen
-//! behålls. Steget tar ingen tid och skriver inga frames.
-//! Den logaritmiska töjningen räknas fortfarande från den ursprungliga
-//! geometrin. PE redovisas från glödgningen (PE = 0 direkt efter).
+//! The stresses are zeroed and the material point is made stress-free in the
+//! current deformed geometry (`MaterialModel::anneal`): for
+//! von Mises plasticity the plastic strain becomes equal to the total
+//! strain (logarithmic strain with NLGEOM, otherwise E) and PEEQ and the back stress tensors zero.
+//! Velocities, accelerations and reactions are zeroed; the displacement
+//! is kept. The step takes no time and writes no frames.
+//! The logarithmic strain is still computed from the original
+//! geometry. PE is reported from the annealing (PE = 0 directly after).
 
 use super::api::{StepCtx, StepType};
 use crate::fem::model::StepDef;
@@ -29,10 +29,10 @@ impl StepType for Anneal {
     fn run(&self, ctx: &mut StepCtx) -> Result<()> {
         let kw = ctx.step.procedure.as_ref().unwrap();
         if kw.has("TEMPERATURE") {
-            return kw.err("TEMPERATURE= stöds inte ännu");
+            return kw.err("TEMPERATURE= is not supported yet");
         }
         if ctx.step.perturbation {
-            return kw.err("*ANNEAL kan inte vara ett perturbationssteg");
+            return kw.err("*ANNEAL cannot be a perturbation step");
         }
         let p = ctx.prep;
         let m = p.model;
@@ -47,14 +47,14 @@ impl StepType for Anneal {
             }
             let stride = st.len() / nip;
             let Some(ncomp) = stride.checked_sub(mat.n_state()).filter(|n| [1, 3, 4, 6].contains(n)) else {
-                return fail(format!("{}: *ANNEAL stöds inte för elementtypen {}", m.elem_name(e), et.name()));
+                return fail(format!("{}: *ANNEAL is not supported for the element type {}", m.elem_name(e), et.name()));
             };
-            // aktuell total töjning per integrationspunkt (logaritmisk vid NLGEOM, annars E)
+            // current total strain per integration point (logarithmic with NLGEOM, otherwise E)
             let ue = p.gather(e, &ctx.state.u);
             let out = et.output(&ectx, &ue, st).map_err(|err| FemError(format!("{}: {err}", m.elem_name(e))))?;
             let fld = out.iter().find(|f| f.name == if ctx.nlgeom { "LE" } else { "E" }).or_else(|| out.iter().find(|f| f.name == "E" || f.name == "LE"));
             let Some(fld) = fld else {
-                return fail(format!("{}: *ANNEAL kräver töjningsutdata (E eller logaritmisk töjning) för {}", m.elem_name(e), et.name()));
+                return fail(format!("{}: *ANNEAL requires strain output (E or logarithmic strain) for {}", m.elem_name(e), et.name()));
             };
             let names = ["11", "22", "33", "12", "13", "23"];
             let mut st = st.clone();
@@ -70,7 +70,7 @@ impl StepType for Anneal {
                 let base = k * stride;
                 st[base..base + ncomp].iter_mut().for_each(|x| *x = 0.0);
                 if !mat.anneal(&eps, &mut st[base + ncomp..base + stride]) {
-                    return fail(format!("{}: materialet stöder inte *ANNEAL", m.elem_name(e)));
+                    return fail(format!("{}: the material does not support *ANNEAL", m.elem_name(e)));
                 }
             }
             ctx.state.elem_state[e] = st;

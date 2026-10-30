@@ -1,9 +1,9 @@
-//! Brygga från `.rusty`-modellen (`crate::model::Model`) till kärnan.
+//! Bridge from the `.rusty` model (`crate::model::Model`) to the core.
 //!
-//! En `.rusty`-modell översätts till en `FeModel` med ett allmänt *STATIC-steg:
-//! randvillkoren som *BOUNDARY och alla laster (inklusive tryck och egenvikt)
-//! som ekvivalenta nodlaster (*CLOAD), precis som vid exporten till .inp.
-//! Sedan löses den med step-ramverket och resultatet görs om till `Results`.
+//! A `.rusty` model is translated into a `FeModel` with a general *STATIC step:
+//! the boundary conditions as *BOUNDARY and all loads (including pressure and self-weight)
+//! as equivalent nodal loads (*CLOAD), just as in the export to .inp.
+//! It is then solved with the step framework and the result is converted to `Results`.
 
 use crate::elements::{self, beam_eb, ElemCtx};
 use crate::fem::assembly::Prepared;
@@ -14,7 +14,7 @@ use crate::model::{fail, Dim, FemError, Model, Result, Section};
 use crate::results::Results;
 use crate::steps::{self, RunOptions};
 
-/// Elementtypens namn i .inp-formatet (CPS → CPE vid plan töjning).
+/// Name of the element type in the .inp format (CPS → CPE for plane strain).
 pub fn elem_name(m: &Model, ei: usize) -> String {
     m.elem_kind(&m.elements[ei]).type_name()
 }
@@ -42,11 +42,11 @@ fn fe_section(m: &Model, si: usize) -> SectionDef {
     }
 }
 
-/// ∫Nᵢ dV per nod för element `ei` (för egenvikt i `Model::nodal_loads`).
+/// ∫Nᵢ dV per node for element `ei` (for self-weight in `Model::nodal_loads`).
 pub fn volume_weights(m: &Model, ei: usize) -> Result<Vec<f64>> {
     let e = &m.elements[ei];
     let name = elem_name(m, ei);
-    let et = elements::lookup(&name).ok_or_else(|| FemError(format!("intern: elementtypen {name} saknas")))?;
+    let et = elements::lookup(&name).ok_or_else(|| FemError(format!("internal: element type {name} is missing")))?;
     let sec = fe_section(m, e.section);
     let mat = &m.materials[m.sections[e.section].material()];
     let iso = IsotropicElastic { e: mat.e, nu: mat.nu };
@@ -67,7 +67,7 @@ pub fn volume_weights(m: &Model, ei: usize) -> Result<Vec<f64>> {
     et.volume_weights(&ctx)
 }
 
-/// Översätter modellen till en `FeModel` (utan steg).
+/// Translates the model into a `FeModel` (without steps).
 pub fn to_fe(m: &Model) -> Result<FeModel> {
     let mut fe = FeModel::new();
     let inst = fe.instance(FLAT_INSTANCE);
@@ -76,7 +76,7 @@ pub fn to_fe(m: &Model) -> Result<FeModel> {
     }
     for (i, mt) in m.materials.iter().enumerate() {
         if !(mt.e > 0.0) {
-            return fail(format!("materialet '{}' saknar E", mt.name));
+            return fail(format!("material '{}' has no E", mt.name));
         }
         fe.materials.push(MaterialDef::elastic(&format!("M{}", i + 1), mt.e, mt.nu, mt.density));
     }
@@ -86,7 +86,7 @@ pub fn to_fe(m: &Model) -> Result<FeModel> {
     let mut sets: Vec<Vec<usize>> = vec![Vec::new(); m.sections.len()];
     for (i, e) in m.elements.iter().enumerate() {
         let name = elem_name(m, i);
-        let et = elements::lookup(&name).ok_or_else(|| FemError(format!("intern: elementtypen {name} saknas")))?;
+        let et = elements::lookup(&name).ok_or_else(|| FemError(format!("internal: element type {name} is missing")))?;
         sets[e.section].push(fe.add_element(et, inst, i as i64 + 1, e.nodes.clone())?);
     }
     for (si, set) in sets.iter().enumerate() {
@@ -96,8 +96,8 @@ pub fn to_fe(m: &Model) -> Result<FeModel> {
     Ok(fe)
 }
 
-/// Översätter modellen till en `FeModel` med ett linjärt statiskt steg
-/// (stöd och laster från skriptet).
+/// Translates the model into a `FeModel` with a linear static step
+/// (supports and loads from the script).
 pub fn to_fe_static(m: &Model) -> Result<FeModel> {
     m.check()?;
     let active = m.active_dofs();
@@ -110,8 +110,8 @@ pub fn to_fe_static(m: &Model) -> Result<FeModel> {
         max_increments: 1,
         ..Default::default()
     };
-    step.bcs.push(BcBlock { items: cons.iter().map(|&(n, d, v)| (n, d as Dof + 1, v)).collect(), source: "(.rusty) stöd".into(), ..Default::default() });
-    let mut cl = CloadBlock { source: "(.rusty) laster".into(), ..Default::default() };
+    step.bcs.push(BcBlock { items: cons.iter().map(|&(n, d, v)| (n, d as Dof + 1, v)).collect(), source: "(.rusty) supports".into(), ..Default::default() });
+    let mut cl = CloadBlock { source: "(.rusty) loads".into(), ..Default::default() };
     for (n, f) in fext.iter().enumerate() {
         for d in 0..6 {
             if f[d] != 0.0 && active[n] & (1 << d) != 0 {
@@ -124,7 +124,7 @@ pub fn to_fe_static(m: &Model) -> Result<FeModel> {
     Ok(fe)
 }
 
-/// Löser en `.rusty`-modell (linjär statik).
+/// Solves a `.rusty` model (linear statics).
 pub fn solve(m: &Model) -> Result<Results> {
     let active = m.active_dofs();
     let cons = m.constraints(&active)?;
@@ -132,14 +132,14 @@ pub fn solve(m: &Model) -> Result<Results> {
     let t0 = std::time::Instant::now();
     let fe = to_fe_static(m)?;
     if crate::settings::with(|s| s.timing) {
-        eprintln!("till FeModel: {:.3} s", t0.elapsed().as_secs_f64());
+        eprintln!("to FeModel: {:.3} s", t0.elapsed().as_secs_f64());
     }
     let t0 = std::time::Instant::now();
     let (out, state) = steps::run(&fe, &RunOptions::default())?;
     if crate::settings::with(|s| s.timing) {
         eprintln!("steps::run: {:.3} s", t0.elapsed().as_secs_f64());
     }
-    let fr = out.steps[0].frames.last().ok_or_else(|| FemError("intern: steget gav ingen frame".into()))?;
+    let fr = out.steps[0].frames.last().ok_or_else(|| FemError("internal: the step produced no frame".into()))?;
 
     let nn = m.nodes.len();
     let mut disp = vec![[0.0; 6]; nn];

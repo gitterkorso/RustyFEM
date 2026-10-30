@@ -1,30 +1,30 @@
-//! Regressionsfall: `tests/cases/<område>/<fall>.inp` med sidofilen
-//! `<fall>.toml` (tolerans och storheter) och baslinjen `<fall>.ref`
-//! (RustyFEMs resultatformat, skriven av `rustyfem baseline`).
+//! Regression case: `tests/cases/<area>/<case>.inp` with the side file
+//! `<case>.toml` (tolerance and quantities) and the baseline `<case>.ref`
+//! (RustyFEM's result format, written by `rustyfem baseline`).
 //!
-//! Sidofilen är en liten TOML-delmängd:
+//! The side file is a small TOML subset:
 //!
 //! ```toml
-//! description = "Konsol i plan spänning med tryck"
-//! tol = 1e-4                 # relativt fel, normerat mot största |värde| i fältet
-//! fields = ["U", "RF", "S"]  # storheter som jämförs (FRAMEVALUE = egenvärde/tid,
-//!                            # H:NAMN = sista history-värdet, HA:NAMN = alla)
-//! frames = "last"            # "last" (sista framen i varje steg) eller "all"
-//! tol.S = 1e-3               # egen tolerans per fält (valfritt)
-//! atol.RF = 1e-8             # absolut tolerans i fältets enheter nära noll
-//! sign_free = ["U"]          # fält där tecknet får skifta per frame (modformer)
-//! floor = 1e-8               # normera minst mot floor · största |värde| i fältet
-//!                            # över stegets alla frames (valfritt, för brus i
-//!                            # komponenter som är ≈ 0 i en mod)
-//! floor_elem = 1e-6          # för elementfält (S, PEEQ, SDEG, ...) mot största |värde|
-//!                            # över fallets alla steg, t.ex. för skadevariabler
-//!                            # som är ≈ 0 före skadeinitiering
-//! steps = [2, 3]             # jämför bara dessa steg (valfritt, 1-baserat)
-//! global_inp = "global.inp"  # submodell: globalmodellen körs först (--global)
-//! old_inp = "gammal.inp"     # omstart: den första analysen körs först (--oldjob)
+//! description = "Cantilever in plane stress with pressure"
+//! tol = 1e-4                 # relative error, normalized by the largest |value| in the field
+//! fields = ["U", "RF", "S"]  # quantities compared (FRAMEVALUE = eigenvalue/time,
+//!                            # H:NAME = last history value, HA:NAME = all)
+//! frames = "last"            # "last" (last frame of each step) or "all"
+//! tol.S = 1e-3               # per-field tolerance (optional)
+//! atol.RF = 1e-8             # absolute tolerance in the field's units near zero
+//! sign_free = ["U"]          # fields whose sign may flip per frame (mode shapes)
+//! floor = 1e-8               # normalize by at least floor · largest |value| in the field
+//!                            # over all frames of the step (optional, for noise in
+//!                            # components that are ≈ 0 in a mode)
+//! floor_elem = 1e-6          # for element fields (S, PEEQ, SDEG, ...) against the largest |value|
+//!                            # over all steps of the case, e.g. for damage variables
+//!                            # that are ≈ 0 before damage initiation
+//! steps = [2, 3]             # compare only these steps (optional, 1-based)
+//! global_inp = "global.inp"  # submodel: the global model runs first (--global)
+//! old_inp = "old.inp"        # restart: the first analysis runs first (--oldjob)
 //! ```
 //!
-//! Bara .inp-filer med en sidofil räknas som fall; inkluderade filer ska inte ha någon.
+//! Only .inp files with a side file count as cases; included files must not have one.
 
 use crate::model::{fail, FemError, Result};
 use std::collections::BTreeMap;
@@ -40,15 +40,15 @@ pub struct CaseSpec {
     pub fields: Vec<String>,
     pub all_frames: bool,
     pub sign_free: Vec<String>,
-    /// Undre gräns för normeringen relativt fältets största värde i steget (0 = av).
+    /// Lower bound for the normalization relative to the field's largest value in the step (0 = off).
     pub floor: f64,
-    /// Som `floor` men för elementfält (0 = av).
+    /// Like `floor` but for element fields (0 = off).
     pub floor_elem: f64,
-    /// Steg som jämförs (1-baserat); tom = alla.
+    /// Steps that are compared (1-based); empty = all.
     pub steps: Vec<usize>,
-    /// Globalmodellen för en submodell (relativt fallets katalog).
+    /// The global model for a submodel (relative to the case directory).
     pub global_inp: Option<String>,
-    /// Den ursprungliga analysen för ett omstartsfall (relativt fallets katalog).
+    /// The original analysis for a restart case (relative to the case directory).
     pub old_inp: Option<String>,
 }
 
@@ -87,7 +87,7 @@ fn parse_list(v: &str) -> Vec<String> {
     t.split(',').map(|s| s.trim().trim_matches('"').trim().to_string()).filter(|s| !s.is_empty()).collect()
 }
 
-/// Tolkar sidofilens text.
+/// Parses the side file's text.
 pub fn parse_spec(text: &str, name: &str) -> Result<CaseSpec> {
     let mut s = CaseSpec::default();
     for (no, raw) in text.lines().enumerate() {
@@ -100,10 +100,10 @@ pub fn parse_spec(text: &str, name: &str) -> Result<CaseSpec> {
             continue;
         }
         let Some((k, v)) = line.split_once('=') else {
-            return fail(format!("{name} rad {}: skriv 'nyckel = värde'", no + 1));
+            return fail(format!("{name} line {}: write 'key = value'", no + 1));
         };
         let (k, v) = (k.trim(), v.trim());
-        let num = |v: &str| v.parse::<f64>().map_err(|_| FemError(format!("{name} rad {}: '{v}' är inget tal", no + 1)));
+        let num = |v: &str| v.parse::<f64>().map_err(|_| FemError(format!("{name} line {}: '{v}' is not a number", no + 1)));
         match k {
             "description" => s.description = v.trim_matches('"').to_string(),
             "tol" => s.tol = num(v)?,
@@ -126,7 +126,7 @@ pub fn parse_spec(text: &str, name: &str) -> Result<CaseSpec> {
                 }
                 s.atol_field.insert(field, value);
             }
-            _ => return fail(format!("{name} rad {}: okänd nyckel '{k}'", no + 1)),
+            _ => return fail(format!("{name} line {}: unknown key '{k}'", no + 1)),
         }
     }
     for field in s.atol_field.keys() {
@@ -145,7 +145,7 @@ pub fn ref_path(inp: &Path) -> PathBuf {
     inp.with_extension("ref")
 }
 
-/// Läser sidofilen (standardvärden om den saknas).
+/// Reads the side file (default values if it is missing).
 pub fn load_spec(inp: &Path) -> Result<CaseSpec> {
     let p = spec_path(inp);
     match std::fs::read_to_string(&p) {
@@ -154,7 +154,7 @@ pub fn load_spec(inp: &Path) -> Result<CaseSpec> {
     }
 }
 
-/// Alla fall (.inp med sidofil) under `root`, sorterade.
+/// All cases (.inp with side file) under `root`, sorted.
 pub fn discover(root: &Path) -> Vec<PathBuf> {
     let mut out = Vec::new();
     let mut stack = vec![root.to_path_buf()];
@@ -173,7 +173,7 @@ pub fn discover(root: &Path) -> Vec<PathBuf> {
     out
 }
 
-/// "område/fall" för utskrift.
+/// "area/case" for printing.
 pub fn case_name(inp: &Path) -> String {
     let stem = inp.file_stem().map(|s| s.to_string_lossy().to_string()).unwrap_or_default();
     match inp.parent().and_then(|p| p.file_name()) {

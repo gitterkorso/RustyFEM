@@ -1,25 +1,26 @@
-//! Kohesiv kontakt (ytbaserad): *CONTACT PAIR med en *SURFACE INTERACTION
-//! som har *COHESIVE BEHAVIOR, med *DAMAGE INITIATION, *DAMAGE EVOLUTION och
+//! Cohesive contact (surface-based): *CONTACT PAIR with a *SURFACE INTERACTION
+//! that has *COHESIVE BEHAVIOR, with *DAMAGE INITIATION, *DAMAGE EVOLUTION and
 //! *DAMAGE STABILIZATION.
 //!
-//! Formulering (nod mot yta, små glidningar som i implicit analys för
-//! kontaktpar): varje slavnod A projiceras i referensläget på närmaste
-//! masteryta (punkten ξ, formfunktionerna M_C och masterns normal n samt
-//! tangenterna s, t). Separationen är δ = Rᵀ (u_A − Σ_C M_C(ξ) u_C) med
-//! R = [n s t], och dragspänningen t(δ) ges av traction–separationslagen i
-//! `materials/cohesive.rs` med δ som "töjning" (konstitutiv tjocklek 1):
-//! okopplad elasticitet t = K δ, initiering MAXS/QUADS/MAXU/QUADU (MAXU och
-//! QUADU = MAXE/QUADE med separationerna), utveckling med förskjutning eller
-//! energi och viskös regularisering (*DAMAGE STABILIZATION). Kraften är
-//! A_A R t med slavnodens andel A_A av slavytan.
+//! Formulation (node-to-surface, small sliding as in implicit analysis for
+//! contact pairs): each slave node A is projected in the reference
+//! configuration onto the closest master facet (the point ξ, the shape
+//! functions M_C and the master normal n plus the tangents s, t). The
+//! separation is δ = Rᵀ (u_A − Σ_C M_C(ξ) u_C) with R = [n s t], and the
+//! traction t(δ) is given by the traction–separation law in
+//! `materials/cohesive.rs` with δ as "strain" (constitutive thickness 1):
+//! uncoupled elasticity t = K δ, initiation MAXS/QUADS/MAXU/QUADU (MAXU and
+//! QUADU = MAXE/QUADE with the separations), evolution by displacement or
+//! energy and viscous regularization (*DAMAGE STABILIZATION). The force is
+//! A_A R t with the slave node's share A_A of the slave surface.
 //!
-//! ELIGIBILITY=ORIGINAL CONTACTS (standard): bara slavnoder som är i kontakt
-//! i början (gap ≤ 1e-6 · ytstorleken) binds. I tryck gäller den vanliga
-//! hårda kontakten i normalriktningen, här med straffstyvheten
-//! 1e3 · Knn; obundna noder har bara den.
+//! ELIGIBILITY=ORIGINAL CONTACTS (default): only slave nodes that are in
+//! contact at the start (gap ≤ 1e-6 · surface size) are bonded. In
+//! compression the usual hard contact applies in the normal direction, here
+//! with the penalty stiffness 1e3 · Knn; unbonded nodes have only that.
 //!
-//! Utdata (nodvis i slavnoderna): CSDMG (skadan), CSMAXSCRT, CSQUADSCRT,
-//! CSMAXUCRT eller CSQUADUCRT (initieringskriteriet).
+//! Output (nodal at the slave nodes): CSDMG (the damage), CSMAXSCRT, CSQUADSCRT,
+//! CSMAXUCRT or CSQUADUCRT (the initiation criterion).
 
 use std::sync::{Arc, Mutex};
 
@@ -32,7 +33,7 @@ use crate::materials::cohesive::TractionSeparation;
 use crate::materials::MaterialModel;
 use crate::model::{fail, Result};
 
-/// Straffstyvhet för hård kontakt i tryck relativt Knn.
+/// Penalty stiffness for hard contact in compression relative to Knn.
 const HARD_FACTOR: f64 = 1e3;
 
 pub static FACTORIES: &[InteractionFactory] = &[
@@ -40,7 +41,7 @@ pub static FACTORIES: &[InteractionFactory] = &[
     InteractionFactory { keywords: &["CONTACT"], build: general },
 ];
 
-/// Underalternativ till *SURFACE INTERACTION som den kohesiva kontakten läser.
+/// Suboptions of *SURFACE INTERACTION read by the cohesive contact.
 pub const SI_OPTIONS: &[&str] = &["SURFACE BEHAVIOR", "FRICTION", "CONTACT DAMPING", "COHESIVE BEHAVIOR", "DAMAGE INITIATION", "DAMAGE EVOLUTION", "DAMAGE STABILIZATION"];
 
 fn interaction<'a>(m: &'a FeModel, name: &str) -> Option<&'a RawKeyword> {
@@ -48,18 +49,18 @@ fn interaction<'a>(m: &'a FeModel, name: &str) -> Option<&'a RawKeyword> {
     m.extra.iter().find(|k| k.name == "SURFACE INTERACTION" && k.param_upper("NAME").as_deref() == Some(up.as_str()))
 }
 
-/// Ytinteraktionen `name` har *COHESIVE BEHAVIOR.
+/// The surface interaction `name` has *COHESIVE BEHAVIOR.
 pub fn is_cohesive(m: &FeModel, name: &str) -> bool {
     interaction(m, name).is_some_and(|si| sub_options(m, si, SI_OPTIONS).iter().any(|k| k.name == "COHESIVE BEHAVIOR"))
 }
 
-/// General contact med kohesiva egenskaper stöds inte ännu.
+/// General contact with cohesive properties is not supported yet.
 fn general(m: &FeModel, _kw: &RawKeyword) -> Result<Vec<Box<dyn Interaction>>> {
     for a in m.extra.iter().filter(|k| k.name == "CONTACT PROPERTY ASSIGNMENT") {
         for d in a.records() {
             if let Some(ip) = d.fields.get(2).filter(|s| !s.trim().is_empty()) {
                 if is_cohesive(m, ip) {
-                    return a.err_at(d.line, "kohesiv kontakt (*COHESIVE BEHAVIOR) i general contact stöds inte ännu (använd *CONTACT PAIR)");
+                    return a.err_at(d.line, "cohesive contact (*COHESIVE BEHAVIOR) in general contact is not supported yet (use *CONTACT PAIR)");
                 }
             }
         }
@@ -71,39 +72,39 @@ fn line(fields: &[String], at: usize) -> DataLine {
     DataLine { fields: fields.to_vec(), line: at, continued: false }
 }
 
-/// Traction–separationslagen och viskositeten ur ytinteraktionens underalternativ.
+/// The traction–separation law and the viscosity from the surface interaction's suboptions.
 fn law(m: &FeModel, si: &RawKeyword) -> Result<(Arc<dyn MaterialModel>, f64)> {
     let subs = sub_options(m, si, SI_OPTIONS);
-    let cb = subs.iter().find(|k| k.name == "COHESIVE BEHAVIOR").copied().ok_or_else(|| crate::model::FemError(format!("{}: *COHESIVE BEHAVIOR saknas", si.location())))?;
+    let cb = subs.iter().find(|k| k.name == "COHESIVE BEHAVIOR").copied().ok_or_else(|| crate::model::FemError(format!("{}: *COHESIVE BEHAVIOR missing", si.location())))?;
     if cb.param_upper("TYPE").is_some_and(|t| t != "UNCOUPLED") {
-        return cb.err("TYPE=COUPLED stöds inte ännu (bara UNCOUPLED)");
+        return cb.err("TYPE=COUPLED is not supported yet (only UNCOUPLED)");
     }
     for (p, ok) in [("ELIGIBILITY", "ORIGINAL CONTACTS"), ("COHERE", "ORIGINAL CONTACTS")] {
         if let Some(v) = cb.param_upper(p).filter(|v| v != ok) {
-            return cb.err(format!("{p}={v} stöds inte ännu (bara ORIGINAL CONTACTS)"));
+            return cb.err(format!("{p}={v} is not supported yet (only ORIGINAL CONTACTS)"));
         }
     }
     for p in ["DEPENDENCIES", "REPEATED CONTACTS"] {
         if cb.has(p) {
-            return cb.err(format!("parametern {p} stöds inte ännu"));
+            return cb.err(format!("parameter {p} is not supported yet"));
         }
     }
     if cb.data.len() > 1 {
-        return cb.err("temperaturberoende kohesiv styvhet stöds inte ännu");
+        return cb.err("temperature-dependent cohesive stiffness is not supported yet");
     }
     let v = cb.first_floats()?;
     let kn = v.first().copied().unwrap_or(0.0);
     if !(kn > 0.0) {
-        return cb.err("ange den kohesiva styvheten Knn, Kss, Ktt (standardstyvheten stöds inte ännu)");
+        return cb.err("give the cohesive stiffness Knn, Kss, Ktt (the default stiffness is not supported yet)");
     }
     let ks = v.get(1).copied().filter(|&x| x > 0.0).unwrap_or(kn);
     let kt = v.get(2).copied().filter(|&x| x > 0.0).unwrap_or(ks);
     for f in subs.iter().filter(|k| k.name == "FRICTION") {
         if f.has("ROUGH") || f.first_floats()?.first().is_some_and(|&mu| mu != 0.0) {
-            return f.err("friktion tillsammans med *COHESIVE BEHAVIOR stöds inte ännu");
+            return f.err("friction together with *COHESIVE BEHAVIOR is not supported yet");
         }
     }
-    // materialdefinition för materials/cohesive.rs (MAXU/QUADU = MAXE/QUADE med δ som töjning)
+    // material definition for materials/cohesive.rs (MAXU/QUADU = MAXE/QUADE with δ as strain)
     let mut el = cb.clone();
     el.name = "ELASTIC".into();
     el.params = vec![("TYPE".into(), "TRACTION".into())];
@@ -119,7 +120,7 @@ fn law(m: &FeModel, si: &RawKeyword) -> Result<(Arc<dyn MaterialModel>, f64)> {
                     "MAXS" | "QUADS" => c.clone(),
                     "MAXU" => "MAXE".into(),
                     "QUADU" => "QUADE".into(),
-                    o => return k.err(format!("CRITERION={o} stöds inte för kohesiv kontakt (MAXS, QUADS, MAXU, QUADU)")),
+                    o => return k.err(format!("CRITERION={o} is not supported for cohesive contact (MAXS, QUADS, MAXU, QUADU)")),
                 };
                 d.params.retain(|(p, _)| p != "CRITERION");
                 d.params.push(("CRITERION".into(), mapped));
@@ -130,24 +131,24 @@ fn law(m: &FeModel, si: &RawKeyword) -> Result<(Arc<dyn MaterialModel>, f64)> {
             _ => {}
         }
     }
-    let def = MaterialDef { name: format!("kohesiv kontakt {}", si.param("NAME").unwrap_or("")), behaviors, density: 0.0 };
-    let build = crate::materials::cohesive::FACTORIES[0].build.expect("kohesiv lag");
+    let def = MaterialDef { name: format!("cohesive contact {}", si.param("NAME").unwrap_or("")), behaviors, density: 0.0 };
+    let build = crate::materials::cohesive::FACTORIES[0].build.expect("cohesive law");
     let Some(model) = build(&def)? else {
-        return si.err("den kohesiva lagen kunde inte byggas");
+        return si.err("the cohesive law could not be built");
     };
     if model.cohesive().is_none() {
-        return si.err("den kohesiva lagen kunde inte byggas");
+        return si.err("the cohesive law could not be built");
     }
     Ok((model, visc))
 }
 
-/// En slavnods villkor.
+/// A slave node's constraint.
 #[derive(Debug, Clone)]
 struct Term {
     node: usize,
-    /// (nod, koefficient): 1 för slavnoden, −M_C för masternoderna.
+    /// (node, coefficient): 1 for the slave node, −M_C for the master nodes.
     coef: Vec<(usize, f64)>,
-    /// Lokala riktningar: normal, s, t.
+    /// Local directions: normal, s, t.
     r: [[f64; 3]; 3],
     area: f64,
     bonded: bool,
@@ -165,11 +166,11 @@ pub struct CohesiveContact {
 
 impl CohesiveContact {
     fn ts(&self) -> &TractionSeparation {
-        self.model.cohesive().expect("kohesiv lag")
+        self.model.cohesive().expect("cohesive law")
     }
 }
 
-/// Tangentriktningar i ytan med normalen n (globala 1-axelns projektion i 3D).
+/// Tangent directions in the surface with normal n (projection of the global 1-axis in 3D).
 fn tangents(n: [f64; 3], dim: usize) -> ([f64; 3], [f64; 3]) {
     if dim == 2 {
         return ([-n[1], n[0], 0.0], [0.0, 0.0, 1.0]);
@@ -189,10 +190,10 @@ fn pair(m: &FeModel, kw: &RawKeyword) -> Result<Vec<Box<dyn Interaction>>> {
         return Ok(Vec::new());
     }
     if crate::steps::explicit::contact::only_explicit(m) {
-        return kw.err("kohesiv kontakt i explicit analys stöds inte ännu");
+        return kw.err("cohesive contact in explicit analysis is not supported yet");
     }
     if kw.param_upper("TYPE").is_some_and(|t| t != "NODE TO SURFACE") {
-        return kw.err("kohesiv kontakt stöds bara med TYPE=NODE TO SURFACE");
+        return kw.err("cohesive contact is only supported with TYPE=NODE TO SURFACE");
     }
     let si = interaction(m, ip).unwrap();
     let (model, visc) = law(m, si)?;
@@ -204,16 +205,16 @@ fn pair(m: &FeModel, kw: &RawKeyword) -> Result<Vec<Box<dyn Interaction>>> {
             continue;
         }
         if f.len() < 2 {
-            return kw.err_at(d.line, "skriv slavyta, masteryta");
+            return kw.err_at(d.line, "write slave surface, master surface");
         }
         let slave = geom::surface(m, kw, f[0])?;
         let master = geom::surface(m, kw, f[1])?;
         if master.kind == "NODE" {
-            return kw.err_at(d.line, "masterytan måste vara elementbaserad");
+            return kw.err_at(d.line, "the master surface must be element-based");
         }
         let mfac = geom::facets(m, master, "*CONTACT PAIR")?;
         let dim = mfac.first().map_or(3, |f| f.dim);
-        // slavnodernas areor
+        // slave node areas
         let mut areas: std::collections::BTreeMap<usize, f64> = std::collections::BTreeMap::new();
         if slave.kind == "NODE" {
             for &(n, a) in &slave.nodes {
@@ -235,7 +236,7 @@ fn pair(m: &FeModel, kw: &RawKeyword) -> Result<Vec<Box<dyn Interaction>>> {
         let mut terms = Vec::new();
         for (&n, &area) in &areas {
             let p = m.nodes[n];
-            // närmaste masteryta (helst en där projektionen ligger inne i ytan)
+            // closest master facet (preferably one where the projection lies inside the facet)
             let mut best: Option<(bool, f64, &Facet, [f64; 2])> = None;
             for mf in &mfac {
                 if mf.nodes.contains(&n) {
@@ -270,7 +271,7 @@ fn pair(m: &FeModel, kw: &RawKeyword) -> Result<Vec<Box<dyn Interaction>>> {
             model.cohesive().unwrap().init_state(s);
         }
         out.push(Box::new(CohesiveContact {
-            name: format!("*CONTACT PAIR (kohesiv) {}/{} ({})", f[0], f[1], kw.location()),
+            name: format!("*CONTACT PAIR (cohesive) {}/{} ({})", f[0], f[1], kw.location()),
             terms,
             dim,
             model: model.clone(),
@@ -280,7 +281,7 @@ fn pair(m: &FeModel, kw: &RawKeyword) -> Result<Vec<Box<dyn Interaction>>> {
         }));
     }
     if out.is_empty() {
-        return fail(format!("{}: inga kontaktytor", kw.location()));
+        return fail(format!("{}: no contact surfaces", kw.location()));
     }
     Ok(out)
 }
@@ -302,7 +303,7 @@ impl Interaction for CohesiveContact {
         let dofs = [U1, U2, U3];
         let mut k = k;
         for (i, t) in self.terms.iter().enumerate() {
-            // relativ förskjutning i globala och lokala riktningar
+            // relative displacement in global and local directions
             let mut du = [0.0; 3];
             for &(n, c) in &t.coef {
                 for q in 0..3 {
@@ -313,7 +314,7 @@ impl Interaction for CohesiveContact {
             for a in 0..nd {
                 e[a] = (0..3).map(|q| t.r[a][q] * du[q]).sum();
             }
-            // i tryck gäller den vanliga hårda kontakten (straff) i normalriktningen
+            // in compression the usual hard contact (penalty) applies in the normal direction
             let kh = HARD_FACTOR * self.kn;
             let (tr, d) = if t.bonded {
                 let o = ts.update(&e, nd, 1.0, ctx.dt, self.visc, &committed[i], &mut trial[i]);
@@ -333,7 +334,7 @@ impl Interaction for CohesiveContact {
             } else {
                 ([0.0; 3], [[0.0; 3]; 3])
             };
-            // global kraft F = A R t och tangent A R D Rᵀ
+            // global force F = A R t and tangent A R D Rᵀ
             let mut f = [0.0; 3];
             for a in 0..nd {
                 for q in 0..3 {

@@ -1,38 +1,38 @@
-//! Kopplingselement (CONN2D2, CONN3D2) med *CONNECTOR SECTION,
-//! *CONNECTOR BEHAVIOR och stegnyckelorden *CONNECTOR MOTION och
+//! Connector elements (CONN2D2, CONN3D2) with *CONNECTOR SECTION,
+//! *CONNECTOR BEHAVIOR and the step keywords *CONNECTOR MOTION and
 //! *CONNECTOR LOAD.
 //!
-//! Varje element har sex komponenter (1–3 translation, 4–6 rotation) som
-//! kopplingstypen gör tillgängliga, låsta eller saknade
-//! (`connector_kin.rs`, alla typer i anslutningsbiblioteket utom
-//! ACCELEROMETER, FLOW-CONVERTER, RETRACTOR och SLIPRING). Komponentens
-//! värde g = c·u är linjärt i nodfrihetsgraderna (små förskjutningar och
-//! rotationer) och kraften F(g) från beteendena (`connector_beh.rs`) ger
-//! den inre kraften f = Σ F cᵀ och tangenten K = Σ ∂F/∂g c cᵀ.
+//! Each element has six components (1–3 translation, 4–6 rotation) that
+//! the connection type makes available, constrained or absent
+//! (`connector_kin.rs`, all types in the connection library except
+//! ACCELEROMETER, FLOW-CONVERTER, RETRACTOR and SLIPRING). The component's
+//! value g = c·u is linear in the nodal degrees of freedom (small displacements and
+//! rotations) and the force F(g) from the behaviors (`connector_beh.rs`) gives
+//! the internal force f = Σ F cᵀ and the tangent K = Σ ∂F/∂g c cᵀ.
 //!
-//! Låsta komponenter elimineras exakt som linjära villkor (`fem/mpc.rs`);
-//! villkorskraften (som ingår i CTF/CTM) räknas ur den
-//! okondenserade residualen i slavfrihetsgraderna (`observe_residual`,
-//! anropas av de statiska stegen). Stopp, lås och föreskriven rörelse
-//! (*CONNECTOR MOTION) upprätthålls med en styv straffkoefficient
-//! k = `PENALTY` · (största styvheten vid noderna); felet blir ~1/`PENALTY`
-//! relativt. *CONNECTOR ELASTICITY, RIGID är en fjäder med styvheten 1e6
-//! (implicit analys).
+//! Constrained components are eliminated exactly as linear constraints (`fem/mpc.rs`);
+//! the constraint force (included in CTF/CTM) is computed from the
+//! uncondensed residual in the slave degrees of freedom (`observe_residual`,
+//! called by the static steps). Stops, locks and prescribed motion
+//! (*CONNECTOR MOTION) are enforced with a stiff penalty coefficient
+//! k = `PENALTY` · (largest stiffness at the nodes); the error is ~1/`PENALTY`
+//! relative. *CONNECTOR ELASTICITY, RIGID is a spring with stiffness 1e6
+//! (implicit analysis).
 //!
-//! *CONNECTOR LOAD ger lika och motriktade krafter längs komponenten
-//! (f = −L cᵀ i den inre kraften; CTF = inre kraft − L). Rörelser och laster
-//! rampas linjärt över steget från föregående värde (standard, steg i
-//! *DYNAMIC) eller följer AMPLITUDE=; OP=NEW tar bort tidigare – borttagna
-//! laster och rörelsens reaktion avvecklas till noll under steget. Stegtiden
-//! räknas fram från den totala tiden och stegens längd.
+//! *CONNECTOR LOAD gives equal and opposite forces along the component
+//! (f = −L cᵀ in the internal force; CTF = internal force − L). Motions and loads
+//! are ramped linearly over the step from the previous value (default, step in
+//! *DYNAMIC) or follow AMPLITUDE=; OP=NEW removes previous ones – removed
+//! loads and the motion's reaction are ramped down to zero during the step. The step time
+//! is computed from the total time and the step lengths.
 //!
-//! *CONNECTOR DAMPING verkar i *DYNAMIC med hastigheten Δg/Δt över
-//! inkrementet (HHT-viktad som övriga inre krafter).
+//! *CONNECTOR DAMPING acts in *DYNAMIC with the velocity Δg/Δt over
+//! the increment (HHT-weighted like the other internal forces).
 //!
-//! Utdata (helt element, ip 0): CTF/CTM (total kraft),
-//! CU/CUR (relativ rörelse), CEF/CEM (elastisk, efter plasticitet och skada),
-//! CUE/CURE, CUP/CURP, CSF/CSM (friktion), CRF/CRM (villkor, stopp, lås,
-//! rörelse), CVF/CVM (dämpning), CP/CPR (läge) och CDMG/CDMGR.
+//! Output (whole element, ip 0): CTF/CTM (total force),
+//! CU/CUR (relative motion), CEF/CEM (elastic, after plasticity and damage),
+//! CUE/CURE, CUP/CURP, CSF/CSM (friction), CRF/CRM (constraint, stop, lock,
+//! motion), CVF/CVM (damping), CP/CPR (position) and CDMG/CDMGR.
 
 #[path = "connector_beh.rs"]
 pub mod beh;
@@ -55,35 +55,35 @@ use std::sync::Mutex;
 
 pub static FACTORIES: &[InteractionFactory] = &[InteractionFactory { keywords: &["CONNECTOR SECTION"], build: section }];
 
-/// Straffkoefficient för villkor relativt nodernas styvhet.
+/// Penalty coefficient for constraints relative to the nodal stiffness.
 pub const PENALTY: f64 = 1e8;
 
-/// Föreskrivet värde i ett steg: från, till, amplitud.
+/// Prescribed value in a step: from, to, amplitude.
 #[derive(Debug, Clone)]
 struct Ramp {
     from: f64,
     to: f64,
     amp: Option<String>,
-    /// Rörelsen togs bort (OP=NEW): reaktionen avvecklas till noll under steget.
+    /// The motion was removed (OP=NEW): the reaction is ramped down to zero during the step.
     release: bool,
 }
 
 struct Elem {
     index: usize,
-    /// Noden vars frihetsgrader elimineras i villkoren (b, eller a om b är jordad).
+    /// The node whose degrees of freedom are eliminated in the constraints (b, or a if b is grounded).
     bnode: usize,
     comps: [kin::CompDef; 6],
     terms: [Vec<(usize, Dof, f64)>; 6],
     k_pen: [f64; 6],
     length: f64,
-    /// Per modellsteg: föreskriven rörelse respektive last per komponent.
+    /// Per model step: prescribed motion and load, respectively, per component.
     motion: Vec<[Option<Ramp>; 6]>,
     load: Vec<[Option<Ramp>; 6]>,
-    /// Geometrin för kinematiken med stora rotationer (NLGEOM, `connector_nl.rs`).
+    /// Geometry for the large-rotation kinematics (NLGEOM, `connector_nl.rs`).
     geo: nl::Geo,
 }
 
-/// Utdata per element.
+/// Output per element.
 #[derive(Debug, Clone, Copy, Default)]
 struct Out {
     g: [f64; 6],
@@ -102,20 +102,20 @@ struct State {
     g_trial: Vec<[f64; 6]>,
     out_trial: Vec<Out>,
     out_committed: Vec<Out>,
-    /// Villkorskrafter i låsta komponenter.
+    /// Constraint forces in constrained components.
     lambda_trial: Vec<[f64; 6]>,
     lambda_committed: Vec<[f64; 6]>,
 }
 
 impl Elem {
-    /// Komponenter som är villkor (låsta av kopplingstypen).
+    /// Components that are constraints (constrained by the connection type).
     fn is_constraint(&self, beh: &Behavior, c: usize) -> bool {
         let _ = beh;
         self.comps[c].status == Status::Constrained
     }
 }
 
-/// Stegens start och längd (för stegtiden) och standardamplitud.
+/// Start and length of the steps (for the step time) and default amplitude.
 struct Timeline {
     steps: Vec<(f64, f64, bool)>,
 }
@@ -139,7 +139,7 @@ impl Timeline {
         Ok(Timeline { steps })
     }
 
-    /// (stegindex, stegtid, andel) vid totaltiden t.
+    /// (step index, step time, fraction) at total time t.
     fn at(&self, t: f64) -> Option<(usize, f64, f64)> {
         let mut last = None;
         for (i, &(s, p, _)) in self.steps.iter().enumerate() {
@@ -165,21 +165,21 @@ pub struct Connectors {
     timeline: Timeline,
     amps: BTreeMap<String, crate::steps::dynamic::amplitude::Amplitude>,
     linear: bool,
-    /// Modellstegen som är dynamiksteg (dämpningen verkar bara där).
+    /// The model steps that are dynamic steps (damping acts only there).
     dynamic: Vec<bool>,
-    /// Modellen har NLGEOM- eller explicita steg: låsta komponenter
-    /// upprätthålls inte som linjära villkor (som inte kan följa stora
-    /// rotationer) utan med straffkoefficienten `PENALTY` i implicita steg och
-    /// som kinematiska villkor (`kinematic_constraints`) i explicita steg.
+    /// The model has NLGEOM or explicit steps: constrained components
+    /// are not enforced as linear constraints (which cannot follow large
+    /// rotations) but with the penalty coefficient `PENALTY` in implicit steps and
+    /// as kinematic constraints (`kinematic_constraints`) in explicit steps.
     nl_mode: bool,
-    /// Modellstegen som är explicita (*DYNAMIC, EXPLICIT).
+    /// The model steps that are explicit (*DYNAMIC, EXPLICIT).
     explicit: Vec<bool>,
     state: Mutex<State>,
 }
 
 impl Connectors {
-    /// Komponenter och rader med stora rotationer (`connector_nl.rs`);
-    /// komponenter som saknas ger 0.
+    /// Components and rows with large rotations (`connector_nl.rs`);
+    /// absent components give 0.
     fn eval_nl(&self, e: &Elem, u: &[NodeVec], near: &[f64; 6]) -> nl::Eval {
         let mut ev = e.geo.eval(u, near);
         for c in 0..6 {
@@ -235,7 +235,7 @@ impl Interaction for Connectors {
                 if !e.is_constraint(&self.beh, c) || e.terms[c].is_empty() {
                     continue;
                 }
-                // nod b:s frihetsgrad med störst koefficient elimineras i första hand
+                // node b's degree of freedom with the largest coefficient is eliminated first
                 let bnode = e.bnode;
                 let mut t = e.terms[c].clone();
                 t.sort_by(|p, q| (q.0 == bnode).cmp(&(p.0 == bnode)).then((q.1 <= 3).cmp(&(p.1 <= 3))).then(q.2.abs().total_cmp(&p.2.abs())));
@@ -253,7 +253,7 @@ impl Interaction for Connectors {
             if cons.is_empty() {
                 continue;
             }
-            // slavfrihetsgrader i villkorsraderna och A[s][k] = koefficienten
+            // slave degrees of freedom in the constraint rows and A[s][k] = the coefficient
             let mut dofs: Vec<(usize, usize)> = Vec::new();
             for &c in &cons {
                 for &(n, d, _) in &e.terms[c] {
@@ -264,7 +264,7 @@ impl Interaction for Connectors {
                 }
             }
             let nk = cons.len();
-            // normalekvationer AᵀA λ = Aᵀ b, b = −(fint − fext) i slavarna
+            // normal equations AᵀA λ = Aᵀ b, b = −(fint − fext) in the slaves
             let mut ata = vec![0.0; nk * nk];
             let mut atb = vec![0.0; nk];
             for &(n, s) in &dofs {
@@ -292,7 +292,7 @@ impl Interaction for Connectors {
         let st = &mut *st;
         let explicit_step = when.is_some_and(|(si, _, _)| self.explicit[si]);
         for (ei, e) in self.elems.iter().enumerate() {
-            // NLGEOM: komponenterna och raderna i aktuellt läge (connector_nl.rs)
+            // NLGEOM: the components and rows in the current configuration (connector_nl.rs)
             let ev = if ctx.nlgeom { Some(self.eval_nl(e, u, &st.g_committed[ei])) } else { None };
             let terms: &[Vec<(usize, Dof, f64)>; 6] = match &ev {
                 Some(v) => &v.rows,
@@ -317,10 +317,10 @@ impl Interaction for Connectors {
                     continue;
                 }
                 if cd.status == Status::Constrained {
-                    // villkor (elimineras exakt i fem/mpc.rs); kraften räknas
-                    // ur residualen (`observe_residual`) och läggs till i utdata.
-                    // NLGEOM-modeller: styv straffkoefficient i implicita steg,
-                    // kinematiska villkor i explicita steg
+                    // constraint (eliminated exactly in fem/mpc.rs); the force is computed
+                    // from the residual (`observe_residual`) and added to the output.
+                    // NLGEOM models: stiff penalty coefficient in implicit steps,
+                    // kinematic constraints in explicit steps
                     if self.nl_mode && !explicit_step {
                         let fp = e.k_pen[c] * g[c];
                         f[c] += fp;
@@ -330,7 +330,7 @@ impl Interaction for Connectors {
                     continue;
                 }
                 let b = &self.beh.comps[c];
-                // elasticitet, plasticitet och skada
+                // elasticity, plasticity and damage
                 let (mut fe, mut ke) = match (&b.plastic, &b.elastic) {
                     (Some(p), Elastic::Linear(kl)) => {
                         let (fp, kp, s) = beh::plastic(*kl, p, g[c], &old[c]);
@@ -358,7 +358,7 @@ impl Interaction for Connectors {
                 f[c] += fe;
                 dmat[c][c] += ke;
                 out.fe[c] += fe;
-                // friktion (klistring med elastisk glidning, glidning vid μN)
+                // friction (sticking with elastic slip, slipping at μN)
                 if let Some(fr) = &b.friction {
                     let lim = fr.mu * fr.f0.abs();
                     let ks = fr.stick.unwrap_or_else(|| lim / (1e-4 * if e.length > 0.0 { e.length } else { 1.0 }));
@@ -370,7 +370,7 @@ impl Interaction for Connectors {
                     dmat[c][c] += kf;
                     out.fs[c] += ff;
                 }
-                // stopp (lägen)
+                // stop (positions)
                 if let Some((lo, hi)) = b.stop {
                     let p = cd.p0 + g[c];
                     let over = if hi.is_some_and(|h| p > h) { p - hi.unwrap() } else if lo.is_some_and(|l| p < l) { p - lo.unwrap() } else { 0.0 };
@@ -381,7 +381,7 @@ impl Interaction for Connectors {
                     }
                 }
             }
-            // lås: när läget i COMPONENT når gränserna låses komponenterna
+            // lock: when the position in COMPONENT reaches the limits, the components are locked
             for c in 0..6 {
                 let Some(l) = &self.beh.comps[c].lock else { continue };
                 if e.comps[c].status != Status::Available {
@@ -396,15 +396,15 @@ impl Interaction for Connectors {
                             new[q].lock_value = if q == c { lim - e.comps[c].p0 } else { 0.0 };
                             new[q].locked = new[q].locked || q != c;
                         }
-                        // komponenten själv hålls vid gränsen
+                        // the component itself is held at the limit
                         new[c].lock_value = lim - e.comps[c].p0;
                     }
                 }
                 if new[c].locked {
                     for &q in &l.comps {
-                        // kriteriets komponent hålls vid gränsen redan i inkrementet där
-                        // den nås; övriga låses från nästa inkrement (vid sin
-                        // referens, CU = 0)
+                        // the criterion's component is held at the limit already in the increment where
+                        // it is reached; the others are locked from the next increment (at their
+                        // reference, CU = 0)
                         if q != c && !old[c].locked {
                             continue;
                         }
@@ -415,8 +415,8 @@ impl Interaction for Connectors {
                     }
                 }
             }
-            // viskös dämpning i dynamiksteg: hastigheten som Δu/Δt över
-            // inkrementet
+            // viscous damping in dynamic steps: the velocity as Δu/Δt over
+            // the increment
             if ctx.dt > 0.0 && when.is_some_and(|(si, _, _)| self.dynamic[si]) {
                 for c in 0..6 {
                     let cv = self.beh.comps[c].damping;
@@ -428,7 +428,7 @@ impl Interaction for Connectors {
                     }
                 }
             }
-            // matriselasticitet
+            // matrix elasticity
             if let Some(mt) = &self.beh.matrix {
                 for c in 0..6 {
                     for d in 0..6 {
@@ -440,7 +440,7 @@ impl Interaction for Connectors {
                     }
                 }
             }
-            // föreskriven rörelse och last
+            // prescribed motion and load
             let mut load = [0.0; 6];
             if let Some((si, stt, frac)) = when {
                 for c in 0..6 {
@@ -464,10 +464,10 @@ impl Interaction for Connectors {
                     }
                 }
             }
-            // CTF/CTM: den kraft kopplingen överför (inre kraft minus *CONNECTOR LOAD)
+            // CTF/CTM: the force transmitted by the connector (internal force minus *CONNECTOR LOAD)
             out.f = std::array::from_fn(|c| f[c] - load[c]);
             if crate::settings::with(|s| s.nl_debug) {
-                eprintln!("koppling {}: t={:.4} g={:?} F={:?} D={:?}", ctx.model.elements[e.index].label, ctx.time, g, f, (0..6).map(|c| dmat[c][c]).collect::<Vec<_>>());
+                eprintln!("connector {}: t={:.4} g={:?} F={:?} D={:?}", ctx.model.elements[e.index].label, ctx.time, g, f, (0..6).map(|c| dmat[c][c]).collect::<Vec<_>>());
             }
             for c in 0..6 {
                 let fc = f[c] - load[c];
@@ -484,7 +484,7 @@ impl Interaction for Connectors {
                         if kv == 0.0 {
                             continue;
                         }
-                        // symmetrisk del (matrisen är symmetrisk utom vid mjuknande skada)
+                        // symmetric part (the matrix is symmetric except for softening damage)
                         let kv = 0.5 * (kv + dmat[d][c]);
                         for &(n1, d1, v1) in &terms[c] {
                             for &(n2, d2, v2) in &terms[d] {
@@ -493,7 +493,7 @@ impl Interaction for Connectors {
                         }
                     }
                 }
-                // NLGEOM: komponentkrafternas geometriska styvhet Σ F ∂²g/∂q²
+                // NLGEOM: geometric stiffness of the component forces Σ F ∂²g/∂q²
                 if let Some(ev) = &ev {
                     let fc: [f64; 6] = std::array::from_fn(|c| if e.comps[c].status == Status::None { 0.0 } else { f[c] - load[c] });
                     for (n1, d1, n2, d2, v) in e.geo.geometric(ev, &fc) {
@@ -508,7 +508,7 @@ impl Interaction for Connectors {
         Ok(())
     }
 
-    /// Låsta komponenter som kinematiska villkor i explicita steg (NLGEOM-modeller).
+    /// Constrained components as kinematic constraints in explicit steps (NLGEOM models).
     fn kinematic_constraints(&self, u: &[NodeVec], nlgeom: bool) -> Vec<(Vec<(usize, Dof, f64)>, f64)> {
         if !self.nl_mode {
             return Vec::new();
@@ -600,23 +600,23 @@ impl Interaction for Connectors {
     }
 }
 
-/// Lokala axlar från *ORIENTATION (SYSTEM=RECTANGULAR, punkterna a och b,
-/// valfri extra rotation kring en lokal axel). Kräver att nyckelordet sparats
-/// i modellen.
+/// Local axes from *ORIENTATION (SYSTEM=RECTANGULAR, the points a and b,
+/// optional additional rotation about a local axis). Requires the keyword to have been stored
+/// in the model.
 fn orientation(m: &FeModel, kw: &RawKeyword, name: &str) -> Result<[[f64; 3]; 3]> {
     let up = name.trim().to_uppercase();
     let Some(o) = m.extra.iter().find(|k| k.name == "ORIENTATION" && k.param_upper("NAME").as_deref() == Some(up.as_str())) else {
-        return kw.err(format!("*ORIENTATION, NAME={name} finns inte (eller sparas inte av .inp-läsaren)"));
+        return kw.err(format!("*ORIENTATION, NAME={name} does not exist (or is not stored by the .inp reader)"));
     };
     if o.param_upper("SYSTEM").is_some_and(|s| s != "RECTANGULAR") {
-        return o.err("bara SYSTEM=RECTANGULAR stöds för kopplingselement");
+        return o.err("only SYSTEM=RECTANGULAR is supported for connector elements");
     }
     if o.has("DEFINITION") && o.param_upper("DEFINITION").as_deref() != Some("COORDINATES") {
-        return o.err("bara DEFINITION=COORDINATES stöds för kopplingselement");
+        return o.err("only DEFINITION=COORDINATES is supported for connector elements");
     }
     let v = o.first_floats()?;
     if v.len() < 6 {
-        return o.err("skriv a1, a2, a3, b1, b2, b3");
+        return o.err("enter a1, a2, a3, b1, b2, b3");
     }
     let (a, b) = ([v[0], v[1], v[2]], [v[3], v[4], v[5]]);
     let e1 = scale(a, 1.0 / norm(a));
@@ -638,8 +638,8 @@ fn orientation(m: &FeModel, kw: &RawKeyword, name: &str) -> Result<[[f64; 3]; 3]
     Ok(ax)
 }
 
-/// Löser A x = b (n×n, radvis) med Gausselimination och pivotering; singulära
-/// riktningar ger 0.
+/// Solves A x = b (n×n, row-major) with Gaussian elimination and pivoting; singular
+/// directions give 0.
 fn solve_small(a: &mut [f64], b: &mut [f64], n: usize) -> Vec<f64> {
     let scale = (0..n).map(|i| a[i * n + i].abs()).fold(0.0, f64::max).max(1e-300);
     for k in 0..n {
@@ -683,9 +683,9 @@ fn cross(a: [f64; 3], b: [f64; 3]) -> [f64; 3] {
     [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]]
 }
 
-/// Noden har rotationsstyvhet eller randvillkor i rotation utanför elementen
-/// (*SPRING i frihetsgrad 4–6, *BOUNDARY), så att a:s medroterande system kan
-/// användas.
+/// The node has rotational stiffness or boundary conditions in rotation outside the elements
+/// (*SPRING in degree of freedom 4–6, *BOUNDARY), so that a's corotational system can
+/// be used.
 fn rot_supported(m: &FeModel, n: usize) -> bool {
     let bc = m.initial_bcs.iter().chain(m.steps.iter().flat_map(|s| s.bcs.iter())).any(|b| b.items.iter().any(|&(q, d, _)| q == n && (4..=6).contains(&d)));
     if bc {
@@ -697,8 +697,8 @@ fn rot_supported(m: &FeModel, n: usize) -> bool {
     })
 }
 
-/// Största diagonalterm (translation, rotation) i styvheten hos elementen
-/// och fjädrarna vid noden `n`.
+/// Largest diagonal term (translation, rotation) in the stiffness of the elements
+/// and springs at the node `n`.
 fn node_stiffness(m: &FeModel, n: usize) -> (f64, f64) {
     let (mut kt, mut kr) = (0.0f64, 0.0f64);
     for (e, el) in m.elements.iter().enumerate() {
@@ -745,7 +745,7 @@ fn node_stiffness(m: &FeModel, n: usize) -> (f64, f64) {
             }
         }
     }
-    // *SPRING (SPRING1/SPRING2): första raden frihetsgrader, andra styvheten
+    // *SPRING (SPRING1/SPRING2): first line degrees of freedom, second the stiffness
     for kw in m.extra.iter().filter(|k| k.name == "SPRING") {
         let Some(es) = kw.param("ELSET") else { continue };
         let Some(set) = m.elsets.get(&es.trim().to_uppercase()) else { continue };
@@ -763,10 +763,10 @@ fn node_stiffness(m: &FeModel, n: usize) -> (f64, f64) {
     (kt, kr)
 }
 
-/// Föreskrivna värden per element och komponent för varje modellsteg från
-/// stegnyckelordet `name` (*CONNECTOR MOTION/LOAD).
+/// Prescribed values per element and component for each model step from
+/// the step keyword `name` (*CONNECTOR MOTION/LOAD).
 fn prescribed(m: &FeModel, name: &str, elem_of: &BTreeMap<usize, usize>, n_elems: usize, avail: &dyn Fn(usize, usize) -> bool) -> Result<Vec<Vec<[Option<Ramp>; 6]>>> {
-    // per element: per steg
+    // per element: per step
     let mut out: Vec<Vec<[Option<Ramp>; 6]>> = vec![Vec::new(); n_elems];
     let mut cur: Vec<[Option<f64>; 6]> = vec![[None; 6]; n_elems];
     let mut amp_cur: Vec<[Option<String>; 6]> = vec![Default::default(); n_elems];
@@ -781,7 +781,7 @@ fn prescribed(m: &FeModel, name: &str, elem_of: &BTreeMap<usize, usize>, n_elems
             }
             if let Some(t) = kw.param_upper("TYPE") {
                 if t != "DISPLACEMENT" {
-                    return kw.err(format!("TYPE={t} stöds inte ännu (DISPLACEMENT)"));
+                    return kw.err(format!("TYPE={t} is not supported yet (DISPLACEMENT)"));
                 }
             }
             let a = kw.param_upper("AMPLITUDE");
@@ -791,14 +791,14 @@ fn prescribed(m: &FeModel, name: &str, elem_of: &BTreeMap<usize, usize>, n_elems
                     continue;
                 }
                 let Some(c) = crate::inp::parse_label(f[1]).filter(|c| (1..=6).contains(c)) else {
-                    return kw.err_at(d.line, format!("'{}' är ingen komponent (1–6)", f[1]));
+                    return kw.err_at(d.line, format!("'{}' is not a component (1–6)", f[1]));
                 };
                 let c = c as usize - 1;
                 let v = f.get(2).and_then(|x| if x.is_empty() { Some(0.0) } else { parse_f64(x) }).unwrap_or(0.0);
                 for e in geom::elem_ref(m, kw, f[0])? {
                     let Some(&i) = elem_of.get(&e) else { continue };
                     if !avail(i, c) {
-                        return kw.err_at(d.line, format!("komponent {} är inte tillgänglig i kopplingselementet {}", c + 1, m.elements[e].label));
+                        return kw.err_at(d.line, format!("component {} is not available in the connector element {}", c + 1, m.elements[e].label));
                     }
                     set[i][c] = Some(v);
                     amp[i][c] = a.clone();
@@ -811,15 +811,15 @@ fn prescribed(m: &FeModel, name: &str, elem_of: &BTreeMap<usize, usize>, n_elems
                 if let Some(v) = set[i][c] {
                     row[c] = Some(Ramp { from: from[i][c].unwrap_or(0.0), to: v, amp: amp[i][c].clone(), release: false });
                 } else if let Some(v) = from[i][c] {
-                    // borttagen med OP=NEW: lasten respektive rörelsens reaktion
-                    // avvecklas till noll under steget (som för laster och randvillkor)
+                    // removed with OP=NEW: the load or the motion's reaction, respectively,
+                    // is ramped down to zero during the step (as for loads and boundary conditions)
                     let load = name == "CONNECTOR LOAD";
                     row[c] = Some(Ramp { from: if load { v } else { 0.0 }, to: 0.0, amp: None, release: !load });
                 }
             }
             out[i].push(row);
         }
-        // laster och rörelser med amplitud fortsätter med sitt slutvärde
+        // loads and motions with an amplitude continue with their final value
         cur = set;
         amp_cur = amp;
     }
@@ -831,7 +831,7 @@ fn section(m: &FeModel, kw: &RawKeyword) -> Result<Vec<Box<dyn Interaction>>> {
     let elems = geom::elem_ref(m, kw, elset)?;
     let recs: Vec<Vec<String>> = kw.data.iter().map(|d| d.fields.iter().map(|s| s.trim().to_uppercase()).filter(|s| !s.is_empty()).collect()).collect();
     let Some(types) = recs.first().filter(|r| !r.is_empty()) else {
-        return kw.err("kopplingstyp saknas på första dataraden");
+        return kw.err("connection type missing on the first data line");
     };
     let dim = m.dim();
     let ident = [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]];
@@ -844,7 +844,7 @@ fn section(m: &FeModel, kw: &RawKeyword) -> Result<Vec<Box<dyn Interaction>>> {
         None => ea,
     };
     let elem_active = geom::element_active(m);
-    // komponenternas status är densamma för alla element i sektionen
+    // the component status is the same for all elements in the section
     let probe = kin::components(types, [1.0, 0.7, 0.3], &ea, &eb).map_err(|e| crate::model::FemError(format!("{}: {e}", kw.location())))?;
     let comp_ok = |c: usize| dim == 3 || matches!(c, 0 | 1 | 5);
     let avail: Vec<usize> = (0..6).filter(|&c| probe[c].status == Status::Available && comp_ok(c)).collect();
@@ -859,13 +859,13 @@ fn section(m: &FeModel, kw: &RawKeyword) -> Result<Vec<Box<dyn Interaction>>> {
     for &e in &elems {
         let el = &m.elements[e];
         if !matches!(el.etype.name(), "CONN2D2" | "CONN3D2") {
-            return kw.err(format!("elementet {} ({}) är inget kopplingselement", el.label, el.etype.name()));
+            return kw.err(format!("element {} ({}) is not a connector element", el.label, el.etype.name()));
         }
-        // en nod: den andra noden är fast (jordad)
+        // one node: the other node is fixed (grounded)
         let (a, b) = match el.nodes.len() {
             2 => (Some(el.nodes[0]), Some(el.nodes[1])),
             1 => (Some(el.nodes[0]), None),
-            _ => return fail(format!("{}: kopplingselementet {} har fel antal noder", kw.location(), el.label)),
+            _ => return fail(format!("{}: connector element {} has the wrong number of nodes", kw.location(), el.label)),
         };
         let xa = a.map(|n| m.nodes[n]);
         let xb = b.map(|n| m.nodes[n]);
@@ -908,7 +908,7 @@ fn section(m: &FeModel, kw: &RawKeyword) -> Result<Vec<Box<dyn Interaction>>> {
         for n in [a, b].into_iter().flatten() {
             active.extend(geom::trans_dofs(dim).iter().map(|&q| (n, q)));
         }
-        // straffkoefficient från nodernas styvhet och kopplingens egen
+        // penalty coefficient from the nodal stiffness and the connector's own
         let mut kt = 0.0f64;
         let mut kr = 0.0f64;
         for n in [a, b].into_iter().flatten() {
@@ -937,7 +937,7 @@ fn section(m: &FeModel, kw: &RawKeyword) -> Result<Vec<Box<dyn Interaction>>> {
             k_pen[c] = PENALTY * if c < 3 { kt } else { kr };
         }
         if std::env::var_os("RUSTYFEM_CONN_DEBUG").is_some() {
-            eprintln!("koppling {}: kt={kt:.4e} kr={kr:.4e} termer={:?}", el.label, terms);
+            eprintln!("connector {}: kt={kt:.4e} kr={kr:.4e} terms={:?}", el.label, terms);
         }
         elem_of.insert(e, out_elems.len());
         let geo = nl::Geo::new(a, b, xa, xb, ea, eb, ra, rb, dim, types);
@@ -983,7 +983,7 @@ fn section(m: &FeModel, kw: &RawKeyword) -> Result<Vec<Box<dyn Interaction>>> {
     })])
 }
 
-/// Steget är explicit dynamik (*DYNAMIC, EXPLICIT).
+/// The step is explicit dynamics (*DYNAMIC, EXPLICIT).
 fn is_explicit(s: &crate::fem::model::StepDef) -> bool {
     s.procedure_name() == "DYNAMIC" && s.procedure.as_ref().is_some_and(|p| p.has("EXPLICIT"))
 }

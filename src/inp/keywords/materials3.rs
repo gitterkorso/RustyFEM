@@ -1,7 +1,7 @@
-//! Materialbeteenden för krypning, svällning och viskoelasticitet utöver
+//! Material behaviors for creep, swelling and viscoelasticity beyond
 //! `materials_time.rs`: *SWELLING (`materials/creep_ext.rs`), *TRS
-//! (tidsförskjutning för viskoelasticitet, `materials/viscoelastic_trs.rs`)
-//! och *CAP CREEP (`materials/cap.rs`).
+//! (time shift for viscoelasticity, `materials/viscoelastic_trs.rs`)
+//! and *CAP CREEP (`materials/cap.rs`).
 
 use crate::inp::keywords::material::behavior;
 use crate::inp::{Keyword, Kind};

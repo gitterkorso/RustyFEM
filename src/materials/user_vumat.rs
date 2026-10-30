@@ -1,15 +1,15 @@
-//! *USER MATERIAL med en registrerad VUMAT (`crate::user::vumat`) för
-//! explicit dynamik. Fabriken väljs före UMAT-fabriken (`user_material.rs`)
-//! när en VUMAT finns för materialnamnet; annars används UMAT:en.
+//! *USER MATERIAL with a registered VUMAT (`crate::user::vumat`) for
+//! explicit dynamics. The factory is chosen before the UMAT factory (`user_material.rs`)
+//! when a VUMAT exists for the material name; otherwise the UMAT is used.
 //!
-//! Tillståndet per integrationspunkt är STATEV(1..NSTATEV), ENERINTERN,
-//! ENERINELAS och deformationsgradienten vid inkrementets slut (9 värden,
-//! radvis; DEFGRADOLD i nästa inkrement). Utdata SDV1..SDVn.
+//! The state per integration point is STATEV(1..NSTATEV), ENERINTERN,
+//! ENERINELAS and the deformation gradient at the end of the increment (9 values,
+//! row-wise; DEFGRADOLD in the next increment). Output SDV1..SDVn.
 //!
-//! Spänningsvektorn i RustyFEM (11, 22, 33, 12, 13, 23 med ingenjörsskjuvtöjning)
-//! görs om till VUMAT:s ordning 11, 22, 33, 12, 23, 31 med tensorskjuvning.
-//! Bara 3D och plan töjning. Tangenten (för implicita steg) är den elastiska
-//! från `Vumat::elastic_moduli`; VUMAT är avsedd för *DYNAMIC, EXPLICIT.
+//! The stress vector in RustyFEM (11, 22, 33, 12, 13, 23 with engineering shear strain)
+//! is converted to the VUMAT order 11, 22, 33, 12, 23, 31 with tensor shear.
+//! Only 3D and plane strain. The tangent (for implicit steps) is the elastic one
+//! from `Vumat::elastic_moduli`; VUMAT is intended for *DYNAMIC, EXPLICIT.
 
 use super::{MatInput, MatOutput, MaterialFactory, MaterialModel, StressMode};
 use crate::fem::model::MaterialDef;
@@ -19,7 +19,7 @@ use crate::user::vumat::{self, Vumat, VumatArgs};
 use std::sync::{Arc, OnceLock};
 
 pub static FACTORIES: &[MaterialFactory] = &[MaterialFactory {
-    name: "användarmaterial (VUMAT)",
+    name: "user material (VUMAT)",
     consumes: &["USER MATERIAL", "DEPVAR"],
     priority: 110,
     build: Some(build),
@@ -37,7 +37,7 @@ fn build(def: &MaterialDef) -> Result<Option<Arc<dyn MaterialModel>>> {
     let Some(kw) = def.behavior("USER MATERIAL") else { return Ok(None) };
     let Some(v) = vumat::find(&def.name) else { return Ok(None) };
     let n = match kw.param("CONSTANTS") {
-        Some(c) => crate::inp::parse_label(c).filter(|&n| n >= 0).ok_or_else(|| crate::model::FemError(format!("{}: CONSTANTS={c} ska vara ett heltal", kw.location())))? as usize,
+        Some(c) => crate::inp::parse_label(c).filter(|&n| n >= 0).ok_or_else(|| crate::model::FemError(format!("{}: CONSTANTS={c} must be an integer", kw.location())))? as usize,
         None => 0,
     };
     let mut props = Vec::new();
@@ -48,12 +48,12 @@ fn build(def: &MaterialDef) -> Result<Option<Arc<dyn MaterialModel>>> {
         props.pop();
     }
     if props.len() != n {
-        return kw.err(format!("CONSTANTS={n} men dataraderna har {} värden", props.len()));
+        return kw.err(format!("CONSTANTS={n} but the data lines have {} values", props.len()));
     }
     let nstatv = match def.behavior("DEPVAR") {
         Some(d) => match d.first_floats()?.first() {
             Some(&x) if x >= 0.0 && x.fract() == 0.0 => x as usize,
-            _ => return d.err("ange antalet tillståndsvariabler på dataraden"),
+            _ => return d.err("give the number of state variables on the data line"),
         },
         None => 0,
     };
@@ -74,7 +74,7 @@ fn sdv_names(n: usize) -> Vec<&'static str> {
     v[..n].to_vec()
 }
 
-/// RustyFEM-index för VUMAT-komponent i (3D: 11, 22, 33, 12, 23, 31).
+/// RustyFEM index for VUMAT component i (3D: 11, 22, 33, 12, 23, 31).
 const MAP3D: [usize; 6] = [0, 1, 2, 3, 5, 4];
 
 fn defgrad9(f: &[[f64; 3]; 3]) -> [f64; 9] {
@@ -135,7 +135,7 @@ impl MaterialModel for VumatMaterial {
 
     fn tangent_linear(&self, mode: StressMode) -> Result<Vec<f64>> {
         if self.vumat.elastic_moduli(&self.props).is_none() {
-            return fail(format!("VUMAT för {} saknar elastiska moduler (Vumat::elastic_moduli) för stabilitetsgränsen", self.name));
+            return fail(format!("VUMAT for {} is missing elastic moduli (Vumat::elastic_moduli) for the stability limit", self.name));
         }
         Ok(self.elastic(mode))
     }
@@ -144,7 +144,7 @@ impl MaterialModel for VumatMaterial {
         let (ndir, nshr, map): (usize, usize, &[usize]) = match input.mode {
             StressMode::ThreeD => (3, 3, &MAP3D),
             StressMode::PlaneStrain => (3, 1, &MAP3D[..4]),
-            m => return fail(format!("VUMAT för {}: spänningstillståndet {m:?} stöds inte (bara 3D och plan töjning)", self.name)),
+            m => return fail(format!("VUMAT for {}: stress state {m:?} is not supported (only 3D and plane strain)", self.name)),
         };
         let n = ndir + nshr;
         let strain_inc: Vec<f64> = (0..n).map(|i| input.dstrain[map[i]] * if i < ndir { 1.0 } else { 0.5 }).collect();
@@ -155,7 +155,7 @@ impl MaterialModel for VumatMaterial {
         let f1 = input.defgrad.unwrap_or(f0);
         let (_, j1) = tensor::inv(&f1);
         let density = if j1 > 0.0 { self.density / j1 } else { self.density };
-        // relativt spinn ur ΔR (Hughes–Winget) mellan F0 och F1
+        // relative spin from ΔR (Hughes–Winget) between F0 and F1
         let fm = tensor::scale(&tensor::add(&f0, &f1), 0.5);
         let (fmi, _) = tensor::inv(&fm);
         let w = tensor::skew(&tensor::mul(&tensor::sub(&f1, &f0), &fmi));

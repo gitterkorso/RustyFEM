@@ -1,5 +1,6 @@
 import { useEffect } from "react";
 import { runSelftest } from "./selftest";
+import { Disclaimer } from "./ui/Disclaimer";
 import { McpPanel } from "./ui/McpPanel";
 import { blankModel, cancel, init, listenEngine, newModel, openDialog, redo, save, solve, undo } from "./actions";
 import { get, set, useStore } from "./store";
@@ -40,7 +41,7 @@ function useShortcuts() {
         solve();
       } else if (e.key === "Escape" && !inField) {
         if (get().run.running) cancel();
-        else set({ pick: null, palette: false, mcpPanel: false, onNodePick: null });
+        else set({ pick: null, palette: false, mcpPanel: false, disclaimer: false, onNodePick: null });
       }
     };
     window.addEventListener("keydown", h);
@@ -81,12 +82,12 @@ export function App() {
           <aside className="side right">
             <div className="side-tabs">
               <button type="button" className={mode === "model" ? "on" : ""} onClick={() => set({ mode: "model" })}>
-                Egenskaper
+                Properties
               </button>
               <button type="button" className={mode === "results" ? "on" : ""} onClick={() => set({ mode: "results" })}>
-                Resultat
+                Results
               </button>
-              <button type="button" className="close-narrow" aria-label="Stäng" onClick={() => set({ right: false })}>
+              <button type="button" className="close-narrow" aria-label="Close" onClick={() => set({ right: false })}>
                 <Icon name="close" size={14} />
               </button>
             </div>
@@ -97,6 +98,7 @@ export function App() {
       </main>
       <Palette />
       <McpPanel />
+      <Disclaimer />
       {toast && (
         <div className={`toast ${toast.kind}`} role="status" onClick={() => set({ toast: null })}>
           <Icon name={toast.kind === "error" ? "warn" : "check"} size={16} />

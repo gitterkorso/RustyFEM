@@ -1,24 +1,24 @@
-//! Värmeledningselement (diffusionselement) med en frihetsgrad, NT11, per nod:
-//! DC2D3, DC2D4, DC2D8, DCAX3, DCAX4, DCAX8, DC3D4, DC3D6, DC3D8, DC3D10 och DC3D20.
+//! Heat conduction elements (diffusion elements) with one degree of freedom, NT11, per node:
+//! DC2D3, DC2D4, DC2D8, DCAX3, DCAX4, DCAX8, DC3D4, DC3D6, DC3D8, DC3D10 and DC3D20.
 //!
-//! Formulering (Galerkin, se t.ex. Zienkiewicz–Taylor, kap. om värmeledning,
-//! eller Bathe 7.2):
+//! Formulation (Galerkin, see e.g. Zienkiewicz–Taylor, the chapter on heat conduction,
+//! or Bathe 7.2):
 //!
-//! - ledning: f_i = ∫ ∇N_i · k(T) ∇T dV, tangent ∫ ∇N_i·k ∇N_j + ∇N_i·(dk/dT ∇T) N_j dV;
-//! - värmekapacitet (transient, bakåt-Euler): f_i = ∫ N_i ρ c(T) (T − T_n)/Δt dV
-//!   med c vid inkrementets slut. Första ordningens element har
-//!   diagonal kapacitet (se `cap_ips`), andra ordningens konsistent;
-//! - flöden: *DFLUX BF (per volym) och Sn (per area, positivt in i kroppen),
-//!   *FILM q = h (T∞ − T) och *RADIATE q = σε((T∞−Tz)⁴ − (T−Tz)⁴) på ytorna.
+//! - conduction: f_i = ∫ ∇N_i · k(T) ∇T dV, tangent ∫ ∇N_i·k ∇N_j + ∇N_i·(dk/dT ∇T) N_j dV;
+//! - heat capacity (transient, backward Euler): f_i = ∫ N_i ρ c(T) (T − T_n)/Δt dV
+//!   with c at the end of the increment. First-order elements have
+//!   diagonal capacity (see `cap_ips`), second-order ones consistent;
+//! - fluxes: *DFLUX BF (per volume) and Sn (per area, positive into the body),
+//!   *FILM q = h (T∞ − T) and *RADIATE q = σε((T∞−Tz)⁴ − (T−Tz)⁴) on the surfaces.
 //!
-//! Integrationspunkterna numreras med ξ snabbast. Plana element
-//! använder tjockleken från *SOLID SECTION; axisymmetriska (x = r, y = z)
-//! integrerar över hela varvet (2π r), så nodflöden och reaktioner gäller hela
-//! omkretsen.
+//! The integration points are numbered with ξ fastest. Plane elements
+//! use the thickness from *SOLID SECTION; axisymmetric ones (x = r, y = z)
+//! integrate over the full revolution (2π r), so nodal fluxes and reactions apply to the whole
+//! circumference.
 //!
-//! Steg-typen i `steps/heat.rs` anropar metoderna på `HeatElem` direkt (via
-//! `lookup`), eftersom materialets termiska egenskaper läses ur
-//! materialdefinitionen och inte via `MaterialModel`.
+//! The step type in `steps/heat.rs` calls the methods on `HeatElem` directly (via
+//! `lookup`), since the thermal properties of the material are read from
+//! the material definition and not via `MaterialModel`.
 
 use super::api::{ElemCtx, ElementType, Family, IpField};
 use super::common::{inv3, Ip, DISTORTED};
@@ -26,7 +26,7 @@ use crate::fem::dof::{Dof, NT11};
 use crate::materials::heat::HeatProps;
 use crate::model::{fail, Result};
 
-/// Elementets geometri.
+/// The element geometry.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Shape {
     Tri3,
@@ -61,16 +61,16 @@ pub static TYPES: &[&dyn ElementType] = &[&DC2D3, &DC2D4, &DC2D8, &DCAX3, &DCAX4
 
 static ALL: &[&HeatElem] = &[&DC2D3, &DC2D4, &DC2D8, &DCAX3, &DCAX4, &DCAX8, &DC3D4, &DC3D6, &DC3D8, &DC3D10, &DC3D20];
 
-/// Värmeledningselementet med namnet `name`, eller värmeledningsdelen
-/// av ett kopplat temperatur–förskjutningselement (C3D8T, CPE4T, ...).
+/// The heat conduction element named `name`, or the heat conduction part
+/// of a coupled temperature–displacement element (C3D8T, CPE4T, ...).
 pub fn lookup(name: &str) -> Option<&'static HeatElem> {
     ALL.iter().copied().find(|e| e.name == name).or_else(|| super::heat_coupled::thermal(name))
-        // område coupled2: Q3D4, Q3D8, Q3D20
+        // area coupled2: Q3D4, Q3D8, Q3D20
         .or_else(|| super::thermal_electric_structural::thermal(name))
 }
 
 // ---------------------------------------------------------------------------
-// Ytor (.inp-formatets numrering). Andra ordningens kanter/ytor: hörn först, sedan mittnoder.
+// Faces (the .inp format numbering). Second-order edges/faces: corners first, then midside nodes.
 // ---------------------------------------------------------------------------
 
 const TRI3_FACES: &[&[usize]] = &[&[0, 1], &[1, 2], &[2, 0]];
@@ -90,7 +90,7 @@ const HEX20_FACES: &[&[usize]] = &[
 ];
 
 // ---------------------------------------------------------------------------
-// Formfunktioner i naturliga koordinater
+// Shape functions in natural coordinates
 // ---------------------------------------------------------------------------
 
 const QUAD_NAT: [[f64; 2]; 8] = [[-1.0, -1.0], [1.0, -1.0], [1.0, 1.0], [-1.0, 1.0], [0.0, -1.0], [1.0, 0.0], [0.0, 1.0], [-1.0, 0.0]];
@@ -118,7 +118,7 @@ const HEX_NAT: [[f64; 3]; 20] = [
     [-1.0, 1.0, 0.0],
 ];
 
-/// Formfunktioner och derivator d/dξ för en geometri i punkten `p`.
+/// Shape functions and derivatives d/dξ for a geometry at the point `p`.
 pub fn shape_fn(shape: Shape, p: [f64; 3]) -> (Vec<f64>, Vec<[f64; 3]>) {
     let (xi, eta, zeta) = (p[0], p[1], p[2]);
     match shape {
@@ -179,7 +179,7 @@ pub fn shape_fn(shape: Shape, p: [f64; 3]) -> (Vec<f64>, Vec<[f64; 3]>) {
             (n, d)
         }
         Shape::Wedge6 => {
-            // triangel (ξ, η) × linje ζ ∈ [−1, 1]
+            // triangle (ξ, η) × line ζ ∈ [−1, 1]
             let l = [1.0 - xi - eta, xi, eta];
             let dl: [[f64; 2]; 3] = [[-1.0, -1.0], [1.0, 0.0], [0.0, 1.0]];
             let mut n = vec![0.0; 6];
@@ -259,10 +259,10 @@ const G3: [f64; 3] = [-0.774_596_669_241_483_4, 0.0, 0.774_596_669_241_483_4];
 const W3: [f64; 3] = [5.0 / 9.0, 8.0 / 9.0, 5.0 / 9.0];
 const G2: [f64; 2] = [-0.577_350_269_189_625_8, 0.577_350_269_189_625_8];
 
-/// Gaussregel (punkter och vikter i naturliga koordinater).
+/// Gauss rule (points and weights in natural coordinates).
 pub fn gauss_rule(shape: Shape) -> Vec<([f64; 3], f64)> {
     match shape {
-        // DC2D3 har tre punkter (gradienten är konstant)
+        // DC2D3 has three points (the gradient is constant)
         Shape::Tri3 => vec![([1.0 / 6.0, 1.0 / 6.0, 0.0], 1.0 / 6.0), ([2.0 / 3.0, 1.0 / 6.0, 0.0], 1.0 / 6.0), ([1.0 / 6.0, 2.0 / 3.0, 0.0], 1.0 / 6.0)],
         Shape::Quad4 => {
             let mut v = Vec::new();
@@ -282,9 +282,9 @@ pub fn gauss_rule(shape: Shape) -> Vec<([f64; 3], f64)> {
             }
             v
         }
-        // DC3D4 har fyra punkter (gradienten är konstant)
+        // DC3D4 has four points (the gradient is constant)
         Shape::Tet4 => tet4_rule(),
-        // DC3D10: 15-punktsregel av grad 5 (Keast)
+        // DC3D10: 15-point rule of degree 5 (Keast)
         Shape::Tet10 => {
             let (a1, a2, c) = (0.091_971_078_052_723_03, 0.319_793_627_829_629_9, 0.056_350_832_689_629_16);
             let (b1, b2, d) = (1.0 - 3.0 * a1, 1.0 - 3.0 * a2, 0.5 - c);
@@ -336,7 +336,7 @@ pub fn gauss_rule(shape: Shape) -> Vec<([f64; 3], f64)> {
     }
 }
 
-/// Fyrpunktsregel för tetraeder (grad 2), punkt i närmast nod i.
+/// Four-point rule for a tetrahedron (degree 2), point i closest to node i.
 fn tet4_rule() -> Vec<([f64; 3], f64)> {
     let a = 0.138_196_601_125_010_5;
     let b = 0.585_410_196_624_968_5;
@@ -344,7 +344,7 @@ fn tet4_rule() -> Vec<([f64; 3], f64)> {
     vec![([a, a, a], w), ([b, a, a], w), ([a, b, a], w), ([a, a, b], w)]
 }
 
-/// Nodintegration (punkter i hörnen) för kapacitetstermen i första ordningens element.
+/// Nodal integration (points at the corners) for the capacity term in first-order elements.
 fn nodal_rule(shape: Shape) -> Option<Vec<([f64; 3], f64)>> {
     Some(match shape {
         Shape::Tri3 => vec![([0.0, 0.0, 0.0], 1.0 / 6.0), ([1.0, 0.0, 0.0], 1.0 / 6.0), ([0.0, 1.0, 0.0], 1.0 / 6.0)],
@@ -370,8 +370,8 @@ fn nodal_rule(shape: Shape) -> Option<Vec<([f64; 3], f64)>> {
     })
 }
 
-/// Integrationspunkt i `p` med gaussvikten `wg`. `x` är nodkoordinater; för
-/// axisymmetri multipliceras vikten med 2π r.
+/// Integration point at `p` with the Gauss weight `wg`. `x` is the nodal coordinates; for
+/// axisymmetry the weight is multiplied by 2π r.
 pub fn ip_at(shape: Shape, x: &[[f64; 3]], p: [f64; 3], wg: f64, thickness: f64, axisym: bool) -> Result<Ip> {
     let (n, dn) = shape_fn(shape, p);
     let nn = n.len();
@@ -410,14 +410,14 @@ pub fn ip_at(shape: Shape, x: &[[f64; 3]], p: [f64; 3], wg: f64, thickness: f64,
     Ok(Ip { n, dndx, w })
 }
 
-/// Ytintegrationspunkt: formfunktioner för elementets alla noder och vikt (dA).
+/// Surface integration point: shape functions for all nodes of the element and weight (dA).
 #[derive(Debug, Clone)]
 pub struct FacePoint {
     pub n: Vec<f64>,
     pub w: f64,
 }
 
-/// Formfunktioner och tangenter för en kant/yta med `k` noder i lokala koordinater.
+/// Shape functions and tangents for an edge/face with `k` nodes in local coordinates.
 fn face_shape(k: usize, dim: usize, s: [f64; 2]) -> (Vec<f64>, Vec<[f64; 2]>) {
     let (a, b) = (s[0], s[1]);
     match (dim, k) {
@@ -454,7 +454,7 @@ fn face_shape(k: usize, dim: usize, s: [f64; 2]) -> (Vec<f64>, Vec<[f64; 2]>) {
     }
 }
 
-/// Gaussregel för en kant/yta med `k` noder.
+/// Gauss rule for an edge/face with `k` nodes.
 fn face_rule(k: usize, dim: usize) -> Vec<([f64; 2], f64)> {
     match (dim, k) {
         (2, 2) => G2.iter().map(|&a| ([a, 0.0], 1.0)).collect(),
@@ -496,9 +496,9 @@ fn face_rule(k: usize, dim: usize) -> Vec<([f64; 2], f64)> {
     }
 }
 
-/// Diagonal regel för en kant/yta av första ordningen: varje hörn får vikten
-/// av gausspunkten närmast hörnet (triangel: en tredjedel av arean).
-/// Returnerar (punkt, vikt, hörn).
+/// Diagonal rule for a first-order edge/face: each corner gets the weight
+/// of the Gauss point closest to the corner (triangle: one third of the area).
+/// Returns (point, weight, corner).
 fn face_lumped_rule(k: usize, dim: usize) -> Option<Vec<([f64; 2], f64, usize)>> {
     let g = G2[1];
     Some(match (dim, k) {
@@ -518,7 +518,7 @@ impl HeatElem {
         shape_nodes(self.shape)
     }
 
-    /// Första ordningens element (diagonal kapacitet).
+    /// First-order element (diagonal capacity).
     pub fn first_order(&self) -> bool {
         nodal_rule(self.shape).is_some()
     }
@@ -536,13 +536,13 @@ impl HeatElem {
         }
     }
 
-    /// Integrationspunkter för ledning och volymflöden.
+    /// Integration points for conduction and body fluxes.
     pub fn ips(&self, x: &[[f64; 3]], thickness: f64) -> Result<Vec<Ip>> {
         gauss_rule(self.shape).into_iter().map(|(p, w)| ip_at(self.shape, x, p, w, thickness, self.axisym)).collect()
     }
 
-    /// Diagonal integrering: varje nod får vikten av gausspunkten närmast noden
-    /// (punkten i ξ_i/√3); formfunktionerna ersätts av δ_ij.
+    /// Diagonal integration: each node gets the weight of the Gauss point closest to the node
+    /// (the point at ξ_i/√3); the shape functions are replaced by δ_ij.
     pub fn gauss_lumped_ips(&self, x: &[[f64; 3]], thickness: f64) -> Result<Vec<Ip>> {
         let Some(rule) = nodal_rule(self.shape) else { return self.ips(x, thickness) };
         let nn = self.n_nodes();
@@ -557,7 +557,7 @@ impl HeatElem {
                 }
             }
             _ => {
-                // en gausspunkt: lika delar av volymen
+                // one Gauss point: equal shares of the volume
                 let ips = self.ips(x, thickness)?;
                 let vol: f64 = ips.iter().map(|ip| ip.w).sum();
                 for i in 0..nn {
@@ -571,14 +571,14 @@ impl HeatElem {
         Ok(out)
     }
 
-    /// Integrationspunkter för kapacitetstermen och volymflödet (BF). Första
-    /// ordningens element integreras diagonalt: plana och tredimensionella
-    /// element ger varje nod vikten av gausspunkten närmast noden
-    /// (`gauss_lumped_ips`), axisymmetriska element den radsummerade vikten
-    /// ∫N_i 2πr dA. Andra ordningens element använder gaussregeln (konsistent).
+    /// Integration points for the capacity term and the body flux (BF). First-order
+    /// elements are integrated diagonally: plane and three-dimensional
+    /// elements give each node the weight of the Gauss point closest to the node
+    /// (`gauss_lumped_ips`), axisymmetric elements the row-summed weight
+    /// ∫N_i 2πr dA. Second-order elements use the Gauss rule (consistent).
     pub fn cap_ips(&self, x: &[[f64; 3]], thickness: f64) -> Result<Vec<Ip>> {
         if self.axisym && self.first_order() {
-            // axisymmetri: radsummerad diagonal, vikten ∫N_i 2πr dA
+            // axisymmetry: row-summed diagonal, the weight ∫N_i 2πr dA
             let ips = self.ips(x, thickness)?;
             let nn = self.n_nodes();
             return Ok((0..nn)
@@ -597,12 +597,12 @@ impl HeatElem {
         }
     }
 
-    /// Punkter på ytan `face` (0-baserad). `lumped` = diagonal integrering
-    /// (varje hörn får vikten av närmaste gausspunkt) för första ordningens ytor.
+    /// Points on the face `face` (0-based). `lumped` = diagonal integration
+    /// (each corner gets the weight of the nearest Gauss point) for first-order faces.
     pub fn face_points(&self, x: &[[f64; 3]], face: usize, thickness: f64, lumped: bool) -> Result<Vec<FacePoint>> {
         let faces = self.faces();
         let Some(&fnodes) = faces.get(face) else {
-            return fail(format!("{} har bara ytorna 1–{}", self.name, faces.len()));
+            return fail(format!("{} has only the faces 1–{}", self.name, faces.len()));
         };
         let dim = self.dim();
         let k = fnodes.len();
@@ -644,7 +644,7 @@ impl HeatElem {
         Ok(out)
     }
 
-    /// Ledning: inre värmeflöde f = ∫∇Nᵀ k ∇T dV och tangent.
+    /// Conduction: internal heat flux f = ∫∇Nᵀ k ∇T dV and tangent.
     pub fn conduction(&self, ips: &[Ip], props: &HeatProps, temp: &[f64], tangent: bool) -> Result<(Vec<f64>, Option<Vec<f64>>)> {
         let nn = temp.len();
         let mut f = vec![0.0; nn];
@@ -684,7 +684,7 @@ impl HeatElem {
         Ok((f, tangent.then_some(k)))
     }
 
-    /// Värmekapacitet: f = ∫ N ρ (U(T) − U(Tₙ))/Δt dV och tangent ∫ N ρ c(T) N /Δt dV.
+    /// Heat capacity: f = ∫ N ρ (U(T) − U(Tₙ))/Δt dV and tangent ∫ N ρ c(T) N /Δt dV.
     pub fn capacity(&self, cips: &[Ip], props: &HeatProps, temp: &[f64], temp_old: &[f64], dt: f64, tangent: bool) -> Result<(Vec<f64>, Option<Vec<f64>>)> {
         let nn = temp.len();
         let mut f = vec![0.0; nn];
@@ -695,17 +695,17 @@ impl HeatElem {
         let latent = !props.latent.is_empty();
         let rho = props.density;
         if rho == 0.0 {
-            return fail(format!("material {}: *DENSITY saknas (krävs för transient värmeledning)", props.name));
+            return fail(format!("material {}: *DENSITY is missing (required for transient heat conduction)", props.name));
         }
         for ip in cips {
             let t: f64 = ip.n.iter().zip(temp).map(|(a, b)| a * b).sum();
             let t0: f64 = ip.n.iter().zip(temp_old).map(|(a, b)| a * b).sum();
-            // ρ c(T) (T − Tₙ)/Δt med c vid inkrementets slut
+            // ρ c(T) (T − Tₙ)/Δt with c at the end of the increment
             let (cv, dc) = c.eval(t);
             let mut du = rho * cv[0] * (t - t0) / dt;
             let mut dudt = rho * (cv[0] + dc[0] * (t - t0)) / dt;
             if latent {
-                // latent värme: entalpiskillnaden ρ L (f(T) − f(Tₙ))/Δt
+                // latent heat: the enthalpy difference ρ L (f(T) − f(Tₙ))/Δt
                 let (l1, dl1) = props.latent_energy(t);
                 let (l0, _) = props.latent_energy(t0);
                 du += rho * (l1 - l0) / dt;
@@ -723,7 +723,7 @@ impl HeatElem {
         Ok((f, tangent.then_some(k)))
     }
 
-    /// Värmeflödet HFL = −k ∇T i integrationspunkterna.
+    /// The heat flux HFL = −k ∇T at the integration points.
     pub fn heat_flux(&self, ips: &[Ip], props: &HeatProps, temp: &[f64]) -> Result<IpField> {
         let labels: &[&str] = if self.dim() == 2 { &["HFL1", "HFL2"] } else { &["HFL1", "HFL2", "HFL3"] };
         let mut fld = IpField::new("HFL", labels);
@@ -742,12 +742,12 @@ impl HeatElem {
         Ok(fld)
     }
 
-    /// Ytans nummer (0-baserat) för en lastbeteckning som "S3", "F2" eller "R1".
+    /// The face number (0-based) for a load label such as "S3", "F2" or "R1".
     pub fn face_index(&self, label: &str) -> Result<usize> {
         let num = label.get(1..).and_then(|s| s.parse::<usize>().ok());
         match num {
             Some(n) if n >= 1 && n <= self.faces().len() => Ok(n - 1),
-            _ => fail(format!("{} har ytorna 1–{}, inte {label}", self.name, self.faces().len())),
+            _ => fail(format!("{} has the faces 1–{}, not {label}", self.name, self.faces().len())),
         }
     }
 }
@@ -796,11 +796,11 @@ impl ElementType for HeatElem {
     }
 }
 
-/// Vikter för att interpolera nodtemperaturer till integrationspunkterna i ett
-/// mekaniskt element (termisk töjning), en rad per integrationspunkt.
-/// Första ordningens element får elementets medeltemperatur i alla punkter
-/// (t.ex. CPS4, CPE4 och C3D8); andra ordningens
-/// element formfunktionernas värden. `None` om elementtypen är okänd.
+/// Weights for interpolating nodal temperatures to the integration points of a
+/// mechanical element (thermal strain), one row per integration point.
+/// First-order elements get the element's mean temperature at all points
+/// (e.g. CPS4, CPE4 and C3D8); second-order
+/// elements the values of the shape functions. `None` if the element type is unknown.
 pub fn mechanical_ip_shapes(etype: &str, x: &[[f64; 3]]) -> Option<Vec<Vec<f64>>> {
     let etype = super::heat_coupled::mech_name(etype).or_else(|| super::thermal_electric_structural::mech_name(etype)).unwrap_or(etype);
     let rows = mechanical_ip_interp(etype, x)?;

@@ -1,22 +1,22 @@
-//! Framsteg och avbrott för en körning.
+//! Progress and cancellation for a run.
 //!
-//! Den som kör `steps::run` (t.ex. appens session) kan sätta en krok för den
-//! egna tråden med `with_hook`. Steg-ramverket rapporterar steg, inkrement och
-//! iterationer; kroken svarar `false` för att avbryta, och körningen avslutas
-//! då med ett fel mellan två iterationer. Utan krok gör rapporterna ingenting,
-//! så resultaten påverkas inte.
+//! Whoever runs `steps::run` (e.g. the app session) can set a hook for its
+//! own thread with `with_hook`. The step framework reports steps, increments and
+//! iterations; the hook returns `false` to cancel, and the run then ends
+//! with an error between two iterations. Without a hook the reports do nothing,
+//! so the results are not affected.
 
 use crate::model::{fail, Result};
 use std::cell::RefCell;
 
-/// En händelse under körningen.
+/// An event during the run.
 #[derive(Debug, Clone)]
 pub enum Event<'a> {
-    /// Ett steg börjar (0-baserat index, namn, procedur).
+    /// A step starts (0-based index, name, procedure).
     Step { index: usize, name: &'a str, procedure: &'a str },
-    /// Ett inkrement är godkänt: stegtidsandel 0–1 och antal iterationer.
+    /// An increment is accepted: step time fraction 0–1 and number of iterations.
     Increment { fraction: f64, iterations: usize },
-    /// En Newton-iteration: nummer i inkrementet och största residual.
+    /// A Newton iteration: number within the increment and largest residual.
     Iteration { iteration: usize, residual: f64 },
 }
 
@@ -26,7 +26,7 @@ thread_local! {
     static HOOK: RefCell<Option<Hook>> = const { RefCell::new(None) };
 }
 
-/// Kör `f` med `hook` som mottagare av händelser på den här tråden.
+/// Runs `f` with `hook` receiving the events on this thread.
 pub fn with_hook<T>(hook: impl FnMut(&Event) -> bool + 'static, f: impl FnOnce() -> T) -> T {
     let old = HOOK.with(|h| h.borrow_mut().replace(Box::new(hook)));
     let out = f();
@@ -34,7 +34,7 @@ pub fn with_hook<T>(hook: impl FnMut(&Event) -> bool + 'static, f: impl FnOnce()
     out
 }
 
-/// Rapporterar en händelse. Fel om kroken begär avbrott.
+/// Reports an event. Error if the hook requests cancellation.
 pub fn emit(e: Event) -> Result<()> {
     let go_on = HOOK.with(|h| match h.borrow_mut().as_mut() {
         Some(f) => f(&e),
@@ -43,5 +43,5 @@ pub fn emit(e: Event) -> Result<()> {
     if go_on { Ok(()) } else { fail(CANCELLED) }
 }
 
-/// Felmeddelandet för en avbruten körning.
-pub const CANCELLED: &str = "körningen avbröts";
+/// The error message for a cancelled run.
+pub const CANCELLED: &str = "the run was cancelled";

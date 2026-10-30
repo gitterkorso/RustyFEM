@@ -1,7 +1,7 @@
-//! Nyckelord för villkor, fjädrar, massor, kopplingselement och kontakt.
-//! Alla sparas i `FeModel::extra` och byggs till interaktioner av
-//! `src/interactions/` (underordnade nyckelord som *KINEMATIC efter *COUPLING
-//! och *FRICTION efter *SURFACE INTERACTION läses i ordning därifrån).
+//! Keywords for constraints, springs, masses, connector elements and contact.
+//! All are stored in `FeModel::extra` and built into interactions by
+//! `src/interactions/` (subordinate keywords such as *KINEMATIC after *COUPLING
+//! and *FRICTION after *SURFACE INTERACTION are read in order from there).
 
 use crate::inp::{ignore, store_model, Keyword, Kind};
 
@@ -27,8 +27,8 @@ pub static KEYWORDS: &[Keyword] = &[
     Keyword { name: "KINEMATIC COUPLING", kind: Kind::Model, handler: store_model },
     Keyword { name: "MASS", kind: Kind::Model, handler: store_model },
     Keyword { name: "MPC", kind: Kind::Model, handler: store_model },
-    // *ORIENTATION registreras i material_behaviors.rs (sparas i modellen med
-    // store_model); kopplingselementens lokala axlar läses därifrån.
+    // *ORIENTATION is registered in material_behaviors.rs (stored in the model with
+    // store_model); the connector elements' local axes are read from there.
     Keyword { name: "ROTARY INERTIA", kind: Kind::Model, handler: store_model },
     Keyword { name: "SPRING", kind: Kind::Model, handler: store_model },
     Keyword { name: "SURFACE BEHAVIOR", kind: Kind::Model, handler: store_model },

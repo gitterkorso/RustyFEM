@@ -1,5 +1,5 @@
-// Gränssnittet mot motorn. React-komponenterna pratar bara med `Engine`;
-// implementationen är `TauriEngine` (se PLAN.md, grundprincip 2).
+// The interface to the engine. The React components only talk to `Engine`;
+// the implementation is `TauriEngine` (see PLAN.md, core principle 2).
 
 import type {
   McpStatus_Serialize,
@@ -24,7 +24,7 @@ export type SessionInfo = SessionInfo_Serialize;
 export type McpStatus = McpStatus_Serialize;
 export type { MemoryEstimate, PickInfo, RunEvent, StepResultInfo, UnitSymbols, UnitSystem };
 
-/** Händelser från motorn som inte är svar på ett anrop (t.ex. ändringar via MCP). */
+/** Events from the engine that are not replies to a call (e.g. edits via MCP). */
 export interface EngineEvents {
   opened(o: Opened): void;
   changed(id: number, geometry: boolean): void;
@@ -41,7 +41,7 @@ export type {
   StepInfo_Serialize as StepInfo,
 } from "./bindings";
 
-/** Visningsgeometri från Rust (alla index pekar på modellens noder). */
+/** Display geometry from Rust (all indices point to the model's nodes). */
 export interface MeshData {
   nodes: number;
   positions: Float32Array;
@@ -54,7 +54,7 @@ export interface MeshData {
   pointElem: Uint32Array;
 }
 
-/** Randvillkor (nod, slotmask) och laster (nod, F1–F3, M1–M3) i ett steg. */
+/** Boundary conditions (node, slot mask) and loads (node, F1–F3, M1–M3) in a step. */
 export interface Symbols {
   bcNodes: Uint32Array;
   bcMasks: Uint32Array;
@@ -62,7 +62,7 @@ export interface Symbols {
   loads: Float32Array;
 }
 
-/** Nodvärden (NaN där fältet saknas) med min och max. */
+/** Nodal values (NaN where the field is missing) with min and max. */
 export interface FieldData {
   values: Float32Array;
   min: number;
@@ -76,7 +76,7 @@ export interface Engine {
   save(id: number, path: string): Promise<SessionInfo>;
   sessionInfo(id: number): Promise<SessionInfo>;
   modelInfo(id: number): Promise<ModelInfo>;
-  /** Byter enhetssystem (bara etiketter; inga värden räknas om). */
+  /** Changes the unit system (labels only; no values are converted). */
   setUnits(id: number, units: UnitSystem): Promise<SessionInfo>;
   unitSystems(): Promise<[UnitSystem, string][]>;
   edit(id: number, edit: Edit): Promise<Edited>;
@@ -94,13 +94,13 @@ export interface Engine {
   history(id: number, step: number, index: number): Promise<[number, number][]>;
   pick(id: number, kind: "node" | "element", index: number, at: { step: number; frame: number } | null): Promise<PickInfo>;
   systemMemory(): Promise<number>;
-  /** Fildialoger (plattformens egna). `null` om användaren avbryter. */
+  /** File dialogs (the platform's own). `null` if the user cancels. */
   openDialog(): Promise<string | null>;
   saveDialog(defaultName: string, kind: "project" | "script"): Promise<string | null>;
-  /** Självtestläge (`rustyfem-app --selftest`): kör testförloppet och rapportera. */
+  /** Self-test mode (`rustyfem-app --selftest`): run the test sequence and report. */
   selftest(): Promise<boolean>;
   selftestDone(png: string, report: string): Promise<void>;
-  /** Lokal MCP-server för AI-assistenter (Claude, Codex). */
+  /** Local MCP server for AI assistants (Claude, Codex). */
   mcpStatus(): Promise<McpStatus>;
   mcpStart(port: number | null): Promise<McpStatus>;
   mcpStop(): Promise<McpStatus>;

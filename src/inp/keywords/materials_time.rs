@@ -1,8 +1,8 @@
-//! Tidsberoende material: *CREEP och *VISCOELASTIC (materialbeteenden) och
-//! procedurnyckelordet *VISCO.
+//! Time-dependent materials: *CREEP and *VISCOELASTIC (material behaviors) and
+//! the procedure keyword *VISCO.
 //!
-//! Beteendena tolkas av `materials/creep.rs` och `materials/viscoelastic.rs`,
-//! steget körs av `steps/visco.rs`.
+//! The behaviors are parsed by `materials/creep.rs` and `materials/viscoelastic.rs`,
+//! the step is run by `steps/visco.rs`.
 
 use crate::inp::keywords::material::behavior;
 use crate::inp::{procedure, Keyword, Kind};

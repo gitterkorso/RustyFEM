@@ -1,41 +1,41 @@
-//! Gles direktlösare för symmetriska, positivt definita system.
+//! Sparse direct solver for symmetric positive definite systems.
 //!
-//! - Ordning: geometrisk nested dissection på nodnivå. Noderna delas med det
-//!   axelvinkelräta plan nära medianen som ger minst separator, separatorn
-//!   numreras sist och halvorna rekursivt.
-//!   Alla frihetsgrader i en nod hålls ihop.
-//! - Faktorisering: multifrontal LDLᵀ. Varje separator är ett tätt block
-//!   (supernod) vars front tar emot uppdateringar från barnen. Oberoende
-//!   delträd och stora fronter räknas parallellt.
+//! - Ordering: geometric nested dissection at node level. The nodes are split by the
+//!   axis-perpendicular plane near the median that gives the smallest separator; the separator
+//!   is numbered last and the halves recursively.
+//!   All degrees of freedom of a node are kept together.
+//! - Factorization: multifrontal LDLᵀ. Each separator is a dense block
+//!   (supernode) whose front receives updates from its children. Independent
+//!   subtrees and large fronts are computed in parallel.
 
 use crate::par;
 
-/// Största antal noder i ett löv i dissektionsträdet (standard).
+/// Maximum number of nodes in a leaf of the dissection tree (default).
 pub const LEAF: usize = 48;
-/// Under detta antal flyttal räknas en front på en tråd.
+/// Below this number of flops a front is computed on one thread.
 const PAR_FLOPS: f64 = 4e6;
 
 struct TNode {
     nodes: Vec<usize>,
     children: Vec<usize>,
-    /// Första frihetsgraden och antal pivoter i blocket.
+    /// First degree of freedom and number of pivots in the block.
     start: usize,
     k: usize,
-    /// Frontens övriga rader (senare frihetsgrader), sorterade.
+    /// The front's other rows (later degrees of freedom), sorted.
     rows: Vec<usize>,
-    /// Uppskattat antal flyttal i hela delträdet.
+    /// Estimated number of flops in the whole subtree.
     work: f64,
 }
 
 pub struct Symbolic {
     tree: Vec<TNode>,
     roots: Vec<usize>,
-    /// Första frihetsgrad för varje nod.
+    /// First degree of freedom for each node.
     pub first_dof: Vec<usize>,
     pub n: usize,
 }
 
-/// Undre triangeln (inklusive diagonalen) i kolumnformat.
+/// Lower triangle (including the diagonal) in column format.
 pub struct Lower {
     pub colptr: Vec<usize>,
     pub rowidx: Vec<usize>,
@@ -46,7 +46,7 @@ impl Lower {
     #[inline]
     pub fn add(&mut self, r: usize, c: usize, v: f64) {
         let (lo, hi) = (self.colptr[c], self.colptr[c + 1]);
-        let p = lo + self.rowidx[lo..hi].binary_search(&r).expect("intern: post saknas i mönstret");
+        let p = lo + self.rowidx[lo..hi].binary_search(&r).expect("internal: entry missing in the pattern");
         self.val[p] += v;
     }
 
@@ -92,22 +92,22 @@ fn dissect(mut set: Vec<usize>, coords: &[[f64; 3]], adj: &[Vec<usize>], side: &
             hi[a] = hi[a].max(coords[v][a]);
         }
     }
-    // Pröva plan vinkelräta mot alla tre axlarna nära medianen och välj den
-    // minsta separatorn i förhållande till balansen. Att alltid dela längs den
-    // längsta axeln ger hela tvärsnitt som separatorer i slanka kroppar (t.ex.
-    // en I-balk av solidelement), där ett snitt genom livet är mycket mindre.
-    // Den längsta axeln prövas först och vinner vid lika.
+    // Try planes perpendicular to all three axes near the median and choose the
+    // smallest separator relative to the balance. Always splitting along the
+    // longest axis gives whole cross-sections as separators in slender bodies (e.g.
+    // an I-beam of solid elements), where a cut through the web is much smaller.
+    // The longest axis is tried first and wins on ties.
     let mut axes = [0, 1, 2];
     axes.sort_by(|&a, &b| (hi[b] - lo[b]).partial_cmp(&(hi[a] - lo[a])).unwrap());
     let n = set.len();
-    let mut best: Option<(f64, usize, f64, bool)> = None; // (poäng, axel, snittvärde, separator i vänstra halvan)
+    let mut best: Option<(f64, usize, f64, bool)> = None; // (score, axis, cut value, separator in left half)
     for &ax in &axes {
         if !(hi[ax] > lo[ax]) {
             continue;
         }
         set.sort_unstable_by(|&a, &b| coords[a][ax].partial_cmp(&coords[b][ax]).unwrap());
         for q in [n / 2, 2 * n / 5, 3 * n / 5] {
-            // dela på koordinatvärde så att plan i en strukturerad mesh hålls ihop
+            // split on coordinate value so that planes in a structured mesh stay together
             let t = coords[set[q]][ax];
             let nl = set.partition_point(|&v| coords[v][ax] < t);
             if nl == 0 || nl == n {
@@ -128,7 +128,7 @@ fn dissect(mut set: Vec<usize>, coords: &[[f64; 3]], adj: &[Vec<usize>], side: &
     let (left, right): (Vec<usize>, Vec<usize>) = match best {
         Some((_, ax, t, _)) => set.iter().partition(|&&v| coords[v][ax] < t),
         None => {
-            // alla noder i samma punkt: dela på index
+            // all nodes at the same point: split on index
             let right = set.split_off(n / 2);
             (set, right)
         }
@@ -156,23 +156,23 @@ fn dissect(mut set: Vec<usize>, coords: &[[f64; 3]], adj: &[Vec<usize>], side: &
     Some(tree.len() - 1)
 }
 
-/// Symbolisk analys: ordning, trädstruktur och frontmönster.
-/// `adj` är nodgrannar och `ndof` antal fria frihetsgrader per nod.
+/// Symbolic analysis: ordering, tree structure and front pattern.
+/// `adj` are the node neighbours and `ndof` the number of free degrees of freedom per node.
 pub fn analyse(coords: &[[f64; 3]], adj: &[Vec<usize>], ndof: &[usize]) -> Symbolic {
     analyse_with_leaf(coords, adj, ndof, LEAF)
 }
 
-/// Som [`analyse`], med högst `leaf_max` noder per löv. Mindre löv ger mindre
-/// fyllnad för glesa nät med många frihetsgrader per nod (t.ex. skal).
+/// Like [`analyse`], with at most `leaf_max` nodes per leaf. Smaller leaves give less
+/// fill-in for sparse meshes with many degrees of freedom per node (e.g. shells).
 pub fn analyse_with_leaf(coords: &[[f64; 3]], adj: &[Vec<usize>], ndof: &[usize], leaf_max: usize) -> Symbolic {
     let leaf_max = leaf_max.max(1);
     let nn = coords.len();
     let mut tree = Vec::new();
     let mut side = vec![2u8; nn];
-    // en dissektion per sammanhängande komponent blir onödigt; hela mängden räcker
+    // one dissection per connected component is unnecessary; the whole set suffices
     let roots: Vec<usize> = dissect((0..nn).collect(), coords, adj, &mut side, &mut tree, leaf_max).into_iter().collect();
 
-    // postordning: barn före förälder
+    // postorder: children before parent
     let mut post = Vec::with_capacity(tree.len());
     let mut stack: Vec<(usize, bool)> = roots.iter().map(|&r| (r, false)).collect();
     while let Some((t, done)) = stack.pop() {
@@ -198,8 +198,8 @@ pub fn analyse_with_leaf(coords: &[[f64; 3]], adj: &[Vec<usize>], ndof: &[usize]
         tree[t].k = next - tree[t].start;
     }
 
-    // frontmönster (nodnivå): grannar till pivoterna och barnens rader som
-    // elimineras senare
+    // front pattern (node level): neighbours of the pivots and the children's rows that
+    // are eliminated later
     let mut unodes: Vec<Vec<usize>> = vec![Vec::new(); tree.len()];
     let mut stamp = vec![usize::MAX; nn];
     for &t in &post {
@@ -232,27 +232,27 @@ pub fn analyse_with_leaf(coords: &[[f64; 3]], adj: &[Vec<usize>], ndof: &[usize]
 }
 
 impl Symbolic {
-    /// Uppskattat antal flyttalsoperationer i faktoriseringen.
+    /// Estimated number of floating-point operations in the factorization.
     pub fn work(&self) -> f64 {
         self.roots.iter().map(|&r| self.tree[r].work).sum()
     }
 
-    /// Antal lagrade tal i faktorn L.
+    /// Number of stored entries in the factor L.
     pub fn factor_size(&self) -> usize {
         self.tree.iter().map(|t| t.k * t.k.saturating_sub(1) / 2 + t.k * t.rows.len()).sum()
     }
 
-    /// (första frihetsgrad, pivoter k, övriga rader u, antal barn) för varje front.
+    /// (first degree of freedom, pivots k, other rows u, number of children) for each front.
     pub fn fronts(&self) -> Vec<(usize, usize, usize, usize)> {
         self.tree.iter().map(|t| (t.start, t.k, t.rows.len(), t.children.len())).collect()
     }
 
-    /// Största front (k pivoter, u rader).
+    /// Largest front (k pivots, u rows).
     pub fn largest_front(&self) -> (usize, usize) {
         self.tree.iter().map(|t| (t.k, t.rows.len())).max_by_key(|&(k, u)| k + u).unwrap_or((0, 0))
     }
 
-    /// Tomt mönster för undre triangeln, givet nodgrannar.
+    /// Empty lower-triangle pattern, given the node neighbours.
     pub fn pattern(&self, adj: &[Vec<usize>], ndof: &[usize]) -> Lower {
         let mut colptr = vec![0usize; self.n + 1];
         let mut rowidx = Vec::new();
@@ -275,7 +275,7 @@ impl Symbolic {
     }
 }
 
-/// Täta kärnor. Varianten med AVX2/FMA väljs vid körning om processorn stödjer det.
+/// Dense kernels. The AVX2/FMA variant is selected at run time if the processor supports it.
 mod kern {
     #[inline(always)]
     fn fma<const FMA: bool>(a: f64, b: f64, c: f64) -> f64 {
@@ -286,7 +286,7 @@ mod kern {
         }
     }
 
-    /// Framåtsubstitution w ← w·L⁻ᵀ för en rad, med transponerad enhetstriangel lt (n×n).
+    /// Forward substitution w ← w·L⁻ᵀ for one row, with transposed unit triangle lt (n×n).
     #[inline(always)]
     fn forward_impl<const FMA: bool>(w: &mut [f64], lt: &[f64], n: usize) {
         for p in 0..n {
@@ -302,8 +302,8 @@ mod kern {
         }
     }
 
-    /// C[i][j] −= Σₚ A[i][p]·B[p][j] för i < nrows, j < ncols, p < kk.
-    /// Mikrokärnan håller ett 4×8-block av C i register över hela p-loopen.
+    /// C[i][j] −= Σₚ A[i][p]·B[p][j] for i < nrows, j < ncols, p < kk.
+    /// The micro-kernel keeps a 4×8 block of C in registers over the whole p loop.
     #[inline(always)]
     #[allow(clippy::too_many_arguments)]
     fn gemm_impl<const FMA: bool>(
@@ -368,8 +368,8 @@ mod kern {
         }
     }
 
-    /// Uppdatering av undre triangeln för raderna r0..r0+nr (relativa) i ett
-    /// radblock: C[x][y] −= W[x]·Lᵀ[y] för y ≤ x. Kolumnerna börjar på `coloff`.
+    /// Update of the lower triangle for rows r0..r0+nr (relative) in a
+    /// row block: C[x][y] −= W[x]·Lᵀ[y] for y ≤ x. The columns start at `coloff`.
     #[inline(always)]
     #[allow(clippy::too_many_arguments)]
     fn syrk_impl<const FMA: bool>(chunk: &mut [f64], ldc: usize, r0: usize, nr: usize, coloff: usize, rows: usize, kk: usize, w: &[f64], lt: &[f64]) {
@@ -406,7 +406,7 @@ mod kern {
     pub fn forward(w: &mut [f64], lt: &[f64], n: usize) {
         #[cfg(target_arch = "x86_64")]
         if avx() {
-            // SAFETY: processorn stödjer AVX2 och FMA (kontrollerat ovan)
+            // SAFETY: the processor supports AVX2 and FMA (checked above)
             return unsafe { forward_avx(w, lt, n) };
         }
         forward_impl::<false>(w, lt, n)
@@ -419,13 +419,13 @@ mod kern {
         gemm_impl::<true>(c, ldc, nrows, ncols, a, lda, b, ldb, kk)
     }
 
-    /// Allmän uppdatering C −= A·B (C nrows×ncols med radsteg ldc, A nrows×kk, B kk×ncols).
-    /// Används av den osymmetriska LU-faktoriseringen (`sparse::lu`).
+    /// General update C −= A·B (C nrows×ncols with row stride ldc, A nrows×kk, B kk×ncols).
+    /// Used by the unsymmetric LU factorization (`sparse::lu`).
     #[allow(clippy::too_many_arguments)]
     pub fn gemm(c: &mut [f64], ldc: usize, nrows: usize, ncols: usize, a: &[f64], lda: usize, b: &[f64], ldb: usize, kk: usize) {
         #[cfg(target_arch = "x86_64")]
         if avx() {
-            // SAFETY: processorn stödjer AVX2 och FMA (kontrollerat ovan)
+            // SAFETY: the processor supports AVX2 and FMA (checked above)
             return unsafe { gemm_avx(c, ldc, nrows, ncols, a, lda, b, ldb, kk) };
         }
         gemm_impl::<false>(c, ldc, nrows, ncols, a, lda, b, ldb, kk)
@@ -435,7 +435,7 @@ mod kern {
     pub fn syrk(chunk: &mut [f64], ldc: usize, r0: usize, nr: usize, coloff: usize, rows: usize, kk: usize, w: &[f64], lt: &[f64]) {
         #[cfg(target_arch = "x86_64")]
         if avx() {
-            // SAFETY: processorn stödjer AVX2 och FMA (kontrollerat ovan)
+            // SAFETY: the processor supports AVX2 and FMA (checked above)
             return unsafe { syrk_avx(chunk, ldc, r0, nr, coloff, rows, kk, w, lt) };
         }
         syrk_impl::<false>(chunk, ldc, r0, nr, coloff, rows, kk, w, lt)
@@ -457,7 +457,7 @@ pub struct Factor {
 
 type NodeResult = Result<(Vec<f64>, Vec<Front>), usize>;
 
-/// Pivotblockets storlek i den blockade faktoriseringen.
+/// Size of the pivot block in the blocked factorization.
 const KB: usize = 96;
 
 fn factor_node(sym: &Symbolic, a: &Lower, t: usize, threads: usize) -> NodeResult {
@@ -480,10 +480,10 @@ fn factor_node(sym: &Symbolic, a: &Lower, t: usize, threads: usize) -> NodeResul
         if dof >= start && dof < start + k {
             dof - start
         } else {
-            k + node.rows.binary_search(&dof).expect("intern: rad saknas i fronten")
+            k + node.rows.binary_search(&dof).expect("internal: row missing in the front")
         }
     };
-    // frontmatrisen (undre triangeln används): originalposter + barnens uppdateringar
+    // the front matrix (lower triangle is used): original entries + the children's updates
     let mut f = vec![0.0; m * m];
     for c in 0..k {
         let col = start + c;
@@ -506,14 +506,14 @@ fn factor_node(sym: &Symbolic, a: &Lower, t: usize, threads: usize) -> NodeResul
         }
     }
 
-    // Blockad högertittande LDLᵀ av de k första pivoterna. Efteråt innehåller
-    // f: L (k första kolumnerna) och Schur-komplementet (resten).
+    // Blocked right-looking LDLᵀ of the first k pivots. Afterwards
+    // f contains: L (first k columns) and the Schur complement (the rest).
     let mut d = vec![0.0; k];
     let mut j0 = 0;
     while j0 < k {
         let j1 = (j0 + KB).min(k);
         let jb = j1 - j0;
-        // 1. diagonalblocket, radvis
+        // 1. the diagonal block, row-wise
         let mut lb = vec![0.0; jb * jb];
         let mut w = vec![0.0; jb];
         for i in 0..jb {
@@ -544,7 +544,7 @@ fn factor_node(sym: &Symbolic, a: &Lower, t: usize, threads: usize) -> NodeResul
                     lbt[p * jb + i] = lb[i * jb + p];
                 }
             }
-            // 2. panelen under blocket: L = A·L⁻ᵀ·D⁻¹
+            // 2. the panel below the block: L = A·L⁻ᵀ·D⁻¹
             let tp = if (rows * jb * jb) as f64 > PAR_FLOPS { threads } else { 1 };
             {
                 let (lbt, dj) = (&lbt, &d[j0..j1]);
@@ -556,7 +556,7 @@ fn factor_node(sym: &Symbolic, a: &Lower, t: usize, threads: usize) -> NodeResul
                     }
                 });
             }
-            // 3. uppdatera resten: F[x][y] −= (L·D)[x]·L[y]ᵀ för j1 ≤ y ≤ x
+            // 3. update the rest: F[x][y] −= (L·D)[x]·L[y]ᵀ for j1 ≤ y ≤ x
             let mut wt = vec![0.0; rows * jb];
             let mut lt = vec![0.0; jb * rows];
             for r in 0..rows {
@@ -575,7 +575,7 @@ fn factor_node(sym: &Symbolic, a: &Lower, t: usize, threads: usize) -> NodeResul
         j0 = j1;
     }
 
-    // L11 packad radvis: rad i börjar på i(i−1)/2
+    // L11 packed row-wise: row i starts at i(i−1)/2
     let mut l11 = Vec::with_capacity(k * k.saturating_sub(1) / 2);
     for i in 0..k {
         l11.extend_from_slice(&f[i * m..i * m + i]);
@@ -591,7 +591,7 @@ fn factor_node(sym: &Symbolic, a: &Lower, t: usize, threads: usize) -> NodeResul
     Ok((upd, out))
 }
 
-/// Numerisk faktorisering. Err(frihetsgrad) vid icke-positiv pivot.
+/// Numerical factorization. Err(degree of freedom) on a non-positive pivot.
 pub fn factor(sym: &Symbolic, a: &Lower) -> Result<Factor, usize> {
     let mut fronts = Vec::new();
     for &r in &sym.roots {
@@ -602,7 +602,7 @@ pub fn factor(sym: &Symbolic, a: &Lower) -> Result<Factor, usize> {
 }
 
 impl Factor {
-    /// Pivoterna D i den interna numreringen (längd n).
+    /// The pivots D in the internal numbering (length n).
     pub fn pivots(&self, n: usize) -> Vec<f64> {
         let mut d = vec![0.0; n];
         for fr in &self.fronts {
@@ -611,7 +611,7 @@ impl Factor {
         d
     }
 
-    /// Löser K x = b på plats.
+    /// Solves K x = b in place.
     pub fn solve(&self, x: &mut [f64]) {
         for fr in &self.fronts {
             let k = fr.k;
@@ -652,7 +652,7 @@ impl Factor {
     }
 }
 
-// Tillägg (område lösare): indefinit LDLᵀ med 2×2-pivotering och fördröjda
-// pivoter, osymmetrisk LU och naturlig ordning för iterativa lösare.
+// Extension (solver area): indefinite LDLᵀ with 2×2 pivoting and delayed
+// pivots, unsymmetric LU and natural ordering for iterative solvers.
 pub mod indef;
 pub mod lu;

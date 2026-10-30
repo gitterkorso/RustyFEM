@@ -1,25 +1,25 @@
-//! Parametriserad indata: `*PARAMETER` och `<namn>`.
+//! Parameterized input: `*PARAMETER` and `<name>`.
 //!
-//! Dataraderna i *PARAMETER är enkla Python-satser `namn = uttryck`, en per
-//! rad. Uttrycken kan använda tal, strängar ('...' eller "..."), tidigare
-//! definierade parametrar, `+ − * / // % **`, parenteser och funktionerna
-//! i Pythons `math` (med eller utan `math.`): sin, cos, tan, asin, acos,
-//! atan, atan2, sinh, cosh, tanh, sqrt, exp, log (även med bas), log10, pow,
-//! fabs, floor, ceil, radians, degrees, hypot samt abs, min, max, int, float,
-//! round och str, och konstanterna pi och e. Heltal och flyttal följer
+//! The data lines in *PARAMETER are simple Python statements `name = expression`, one per
+//! line. The expressions may use numbers, strings ('...' or "..."), previously
+//! defined parameters, `+ − * / // % **`, parentheses and the functions
+//! in Python's `math` (with or without `math.`): sin, cos, tan, asin, acos,
+//! atan, atan2, sinh, cosh, tanh, sqrt, exp, log (also with base), log10, pow,
+//! fabs, floor, ceil, radians, degrees, hypot plus abs, min, max, int, float,
+//! round and str, and the constants pi and e. Integers and floats follow
 //! Python 3 (1/2 = 0.5, 7//2 = 3, 2**3 = 8).
 //!
-//! Efter definitionen ersätts `<namn>` i parametervärden på nyckelordsrader
-//! och i datarader med värdet (flyttal som Pythons `repr`, t.ex. `0.1`,
-//! `210000.0`). *PARAMETER-blocken tas bort innan nyckelorden tolkas.
-//! `*PARAMETER TABLE`, `*TABLE COLLECTION`, `*PARAMETER DEPENDENCE` och
-//! `INPUT=` ger fel (stöds inte ännu).
+//! After the definition, `<name>` in parameter values on keyword lines
+//! and in data lines is replaced by the value (floats like Python's `repr`, e.g. `0.1`,
+//! `210000.0`). The *PARAMETER blocks are removed before the keywords are parsed.
+//! `*PARAMETER TABLE`, `*TABLE COLLECTION`, `*PARAMETER DEPENDENCE` and
+//! `INPUT=` give an error (not supported yet).
 
 use crate::fem::model::RawKeyword;
 use crate::model::{fail, Result};
 use std::collections::HashMap;
 
-/// Ett parametervärde.
+/// A parameter value.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Value {
     Int(i64),
@@ -36,7 +36,7 @@ impl Value {
         }
     }
 
-    /// Värdet som text (Pythons str/repr för tal).
+    /// The value as text (Python's str/repr for numbers).
     pub fn text(&self) -> String {
         match self {
             Value::Int(i) => i.to_string(),
@@ -46,8 +46,8 @@ impl Value {
     }
 }
 
-/// Flyttal som Pythons repr: kortaste text som ger samma tal, alltid med
-/// decimalpunkt eller exponent.
+/// Float like Python's repr: the shortest text that gives the same number, always with
+/// a decimal point or exponent.
 fn py_float(f: f64) -> String {
     if f.is_nan() {
         return "nan".into();
@@ -57,7 +57,7 @@ fn py_float(f: f64) -> String {
     }
     let a = f.abs();
     if a != 0.0 && !(1e-4..1e16).contains(&a) {
-        // som Python: 1e-05, 1.5e+20
+        // like Python: 1e-05, 1.5e+20
         let s = format!("{f:e}");
         let (m, e) = s.split_once('e').unwrap();
         let ex: i32 = e.parse().unwrap_or(0);
@@ -108,7 +108,7 @@ fn tokenize(s: &str) -> std::result::Result<Vec<Tok>, String> {
                 }
             }
             let t: String = c[st..i].iter().filter(|&&x| x != '_').collect();
-            let v = if float { t.parse::<f64>().map(Value::Float).map_err(|_| format!("'{t}' är inget tal"))? } else { t.parse::<i64>().map(Value::Int).map_err(|_| format!("'{t}' är inget tal"))? };
+            let v = if float { t.parse::<f64>().map(Value::Float).map_err(|_| format!("'{t}' is not a number"))? } else { t.parse::<i64>().map(Value::Int).map_err(|_| format!("'{t}' is not a number"))? };
             out.push(Tok::Num(v));
         } else if ch.is_alphabetic() || ch == '_' {
             let st = i;
@@ -124,7 +124,7 @@ fn tokenize(s: &str) -> std::result::Result<Vec<Tok>, String> {
                 i += 1;
             }
             if i >= c.len() {
-                return Err("strängen saknar avslutande citattecken".into());
+                return Err("the string lacks a closing quote".into());
             }
             out.push(Tok::Str(c[st..i].iter().collect()));
             i += 1;
@@ -147,7 +147,7 @@ fn tokenize(s: &str) -> std::result::Result<Vec<Tok>, String> {
             out.push(Tok::Op(ch.to_string()));
             i += 1;
         } else {
-            return Err(format!("oväntat tecken '{ch}'"));
+            return Err(format!("unexpected character '{ch}'"));
         }
     }
     Ok(out)
@@ -174,32 +174,32 @@ fn arith(op: &str, a: Value, b: Value) -> R {
             "+" => Ok(Int(x.wrapping_add(y))),
             "-" => Ok(Int(x.wrapping_sub(y))),
             "*" => Ok(Int(x.wrapping_mul(y))),
-            "/" if y == 0 => Err("division med noll".into()),
+            "/" if y == 0 => Err("division by zero".into()),
             "/" => Ok(Float(x as f64 / y as f64)),
-            "//" if y == 0 => Err("division med noll".into()),
+            "//" if y == 0 => Err("division by zero".into()),
             "//" => Ok(Int(x.div_euclid(y) - if y < 0 && x.rem_euclid(y) != 0 { 1 } else { 0 })),
-            "%" if y == 0 => Err("division med noll".into()),
+            "%" if y == 0 => Err("division by zero".into()),
             "%" => Ok(Int(((x % y) + y) % y)),
             "**" if y >= 0 => Ok(Int(x.wrapping_pow(y as u32))),
             "**" => Ok(Float((x as f64).powf(y as f64))),
-            _ => Err(format!("okänd operator {op}")),
+            _ => Err(format!("unknown operator {op}")),
         };
     }
     let (Some(x), Some(y)) = (a.num(), b.num()) else {
-        return Err(format!("operatorn {op} kan inte användas på strängar"));
+        return Err(format!("the operator {op} cannot be used on strings"));
     };
     match op {
         "+" => Ok(Float(x + y)),
         "-" => Ok(Float(x - y)),
         "*" => Ok(Float(x * y)),
-        "/" if y == 0.0 => Err("division med noll".into()),
+        "/" if y == 0.0 => Err("division by zero".into()),
         "/" => Ok(Float(x / y)),
-        "//" if y == 0.0 => Err("division med noll".into()),
+        "//" if y == 0.0 => Err("division by zero".into()),
         "//" => Ok(Float((x / y).floor())),
-        "%" if y == 0.0 => Err("division med noll".into()),
+        "%" if y == 0.0 => Err("division by zero".into()),
         "%" => Ok(Float(x - y * (x / y).floor())),
         "**" => Ok(Float(x.powf(y))),
-        _ => Err(format!("okänd operator {op}")),
+        _ => Err(format!("unknown operator {op}")),
     }
 }
 
@@ -243,7 +243,7 @@ impl Parser<'_> {
                 match v {
                     Value::Int(i) => Ok(Value::Int(-i)),
                     Value::Float(f) => Ok(Value::Float(-f)),
-                    Value::Str(_) => Err("unärt minus på en sträng".into()),
+                    Value::Str(_) => Err("unary minus on a string".into()),
                 }
             }
             Some("+") => {
@@ -258,14 +258,14 @@ impl Parser<'_> {
         let b = self.atom()?;
         if self.op() == Some("**") {
             self.i += 1;
-            let e = self.unary()?; // högerassociativ, binder hårdare än unärt minus till vänster
+            let e = self.unary()?; // right-associative, binds tighter than a unary minus on the left
             return arith("**", b, e);
         }
         Ok(b)
     }
 
     fn atom(&mut self) -> R {
-        let t = self.peek().cloned().ok_or("uttrycket tar slut")?;
+        let t = self.peek().cloned().ok_or("the expression ends prematurely")?;
         self.i += 1;
         match t {
             Tok::Num(v) => Ok(v),
@@ -273,7 +273,7 @@ impl Parser<'_> {
             Tok::LPar => {
                 let v = self.expr()?;
                 if self.peek() != Some(&Tok::RPar) {
-                    return Err("')' saknas".into());
+                    return Err("')' is missing".into());
                 }
                 self.i += 1;
                 Ok(v)
@@ -288,7 +288,7 @@ impl Parser<'_> {
                             match self.peek() {
                                 Some(Tok::Comma) => self.i += 1,
                                 Some(Tok::RPar) => break,
-                                _ => return Err("',' eller ')' saknas i funktionsanropet".into()),
+                                _ => return Err("',' or ')' is missing in the function call".into()),
                             }
                         }
                     }
@@ -304,17 +304,17 @@ impl Parser<'_> {
                     "e" => Ok(Value::Float(std::f64::consts::E)),
                     "True" => Ok(Value::Int(1)),
                     "False" => Ok(Value::Int(0)),
-                    _ => Err(format!("parametern '{name}' är inte definierad")),
+                    _ => Err(format!("parameter '{name}' is not defined")),
                 }
             }
-            t => Err(format!("oväntad symbol {t:?}")),
+            t => Err(format!("unexpected token {t:?}")),
         }
     }
 }
 
 fn call(name: &str, a: &[Value]) -> R {
     let n = name.strip_prefix("math.").unwrap_or(name);
-    let x = |k: usize| -> std::result::Result<f64, String> { a.get(k).and_then(|v| v.num()).ok_or(format!("{name}() kräver ett tal som argument {}", k + 1)) };
+    let x = |k: usize| -> std::result::Result<f64, String> { a.get(k).and_then(|v| v.num()).ok_or(format!("{name}() requires a number as argument {}", k + 1)) };
     let f = |v: f64| Ok(Value::Float(v));
     match (n, a.len()) {
         ("sin", 1) => f(x(0)?.sin()),
@@ -327,7 +327,7 @@ fn call(name: &str, a: &[Value]) -> R {
         ("sinh", 1) => f(x(0)?.sinh()),
         ("cosh", 1) => f(x(0)?.cosh()),
         ("tanh", 1) => f(x(0)?.tanh()),
-        ("sqrt", 1) if x(0)? < 0.0 => Err("sqrt av ett negativt tal".into()),
+        ("sqrt", 1) if x(0)? < 0.0 => Err("sqrt of a negative number".into()),
         ("sqrt", 1) => f(x(0)?.sqrt()),
         ("exp", 1) => f(x(0)?.exp()),
         ("log", 1) => f(x(0)?.ln()),
@@ -345,11 +345,11 @@ fn call(name: &str, a: &[Value]) -> R {
             _ => f(x(0)?.abs()),
         },
         ("int", 1) => match &a[0] {
-            Value::Str(s) => s.trim().parse::<i64>().map(Value::Int).map_err(|_| format!("int('{s}') är inget heltal")),
+            Value::Str(s) => s.trim().parse::<i64>().map(Value::Int).map_err(|_| format!("int('{s}') is not an integer")),
             _ => Ok(Value::Int(x(0)?.trunc() as i64)),
         },
         ("float", 1) => match &a[0] {
-            Value::Str(s) => s.trim().parse::<f64>().map(Value::Float).map_err(|_| format!("float('{s}') är inget tal")),
+            Value::Str(s) => s.trim().parse::<f64>().map(Value::Float).map_err(|_| format!("float('{s}') is not a number")),
             _ => f(x(0)?),
         },
         ("round", 1) => Ok(Value::Int(round_half_even(x(0)?) as i64)),
@@ -361,18 +361,18 @@ fn call(name: &str, a: &[Value]) -> R {
         ("min", k) | ("max", k) if k >= 1 => {
             let mut best = a[0].clone();
             for v in &a[1..] {
-                let (p, q) = (best.num().ok_or("min/max kräver tal")?, v.num().ok_or("min/max kräver tal")?);
+                let (p, q) = (best.num().ok_or("min/max requires numbers")?, v.num().ok_or("min/max requires numbers")?);
                 if (n == "min" && q < p) || (n == "max" && q > p) {
                     best = v.clone();
                 }
             }
             Ok(best)
         }
-        _ => Err(format!("funktionen {name}() med {} argument stöds inte", a.len())),
+        _ => Err(format!("function {name}() with {} arguments is not supported", a.len())),
     }
 }
 
-/// Avrundning som Python 3 (till jämnt vid exakt hälften).
+/// Rounding like Python 3 (to even at exactly half).
 fn round_half_even(x: f64) -> f64 {
     let r = x.round();
     if (x - x.trunc()).abs() == 0.5 {
@@ -382,21 +382,21 @@ fn round_half_even(x: f64) -> f64 {
     }
 }
 
-/// Utvärderar ett uttryck med parametrarna `vars`.
+/// Evaluates an expression with the parameters `vars`.
 pub fn eval(expr: &str, vars: &HashMap<String, Value>) -> std::result::Result<Value, String> {
     let t = tokenize(expr)?;
     if t.is_empty() {
-        return Err("tomt uttryck".into());
+        return Err("empty expression".into());
     }
     let mut p = Parser { t, i: 0, vars };
     let v = p.expr()?;
     if p.i != p.t.len() {
-        return Err(format!("oväntad fortsättning efter uttrycket: {:?}", p.t[p.i]));
+        return Err(format!("unexpected continuation after the expression: {:?}", p.t[p.i]));
     }
     Ok(v)
 }
 
-/// Ersätter `<namn>` i `s`.
+/// Replaces `<name>` in `s`.
 fn substitute(s: &str, vars: &HashMap<String, Value>, kw: &RawKeyword, line: usize) -> Result<String> {
     if !s.contains('<') {
         return Ok(s.to_string());
@@ -412,7 +412,7 @@ fn substitute(s: &str, vars: &HashMap<String, Value>, kw: &RawKeyword, line: usi
             continue;
         }
         let Some(v) = vars.get(name) else {
-            return kw.err_at(line, format!("parametern <{name}> är inte definierad (*PARAMETER)"));
+            return kw.err_at(line, format!("parameter <{name}> is not defined (*PARAMETER)"));
         };
         out.push_str(&rest[..a]);
         out.push_str(&v.text());
@@ -422,8 +422,8 @@ fn substitute(s: &str, vars: &HashMap<String, Value>, kw: &RawKeyword, line: usi
     Ok(out)
 }
 
-/// Tolkar *PARAMETER-block och ersätter `<namn>` i alla följande block.
-/// Filer utan *PARAMETER lämnas orörda.
+/// Parses *PARAMETER blocks and replaces `<name>` in all following blocks.
+/// Files without *PARAMETER are left untouched.
 pub fn expand(blocks: Vec<RawKeyword>) -> Result<Vec<RawKeyword>> {
     if !blocks.iter().any(|k| k.name.starts_with("PARAMETER") || k.name == "TABLE COLLECTION") {
         return Ok(blocks);
@@ -434,7 +434,7 @@ pub fn expand(blocks: Vec<RawKeyword>) -> Result<Vec<RawKeyword>> {
         match kw.name.as_str() {
             "PARAMETER" => {
                 if kw.has("INPUT") {
-                    return kw.err("*PARAMETER, INPUT= stöds inte ännu (skriv satserna i .inp-filen)");
+                    return kw.err("*PARAMETER, INPUT= is not supported yet (write the statements in the .inp file)");
                 }
                 for d in &kw.data {
                     let text = d.fields.join(",");
@@ -443,19 +443,19 @@ pub fn expand(blocks: Vec<RawKeyword>) -> Result<Vec<RawKeyword>> {
                         continue;
                     }
                     let Some((name, expr)) = t.split_once('=') else {
-                        return kw.err_at(d.line, format!("'{t}' ska vara 'namn = uttryck'"));
+                        return kw.err_at(d.line, format!("'{t}' must be 'name = expression'"));
                     };
                     let name = name.trim();
                     if name.is_empty() || !name.chars().all(|c| c.is_alphanumeric() || c == '_') || name.starts_with(|c: char| c.is_ascii_digit()) {
-                        return kw.err_at(d.line, format!("'{name}' är inget giltigt parameternamn"));
+                        return kw.err_at(d.line, format!("'{name}' is not a valid parameter name"));
                     }
                     let expr = expr.split('#').next().unwrap_or("");
-                    let v = eval(expr, &vars).map_err(|e| crate::model::FemError(format!("{} rad {} (*PARAMETER): {e}", kw.file, d.line)))?;
+                    let v = eval(expr, &vars).map_err(|e| crate::model::FemError(format!("{} line {} (*PARAMETER): {e}", kw.file, d.line)))?;
                     vars.insert(name.to_string(), v);
                 }
             }
             "PARAMETER TABLE" | "PARAMETER TABLE TYPE" | "TABLE COLLECTION" | "PARAMETER DEPENDENCE" | "PARAMETER SHAPE VARIATION" => {
-                return kw.err("nyckelordet stöds inte ännu (bara *PARAMETER)");
+                return kw.err("the keyword is not supported yet (only *PARAMETER)");
             }
             _ => {
                 if vars.is_empty() {
@@ -480,7 +480,7 @@ pub fn expand(blocks: Vec<RawKeyword>) -> Result<Vec<RawKeyword>> {
         }
     }
     if out.is_empty() {
-        return fail("filen innehåller bara *PARAMETER");
+        return fail("the file contains only *PARAMETER");
     }
     Ok(out)
 }

@@ -1,13 +1,13 @@
-//! RustyFEM – en FEM-lösare i Rust.
+//! RustyFEM – a FEM solver in Rust.
 //!
-//! Två ingångar:
-//! - `.rusty`-skriptspråket och `Model` (enkel modellbyggare, se `script`/`model`);
-//!   modellen översätts till kärnans `FeModel` och löses med step-ramverket.
-//! - indatafiler `.inp` (`inp::read_file`) → `FeModel` → `steps::run`.
+//! Two entry points:
+//! - the `.rusty` script language and `Model` (simple model builder, see `script`/`model`);
+//!   the model is translated into the core `FeModel` and solved with the step framework.
+//! - input files in .inp format (`inp::read_file`) → `FeModel` → `steps::run`.
 //!
-//! Struktur (se ARCHITECTURE.md): `fem` (kärna), `elements`, `materials`,
-//! `steps`, `inp`, `interactions`, `solver`, `regression`. Varje område har ett
-//! register där nya delar läggs till med en rad.
+//! Structure (see ARCHITECTURE.md): `fem` (core), `elements`, `materials`,
+//! `steps`, `inp`, `interactions`, `solver`, `regression`. Each area has a
+//! registry where new parts are added with one line.
 
 pub mod elements;
 pub mod fem;

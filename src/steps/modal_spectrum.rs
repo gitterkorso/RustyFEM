@@ -1,32 +1,32 @@
-//! *RESPONSE SPECTRUM: toppvärden ur ett responsspektrum med modal
-//! kombination (Clough & Penzien, kap. 26; Chopra, "Dynamics of Structures",
-//! kap. 13).
+//! *RESPONSE SPECTRUM: peak values from a response spectrum with modal
+//! combination (Clough & Penzien, ch. 26; Chopra, "Dynamics of Structures",
+//! ch. 13).
 //!
-//! För varje excitationsriktning d (riktningscosiner rᵈ och skalfaktor sᵈ på
-//! dataraden) och mod i:
+//! For each excitation direction d (direction cosines rᵈ and scale factor sᵈ on
+//! the data line) and mode i:
 //!
 //! ```text
-//! Γᵢᵈ = φᵢᵀ M rᵈ                 (φᵢ massnormerad, rᵈ på translationerna)
-//! Sd(ωᵢ, ζᵢ) = Sa/ωᵢ², Sv/ωᵢ eller Sd ur *SPECTRUM (TYPE=ACCELERATION,
+//! Γᵢᵈ = φᵢᵀ M rᵈ                 (φᵢ mass-normalized, rᵈ on the translations)
+//! Sd(ωᵢ, ζᵢ) = Sa/ωᵢ², Sv/ωᵢ or Sd from *SPECTRUM (TYPE=ACCELERATION,
 //!              VELOCITY, DISPLACEMENT; GRAVITY = Sa·G)
-//! xᵢᵈ = sᵈ Γᵢᵈ Sd(ωᵢ, ζᵢ) · xᵢ    (xᵢ = modens U och S)
+//! xᵢᵈ = sᵈ Γᵢᵈ Sd(ωᵢ, ζᵢ) · xᵢ    (xᵢ = the mode's U and S)
 //! ```
 //!
-//! Spektret interpoleras log–log i frekvens (Hz) inom varje dämpningsvärde
-//! och med lg S linjärt i dämpning (linjärt om något värde är ≤ 0); utanför
-//! tabellen används ändvärdet. Riktningsvektorn normeras inte.
-//! Moderna summeras med `SUM` (SRSS, ABS, CQC, NRL, TENP), standard ABS, och riktningarna
-//! (som måste vara ortogonala) med `COMP` (standard SRSS): SRSS kombinerar riktningarnas
-//! modalsummor, ALGEBRAIC adderar riktningarnas bidrag mod för mod före
-//! modalsummeringen. CQC-korrelationen är Der Kiureghians:
+//! The spectrum is interpolated log–log in frequency (Hz) within each damping value
+//! and with lg S linear in damping (linear if any value is ≤ 0); outside
+//! the table the end value is used. The direction vector is not normalized.
+//! The modes are summed with `SUM` (SRSS, ABS, CQC, NRL, TENP), default ABS, and the directions
+//! (which must be orthogonal) with `COMP` (default SRSS): SRSS combines the directions'
+//! modal sums, ALGEBRAIC adds the directions' contributions mode by mode before
+//! the modal summation. The CQC correlation is Der Kiureghian's:
 //! ρᵢⱼ = 8√(ζᵢζⱼ)(ζᵢ + rζⱼ) r^{3/2} / ((1 − r²)² + 4ζᵢζⱼ r (1 + r²) + 4(ζᵢ² + ζⱼ²) r²),
-//! r = ωⱼ/ωᵢ. NRL: |största| + √(Σ övriga²). TENP: SRSS plus 2|xᵢxⱼ| för moder
-//! vars frekvenser skiljer sig högst 10 %. SRSS, ABS, CQC och ALGEBRAIC är
-//! validerade (tests/cases/dynamics); NRL och TENP är implementerade efter
-//! litteraturen.
+//! r = ωⱼ/ωᵢ. NRL: |largest| + √(Σ others²). TENP: SRSS plus 2|xᵢxⱼ| for modes
+//! whose frequencies differ by at most 10 %. SRSS, ABS, CQC and ALGEBRAIC are
+//! validated (tests/cases/dynamics); NRL and TENP are implemented following
+//! the literature.
 //!
-//! Utdata: frame 0 med nollor och frame 1 med de kombinerade
-//! (icke-negativa) värdena för varje komponent.
+//! Output: frame 0 with zeros and frame 1 with the combined
+//! (non-negative) values for each component.
 
 use super::basis::{modal_damping, ModalBasis};
 use super::plain_frame;
@@ -37,7 +37,7 @@ use crate::steps::api::{StepCtx, StepType};
 
 pub struct ResponseSpectrum;
 
-/// Ett *SPECTRUM: (dämpning, [(frekvens Hz, värde)]) sorterat, och typ.
+/// A *SPECTRUM: (damping, [(frequency Hz, value)]) sorted, and type.
 struct Spectrum {
     tables: Vec<(f64, Vec<(f64, f64)>)>,
     kind: SpecKind,
@@ -58,18 +58,18 @@ impl Spectrum {
             "ACCELERATION" => SpecKind::Acceleration(1.0),
             "GRAVITY" => match kw.param("G").and_then(crate::fem::model::parse_f64) {
                 Some(g) => SpecKind::Acceleration(g),
-                None => return kw.err("TYPE=GRAVITY kräver G="),
+                None => return kw.err("TYPE=GRAVITY requires G="),
             },
-            t => return kw.err(format!("TYPE={t} stöds inte (DISPLACEMENT, VELOCITY, ACCELERATION, GRAVITY)")),
+            t => return kw.err(format!("TYPE={t} is not supported (DISPLACEMENT, VELOCITY, ACCELERATION, GRAVITY)")),
         };
         if kw.has("INPUT") || kw.has("CREATE") || kw.has("EVENT TYPE") {
-            return kw.err("bara tabellerade spektra stöds (INPUT/CREATE stöds inte ännu)");
+            return kw.err("only tabular spectra are supported (INPUT/CREATE is not supported yet)");
         }
         let mut tables: Vec<(f64, Vec<(f64, f64)>)> = Vec::new();
         for d in &kw.data {
             let v = kw.floats(d)?;
             if v.len() < 2 {
-                return kw.err_at(d.line, "skriv 'värde, frekvens[, dämpning]'");
+                return kw.err_at(d.line, "write 'value, frequency[, damping]'");
             }
             let z = v.get(2).copied().unwrap_or(0.0);
             match tables.iter_mut().find(|t| (t.0 - z).abs() <= 1e-12) {
@@ -78,7 +78,7 @@ impl Spectrum {
             }
         }
         if tables.is_empty() {
-            return kw.err("spektret saknar datarader");
+            return kw.err("the spectrum has no data lines");
         }
         for t in &mut tables {
             t.1.sort_by(|a, b| a.0.total_cmp(&b.0));
@@ -93,7 +93,7 @@ impl Spectrum {
         }
         for w in t.windows(2) {
             if f <= w[1].0 {
-                // log–log (linjärt i lg f och lg S),
+                // log–log (linear in lg f and lg S),
                 // tests/cases/dynamics/cps4_responsspektrum
                 if w[0].0 > 0.0 && w[0].1 > 0.0 && w[1].1 > 0.0 {
                     let s = (f / w[0].0).ln() / (w[1].0 / w[0].0).ln();
@@ -106,7 +106,7 @@ impl Spectrum {
         t[t.len() - 1].1
     }
 
-    /// Spektralförskjutning Sd vid ω (rad/tid) och dämpningskvot ζ.
+    /// Spectral displacement Sd at ω (rad/time) and damping ratio ζ.
     fn sd(&self, w: f64, zeta: f64) -> f64 {
         let f = w / (2.0 * std::f64::consts::PI);
         let t = &self.tables;
@@ -119,7 +119,7 @@ impl Spectrum {
             let (a, b) = (&t[k], &t[k + 1]);
             let s = (zeta - a.0) / (b.0 - a.0);
             let (va, vb) = (Self::table_value(&a.1, f), Self::table_value(&b.1, f));
-            // lg S linjärt i ζ (tests/cases/dynamics/cps4_responsspektrum_cqc)
+            // lg S linear in ζ (tests/cases/dynamics/cps4_responsspektrum_cqc)
             if va > 0.0 && vb > 0.0 {
                 va * (vb / va).powf(s)
             } else {
@@ -134,7 +134,7 @@ impl Spectrum {
     }
 }
 
-/// Alla värden i en frame som en vektor (U per slot, sedan elementutdata).
+/// All values in a frame as a vector (U per slot, then element output).
 fn flatten(fr: &FrameData) -> Vec<f64> {
     let mut v: Vec<f64> = fr.u.iter().flat_map(|n| n.iter().copied()).collect();
     for e in &fr.elem {
@@ -167,7 +167,7 @@ fn unflatten(fr: &mut FrameData, v: &[f64]) {
     }
 }
 
-/// Der Kiureghians korrelationskoefficient.
+/// Der Kiureghian's correlation coefficient.
 fn cqc_rho(wi: f64, wj: f64, zi: f64, zj: f64) -> f64 {
     let r = wj / wi;
     let num = 8.0 * (zi * zj).sqrt() * (zi + r * zj) * r.powf(1.5);
@@ -179,7 +179,7 @@ fn cqc_rho(wi: f64, wj: f64, zi: f64, zj: f64) -> f64 {
     }
 }
 
-/// Kombinerar modala bidrag `x[i]` (samma komponent) enligt regeln.
+/// Combines modal contributions `x[i]` (same component) according to the rule.
 fn combine(rule: &str, x: &[f64], omega: &[f64], zeta: &[f64]) -> f64 {
     let n = x.len();
     match rule {
@@ -228,57 +228,57 @@ impl StepType for ResponseSpectrum {
     fn run(&self, ctx: &mut StepCtx) -> Result<()> {
         let kw = ctx.step.procedure.as_ref().unwrap();
         let comp = kw.param_upper("COMP").unwrap_or_else(|| "SRSS".into());
-        // standardvärden (tests/cases/dynamics/cps4_responsspektrum_standard)
+        // default values (tests/cases/dynamics/cps4_responsspektrum_standard)
         let sum = kw.param_upper("SUM").unwrap_or_else(|| "ABS".into());
         if !matches!(sum.as_str(), "SRSS" | "ABS" | "CQC" | "NRL" | "TENP") {
-            return kw.err(format!("SUM={sum} stöds inte (SRSS, ABS, CQC, NRL, TENP)"));
+            return kw.err(format!("SUM={sum} is not supported (SRSS, ABS, CQC, NRL, TENP)"));
         }
         if !matches!(comp.as_str(), "SRSS" | "ALGEBRAIC") {
-            return kw.err(format!("COMP={comp} stöds inte (SRSS, ALGEBRAIC)"));
+            return kw.err(format!("COMP={comp} is not supported (SRSS, ALGEBRAIC)"));
         }
         let prep = ctx.prep;
-        // excitationsriktningar
+        // excitation directions
         let mut dirs: Vec<(Spectrum, [f64; 3], f64)> = Vec::new();
         for d in &kw.data {
             let name = d.fields.first().map(|s| s.trim().to_uppercase()).unwrap_or_default();
             let sk = prep.model.extra.iter().find(|k| k.name == "SPECTRUM" && k.param_upper("NAME").as_deref() == Some(name.as_str()));
             let Some(sk) = sk else {
-                return kw.err_at(d.line, format!("spektret {name} saknas (*SPECTRUM, NAME={name})"));
+                return kw.err_at(d.line, format!("the spectrum {name} is missing (*SPECTRUM, NAME={name})"));
             };
             let num = |i: usize, def: f64| -> Result<f64> {
                 match d.fields.get(i).map(|s| s.trim()).filter(|s| !s.is_empty()) {
-                    Some(s) => crate::fem::model::parse_f64(s).ok_or_else(|| FemError(format!("{}: rad {}: ogiltigt tal '{s}'", kw.location(), d.line))),
+                    Some(s) => crate::fem::model::parse_f64(s).ok_or_else(|| FemError(format!("{}: line {}: invalid number '{s}'", kw.location(), d.line))),
                     None => Ok(def),
                 }
             };
             let r = [num(1, 0.0)?, num(2, 0.0)?, num(3, 0.0)?];
             let len = (r[0] * r[0] + r[1] * r[1] + r[2] * r[2]).sqrt();
             if len == 0.0 {
-                return kw.err_at(d.line, "riktningscosinerna är noll");
+                return kw.err_at(d.line, "the direction cosines are zero");
             }
-            // riktningscosinerna normeras inte: (1, 1, 0) ger √2 gånger
-            // spektret i 45° (tests/cases/dynamics/cps4_responsspektrum_cqc)
+            // the direction cosines are not normalized: (1, 1, 0) gives √2 times
+            // the spectrum at 45° (tests/cases/dynamics/cps4_responsspektrum_cqc)
             dirs.push((Spectrum::from_keyword(sk)?, r, num(4, 1.0)?));
         }
         for i in 0..dirs.len() {
             for j in i + 1..dirs.len() {
                 let (a, b) = (dirs[i].1, dirs[j].1);
                 if (a[0] * b[0] + a[1] * b[1] + a[2] * b[2]).abs() > 1e-6 * (a[0] * a[0] + a[1] * a[1] + a[2] * a[2]).sqrt() * (b[0] * b[0] + b[1] * b[1] + b[2] * b[2]).sqrt() {
-                    return kw.err(format!("riktning {} och {} är inte ortogonala", i + 1, j + 1));
+                    return kw.err(format!("directions {} and {} are not orthogonal", i + 1, j + 1));
                 }
             }
         }
         if dirs.is_empty() {
-            return kw.err("ange minst en riktning: 'spektrum, X-cosinus, Y-cosinus, Z-cosinus, skalfaktor'");
+            return kw.err("give at least one direction: 'spectrum, X cosine, Y cosine, Z cosine, scale factor'");
         }
         let b = ModalBasis::from_frequency_step(ctx)?;
         let omega = b.omega.clone();
         let damp = modal_damping(ctx.step, &b)?;
         let zeta = damp.zeta.clone();
         if damp.structural.iter().any(|s| *s != 0.0) {
-            return kw.err("STRUCTURAL modal dämpning stöds inte i *RESPONSE SPECTRUM");
+            return kw.err("STRUCTURAL modal damping is not supported in *RESPONSE SPECTRUM");
         }
-        // modala frames (oskalade) som vektorer
+        // modal frames (unscaled) as vectors
         let mut template = None;
         let mut xs = Vec::with_capacity(b.len());
         for phi in &b.phi {
@@ -287,13 +287,13 @@ impl StepType for ResponseSpectrum {
             template.get_or_insert(fr);
         }
         let Some(mut fr) = template else {
-            return fail("*RESPONSE SPECTRUM: inga egenmoder");
+            return fail("*RESPONSE SPECTRUM: no eigenmodes");
         };
         let nv = xs[0].len();
         let nm = xs.len();
-        // deltagandefaktorer per global riktning (Γ = φᵀ M r över alla frihetsgrader)
+        // participation factors per global direction (Γ = φᵀ M r over all DOFs)
         let pf: Vec<Vec<f64>> = (0..3).map(|d| if d < prep.model.dim() { b.participation(&prep.model.nodes, d) } else { vec![0.0; nm] }).collect();
-        // modala koefficienter per riktning: sᵈ Γᵢᵈ Sd(ωᵢ, ζᵢ)
+        // modal coefficients per direction: sᵈ Γᵢᵈ Sd(ωᵢ, ζᵢ)
         let mut coefs: Vec<Vec<f64>> = Vec::new();
         for (spec, r, scale) in &dirs {
             coefs.push(

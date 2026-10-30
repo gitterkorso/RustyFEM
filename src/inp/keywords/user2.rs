@@ -1,15 +1,15 @@
-//! Nyckelord för fältvariabler och fler användarrutiner:
+//! Keywords for field variables and more user subroutines:
 //!
-//! - `*FIELD, VARIABLE=n[, OP=NEW|MOD][, USER]` (i steg): nodvärden för
-//!   fältvariabel n vid stegets slut, eller UFIELD för noderna (USER),
-//! - `*INITIAL CONDITIONS, TYPE=FIELD, VARIABLE=n` (anropas från
-//!   `temperature.rs`, som äger *INITIAL CONDITIONS),
-//! - `*USER DEFINED FIELD` (materialbeteende, USDFLD),
-//! - `*HEAT GENERATION` (materialbeteende, HETVAL).
+//! - `*FIELD, VARIABLE=n[, OP=NEW|MOD][, USER]` (in steps): nodal values for
+//!   field variable n at the end of the step, or UFIELD for the nodes (USER),
+//! - `*INITIAL CONDITIONS, TYPE=FIELD, VARIABLE=n` (called from
+//!   `temperature.rs`, which owns *INITIAL CONDITIONS),
+//! - `*USER DEFINED FIELD` (material behavior, USDFLD),
+//! - `*HEAT GENERATION` (material behavior, HETVAL).
 //!
-//! Nodreferenserna löses upp här; dataraderna blir [nodindex, värde] med
-//! parametern `_NODINDEX` (`materials::field_vars`). För USER sparas nodsetets
-//! namn i `_NAME` (UFIELD väljs med det).
+//! The node references are resolved here; the data lines become [node index, value] with
+//! the parameter `_NODINDEX` (`materials::field_vars`). For USER the node set's
+//! name is stored in `_NAME` (UFIELD is selected by it).
 
 use crate::fem::model::{DataLine, RawKeyword};
 use crate::inp::keywords::material::behavior;
@@ -23,7 +23,7 @@ pub static KEYWORDS: &[Keyword] = &[
     Keyword { name: "USER DEFINED FIELD", kind: Kind::Behavior, handler: behavior },
 ];
 
-/// Datarader "nod eller nodset, värde" → [nodindex, värde]. Med `user` räcker noden.
+/// Data lines "node or node set, value" → [node index, value]. With `user` the node is enough.
 fn resolve(ctx: &InpCtx, kw: &RawKeyword, user: bool) -> Result<RawKeyword> {
     let mut out = kw.clone();
     out.params.push((RESOLVED.to_string(), String::new()));
@@ -35,9 +35,9 @@ fn resolve(ctx: &InpCtx, kw: &RawKeyword, user: bool) -> Result<RawKeyword> {
             continue;
         }
         let value = match d.fields.get(1) {
-            Some(f) => crate::fem::model::parse_f64(f).ok_or_else(|| crate::model::FemError(format!("{} rad {}: '{f}' är inget tal", kw.file, d.line)))?,
+            Some(f) => crate::fem::model::parse_f64(f).ok_or_else(|| crate::model::FemError(format!("{} line {}: '{f}' is not a number", kw.file, d.line)))?,
             None if user => 0.0,
-            None => return kw.err_at(d.line, "skriv 'nod eller nodset, värde'"),
+            None => return kw.err_at(d.line, "write 'node or node set, value'"),
         };
         if name.is_empty() && crate::inp::parse_label(tok).is_none() {
             name = tok.trim().to_uppercase();
@@ -55,12 +55,12 @@ fn resolve(ctx: &InpCtx, kw: &RawKeyword, user: bool) -> Result<RawKeyword> {
 fn check(kw: &RawKeyword) -> Result<()> {
     for p in ["FILE", "INPUT", "AMPLITUDE", "INTERPOLATE", "MIDSIDE", "DRIVING ELSETS", "BSTEP", "ESTEP"] {
         if kw.has(p) {
-            return kw.err(format!("parametern {p} stöds inte ännu"));
+            return kw.err(format!("parameter {p} is not supported yet"));
         }
     }
     if let Some(v) = kw.param("VARIABLE") {
         if !crate::inp::parse_label(v).is_some_and(|n| n >= 1) {
-            return kw.err(format!("VARIABLE={v} ska vara ett heltal ≥ 1"));
+            return kw.err(format!("VARIABLE={v} must be an integer ≥ 1"));
         }
     }
     Ok(())
@@ -77,20 +77,20 @@ fn field(ctx: &mut InpCtx, kw: &RawKeyword) -> Result<()> {
 pub fn initial_field(ctx: &mut InpCtx, kw: &RawKeyword) -> Result<()> {
     check(kw)?;
     if kw.has("USER") {
-        return kw.err("USER stöds inte för TYPE=FIELD (använd *FIELD, USER i första steget)");
+        return kw.err("USER is not supported for TYPE=FIELD (use *FIELD, USER in the first step)");
     }
     let r = resolve(ctx, kw, false)?;
     ctx.model.extra.push(r);
     Ok(())
 }
 
-/// *INITIAL CONDITIONS, TYPE=STRESS, USER: elementen på dataraderna (elementset
-/// eller nummer; utan datarader alla element) får spänningen från SIGINI, som
-/// väljs med elementsetets namn (`materials::initial_state`).
+/// *INITIAL CONDITIONS, TYPE=STRESS, USER: the elements on the data lines (element set
+/// or label; without data lines all elements) get the stress from SIGINI, which
+/// is selected by the element set name (`materials::initial_state`).
 pub fn initial_stress_user(ctx: &mut InpCtx, kw: &RawKeyword) -> Result<()> {
     for p in ["FILE", "INPUT", "REBAR", "SECTION POINTS", "GEOSTATIC", "STEP", "INC"] {
         if kw.has(p) {
-            return kw.err(format!("parametern {p} stöds inte tillsammans med USER"));
+            return kw.err(format!("parameter {p} is not supported together with USER"));
         }
     }
     let records = kw.records();

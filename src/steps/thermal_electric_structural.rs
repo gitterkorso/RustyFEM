@@ -1,19 +1,19 @@
-//! *COUPLED TEMPERATURE-DISPLACEMENT, ELECTRICAL (fullt kopplad
-//! termisk-elektrisk-strukturell analys; synonymen *COUPLED
-//! THERMAL-ELECTRICAL-STRUCTURAL godtas också, område coupled2) med elementen
-//! Q3D4, Q3D8 och Q3D20 (`elements/thermal_electric_structural.rs`).
+//! *COUPLED TEMPERATURE-DISPLACEMENT, ELECTRICAL (fully coupled
+//! thermal-electrical-structural analysis; the synonym *COUPLED
+//! THERMAL-ELECTRICAL-STRUCTURAL is also accepted, area coupled2) with the elements
+//! Q3D4, Q3D8 and Q3D20 (`elements/thermal_electric_structural.rs`).
 //!
-//! Temperatur, elektrisk potential och förskjutning. Utan kontakt beror den
-//! termisk-elektriska delen inte av förskjutningarna, så varje inkrement löses
-//! exakt i två led (som `heat_coupled.rs`): först temperatur och potential
-//! med Joulevärme (`thermal_electric.rs`, fixpunktsiteration), sedan
-//! jämvikten med den termiska töjningen ur temperaturerna vid inkrementets
-//! början och slut (`heat_stress.rs`). Den konvergerade lösningen är
-//! densamma som den helt kopplade Newtonlösningen.
+//! Temperature, electric potential and displacement. Without contact the
+//! thermal-electrical part does not depend on the displacements, so each increment is solved
+//! exactly in two stages (like `heat_coupled.rs`): first temperature and potential
+//! with Joule heating (`thermal_electric.rs`, fixed-point iteration), then
+//! the equilibrium with the thermal strain from the temperatures at the start and end
+//! of the increment (`heat_stress.rs`). The converged solution is
+//! the same as the fully coupled Newton solution.
 //!
-//! Stationärt eller transient med fasta inkrement. Utdata: U, RF, S, E,
-//! NT11, RFL11, HFL, EPOT, RECUR, ECD, EPG, JENER. Inkluderas med `#[path]`
-//! från `thermal_electric.rs`.
+//! Steady-state or transient with fixed increments. Output: U, RF, S, E,
+//! NT11, RFL11, HFL, EPOT, RECUR, ECD, EPG, JENER. Included with `#[path]`
+//! from `thermal_electric.rs`.
 
 use super::super::heat::{ensure_initial, heat_controls, heat_loads, HeatSystem, INIT_KEY, TS};
 use super::super::heat_stress::ThermoSystem;
@@ -32,7 +32,7 @@ pub static TES: ThermalElectricStructural = ThermalElectricStructural;
 
 const PROC: &str = "COUPLED THERMAL-ELECTRICAL-STRUCTURAL";
 
-/// Ett inkrement [t0, t1] av jämvikten med fast längd.
+/// An increment [t0, t1] of the equilibrium with fixed length.
 struct Span<'a, 'p, 'm> {
     sys: &'a mut ThermoSystem<'p, 'm>,
     t0: f64,
@@ -70,7 +70,7 @@ impl NonlinearSystem for Span<'_, '_, '_> {
     }
 }
 
-/// Mekanikens laster (förskjutningar, krafter, tryck) och resten.
+/// The mechanics' loads (displacements, forces, pressures) and the rest.
 fn split_mech(l: &StepLoads) -> (StepLoads, StepLoads) {
     let other_kind = |k: &str| k.starts_with("DFLUX:") || k.starts_with("FILM") || k.starts_with("RAD:") || k.starts_with("ECUR:");
     let other_slot = |s: usize| s == TS || s == PS;
@@ -88,7 +88,7 @@ fn split_mech(l: &StepLoads) -> (StepLoads, StepLoads) {
     (me, te)
 }
 
-/// Mekanikens och den termisk-elektriska delens frame sammanslagna.
+/// The frames of the mechanics and of the thermal-electrical part merged.
 fn merged(heat: &HeatSystem, elec: &ElecSystem, mech: &ThermoSystem, value: f64, description: String) -> Result<FrameData> {
     let te = frame(heat, elec, value, description.clone())?;
     let mut m = mech.frame(value, description)?;
@@ -103,7 +103,7 @@ fn merged(heat: &HeatSystem, elec: &ElecSystem, mech: &ThermoSystem, value: f64,
     }
     let model = heat.p.model;
     for (e, (a, b)) in m.elem.iter_mut().zip(te.elem).enumerate() {
-        // Q3D4: en integrationspunkt (konstant gradient)
+        // Q3D4: one integration point (constant gradient)
         let one = model.elements[e].etype.n_ips() == 1;
         a.extend(b.into_iter().map(|mut f| {
             if one {
@@ -125,8 +125,8 @@ impl StepType for ThermalElectricStructural {
     }
 
     fn claim(&self, step: &StepDef, _nlgeom: bool) -> Option<i32> {
-        // *COUPLED TEMPERATURE-DISPLACEMENT, ELECTRICAL (före heat_coupled.rs);
-        // *COUPLED THERMAL-ELECTRICAL-STRUCTURAL godtas som synonym
+        // *COUPLED TEMPERATURE-DISPLACEMENT, ELECTRICAL (before heat_coupled.rs);
+        // *COUPLED THERMAL-ELECTRICAL-STRUCTURAL is accepted as a synonym
         let p = step.procedure.as_ref()?;
         let electrical = p.name == "COUPLED TEMPERATURE-DISPLACEMENT" && p.has("ELECTRICAL") && !matches!(p.param_upper("ELECTRICAL").as_deref(), Some("NO"));
         (p.name == PROC || electrical).then_some(1)
@@ -136,22 +136,22 @@ impl StepType for ThermalElectricStructural {
         let prep = ctx.prep;
         let model = prep.model;
         if ctx.step.perturbation {
-            return fail("*COUPLED THERMAL-ELECTRICAL-STRUCTURAL kan inte vara ett perturbationssteg");
+            return fail("*COUPLED THERMAL-ELECTRICAL-STRUCTURAL cannot be a perturbation step");
         }
         if ctx.nlgeom {
-            return fail("*COUPLED THERMAL-ELECTRICAL-STRUCTURAL med NLGEOM=YES stöds inte ännu");
+            return fail("*COUPLED THERMAL-ELECTRICAL-STRUCTURAL with NLGEOM=YES is not supported yet");
         }
         if !prep.interactions.is_empty() {
-            return fail("*COUPLED THERMAL-ELECTRICAL-STRUCTURAL med kontakt eller villkor stöds inte ännu");
+            return fail("*COUPLED THERMAL-ELECTRICAL-STRUCTURAL with contact or constraints is not supported yet");
         }
         for (e, el) in model.elements.iter().enumerate() {
             if crate::elements::thermal_electric_structural::lookup(el.etype.name()).is_none() {
-                return fail(format!("{}: *COUPLED THERMAL-ELECTRICAL-STRUCTURAL kräver elementen Q3D4, Q3D8 eller Q3D20, inte {}", model.elem_name(e), el.etype.name()));
+                return fail(format!("{}: *COUPLED THERMAL-ELECTRICAL-STRUCTURAL requires the elements Q3D4, Q3D8 or Q3D20, not {}", model.elem_name(e), el.etype.name()));
             }
         }
         let hc = heat_controls(ctx.step)?;
         if hc.deltmx > 0.0 && !hc.steady {
-            return fail("DELTMX i *COUPLED THERMAL-ELECTRICAL-STRUCTURAL stöds inte ännu (ange fasta inkrement)");
+            return fail("DELTMX in *COUPLED THERMAL-ELECTRICAL-STRUCTURAL is not supported yet (give fixed increments)");
         }
         let had_init = ctx.state.vectors.contains_key(INIT_KEY);
         ensure_initial(model, ctx.state)?;
@@ -164,7 +164,7 @@ impl StepType for ThermalElectricStructural {
             }
         }
         let (mut me, te) = split_mech(&loads);
-        // potentialen är inte en frihetsgrad i jämvikten
+        // the potential is not a degree of freedom in the equilibrium
         for (n, &a) in prep.active.iter().enumerate() {
             if a & (1 << PS) != 0 {
                 me.bc.insert((n, PS), (0.0, 0.0));
@@ -203,7 +203,7 @@ impl StepType for ThermalElectricStructural {
         let mut iterations = 0usize;
         while t < 1.0 - 1e-12 {
             if inc >= ctrl.max_increments {
-                return fail(format!("steget nådde största antal inkrement ({}) – öka INC= på *STEP", ctrl.max_increments));
+                return fail(format!("the step reached the maximum number of increments ({}) – increase INC= on *STEP", ctrl.max_increments));
             }
             let t1 = (t + dt0).min(1.0);
             let t1 = if 1.0 - t1 < 1e-9 { 1.0 } else { t1 };
@@ -216,7 +216,7 @@ impl StepType for ThermalElectricStructural {
             t = t1;
             inc += 1;
             if ctx.opts.verbose {
-                eprintln!("  inkrement {inc}: stegtid {:.6}", t * period);
+                eprintln!("  increment {inc}: step time {:.6}", t * period);
             }
             if all || t >= 1.0 - 1e-12 {
                 frames.push(merged(&heat, &elec, &mech, t * period, format!("Increment {inc}: Step Time = {:.4}", t * period))?);

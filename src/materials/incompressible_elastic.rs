@@ -1,19 +1,19 @@
-//! Helt inkompressibel isotrop elasticitet (*ELASTIC med ν = 0,5).
+//! Fully incompressible isotropic elasticity (*ELASTIC with ν = 0.5).
 //!
-//! ν = 0,5 godtas i hybridelement. Elementmatriserna från
-//! *MATRIX GENERATE (C3D4H, C3D8H, ...) räknas då med
-//! ν = 0,4999999, dvs. kompressionsmodulen K = E / (3 · 2·10⁻⁷) ≈ 5·10⁶ μ
-//! (βK-termen i förskjutningsblocket och tryckblocket −(1 − β)/K), och att
-//! elementet dessutom vet att materialet är inkompressibelt (C3D4H:s
-//! trycksstabilisering skalas då med 1/μ i stället för 1/K, se
+//! ν = 0.5 is accepted in hybrid elements. The element matrices from
+//! *MATRIX GENERATE (C3D4H, C3D8H, ...) are then computed with
+//! ν = 0.4999999, i.e. bulk modulus K = E / (3 · 2·10⁻⁷) ≈ 5·10⁶ μ
+//! (the βK term in the displacement block and the pressure block −(1 − β)/K), and
+//! the element additionally knows that the material is incompressible (C3D4H's
+//! pressure stabilization is then scaled by 1/μ instead of 1/K, see
 //! `elements/hybrid_tet.rs`).
 //!
-//! `claim` anropas från `materials::build` före registret: har materialet
-//! *ELASTIC (isotrop, en datarad) med ν = 0,5 byggs materialet om med
-//! ν = `NU_INCOMPRESSIBLE` på samma sätt som vanligt (elasticitet,
-//! *PLASTIC, ...). Andra element än hybridelementen får då ett nästan
-//! inkompressibelt material; hybridelementen känner igen
-//! ν ≥ `NU_FLAG` som helt inkompressibelt.
+//! `claim` is called from `materials::build` before the registry: if the material
+//! has *ELASTIC (isotropic, one data line) with ν = 0.5, the material is rebuilt with
+//! ν = `NU_INCOMPRESSIBLE` in the usual way (elasticity,
+//! *PLASTIC, ...). Elements other than the hybrid elements then get a nearly
+//! incompressible material; the hybrid elements recognize
+//! ν ≥ `NU_FLAG` as fully incompressible.
 
 use super::{MaterialFactory, MaterialModel};
 use crate::fem::model::MaterialDef;
@@ -22,18 +22,18 @@ use std::sync::Arc;
 
 pub static FACTORIES: &[MaterialFactory] = &[];
 
-/// Poissontalet som används för ν = 0,5.
+/// Poisson's ratio used for ν = 0.5.
 pub const NU_INCOMPRESSIBLE: f64 = 0.4999999;
 
-/// Gräns över vilken ett elastiskt material räknas som helt inkompressibelt.
+/// Threshold above which an elastic material counts as fully incompressible.
 pub const NU_FLAG: f64 = 0.4999999 - 1e-12;
 
-/// Är (E, ν) ett helt inkompressibelt material (ν = 0,5 i indata)?
+/// Is (E, ν) a fully incompressible material (ν = 0.5 in the input)?
 pub fn is_incompressible(nu: f64) -> bool {
     nu >= NU_FLAG
 }
 
-/// Materialet byggt med ν = 0,4999999 om *ELASTIC har ν = 0,5, annars `None`.
+/// The material built with ν = 0.4999999 if *ELASTIC has ν = 0.5, otherwise `None`.
 pub fn claim(def: &MaterialDef) -> Result<Option<Arc<dyn MaterialModel>>> {
     let Some(i) = def.behaviors.iter().position(|b| b.name == "ELASTIC") else {
         return Ok(None);

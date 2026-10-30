@@ -1,20 +1,20 @@
-//! Formbarhetskriterier för plåt (*DAMAGE INITIATION, CRITERION=FLD, FLSD
-//! och MSFLD) ovanpå en plasticitetsmodell (*PLASTIC), i plan spänning
-//! (CPS-element och skal). Kriterierna redovisas utan
-//! skadeutveckling (FLDCRT, FLSDCRT, MSFLDCRT); värdet är det största hittills.
+//! Forming limit criteria for sheet metal (*DAMAGE INITIATION, CRITERION=FLD, FLSD
+//! and MSFLD) on top of a plasticity model (*PLASTIC), in plane stress
+//! (CPS elements and shells). The criteria are reported without
+//! damage evolution (FLDCRT, FLSDCRT, MSFLDCRT); the value is the maximum so far.
 //!
-//! Kriterierna:
-//! - FLD: ω = ε1/ε1^FLD(ε2) med de största och minsta huvudvärdena i planet av
-//!   den plastiska töjningen PE i CPS-element och av den totala töjningen i
-//!   skal (S4R); tabellen (ε1^FLD, ε2) interpoleras linjärt.
-//! - FLSD: ω = σ1/σ1^FLSD(σ2) med huvudspänningarna i planet; tabell (σ1^FLSD, σ2).
-//! - MSFLD (Müschenborn–Sonne): ω = ε̄pl/ε̄^MSFLD(α) med α = Δε2/Δε1 av
-//!   inkrementets plastiska töjning (huvudvärden i planet) och tabellen
-//!   tolkad som (ε̄^MSFLD, α).
+//! The criteria:
+//! - FLD: ω = ε1/ε1^FLD(ε2) with the in-plane major and minor principal values of
+//!   the plastic strain PE in CPS elements and of the total strain in
+//!   shells (S4R); the table (ε1^FLD, ε2) is interpolated linearly.
+//! - FLSD: ω = σ1/σ1^FLSD(σ2) with the in-plane principal stresses; table (σ1^FLSD, σ2).
+//! - MSFLD (Müschenborn–Sonne): ω = ε̄pl/ε̄^MSFLD(α) with α = Δε2/Δε1 of
+//!   the increment's plastic strain (in-plane principal values) and the table
+//!   interpreted as (ε̄^MSFLD, α).
 //!
-//! Utanför tabellerna extrapoleras linjärt (även för MSFLD). Ett inkrement
-//! utan plastisk töjning ändrar inte MSFLD. Med en enda tabellrad är
-//! gränsen konstant.
+//! Outside the tables the extrapolation is linear (also for MSFLD). An increment
+//! without plastic strain does not change MSFLD. With a single table row
+//! the limit is constant.
 
 use super::{MatInput, MatOutput, MaterialFactory, MaterialModel, StressMode};
 use crate::fem::model::{MaterialDef, RawKeyword};
@@ -22,7 +22,7 @@ use crate::model::{fail, Result};
 use std::sync::Arc;
 
 pub static FACTORIES: &[MaterialFactory] = &[MaterialFactory {
-    name: "formbarhetskriterier (FLD, FLSD, MSFLD)",
+    name: "forming limit criteria (FLD, FLSD, MSFLD)",
     consumes: &["ELASTIC", "PLASTIC", "CYCLIC HARDENING", "DAMAGE INITIATION", "POTENTIAL", "RATE DEPENDENT"],
     priority: 25,
     build: Some(build),
@@ -30,7 +30,7 @@ pub static FACTORIES: &[MaterialFactory] = &[MaterialFactory {
 
 const CRITERIA: &[&str] = &["FLD", "FLSD", "MSFLD"];
 
-/// Sant om materialet har ett formbarhetskriterium.
+/// True if the material has a forming limit criterion.
 pub fn claims(def: &MaterialDef) -> bool {
     def.behaviors.iter().any(|b| b.name == "DAMAGE INITIATION" && b.param_upper("CRITERION").is_some_and(|c| CRITERIA.contains(&c.as_str())))
 }
@@ -44,7 +44,7 @@ enum Kind {
 
 struct Crit {
     kind: Kind,
-    /// (x, gräns) med stigande x (ε2, σ2 eller α).
+    /// (x, limit) with increasing x (ε2, σ2 or α).
     table: Vec<(f64, f64)>,
 }
 
@@ -58,24 +58,24 @@ fn table(kw: &RawKeyword) -> Result<Vec<(f64, f64)>> {
     for d in &kw.data {
         let v = kw.floats(d)?;
         if v.len() > 2 && v[2..].iter().any(|&x| x != 0.0) {
-            return kw.err_at(d.line, "hastighets- eller temperaturberoende formbarhetsgränser stöds inte ännu");
+            return kw.err_at(d.line, "rate- or temperature-dependent forming limits are not supported yet");
         }
         let (lim, x) = (v.first().copied().unwrap_or(0.0), v.get(1).copied().unwrap_or(0.0));
         if !(lim > 0.0) {
-            return kw.err_at(d.line, "gränsvärdet ska vara positivt");
+            return kw.err_at(d.line, "the limit value must be positive");
         }
         if t.last().is_some_and(|&(xl, _)| !(x > xl)) {
-            return kw.err_at(d.line, "den andra kolumnen ska öka i tabellen");
+            return kw.err_at(d.line, "the second column must increase in the table");
         }
         t.push((x, lim));
     }
     if t.is_empty() {
-        return kw.err("data saknas");
+        return kw.err("data missing");
     }
     Ok(t)
 }
 
-/// Linjär interpolation med linjär extrapolation utanför tabellen.
+/// Linear interpolation with linear extrapolation outside the table.
 fn interp_lin(t: &[(f64, f64)], x: f64) -> f64 {
     if t.len() == 1 {
         return t[0].1;
@@ -104,20 +104,20 @@ fn build(def: &MaterialDef) -> Result<Option<Arc<dyn MaterialModel>>> {
                     Some("FLD") => Kind::Fld,
                     Some("FLSD") => Kind::Flsd,
                     Some("MSFLD") => Kind::Msfld,
-                    Some(o) => return b.err(format!("CRITERION={o} kan inte kombineras med FLD/FLSD/MSFLD ännu")),
-                    None => return b.err("CRITERION= saknas"),
+                    Some(o) => return b.err(format!("CRITERION={o} cannot be combined with FLD/FLSD/MSFLD yet")),
+                    None => return b.err("CRITERION= missing"),
                 };
                 if b.has("DEPENDENCIES") || b.has("OMEGA") && kind != Kind::Msfld {
-                    return b.err("fältberoende formbarhetsgränser stöds inte ännu");
+                    return b.err("field-dependent forming limits are not supported yet");
                 }
                 crits.push(Crit { kind, table: table(b)? });
             }
-            "DAMAGE EVOLUTION" => return b.err("skadeutveckling efter FLD/FLSD/MSFLD stöds inte ännu (bara initieringskriteriet)"),
+            "DAMAGE EVOLUTION" => return b.err("damage evolution after FLD/FLSD/MSFLD is not supported yet (only the initiation criterion)"),
             _ => {}
         }
     }
     if def.behavior("PLASTIC").is_none() {
-        return fail(format!("material {}: CRITERION=FLD/FLSD/MSFLD kräver *PLASTIC", def.name));
+        return fail(format!("material {}: CRITERION=FLD/FLSD/MSFLD requires *PLASTIC", def.name));
     }
     let base = MaterialDef {
         name: def.name.clone(),
@@ -128,7 +128,7 @@ fn build(def: &MaterialDef) -> Result<Option<Arc<dyn MaterialModel>>> {
     Ok(Some(Arc::new(FormingLimit { inner, crits })))
 }
 
-/// Huvudvärden i planet (största, minsta) av (a11, a22, a12 som tensor).
+/// In-plane principal values (major, minor) of (a11, a22, a12 as a tensor).
 fn principal2(a11: f64, a22: f64, a12: f64) -> (f64, f64) {
     let m = 0.5 * (a11 + a22);
     let r = (0.25 * (a11 - a22).powi(2) + a12 * a12).sqrt();
@@ -140,7 +140,7 @@ impl FormingLimit {
         self.inner.n_state()
     }
 
-    /// (PEEQ, PE11, PE22, PE12 (ingenjörsskjuvning)) ur den inre modellens utdata.
+    /// (PEEQ, PE11, PE22, PE12 (engineering shear)) from the inner model's output.
     fn plastic(&self, state: &[f64]) -> [f64; 4] {
         let fields = self.inner.output_fields(StressMode::PlaneStress);
         let vals = self.inner.output_field_values(StressMode::PlaneStress, state);
@@ -166,10 +166,10 @@ impl FormingLimit {
         [peeq, pe[0], pe[1], pe[2]]
     }
 
-    /// Uppdatering; `total` = FLD med total töjning (skal), annars plastisk.
+    /// Update; `total` = FLD with total strain (shells), otherwise plastic.
     fn update_impl(&self, input: &MatInput, total: bool, state_old: &[f64], state_new: &mut [f64]) -> Result<MatOutput> {
         if input.mode != StressMode::PlaneStress {
-            return fail("CRITERION=FLD/FLSD/MSFLD stöds bara i plan spänning (CPS-element och skal)");
+            return fail("CRITERION=FLD/FLSD/MSFLD is only supported in plane stress (CPS elements and shells)");
         }
         let ni = self.n_inner();
         let out = self.inner.update(input, &state_old[..ni], &mut state_new[..ni])?;
@@ -221,13 +221,13 @@ impl MaterialModel for FormingLimit {
         self.inner.elastic_moduli()
     }
 
-    /// Skal (sektionsintegreringen anropar `update`): FLD med den totala
-    /// töjningen i planet (kontrollerat för S4R).
+    /// Shells (the section integration calls `update`): FLD with the total
+    /// in-plane strain (verified for S4R).
     fn update(&self, input: &MatInput, state_old: &[f64], state_new: &mut [f64]) -> Result<MatOutput> {
         self.update_impl(input, true, state_old, state_new)
     }
 
-    /// Kontinuumelement (CPS): FLD med den plastiska töjningen.
+    /// Continuum elements (CPS): FLD with the plastic strain.
     fn update_with_length(&self, input: &MatInput, _length: f64, state_old: &[f64], state_new: &mut [f64]) -> Result<MatOutput> {
         self.update_impl(input, false, state_old, state_new)
     }

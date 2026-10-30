@@ -1,5 +1,5 @@
-// Modellfönstret i React: kopplar Viewer till UI-läget och visar
-// verktygsrad, färgskala och information om markerat objekt.
+// The viewport in React: connects Viewer to the UI state and shows
+// the toolbar, color legend and information about the picked object.
 
 import { useEffect, useRef, useState } from "react";
 import { engine, pick, selectResult, toast } from "../actions";
@@ -9,7 +9,7 @@ import { currentField, get, persist, set, useShallow, useStore } from "../store"
 import { fmt, Icon, IconButton } from "./ui";
 import { convertValue, loadUnits, modelUnit } from "./units";
 
-/** Senast hämtade resultat (nyckel → data), för snabb växling och animering. */
+/** Most recently fetched results (key → data), for fast switching and animation. */
 const cache = new Map<string, Promise<{ disp: Float32Array; values: Float32Array | null; min: number; max: number; maxU: number }>>();
 
 function fetchFrame(id: number, step: number, frame: number, field: string, comp: string) {
@@ -60,7 +60,7 @@ export function Viewport() {
   const field = useStore(currentField);
   const busy = useStore((s) => s.busy);
 
-  // skapa fönstret en gång
+  // create the viewer once
   useEffect(() => {
     const v = new Viewer(
       canvasRef.current!,
@@ -89,7 +89,7 @@ export function Viewport() {
   useEffect(() => {
     const v = viewerRef.current;
     if (!v || !mesh) return;
-    // samma modell: behåll kameran, utom när den första geometrin läggs till i en tom modell
+    // same model: keep the camera, except when the first geometry is added to an empty model
     const keep = lastId.current === id && lastNodes.current > 0;
     lastId.current = id;
     lastNodes.current = mesh.nodes;
@@ -98,7 +98,7 @@ export function Viewport() {
     setIs2d(v.mode2d);
   }, [mesh, meshVersion, id]);
 
-  // symboler i modelläget
+  // symbols in model mode
   useEffect(() => {
     const v = viewerRef.current;
     if (!v || id === null || !mesh) return;
@@ -107,7 +107,7 @@ export function Viewport() {
       return;
     }
     let live = true;
-    // lastvärden i vald enhet; utan enhetssystem visas talen som de står
+    // load values in the chosen unit; without a unit system the numbers are shown as written
     const system = session?.units;
     const fmtLoad = loadUnit
       ? (val: number, moment: boolean) => {
@@ -126,7 +126,7 @@ export function Viewport() {
     };
   }, [id, mode, symbolStep, mesh, model, loadUnit, session?.units]);
 
-  // resultat
+  // results
   useEffect(() => {
     const v = viewerRef.current;
     if (!v || id === null || !mesh) return;
@@ -145,7 +145,7 @@ export function Viewport() {
         const auto = r.maxU > 0 ? (0.1 * v.bounds.radius * 2) / r.maxU : 0;
         const fr = results[rsel.step]?.frames[rsel.frame];
         const isMode = (fr?.mode ?? -1) > 0;
-        // små förskjutningar förstoras automatiskt, stora visas skalenliga
+        // small displacements are magnified automatically, large ones are shown to scale
         const scale = deformAuto ? (isMode || r.maxU < 0.02 * v.bounds.radius ? auto : 1) : deformFactor;
         v.setDisplacement(r.disp);
         v.setField(r.values, r.min, r.max);
@@ -168,7 +168,7 @@ export function Viewport() {
     if (animate !== "mode") viewerRef.current?.animateMode(false);
   }, [animate]);
 
-  // animering av frames: förhämta och stega
+  // frame animation: prefetch and step
   useEffect(() => {
     if (animate !== "frames" || mode !== "results" || !rsel || id === null) return;
     const st = results[rsel.step];
@@ -189,14 +189,14 @@ export function Viewport() {
     v.setHighlight(pickInfo ? { kind: pickInfo.kind === "node" ? "node" : "element", index: pickInfo.index } : null);
   }, [pickInfo]);
 
-  // urval i verktygspanelen
+  // selection in the tool panel
   const marked = useStore((s) => s.marked);
   const waitPick = useStore((s) => s.onNodePick !== null);
   useEffect(() => {
     viewerRef.current?.setMarked(mode === "model" ? marked : null);
   }, [marked, mesh, meshVersion, mode]);
 
-  // tangenter för vyer
+  // keys for views
   useEffect(() => {
     const keys: Record<string, ViewDir> = { "1": "front", "2": "back", "3": "top", "4": "bottom", "5": "left", "6": "right", "0": "iso" };
     const h = (e: KeyboardEvent) => {
@@ -216,7 +216,7 @@ export function Viewport() {
   const timeUnit = session?.unit_symbols.time;
   const showLegend = mode === "results" && rsel && range && field;
   const levels = opts.levels;
-  // högst 13 etiketter; vid många band visas varannan/var tredje bandgräns
+  // at most 13 labels; with many bands every second/third band boundary is shown
   const nb = levels || 8;
   const every = Math.ceil(nb / 12);
   const ticks = showLegend ? Array.from({ length: Math.floor(nb / every) + 1 }, (_, i) => range!.max - ((range!.max - range!.min) * i * every) / nb) : [];
@@ -232,15 +232,15 @@ export function Viewport() {
   return (
     <div className="viewport">
       <canvas ref={canvasRef} className="gl" />
-      {!mesh && <div className="vp-hint">Ingen modell öppen</div>}
+      {!mesh && <div className="vp-hint">No model open</div>}
       {mesh && model && model.elements === 0 && mode === "model" && (
-        <div className="vp-hint">Tom modell – lägg till material och geometri med verktygen i panelen till höger</div>
+        <div className="vp-hint">Empty model – add materials and geometry with the tools in the panel on the right</div>
       )}
       {waitPick && (
         <div className="vp-banner">
-          Klicka på en nod i modellen
+          Click a node in the model
           <button type="button" className="btn small" onClick={() => set({ onNodePick: null })}>
-            Avbryt
+            Cancel
           </button>
         </div>
       )}
@@ -252,20 +252,20 @@ export function Viewport() {
       )}
       <div className="vp-tools">
         <div className="tool-group">
-          <IconButton icon="fit" title="Anpassa vyn" kbd="F" onClick={() => v?.fit()} />
+          <IconButton icon="fit" title="Fit view" kbd="F" onClick={() => v?.fit()} />
           <div className="menu-wrap">
-            <IconButton icon="cube" title="Vyer" active={viewMenu} onClick={() => setViewMenu(!viewMenu)} />
+            <IconButton icon="cube" title="Views" active={viewMenu} onClick={() => setViewMenu(!viewMenu)} />
             {viewMenu && (
               <div className="menu" onMouseLeave={() => setViewMenu(false)}>
                 {(
                   [
-                    ["iso", "Isometrisk", "0"],
-                    ["front", "Framifrån (+Z)", "1"],
-                    ["back", "Bakifrån", "2"],
-                    ["top", "Ovanifrån (+Y)", "3"],
-                    ["bottom", "Underifrån", "4"],
-                    ["left", "Vänster", "5"],
-                    ["right", "Höger (+X)", "6"],
+                    ["iso", "Isometric", "0"],
+                    ["front", "Front (+Z)", "1"],
+                    ["back", "Back", "2"],
+                    ["top", "Top (+Y)", "3"],
+                    ["bottom", "Bottom", "4"],
+                    ["left", "Left", "5"],
+                    ["right", "Right (+X)", "6"],
                   ] as [ViewDir, string, string][]
                 ).map(([d, l, k]) => (
                   <button
@@ -286,7 +286,7 @@ export function Viewport() {
           </div>
           <IconButton
             icon={is2d ? "square" : "cube"}
-            title={is2d ? "2D-läge (klicka för 3D)" : "3D-läge (klicka för 2D)"}
+            title={is2d ? "2D mode (click for 3D)" : "3D mode (click for 2D)"}
             label={is2d ? "2D" : "3D"}
             onClick={() => {
               if (!v) return;
@@ -297,12 +297,12 @@ export function Viewport() {
           />
         </div>
         <div className="tool-group">
-          <IconButton icon="surface" title="Ytor" active={opts.surfaces} onClick={() => set((s) => ({ surfaces: !s.surfaces }))} />
-          <IconButton icon="edges" title="Elementkanter" active={opts.edges} onClick={() => set((s) => ({ edges: !s.edges }))} />
-          <IconButton icon="ghost" title="Odeformerad form" active={opts.undeformed} onClick={() => set((s) => ({ undeformed: !s.undeformed }))} />
-          <IconButton icon="anchor" title="Randvillkor och laster" active={opts.symbols} onClick={() => set((s) => ({ symbols: !s.symbols }))} />
+          <IconButton icon="surface" title="Surfaces" active={opts.surfaces} onClick={() => set((s) => ({ surfaces: !s.surfaces }))} />
+          <IconButton icon="edges" title="Element edges" active={opts.edges} onClick={() => set((s) => ({ edges: !s.edges }))} />
+          <IconButton icon="ghost" title="Undeformed shape" active={opts.undeformed} onClick={() => set((s) => ({ undeformed: !s.undeformed }))} />
+          <IconButton icon="anchor" title="Boundary conditions and loads" active={opts.symbols} onClick={() => set((s) => ({ symbols: !s.symbols }))} />
           <div className="menu-wrap">
-            <button type="button" className={`ibtn unitbtn${unitMenu ? " active" : ""}`} title="Lastvärden i modellen" onClick={() => setUnitMenu(!unitMenu)}>
+            <button type="button" className={`ibtn unitbtn${unitMenu ? " active" : ""}`} title="Load values in the model" onClick={() => setUnitMenu(!unitMenu)}>
               {loadUnit ?? "–"}
             </button>
             {unitMenu && (
@@ -318,7 +318,7 @@ export function Viewport() {
                       setUnitMenu(false);
                     }}
                   >
-                    Lastvärden i {f}
+                    Load values in {f}
                     <kbd>{m}</kbd>
                   </button>
                 ))}
@@ -331,18 +331,18 @@ export function Viewport() {
                     setUnitMenu(false);
                   }}
                 >
-                  Dölj lastvärden
+                  Hide load values
                 </button>
               </div>
             )}
           </div>
         </div>
         <div className="tool-group">
-          <IconButton icon="cursor" title="Välj element" active={opts.pickMode === "element"} onClick={() => set({ pickMode: "element" })} />
-          <IconButton icon="node" title="Välj nod" active={opts.pickMode === "node"} onClick={() => set({ pickMode: "node" })} />
+          <IconButton icon="cursor" title="Pick elements" active={opts.pickMode === "element"} onClick={() => set({ pickMode: "element" })} />
+          <IconButton icon="node" title="Pick nodes" active={opts.pickMode === "node"} onClick={() => set({ pickMode: "node" })} />
         </div>
         <div className="tool-group">
-          <IconButton icon="camera" title="Spara bild (PNG)" onClick={shot} />
+          <IconButton icon="camera" title="Save image (PNG)" onClick={shot} />
         </div>
       </div>
 
@@ -363,7 +363,7 @@ export function Viewport() {
           </div>
           <div className="legend-foot">
             <div>{results[rsel!.step]?.name}</div>
-            <div>{frame ? (frame.mode > 0 ? `Mod ${frame.mode}: ${frame.description || `${fmt(frame.value)}`}` : `Tid ${fmt(frame.value)}${timeUnit ? ` ${timeUnit}` : ""}`) : ""}</div>
+            <div>{frame ? (frame.mode > 0 ? `Mode ${frame.mode}: ${frame.description || `${fmt(frame.value)}`}` : `Time ${fmt(frame.value)}${timeUnit ? ` ${timeUnit}` : ""}`) : ""}</div>
             <div>Deformation ×{fmt(deformFactor, 3)}</div>
           </div>
         </div>
@@ -374,9 +374,9 @@ export function Viewport() {
           <header>
             <Icon name={pickInfo.kind === "node" ? "node" : "cursor"} size={14} />
             <strong>
-              {pickInfo.kind === "node" ? "Nod" : "Element"} {pickInfo.name}
+              {pickInfo.kind === "node" ? "Node" : "Element"} {pickInfo.name}
             </strong>
-            <button type="button" className="x" aria-label="Stäng" onClick={() => set({ pick: null })}>
+            <button type="button" className="x" aria-label="Close" onClick={() => set({ pick: null })}>
               <Icon name="close" size={14} />
             </button>
           </header>

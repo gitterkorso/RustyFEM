@@ -1,46 +1,46 @@
-//! Borttagna och återaktiverade element (*MODEL CHANGE) och elementborttagning
-//! vid fullständig skada (*SECTION CONTROLS, ELEMENT DELETION=, MAX DEGRADATION=).
+//! Removed and reactivated elements (*MODEL CHANGE) and element deletion
+//! on full damage (*SECTION CONTROLS, ELEMENT DELETION=, MAX DEGRADATION=).
 //!
-//! Ingen egen steg-typ: modulen ger elementslingorna i `fem/assembly.rs`,
-//! `steps/nlgeom.rs` och `steps/explicit.rs` ett tillstånd per element
-//! (`Prepared::activity`) som de frågar via `internal_force`, `output` och
-//! `interaction_off`. `steps::run` anropar `begin_analysis` och `begin_step`.
+//! No step type of its own: the module gives the element loops in `fem/assembly.rs`,
+//! `steps/nlgeom.rs` and `steps/explicit.rs` a state per element
+//! (`Prepared::activity`) that they query via `internal_force`, `output` and
+//! `interaction_off`. `steps::run` calls `begin_analysis` and `begin_step`.
 //!
-//! *MODEL CHANGE, REMOVE (implicit analys):
-//! - elementets nodkrafter vid stegets början sparas och rampas linjärt ned
-//!   till noll under steget (borttagningssteget); därefter bidrar elementet
-//!   inte alls. Inga elementberäkningar görs för borttagna element.
-//! - noder som bara hör till borttagna element står still (elementet ger en
-//!   försumbar diagonalstyvhet ε·K₀ᵢᵢ, ε = 1e-12, så att ekvationssystemet inte
-//!   blir singulärt; residualen påverkas inte).
-//! - borttagna element har ingen utdata, och fördelade laster på dem är
-//!   inaktiva.
+//! *MODEL CHANGE, REMOVE (implicit analysis):
+//! - the element's nodal forces at the start of the step are stored and ramped linearly down
+//!   to zero during the step (the removal step); after that the element
+//!   does not contribute at all. No element computations are done for removed elements.
+//! - nodes that only belong to removed elements stay still (the element gives a
+//!   negligible diagonal stiffness ε·K₀ᵢᵢ, ε = 1e-12, so that the system of equations does not
+//!   become singular; the residual is not affected).
+//! - removed elements have no output, and distributed loads on them are
+//!   inactive.
 //!
-//! *MODEL CHANGE, ADD=STRAIN FREE (standard): elementet blir fullt aktivt
-//! direkt i ett "glödgat" tillstånd (noll spänning, töjning och plastisk
-//! töjning) med konfigurationen vid stegets början som ny referens: elementet
-//! ser förskjutningen sedan återaktiveringen och, vid NLGEOM, de aktuella
-//! nodlägena som referenskoordinater.
+//! *MODEL CHANGE, ADD=STRAIN FREE (default): the element becomes fully active
+//! directly in an "annealed" state (zero stress, strain and plastic
+//! strain) with the configuration at the start of the step as the new reference: the element
+//! sees the displacement since the reactivation and, with NLGEOM, the current
+//! nodal positions as reference coordinates.
 //!
-//! *MODEL CHANGE, ADD=WITH STRAIN: glödgat tillstånd, men elementet ser
-//! uₑ = α(t)·u (u = förskjutningen från referensen, normalt den ursprungliga
-//! konfigurationen) där α rampas linjärt från 0 till 1 under steget, och
-//! elementets styvhet multipliceras med α. Efter steget är
-//! töjningarna de totala.
+//! *MODEL CHANGE, ADD=WITH STRAIN: annealed state, but the element sees
+//! uₑ = α(t)·u (u = the displacement from the reference, normally the original
+//! configuration) where α is ramped linearly from 0 to 1 during the step, and
+//! the element stiffness is multiplied by α. After the step the
+//! strains are the total ones.
 //!
-//! *MODEL CHANGE, TYPE=CONTACT PAIR, REMOVE/ADD: kontaktparet (slavyta,
-//! masteryta) bidrar inte så länge det är borttaget.
+//! *MODEL CHANGE, TYPE=CONTACT PAIR, REMOVE/ADD: the contact pair (slave surface,
+//! master surface) does not contribute as long as it is removed.
 //!
-//! Elementborttagning vid skada (duktil skada med *DAMAGE EVOLUTION):
-//! Som standard tas elementet bort när skadan D når Dmax = 1 i
-//! någon integrationspunkt (ELEMENT DELETION=YES; med ELEMENT DELETION=NO är
-//! Dmax = 0,99 och elementet blir kvar). MAX DEGRADATION= ger Dmax. Med
-//! borttagning begränsas D till min(Dmax, 0,99999). Kontrollen
-//! görs på det godkända tillståndet, så elementet tas bort efter inkrementet
-//! där D når Dmax. Ett borttaget element ger ingen kraft (bara ε-styvheten) och
-//! skriver STATUS = 0 (redan i inkrementet där D når Dmax); aktiva element
-//! med skadeutveckling skriver STATUS = 1. Spänningen i borttagna element
-//! redovisas som noll från och med inkrementet efter borttagningen.
+//! Element deletion on damage (ductile damage with *DAMAGE EVOLUTION):
+//! By default the element is removed when the damage D reaches Dmax = 1 at
+//! any integration point (ELEMENT DELETION=YES; with ELEMENT DELETION=NO
+//! Dmax = 0.99 and the element stays). MAX DEGRADATION= gives Dmax. With
+//! deletion D is limited to min(Dmax, 0.99999). The check
+//! is made on the accepted state, so the element is removed after the increment
+//! where D reaches Dmax. A removed element gives no force (only the ε stiffness) and
+//! writes STATUS = 0 (already in the increment where D reaches Dmax); active elements
+//! with damage evolution write STATUS = 1. The stress in removed elements
+//! is reported as zero from the increment after the removal onwards.
 
 use super::api::StepType;
 use crate::elements::{ElemCtx, ElemResponse, IpField};
@@ -54,16 +54,16 @@ use std::sync::RwLock;
 
 pub static STEP_TYPES: &[&dyn StepType] = &[];
 
-/// Relativ styvhet för noder som bara hör till borttagna element.
+/// Relative stiffness for nodes that only belong to removed elements.
 const EPS: f64 = 1e-12;
 
 thread_local! {
     static DMAX: Cell<Option<f64>> = const { Cell::new(None) };
 }
 
-/// Övre gräns för skadan D i det element som beräknas just nu (sätts runt
-/// elementanropet för element med *SECTION CONTROLS/elementborttagning), eller
-/// `None` (materialets standard, 0,99).
+/// Upper limit for the damage D in the element currently being computed (set around
+/// the element call for elements with *SECTION CONTROLS/element deletion), or
+/// `None` (the material default, 0.99).
 pub fn max_degradation() -> Option<f64> {
     DMAX.with(|d| d.get())
 }
@@ -72,17 +72,17 @@ pub fn max_degradation() -> Option<f64> {
 enum Mode {
     #[default]
     Active,
-    /// Borttaget: nodkrafter vid borttagningen, rampas ned från `t0` under `period`.
+    /// Removed: nodal forces at removal, ramped down from `t0` over `period`.
     Removed { fr: Vec<f64>, t0: f64, period: f64 },
-    /// Återaktiverat utan töjning: referensförskjutning och (NLGEOM) referenskoordinater.
+    /// Reactivated without strain: reference displacement and (NLGEOM) reference coordinates.
     StrainFree { uref: Vec<f64>, xref: Option<Vec<[f64; 3]>> },
-    /// Återaktiverat med töjning: uₑ = α(t)(u − uref), α från 0 (vid t0) till 1.
+    /// Reactivated with strain: uₑ = α(t)(u − uref), α from 0 (at t0) to 1.
     WithStrain { uref: Vec<f64>, xref: Option<Vec<[f64; 3]>>, t0: f64, period: f64 },
 }
 
 #[derive(Debug, Clone, Copy)]
 struct Deletion {
-    /// Elementet tas bort när D når `dmax`.
+    /// The element is removed when D reaches `dmax`.
     delete: bool,
     dmax: f64,
 }
@@ -91,31 +91,31 @@ struct Deletion {
 struct Inner {
     modes: Vec<Mode>,
     deletion: Vec<Option<Deletion>>,
-    /// Diagonal skala ε·K₀ᵢᵢ per element (beräknas vid behov).
+    /// Diagonal scale ε·K₀ᵢᵢ per element (computed when needed).
     eps: Vec<Option<Vec<f64>>>,
-    /// Borttagna kontaktpar (slavyta, masteryta) med versaler.
+    /// Removed contact pairs (slave surface, master surface) in upper case.
     contact_off: Vec<(String, String)>,
 }
 
-/// Elementens tillstånd under analysen (fält i `Prepared`).
+/// Element states during the analysis (field in `Prepared`).
 #[derive(Default)]
 pub struct Activity {
     any: AtomicBool,
     inner: RwLock<Inner>,
     deleted: RwLock<Vec<AtomicBool>>,
     checked: RwLock<Vec<AtomicU64>>,
-    /// Explicit analys: elementet tas bort först när alla integrationspunkter
-    /// nått Dmax (sätts av `steps/explicit.rs`, `set_explicit_rule`).
+    /// Explicit analysis: the element is removed only when all integration points
+    /// have reached Dmax (set by `steps/explicit.rs`, `set_explicit_rule`).
     all_ips: AtomicBool,
 }
 
 impl Activity {
-    /// Något element är borttaget, återaktiverat eller kan tas bort.
+    /// Some element is removed, reactivated or can be removed.
     pub fn any(&self) -> bool {
         self.any.load(Ordering::Relaxed)
     }
 
-    /// Elementet är borttaget (*MODEL CHANGE eller skada).
+    /// The element is removed (*MODEL CHANGE or damage).
     pub fn is_removed(&self, e: usize) -> bool {
         if !self.any() {
             return false;
@@ -127,13 +127,13 @@ impl Activity {
         matches!(inner.modes.get(e), Some(Mode::Removed { .. }))
     }
 
-    /// Elementet är borttaget på grund av skada.
+    /// The element is removed because of damage.
     pub fn is_deleted(&self, e: usize) -> bool {
         self.deleted.read().unwrap().get(e).is_some_and(|d| d.load(Ordering::Relaxed))
     }
 
-    /// Borttagningsregeln i explicit analys: ett kontinuumelement tas bort när
-    /// skadan nått Dmax i alla integrationspunkter; implicit analys: i någon punkt.
+    /// The deletion rule in explicit analysis: a continuum element is removed when
+    /// the damage has reached Dmax at all integration points; implicit analysis: at any point.
     pub fn set_explicit_rule(&self, on: bool) {
         self.all_ips.store(on, Ordering::Relaxed);
     }
@@ -142,7 +142,7 @@ impl Activity {
         self.all_ips.load(Ordering::Relaxed)
     }
 
-    /// Antal element som tagits bort på grund av skada.
+    /// Number of elements removed because of damage.
     pub fn n_deleted(&self) -> usize {
         self.deleted.read().unwrap().iter().filter(|d| d.load(Ordering::Relaxed)).count()
     }
@@ -152,25 +152,25 @@ fn flag_value(kw: &RawKeyword, key: &str, default: bool) -> Result<bool> {
     kw.flag(key, default)
 }
 
-/// Skadeutveckling och *SECTION CONTROLS per element.
+/// Damage evolution and *SECTION CONTROLS per element.
 fn deletion_settings(m: &FeModel) -> Result<Vec<Option<Deletion>>> {
     let mut per_section: Vec<Option<Deletion>> = Vec::with_capacity(m.sections.len());
     for s in &m.sections {
         let damage = s.material_index.is_some_and(|i| m.materials[i].behavior("DAMAGE EVOLUTION").is_some());
-        // *TENSILE FAILURE, ELEMENT DELETION=YES (standard): materialet skriver SDEG = 1 (materials/eos.rs)
+        // *TENSILE FAILURE, ELEMENT DELETION=YES (default): the material writes SDEG = 1 (materials/eos.rs)
         let damage = damage || s.material_index.is_some_and(|i| m.materials[i].behavior("TENSILE FAILURE").is_some_and(|t| !matches!(t.param_upper("ELEMENT DELETION").as_deref(), Some("NO"))));
         let controls = match s.raw.param("CONTROLS") {
             Some(name) => {
                 let name = name.trim().to_uppercase();
                 let Some(sc) = m.extra.iter().find(|k| k.name == "SECTION CONTROLS" && k.param_upper("NAME").as_deref() == Some(name.as_str())) else {
-                    return s.raw.err(format!("*SECTION CONTROLS, NAME={name} saknas"));
+                    return s.raw.err(format!("*SECTION CONTROLS, NAME={name} is missing"));
                 };
                 Some(sc)
             }
             None => None,
         };
         let mut d = None;
-        // kohesiva element sköter sin borttagning själva (elements/cohesive.rs)
+        // cohesive elements handle their own deletion (elements/cohesive.rs)
         let cohesive = s.raw.name == "COHESIVE SECTION";
         if damage && !cohesive {
             let delete = match controls {
@@ -179,17 +179,17 @@ fn deletion_settings(m: &FeModel) -> Result<Vec<Option<Deletion>>> {
             };
             let dmax = match controls.and_then(|sc| sc.param("MAX DEGRADATION")) {
                 Some(v) => {
-                    let x = crate::fem::model::parse_f64(v).ok_or_else(|| FemError(format!("{}: ogiltigt MAX DEGRADATION={v}", controls.unwrap().location())))?;
+                    let x = crate::fem::model::parse_f64(v).ok_or_else(|| FemError(format!("{}: invalid MAX DEGRADATION={v}", controls.unwrap().location())))?;
                     if !(x > 0.0 && x <= 1.0) {
-                        return controls.unwrap().err("MAX DEGRADATION ska ligga i (0, 1]");
+                        return controls.unwrap().err("MAX DEGRADATION must lie in (0, 1]");
                     }
                     x
                 }
                 None if delete => 1.0,
                 None => 0.99,
             };
-            // med borttagning begränsas D till högst 0,99999 (spänningen 1e-5·σ̄
-            // i inkrementet där elementet tas bort)
+            // with deletion D is limited to at most 0.99999 (the stress 1e-5·σ̄
+            // in the increment where the element is removed)
             let dmax = if delete { dmax.min(0.99999) } else { dmax };
             d = Some(Deletion { delete, dmax });
         }
@@ -198,7 +198,7 @@ fn deletion_settings(m: &FeModel) -> Result<Vec<Option<Deletion>>> {
     Ok(m.elements.iter().map(|e| e.section.and_then(|s| per_section[s])).collect())
 }
 
-/// Nollställer tillståndet vid analysens början och läser elementborttagningen.
+/// Resets the state at the start of the analysis and reads the element deletion.
 pub fn begin_analysis(p: &Prepared) -> Result<()> {
     let m = p.model;
     let ne = m.elements.len();
@@ -213,7 +213,7 @@ pub fn begin_analysis(p: &Prepared) -> Result<()> {
     Ok(())
 }
 
-/// Elementen i *MODEL CHANGE (index lagrade av nyckelordshanteraren som "#index").
+/// The elements in *MODEL CHANGE (indices stored by the keyword handler as "#index").
 fn kw_elements(kw: &RawKeyword) -> Vec<usize> {
     kw.data.iter().flat_map(|d| d.fields.iter()).filter_map(|f| f.trim().strip_prefix('#').and_then(|s| s.parse().ok())).collect()
 }
@@ -226,14 +226,14 @@ fn ctx_with_x<'a>(ctx: &ElemCtx<'a>, x: &Option<Vec<[f64; 3]>>) -> ElemCtx<'a> {
     c
 }
 
-/// *MODEL CHANGE i steget: tar bort och återaktiverar element och kontaktpar.
+/// *MODEL CHANGE in the step: removes and reactivates elements and contact pairs.
 pub fn begin_step(p: &Prepared, step: &StepDef, state: &mut SolutionState) -> Result<()> {
     let kws: Vec<&RawKeyword> = step.extra.iter().filter(|k| k.name == "MODEL CHANGE").collect();
     if kws.is_empty() {
         return Ok(());
     }
     if step.perturbation {
-        return kws[0].err("*MODEL CHANGE kan inte användas i ett perturbationssteg");
+        return kws[0].err("*MODEL CHANGE cannot be used in a perturbation step");
     }
     let m = p.model;
     let period = super::newton::Controls::from_procedure(step.procedure.as_ref(), step.max_increments).map(|c| c.period).unwrap_or(1.0);
@@ -244,7 +244,7 @@ pub fn begin_step(p: &Prepared, step: &StepDef, state: &mut SolutionState) -> Re
         let remove = kw.has("REMOVE");
         let add = kw.has("ADD");
         if remove == add {
-            return kw.err("ange REMOVE eller ADD");
+            return kw.err("specify REMOVE or ADD");
         }
         if ty == "CONTACT PAIR" {
             for d in kw.records() {
@@ -253,12 +253,12 @@ pub fn begin_step(p: &Prepared, step: &StepDef, state: &mut SolutionState) -> Re
                     continue;
                 }
                 if f.len() < 2 {
-                    return kw.err_at(d.line, "skriv slavyta, masteryta");
+                    return kw.err_at(d.line, "write slave surface, master surface");
                 }
                 let pair = (f[0].clone(), f[1].clone());
                 let known = p.interactions.iter().any(|it| contact_pair_of(&it.name()).is_some_and(|q| q == pair));
                 if !known {
-                    return kw.err_at(d.line, format!("kontaktparet {}, {} finns inte", f[0], f[1]));
+                    return kw.err_at(d.line, format!("contact pair {}, {} does not exist", f[0], f[1]));
                 }
                 inner.contact_off.retain(|q| *q != pair);
                 if remove {
@@ -268,17 +268,17 @@ pub fn begin_step(p: &Prepared, step: &StepDef, state: &mut SolutionState) -> Re
             continue;
         }
         if ty != "ELEMENT" {
-            return kw.err(format!("TYPE={ty} stöds inte (ELEMENT, CONTACT PAIR)"));
+            return kw.err(format!("TYPE={ty} is not supported (ELEMENT, CONTACT PAIR)"));
         }
         let with_strain = match kw.param_upper("ADD").as_deref() {
             None | Some("") | Some("STRAIN FREE") => false,
             Some("WITH STRAIN") => true,
-            Some(o) => return kw.err(format!("ADD={o} stöds inte (STRAIN FREE, WITH STRAIN)")),
+            Some(o) => return kw.err(format!("ADD={o} is not supported (STRAIN FREE, WITH STRAIN)")),
         };
         for e in kw_elements(kw) {
             let el = &m.elements[e];
             if crate::elements::rigid::is_rigid(el.etype) {
-                return kw.err(format!("stela element kan inte tas bort ({})", m.elem_name(e)));
+                return kw.err(format!("rigid elements cannot be removed ({})", m.elem_name(e)));
             }
             let ue = p.gather(e, &state.u);
             let cur = std::mem::take(&mut inner.modes[e]);
@@ -286,7 +286,7 @@ pub fn begin_step(p: &Prepared, step: &StepDef, state: &mut SolutionState) -> Re
                 inner.modes[e] = match cur {
                     Mode::Removed { .. } => cur,
                     _ => {
-                        // nodkrafterna mot omgivningen vid stegets början
+                        // nodal forces towards the surroundings at the start of the step
                         let ctx0 = p.ctx(e, nlgeom, state.time, 0.0);
                         let (ctx, ue_e) = match &cur {
                             Mode::StrainFree { uref, xref } | Mode::WithStrain { uref, xref, .. } => (ctx_with_x(&ctx0, xref), ue.iter().zip(uref).map(|(a, b)| a - b).collect()),
@@ -299,9 +299,9 @@ pub fn begin_step(p: &Prepared, step: &StepDef, state: &mut SolutionState) -> Re
                             let mut sn = Vec::new();
                             el.etype.internal_force(&ctx, &ue_e, &zero, &state.elem_state[e], &mut sn, false).map_err(|err| FemError(format!("{}: {err}", m.elem_name(e))))?.fint
                         };
-                        // nettokraften mot omgivningen: de fördelade lasterna på elementet
-                        // försvinner med det (noder som bara hör till borttagna element får
-                        // då ingen kraft)
+                        // net force towards the surroundings: the distributed loads on the element
+                        // disappear with it (nodes that only belong to removed elements then get
+                        // no force)
                         for l in state.dloads.values().filter(|l| l.elem == e) {
                             let fe = el.etype.distributed_load(&ctx, l, &ue).map_err(|err| FemError(format!("{}: {err}", m.elem_name(e))))?;
                             for (a, v) in fr.iter_mut().zip(fe) {
@@ -313,16 +313,16 @@ pub fn begin_step(p: &Prepared, step: &StepDef, state: &mut SolutionState) -> Re
                 };
             } else {
                 if !matches!(cur, Mode::Removed { .. }) {
-                    // redan aktivt: ingen ändring (med varning)
+                    // already active: no change (with a warning)
                     inner.modes[e] = cur;
                     continue;
                 }
-                // glödgat tillstånd
+                // annealed state
                 let ctx = p.ctx(e, false, 0.0, 0.0);
                 if ctx.material.is_some() {
                     state.elem_state[e] = el.etype.init_state(&ctx).map_err(|err| FemError(format!("{}: {err}", m.elem_name(e))))?;
                 }
-                // strain free: aktuell konfiguration är ny referens
+                // strain free: the current configuration is the new reference
                 let (uref, xref) = if with_strain {
                     (vec![0.0; ue.len()], None)
                 } else {
@@ -333,7 +333,7 @@ pub fn begin_step(p: &Prepared, step: &StepDef, state: &mut SolutionState) -> Re
             }
         }
     }
-    // noder som bara hör till borttagna element får ingen kraft
+    // nodes that only belong to removed elements get no force
     let mut alive = vec![false; m.nodes.len()];
     for (e, el) in m.elements.iter().enumerate() {
         if !matches!(inner.modes[e], Mode::Removed { .. }) {
@@ -355,7 +355,7 @@ pub fn begin_step(p: &Prepared, step: &StepDef, state: &mut SolutionState) -> Re
     Ok(())
 }
 
-/// (slavyta, masteryta) för ett kontaktpar ur interaktionens namn.
+/// (slave surface, master surface) for a contact pair from the interaction name.
 fn contact_pair_of(name: &str) -> Option<(String, String)> {
     let rest = name.strip_prefix("*CONTACT PAIR ")?;
     let pair = rest.split(" (").next()?;
@@ -363,7 +363,7 @@ fn contact_pair_of(name: &str) -> Option<(String, String)> {
     Some((a.trim().to_uppercase(), b.trim().to_uppercase()))
 }
 
-/// Interaktionen är ett borttaget kontaktpar.
+/// The interaction is a removed contact pair.
 pub fn interaction_off(p: &Prepared, name: &str) -> bool {
     if !p.activity.any() {
         return false;
@@ -375,7 +375,7 @@ pub fn interaction_off(p: &Prepared, name: &str) -> bool {
     contact_pair_of(name).is_some_and(|q| inner.contact_off.contains(&q))
 }
 
-/// Elementet tar inte emot fördelade laster (borttaget).
+/// The element does not receive distributed loads (removed).
 pub fn load_off(p: &Prepared, e: usize) -> bool {
     p.activity.is_removed(e)
 }
@@ -389,8 +389,8 @@ fn hash(v: &[f64]) -> u64 {
     h ^ (v.len() as u64)
 }
 
-/// Största skada (SDEG) per integrationspunkt: alla sektionspunkter i någon
-/// integrationspunkt ≥ dmax.
+/// Largest damage (SDEG) per integration point: all section points at some
+/// integration point ≥ dmax.
 fn fully_damaged(fields: &[IpField], dmax: f64, all: bool) -> bool {
     let Some(f) = fields.iter().find(|f| f.name == "SDEG") else { return false };
     let mut per_ip: std::collections::BTreeMap<usize, bool> = std::collections::BTreeMap::new();
@@ -406,7 +406,7 @@ fn fully_damaged(fields: &[IpField], dmax: f64, all: bool) -> bool {
     }
 }
 
-/// ε·K₀ᵢᵢ för elementet (elastisk styvhet i ursprungsläget).
+/// ε·K₀ᵢᵢ for the element (elastic stiffness in the original position).
 fn eps_diag(p: &Prepared, e: usize, ctx: &ElemCtx, n: usize) -> Vec<f64> {
     if let Some(Some(d)) = p.activity.inner.read().unwrap().eps.get(e) {
         return d.clone();
@@ -452,8 +452,8 @@ fn ramp(time: f64, t0: f64, period: f64) -> f64 {
     }
 }
 
-/// Elementets bidrag när det är borttaget, återaktiverat eller kan tas bort
-/// vid skada; `None` = vanligt element (anroparen räknar själv).
+/// The element's contribution when it is removed, reactivated or can be removed
+/// on damage; `None` = ordinary element (the caller computes it itself).
 #[allow(clippy::too_many_arguments)]
 pub fn internal_force(
     p: &Prepared,
@@ -483,7 +483,7 @@ pub fn internal_force(
     if matches!(mode, Mode::Active) && del.is_none() {
         return None;
     }
-    // elementborttagning: kontrolleras på det godkända tillståndet
+    // element deletion: checked on the accepted state
     if let Some(d) = del.filter(|d| d.delete) {
         let h = hash(state_old);
         let checked = act.checked.read().unwrap();
@@ -545,8 +545,8 @@ pub fn internal_force(
     })
 }
 
-/// Elementets utdata när det är borttaget, återaktiverat eller kan tas bort;
-/// `None` = vanligt element.
+/// The element's output when it is removed, reactivated or can be removed;
+/// `None` = ordinary element.
 pub fn output(p: &Prepared, e: usize, ctx: &ElemCtx, ue: &[f64], state: &[f64]) -> Option<Result<Vec<IpField>>> {
     let act = &p.activity;
     if !act.any() {
@@ -561,7 +561,7 @@ pub fn output(p: &Prepared, e: usize, ctx: &ElemCtx, ue: &[f64], state: &[f64]) 
         return None;
     }
     if matches!(mode, Mode::Removed { .. }) {
-        // borttagna element har ingen utdata
+        // removed elements have no output
         return Some(Ok(Vec::new()));
     }
     let res = match &mode {
@@ -574,12 +574,12 @@ pub fn output(p: &Prepared, e: usize, ctx: &ElemCtx, ue: &[f64], state: &[f64]) 
     };
     let Some(d) = del.filter(|d| d.delete) else { return Some(res) };
     Some(res.map(|mut fields| {
-        // borttaget vid skada: STATUS = 0 från inkrementet där D når Dmax,
-        // spänningen noll från och med nästa inkrement
+        // removed on damage: STATUS = 0 from the increment where D reaches Dmax,
+        // the stress zero from the next increment onwards
         let deleted = act.is_deleted(e);
         let gone = deleted || fully_damaged(&fields, d.dmax, act.rule_all());
         let status = if gone { 0.0 } else { 1.0 };
-        // STATUS gäller hela elementet (punkt 0)
+        // STATUS applies to the whole element (point 0)
         let mut st = IpField::new("STATUS", &["STATUS"]);
         if deleted {
             for f in fields.iter_mut().filter(|f| f.name == "S") {

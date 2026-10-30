@@ -1,38 +1,38 @@
-//! Kohesiva element med traction–separation: COH2D4 (plant),
-//! COHAX4 (axisymmetriskt), COH3D8 och COH3D6, med *COHESIVE SECTION,
-//! RESPONSE=TRACTION SEPARATION och materialet i `materials/cohesive.rs`.
+//! Cohesive elements with traction–separation: COH2D4 (planar),
+//! COHAX4 (axisymmetric), COH3D8 and COH3D6, with *COHESIVE SECTION,
+//! RESPONSE=TRACTION SEPARATION and the material in `materials/cohesive.rs`.
 //!
-//! Nodordning: undersidans noder först, sedan översidans (COH2D4/COHAX4:
-//! 1–2 under, 4 över 1 och 3 över 2; COH3D8: 1–4 under, 5–8 över;
-//! COH3D6: 1–3 under, 4–6 över). Mittytan är medelvärdet av under- och
-//! översidan. Formulering:
+//! Node order: the bottom face nodes first, then the top face (COH2D4/COHAX4:
+//! 1–2 bottom, 4 above 1 and 3 above 2; COH3D8: 1–4 bottom, 5–8 top;
+//! COH3D6: 1–3 bottom, 4–6 top). The midsurface is the mean of the bottom and
+//! top faces. Formulation:
 //!
-//! - Integrationspunkterna ligger i noderna (Newton–Cotes) med vikterna
-//!   ∫Nᵢ dA över mittytan i referensläget (2πr ingår för COHAX4).
-//! - Normalseparationen δn i punkt i är (xᵢ,över − xᵢ,under)·n med normalen n
-//!   till mittytan i punkten.
-//! - Skjuvseparationerna är antagna (som MITC-skal): COH2D4/COHAX4 har en
-//!   konstant skjuvseparation från elementets mitt; COH3D8 tar den
-//!   kovarianta komponenten längs ξ i (0, ηᵢ) och längs η i (ξᵢ, 0); COH3D6
-//!   knyter de kovarianta komponenterna i kanternas mittpunkter som MITC3.
-//!   Komponenten längs gᵢ är Δx·gᵢ med separationen Δx och mittytans
-//!   tangent gᵢ i knytpunkten, så elementet är rotationsoberoende
-//!   (skjuvningen ger ett moment med tjockleken h som hävarm).
-//! - Lokala riktningar: 3 = normalen, 1 = globala X projicerad på mittytan
-//!   (Z om X ligger inom 0,1° från normalen), 2 = n × 1. Vid NLGEOM roteras
-//!   riktningarna med rotationen ur polärdekompositionen av mittytans
-//!   deformationsgradient i punkten; för plana element är 1 = tangenten.
-//! - Separationerna mäts från referensläget (δ = δ(x) − δ(X)) och
-//!   töjningarna är nominella, ε = δ/T0 (S, E; LE vid NLGEOM).
-//! - Utan NLGEOM är δ linjär i u (derivatan i referensläget), med NLGEOM
-//!   räknas δ(x) i aktuellt läge med vikterna i referensläget; kraft och
-//!   tangent (med geometriska termen Σ tₖ ∂²δₖ/∂x²) fås exakt med
-//!   hyperduala tal (`kinematics/hyperdual.rs`).
+//! - The integration points lie at the nodes (Newton–Cotes) with the weights
+//!   ∫Nᵢ dA over the midsurface in the reference position (2πr included for COHAX4).
+//! - The normal separation δn at point i is (xᵢ,top − xᵢ,bottom)·n with the normal n
+//!   to the midsurface at the point.
+//! - The shear separations are assumed (like MITC shells): COH2D4/COHAX4 have a
+//!   constant shear separation from the element center; COH3D8 takes the
+//!   covariant component along ξ at (0, ηᵢ) and along η at (ξᵢ, 0); COH3D6
+//!   ties the covariant components at the edge midpoints like MITC3.
+//!   The component along gᵢ is Δx·gᵢ with the separation Δx and the midsurface
+//!   tangent gᵢ at the tying point, so the element is rotation-independent
+//!   (the shear gives a moment with the thickness h as the lever arm).
+//! - Local directions: 3 = the normal, 1 = global X projected onto the midsurface
+//!   (Z if X lies within 0.1° of the normal), 2 = n × 1. With NLGEOM the
+//!   directions are rotated with the rotation from the polar decomposition of the midsurface
+//!   deformation gradient at the point; for plane elements 1 = the tangent.
+//! - The separations are measured from the reference position (δ = δ(x) − δ(X)) and
+//!   the strains are nominal, ε = δ/T0 (S, E; LE with NLGEOM).
+//! - Without NLGEOM δ is linear in u (the derivative in the reference position), with NLGEOM
+//!   δ(x) is computed in the current position with the weights in the reference position; force and
+//!   tangent (with the geometric term Σ tₖ ∂²δₖ/∂x²) are obtained exactly with
+//!   hyper-dual numbers (`kinematics/hyperdual.rs`).
 //!
-//! Utdata: S (S22, S12 i 2D; S33, S13, S23 i 3D), E eller LE, SDEG,
-//! initieringskriteriet (MAXSCRT, QUADSCRT, MAXECRT, QUADECRT) och STATUS
-//! (0 när alla punkter har D = 1 och ingen är i tryck; elementet tas då bort
-//! och töjningen redovisas som vid borttagningen).
+//! Output: S (S22, S12 in 2D; S33, S13, S23 in 3D), E or LE, SDEG,
+//! the initiation criterion (MAXSCRT, QUADSCRT, MAXECRT, QUADECRT) and STATUS
+//! (0 when all points have D = 1 and none is in compression; the element is then removed
+//! and the strain is reported as at the removal).
 
 use super::api::{ElemCtx, ElemResponse, ElementType, Family, IpField};
 use crate::fem::dof::{Dof, U1, U2, U3};
@@ -43,13 +43,13 @@ use crate::model::{fail, Result};
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 enum Shape {
-    /// Plant tvånodigt mittlinjeelement (COH2D4).
+    /// Planar two-node midline element (COH2D4).
     Line,
-    /// Axisymmetriskt (COHAX4).
+    /// Axisymmetric (COHAX4).
     LineAxi,
-    /// Fyrhörning (COH3D8).
+    /// Quadrilateral (COH3D8).
     Quad,
-    /// Triangel (COH3D6).
+    /// Triangle (COH3D6).
     Tri,
 }
 
@@ -125,8 +125,8 @@ fn interp<const M: usize>(c: &[f64], v: &[V<M>]) -> V<M> {
     r
 }
 
-/// Referensdata per integrationspunkt: lokala riktningar e1, e2 i
-/// referensläget uttryckta i tangenterna (e = α G1 + β G2).
+/// Reference data per integration point: local directions e1, e2 in
+/// the reference position expressed in the tangents (e = α G1 + β G2).
 #[derive(Debug, Clone, Copy)]
 struct IpRef {
     e1: [f64; 3],
@@ -134,7 +134,7 @@ struct IpRef {
     e2c: (f64, f64),
 }
 
-/// Globala X projicerad på planet med normalen n (Z om X ligger inom 0,1° från n).
+/// Global X projected onto the plane with the normal n (Z if X lies within 0.1° of n).
 fn default_dir(n: [f64; 3]) -> [f64; 3] {
     let proj = |a: [f64; 3]| {
         let d = a[0] * n[0] + a[1] * n[1] + a[2] * n[2];
@@ -149,7 +149,7 @@ fn default_dir(n: [f64; 3]) -> [f64; 3] {
     [v[0] / l, v[1] / l, v[2] / l]
 }
 
-/// Koefficienterna (α, β) i e = α g1 + β g2 för en vektor e i tangentplanet.
+/// The coefficients (α, β) in e = α g1 + β g2 for a vector e in the tangent plane.
 fn coef(e: [f64; 3], g1: [f64; 3], g2: [f64; 3]) -> (f64, f64) {
     let d = |a: [f64; 3], b: [f64; 3]| a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
     let (a11, a12, a22) = (d(g1, g1), d(g1, g2), d(g2, g2));
@@ -179,7 +179,7 @@ impl Cohesive {
             Shape::Tri => 3,
         }
     }
-    /// (undersida, översida) som elementnodindex, parvis.
+    /// (bottom, top) as element node indices, pairwise.
     fn pairs(&self) -> (&'static [usize], &'static [usize]) {
         match self.shape {
             Shape::Line | Shape::LineAxi => (&[0, 1], &[3, 2]),
@@ -193,7 +193,7 @@ impl Cohesive {
         match m.cohesive() {
             Some(l) => Ok(l),
             None => fail(format!(
-                "element {} ({}): *COHESIVE SECTION, RESPONSE=TRACTION SEPARATION kräver *ELASTIC, TYPE=TRACTION (materialet är {})",
+                "element {} ({}): *COHESIVE SECTION, RESPONSE=TRACTION SEPARATION requires *ELASTIC, TYPE=TRACTION (the material is {})",
                 ctx.label,
                 self.name,
                 m.name()
@@ -201,7 +201,7 @@ impl Cohesive {
         }
     }
 
-    /// Referensdata: vikter, lokala riktningar och separationerna i referensläget.
+    /// Reference data: weights, local directions and the separations in the reference position.
     fn reference(&self, ctx: &ElemCtx) -> Result<(Vec<f64>, Vec<IpRef>, Vec<[f64; 3]>)> {
         let sec = ctx.section(self.name)?;
         let (_, width, _) = section_values(sec);
@@ -216,7 +216,7 @@ impl Cohesive {
                 let g = [mid[1][0] - mid[0][0], mid[1][1] - mid[0][1], 0.0];
                 let l = nrm(g);
                 if !(l > 0.0) {
-                    return fail(format!("element {} ({}): mittlinjen har längden noll", ctx.label, self.name));
+                    return fail(format!("element {} ({}): the midline has zero length", ctx.label, self.name));
                 }
                 for a in 0..2 {
                     if self.shape == Shape::LineAxi {
@@ -229,7 +229,7 @@ impl Cohesive {
                 }
             }
             Shape::Quad => {
-                // vikter ∫Nᵢ dA med 2×2 Gauss (exakt)
+                // weights ∫Nᵢ dA with 2×2 Gauss (exact)
                 let gp = 1.0 / 3f64.sqrt();
                 let mut wi = [0.0; 4];
                 for &(a, b) in &QNAT {
@@ -268,7 +268,7 @@ impl Cohesive {
         let c = crate::elements::common::cross(g1, g2);
         let l = (c[0] * c[0] + c[1] * c[1] + c[2] * c[2]).sqrt();
         if !(l > 0.0) {
-            return fail(format!("element {} ({}): mittytan är urartad", ctx.label, self.name));
+            return fail(format!("element {} ({}): the midsurface is degenerate", ctx.label, self.name));
         }
         let n = [c[0] / l, c[1] / l, c[2] / l];
         let e1 = default_dir(n);
@@ -276,8 +276,8 @@ impl Cohesive {
         Ok(IpRef { e1, e1c: coef(e1, g1, g2), e2c: coef(e2, g1, g2) })
     }
 
-    /// Separationerna (n, s, t) i varje integrationspunkt för nodlägena `x`
-    /// (utan referensläget dragit ifrån).
+    /// The separations (n, s, t) at each integration point for the nodal positions `x`
+    /// (without the reference position subtracted).
     fn seps<const M: usize>(&self, x: &[V<M>], refs: &[IpRef]) -> Vec<V<M>> {
         let (bot, top) = self.pairs();
         let mid: Vec<V<M>> = bot.iter().zip(top).map(|(&b, &t)| scl(&add(&x[b], &x[t]), 0.5)).collect();
@@ -298,7 +298,7 @@ impl Cohesive {
                     let g2 = interp(&de, &mid);
                     let n = unit(&cross(&g1, &g2));
                     let dn = dot(&dd[i], &n);
-                    // knytpunkter: (0, η) för komponenten längs ξ, (ξ, 0) för η
+                    // tying points: (0, η) for the component along ξ, (ξ, 0) for η
                     let (na, dxa, _) = qshape(0.0, eta);
                     let ga = interp(&dxa, &mid);
                     let ya = dot(&interp(&na, &dd), &ga);
@@ -333,15 +333,15 @@ impl Cohesive {
         }
     }
 
-    /// Integrationspunkternas separationer δ och derivator: linjärt (B i
-    /// referensläget, δ = B u) eller vid NLGEOM i aktuellt läge med Hessian.
+    /// The separations δ at the integration points and derivatives: linear (B in
+    /// the reference position, δ = B u) or with NLGEOM in the current position with the Hessian.
     #[allow(clippy::type_complexity)]
     fn kinematics(&self, ctx: &ElemCtx, u: &[f64], refs: &[IpRef], d0: &[[f64; 3]]) -> (Vec<[f64; 3]>, Vec<[Vec<f64>; 3]>, Option<Vec<[Vec<f64>; 3]>>) {
         let nd = self.nd();
         let ndof = self.nn() * nd;
         let nip = self.nip();
         if !ctx.nlgeom {
-            // B = ∂δ/∂x i referensläget, en riktning i taget
+            // B = ∂δ/∂x in the reference position, one direction at a time
             let mut b: Vec<[Vec<f64>; 3]> = (0..nip).map(|_| [vec![0.0; ndof], vec![0.0; ndof], vec![0.0; ndof]]).collect();
             for j in 0..ndof {
                 let x: Vec<V<1>> = ctx
@@ -399,7 +399,7 @@ impl Cohesive {
             None => {
                 let v: Vec<f64> = d0.iter().map(|d| d[0]).collect();
                 if v.iter().any(|&h| !(h > 0.0)) {
-                    return fail(format!("element {} ({}): THICKNESS=GEOMETRY men elementets tjocklek är noll eller negativ", ctx.label, self.name));
+                    return fail(format!("element {} ({}): THICKNESS=GEOMETRY but the element thickness is zero or negative", ctx.label, self.name));
                 }
                 Ok(v)
             }
@@ -407,8 +407,8 @@ impl Cohesive {
     }
 }
 
-/// Lokala riktningar i aktuellt läge: referensriktningarna roterade med
-/// rotationen ur mittytans deformationsgradient (polärdekomposition i planet).
+/// Local directions in the current position: the reference directions rotated with
+/// the rotation from the midsurface deformation gradient (polar decomposition in the plane).
 fn frame<const M: usize>(r: &IpRef, g1: &V<M>, g2: &V<M>, n: &V<M>) -> (V<M>, V<M>) {
     let fe1 = add(&scl(g1, r.e1c.0), &scl(g2, r.e1c.1));
     let fe2 = add(&scl(g1, r.e2c.0), &scl(g2, r.e2c.1));
@@ -423,14 +423,14 @@ fn frame<const M: usize>(r: &IpRef, g1: &V<M>, g2: &V<M>, n: &V<M>) -> (V<M>, V<
     (e1, e2)
 }
 
-/// [δn, s1, s2] ur de kovarianta skjuvkomponenterna ya = s·ga, yb = s·gb.
+/// [δn, s1, s2] from the covariant shear components ya = s·ga, yb = s·gb.
 fn solve_shear<const M: usize>(dn: Hd<M>, ga: &V<M>, gb: &V<M>, ya: Hd<M>, yb: Hd<M>, e1: &V<M>, e2: &V<M>) -> V<M> {
     let (a00, a01, a10, a11) = (dot(ga, e1), dot(ga, e2), dot(gb, e1), dot(gb, e2));
     let det = (a00 * a11 - a01 * a10).recip();
     [dn, (a11 * ya - a01 * yb) * det, (a00 * yb - a10 * ya) * det]
 }
 
-/// Per integrationspunkt först dragspänningen (3) och töjningen (3), sedan lagens tillstånd.
+/// Per integration point first the traction (3) and the strain (3), then the law's state.
 const NTR: usize = 6;
 
 impl ElementType for Cohesive {
@@ -475,9 +475,9 @@ impl ElementType for Cohesive {
     }
 
     fn mass(&self, ctx: &ElemCtx, _kind: super::api::MassKind) -> Result<Vec<f64>> {
-        // masslösa skikt går bra i dynamiska steg; densitet stöds inte ännu
+        // massless layers work in dynamic steps; density is not supported yet
         if ctx.density != 0.0 {
-            return fail(format!("element {} ({}): *DENSITY i kohesiva element stöds inte ännu", ctx.label, self.name));
+            return fail(format!("element {} ({}): *DENSITY in cohesive elements is not supported yet", ctx.label, self.name));
         }
         let n = self.nn() * self.nd();
         Ok(vec![0.0; n * n])
@@ -517,7 +517,7 @@ impl ElementType for Cohesive {
         sn.clear();
         sn.extend_from_slice(so);
         let (d, b, h) = self.kinematics(ctx, u, &refs, &d0);
-        // borttaget element: töjningen redovisas som vid borttagningen
+        // removed element: the strain is reported as at the removal
         let was_deleted = law.has_damage() && (0..nip).all(|q| law.is_deleted(&so[q * stride + NTR..(q + 1) * stride]));
         let mut outs = Vec::with_capacity(nip);
         for q in 0..nip {
@@ -531,7 +531,7 @@ impl ElementType for Cohesive {
             sn[base + NTR..base + stride].copy_from_slice(&st);
             outs.push(o);
         }
-        // elementet tas bort när alla punkter gått sönder och ingen är i tryck
+        // the element is removed when all points have failed and none is in compression
         let deleted = was_deleted
             || law.has_damage() && (0..nip).all(|q| law.outputs(&sn[q * stride + NTR..(q + 1) * stride]).2 && d[q][0] >= 0.0);
         if deleted {
@@ -574,7 +574,7 @@ impl ElementType for Cohesive {
         let law = self.law(ctx)?;
         let nip = self.nip();
         let stride = NTR + law.n_state();
-        // töjningen ur tillståndet; utan tillstånd ur förskjutningen
+        // the strain from the state; without a state from the displacement
         let eps: Vec<[f64; 3]> = if state.len() == nip * stride {
             (0..nip).map(|q| [state[q * stride + 3], state[q * stride + 4], state[q * stride + 5]]).collect()
         } else {
@@ -621,7 +621,7 @@ impl ElementType for Cohesive {
     }
 }
 
-/// K += c · Bᵀ D B med B som tre rader (n, s, t).
+/// K += c · Bᵀ D B with B as three rows (n, s, t).
 fn add_btdb(k: &mut [f64], b: &[Vec<f64>; 3], d: &[[f64; 3]; 3], c: f64, ndof: usize) {
     let mut db = [vec![0.0; ndof], vec![0.0; ndof], vec![0.0; ndof]];
     for r in 0..3 {

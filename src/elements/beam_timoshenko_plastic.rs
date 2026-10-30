@@ -1,52 +1,52 @@
-//! Timoshenkobalkar (B21, B22, B31, B32) med olinjärt material (område
-//! struct_nonlin): integrering över tvärsnittet i sektionspunkter.
+//! Timoshenko beams (B21, B22, B31, B32) with nonlinear material (area
+//! struct_nonlin): integration over the section at section points.
 //!
-//! Med *BEAM SECTION och ett olinjärt material (*PLASTIC, termisk töjning)
-//! uppdateras materialet i varje sektionspunkt i enaxligt spänningstillstånd
-//! med fibertöjningen ε_f = ε + x2·κ1 − x1·κ2 (x1, x2 i tvärsnittets axlar n1,
-//! n2 från referensaxeln). Normalkraft och böjmoment blir
+//! With *BEAM SECTION and a nonlinear material (*PLASTIC, thermal strain)
+//! the material is updated at each section point in a uniaxial stress state
+//! with the fiber strain ε_f = ε + x2·κ1 − x1·κ2 (x1, x2 in the section axes n1,
+//! n2 from the reference axis). The axial force and bending moments become
 //!
 //!   N = Σ w σ,  M1 = Σ w x2 σ,  M2 = −Σ w x1 σ,
 //!
-//! och tvärsnittets tangent på samma sätt med materialets tangent. Vridning
-//! och tvärskjuvning är elastiska (G·J och k·G·A med det linjära elementets
-//! formfaktorer och slankhetskompensation); skjuvspänningen från vridning
-//! ingår alltså inte i flytvillkoret.
+//! and the section tangent likewise with the material tangent. Torsion
+//! and transverse shear are elastic (G·J and k·G·A with the linear element's
+//! form factors and slenderness compensation); the shear stress from torsion
+//! is thus not included in the yield condition.
 //!
-//! Sektionspunkterna (läge och numrering):
+//! The section points (position and numbering):
 //!
-//! - RECT: 5 × 5 punkter (Simpson i båda riktningarna), numrerade radvis från
-//!   (−a/2, −b/2) med x1 snabbast.
-//! - CIRC: mittpunkten och två ringar (r/2 och r) med 8 punkter var, vinkeln
-//!   räknad från −x2 mot +x1; Simpson radiellt (för ∫f·ρ dρ, mittpunktens
-//!   vikt blir noll) och trapetsregeln runt om.
-//! - PIPE (tunnväggigt): 8 punkter på medelradien r − t/2, med samma vinklar.
-//! - BOX: 16 punkter längs mittlinjerna (Simpson med 5 punkter per vägg,
-//!   hörnen delas): höger vägg nerifrån, överkanten från höger, vänster vägg
-//!   uppifrån, underkanten från vänster.
-//! - I: 5 punkter i underflänsen (från −b1/2), 3 inre punkter i livet
-//!   (nerifrån) och 5 i överflänsen (från −b2/2); livets ändpunkter är
-//!   flänsarnas mittpunkter (med samma avdrag för överlappet som i
+//! - RECT: 5 × 5 points (Simpson in both directions), numbered row-wise from
+//!   (−a/2, −b/2) with x1 fastest.
+//! - CIRC: the center point and two rings (r/2 and r) with 8 points each, the angle
+//!   measured from −x2 towards +x1; Simpson radially (for ∫f·ρ dρ, the center point
+//!   weight becomes zero) and the trapezoidal rule around.
+//! - PIPE (thin-walled): 8 points on the mean radius r − t/2, with the same angles.
+//! - BOX: 16 points along the midlines (Simpson with 5 points per wall,
+//!   the corners are shared): right wall from the bottom, top from the right, left wall
+//!   from the top, bottom from the left.
+//! - I: 5 points in the bottom flange (from −b1/2), 3 inner points in the web
+//!   (from the bottom) and 5 in the top flange (from −b2/2); the web end points are
+//!   the flange midpoints (with the same deduction for the overlap as in
 //!   `beam_timoshenko_section.rs`).
 //!
-//! Plana balkar (B21, B22) har bara punkterna genom höjden: punkter med samma
-//! x2 slås ihop (RECT: 5 punkter nerifrån).
+//! Planar beams (B21, B22) have only the points through the height: points with the same
+//! x2 are merged (RECT: 5 points from the bottom).
 //!
-//! Med elastiskt material ger punkterna exakt samma A, S1, S2, I11, I22, I12
-//! som tvärsnittsegenskaperna.
+//! With an elastic material the points give exactly the same A, S1, S2, I11, I22, I12
+//! as the section properties.
 
 use crate::elements::api::{ElemCtx, IpField};
 use crate::materials::{MatInput, MaterialModel, StressMode};
 use crate::model::{fail, Result};
 use std::f64::consts::PI;
 
-/// Antal generaliserade töjningar som lagras per integrationspunkt.
+/// Number of generalized strains stored per integration point.
 pub const NGEN: usize = 6;
 
-/// Sektionspunkter för en tvärsnittsform: (x1, x2, vikt).
+/// Section points for a section shape: (x1, x2, weight).
 pub fn section_points(shape: &str, v: &[f64]) -> Result<Vec<(f64, f64, f64)>> {
     let simp = [1.0, 4.0, 2.0, 4.0, 1.0];
-    let need = |n: usize| if v.len() >= n { Ok(()) } else { fail(format!("SECTION={shape} kräver {n} mått på första dataraden")) };
+    let need = |n: usize| if v.len() >= n { Ok(()) } else { fail(format!("SECTION={shape} requires {n} dimensions on the first data line")) };
     let mut p = Vec::new();
     match shape {
         "RECT" => {
@@ -86,7 +86,7 @@ pub fn section_points(shape: &str, v: &[f64]) -> Result<Vec<(f64, f64, f64)>> {
             let xl = -a / 2.0 + t3 / 2.0;
             let yt = b / 2.0 - t2 / 2.0;
             let yb = -b / 2.0 + t4 / 2.0;
-            // väggarna: (start, slut, tjocklek)
+            // the walls: (start, end, thickness)
             let walls = [([xr, yb], [xr, yt], t1), ([xr, yt], [xl, yt], t2), ([xl, yt], [xl, yb], t3), ([xl, yb], [xr, yb], t4)];
             let mut pts: Vec<(f64, f64, f64)> = Vec::new();
             for (wi, (s, e, t)) in walls.iter().enumerate() {
@@ -96,7 +96,7 @@ pub fn section_points(shape: &str, v: &[f64]) -> Result<Vec<(f64, f64, f64)>> {
                     let w = l / 12.0 * simp[k] * t;
                     let x = [s[0] + f * (e[0] - s[0]), s[1] + f * (e[1] - s[1])];
                     if k == 0 && wi > 0 {
-                        // hörnet delas med föregående vägg
+                        // the corner is shared with the previous wall
                         pts.last_mut().unwrap().2 += w;
                     } else if k == 4 && wi == 3 {
                         pts[0].2 += w;
@@ -122,27 +122,27 @@ pub fn section_points(shape: &str, v: &[f64]) -> Result<Vec<(f64, f64, f64)>> {
             for i in 0..5 {
                 p.push((-b2 / 2.0 + b2 * i as f64 / 4.0, yt, b2 / 12.0 * simp[i] * t2));
             }
-            // livets ändpunkter = flänsarnas mittpunkter, minus överlappet med flänsarna
+            // the web end points = the flange midpoints, minus the overlap with the flanges
             p[2].2 += lw / 12.0 * t3 - t3 * t1 / 2.0;
             p[10].2 += lw / 12.0 * t3 - t3 * t2 / 2.0;
         }
-        // område beams2: L och ARBITRARY
+        // area beams2: L and ARBITRARY
         _ => match crate::elements::beams2::sections::section_points(shape, v) {
             Some(r) => p = r?,
-            None => return fail(format!("SECTION={shape} stöds inte med olinjärt material för Timoshenkobalkar (RECT, CIRC, PIPE, BOX, I, L, ARBITRARY)")),
+            None => return fail(format!("SECTION={shape} is not supported with a nonlinear material for Timoshenko beams (RECT, CIRC, PIPE, BOX, I, L, ARBITRARY)")),
         },
     }
     Ok(p)
 }
 
-/// Tvärsnittet med sektionspunkter och material.
+/// The section with section points and material.
 pub struct Fibers<'a> {
     pub pts: Vec<(f64, f64, f64)>,
     pub mat: &'a dyn MaterialModel,
     nst: usize,
 }
 
-/// Balken räknas med sektionspunkter: *BEAM SECTION med olinjärt material.
+/// The beam is computed with section points: *BEAM SECTION with a nonlinear material.
 pub fn is_plastic(ctx: &ElemCtx) -> bool {
     match (ctx.section, ctx.material) {
         (Some(s), Some(m)) => s.raw.name == "BEAM SECTION" && !m.is_linear(),
@@ -158,7 +158,7 @@ impl<'a> Fibers<'a> {
         let v = crate::elements::beams2::sections::data_values(&sec.raw, &shape)?;
         let mut pts = section_points(&shape, &v).map_err(|e| crate::model::FemError(format!("{}: {}", sec.raw.location(), e.0)))?;
         if name.starts_with("B2") {
-            // plana balkar: bara punkterna genom höjden (x2), nerifrån
+            // planar beams: only the points through the height (x2), from the bottom
             let mut merged: Vec<(f64, f64, f64)> = Vec::new();
             for (_, x2, w) in pts {
                 match merged.iter_mut().find(|p| (p.1 - x2).abs() <= 1e-12 * (1.0 + x2.abs())) {
@@ -176,8 +176,8 @@ impl<'a> Fibers<'a> {
         1 + self.nst
     }
 
-    /// Tillståndets längd per integrationspunkt: generaliserade töjningar och
-    /// (spänning, materialtillstånd) per sektionspunkt.
+    /// The state length per integration point: generalized strains and
+    /// (stress, material state) per section point.
     pub fn ip_len(&self) -> usize {
         NGEN + self.pts.len() * self.stride()
     }
@@ -193,17 +193,17 @@ impl<'a> Fibers<'a> {
         st
     }
 
-    /// Snittkrafter [N, M1, M2, T, V1, V2] och tangent (6×6) för de
-    /// generaliserade töjningarna `e` = [ε, κ1, κ2, τ, γ1, γ2]. Raderna och
-    /// kolumnerna för vridning och skjuvning tas ur den elastiska matrisen `c`.
-    /// `n` är formfunktionerna i integrationspunkten (för temperaturen).
+    /// Section forces [N, M1, M2, T, V1, V2] and tangent (6×6) for the
+    /// generalized strains `e` = [ε, κ1, κ2, τ, γ1, γ2]. The rows and
+    /// columns for torsion and shear are taken from the elastic matrix `c`.
+    /// `n` is the shape functions at the integration point (for the temperature).
     pub fn response(&self, ctx: &ElemCtx, c: &[[f64; 6]; 6], e: &[f64; 6], n: &[f64], so: &[f64], sn: &mut [f64]) -> Result<([f64; 6], [[f64; 6]; 6])> {
         let st = self.stride();
         let e_old: [f64; 6] = std::array::from_fn(|i| so[i]);
         sn[..NGEN].copy_from_slice(e);
         let (t, t0) = temperature(ctx, n);
         if ctx.temp.iter().skip(ctx.x.len()).any(|&g| g != 0.0) {
-            return fail(format!("element {}: temperaturgradienter i balkar stöds inte ännu", ctx.label));
+            return fail(format!("element {}: temperature gradients in beams are not supported yet", ctx.label));
         }
         let mut s = [0.0; 6];
         let mut k = [[0.0; 6]; 6];
@@ -223,7 +223,7 @@ impl<'a> Fibers<'a> {
                 dtemp: t - t0,
                 defgrad: None,
             };
-            let r = self.mat.update(&inp, &so[o + 1..o + st], &mut sn[o + 1..o + st]).map_err(|err| crate::model::FemError(format!("element {} sektionspunkt {}: {}", ctx.label, q + 1, err.0)))?;
+            let r = self.mat.update(&inp, &so[o + 1..o + st], &mut sn[o + 1..o + st]).map_err(|err| crate::model::FemError(format!("element {} section point {}: {}", ctx.label, q + 1, err.0)))?;
             sn[o] = r.stress[0];
             for i in 0..3 {
                 s[i] += w * g[i] * r.stress[0];
@@ -232,7 +232,7 @@ impl<'a> Fibers<'a> {
                 }
             }
         }
-        // vridning och skjuvning elastiskt
+        // torsion and shear elastically
         for i in 3..6 {
             s[i] = (0..6).map(|j| c[i][j] * e[j]).sum();
             for j in 0..6 {
@@ -243,7 +243,7 @@ impl<'a> Fibers<'a> {
         Ok((s, k))
     }
 
-    /// Snittkrafter ur lagrade spänningar och töjningar.
+    /// Section forces from stored stresses and strains.
     pub fn forces_from_state(&self, c: &[[f64; 6]; 6], ipst: &[f64]) -> [f64; 6] {
         let mut s = [0.0; 6];
         for (q, &(x1, x2, w)) in self.pts.iter().enumerate() {
@@ -258,7 +258,7 @@ impl<'a> Fibers<'a> {
         s
     }
 
-    /// Utdata i sektionspunkterna: S11 och materialets skalära fält (PEEQ).
+    /// Output at the section points: S11 and the material's scalar fields (PEEQ).
     pub fn point_output(&self, states: &[&[f64]]) -> Vec<IpField> {
         let mut s = IpField::new("S", &["S11"]);
         let all: Vec<(&'static str, usize)> = self.mat.output_fields(StressMode::Uniaxial).into_iter().map(|(n, l)| (n, l.len())).collect();
@@ -288,10 +288,10 @@ impl<'a> Fibers<'a> {
     }
 }
 
-/// Temperaturen i integrationspunkten vid inkrementets slut och början
-/// (nodtemperaturerna är de första värdena i `ctx.temp`): elementets
-/// medelvärde för B21/B31, interpolerad med formfunktionerna `n` för B22/B32
-/// (kontrollerat med en linjärt varierande temperatur).
+/// The temperature at the integration point at the end and start of the increment
+/// (the nodal temperatures are the first values in `ctx.temp`): the element
+/// mean for B21/B31, interpolated with the shape functions `n` for B22/B32
+/// (verified with a linearly varying temperature).
 fn temperature(ctx: &ElemCtx, n: &[f64]) -> (f64, f64) {
     let nn = ctx.x.len();
     if ctx.temp.len() < nn || ctx.temp_old.len() < nn {
@@ -309,7 +309,7 @@ fn temperature(ctx: &ElemCtx, n: &[f64]) -> (f64, f64) {
 mod tests {
     use super::*;
 
-    /// Sektionspunkterna ger samma ytmoment som tvärsnittsegenskaperna.
+    /// The section points give the same area moments as the section properties.
     #[test]
     fn points_reproduce_section_moments() {
         for (shape, v) in [

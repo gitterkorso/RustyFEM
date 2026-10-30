@@ -1,19 +1,19 @@
-//! Formfunktioner, integrationsregler och ytor för kontinuumelementen i
-//! `solid_higher.rs` och `axisym.rs`.
+//! Shape functions, integration rules and faces for the continuum elements in
+//! `solid_higher.rs` and `axisym.rs`.
 //!
-//! Formfunktionerna skrivs en gång med dualtal (värde + tre partialderivator)
-//! så att derivatorna blir exakta utan att skrivas för hand.
+//! The shape functions are written once with dual numbers (value + three partial derivatives)
+//! so that the derivatives are exact without being written by hand.
 //!
-//! Naturliga koordinater:
-//! - hexaedrar och fyrhörningar: ξ, η, ζ ∈ [−1, 1]
-//! - tetraedrar och trianglar: (ξ, η, ζ) med L₁ = 1 − ξ − η − ζ, L₂ = ξ, L₃ = η, L₄ = ζ
-//! - kilar: triangel (ξ, η) gånger ζ ∈ [−1, 1]
+//! Natural coordinates:
+//! - hexahedra and quadrilaterals: ξ, η, ζ ∈ [−1, 1]
+//! - tetrahedra and triangles: (ξ, η, ζ) with L₁ = 1 − ξ − η − ζ, L₂ = ξ, L₃ = η, L₄ = ζ
+//! - wedges: triangle (ξ, η) times ζ ∈ [−1, 1]
 //!
-//! Nodnumreringen följer .inp-formatet (hörn först, sedan mittnoder i kantordning).
+//! The node numbering follows the .inp format (corners first, then midside nodes in edge order).
 
 use std::ops::{Add, Mul, Neg, Sub};
 
-/// Dualtal: värde och derivator med avseende på (ξ, η, ζ).
+/// Dual number: value and derivatives with respect to (ξ, η, ζ).
 #[derive(Debug, Clone, Copy)]
 pub struct D {
     pub v: f64,
@@ -68,7 +68,7 @@ impl Neg for D {
     }
 }
 
-/// Elementgeometri (interpolationstyp).
+/// Element geometry (interpolation type).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Shape {
     Line2,
@@ -103,7 +103,7 @@ impl Shape {
         }
     }
 
-    /// Antal naturliga koordinater (1 för linjer, 2 för ytor, 3 för volymer).
+    /// Number of natural coordinates (1 for lines, 2 for surfaces, 3 for volumes).
     pub fn pdim(self) -> usize {
         match self {
             Shape::Line2 | Shape::Line3 => 1,
@@ -112,7 +112,7 @@ impl Shape {
         }
     }
 
-    /// VTK-celltyp.
+    /// VTK cell type.
     pub fn vtk(self) -> u8 {
         match self {
             Shape::Line2 => 3,
@@ -130,8 +130,8 @@ impl Shape {
         }
     }
 
-    /// Ytor (kanter i 2D) i .inp-formatets numrering S1, S2, ... Hörnnoder först,
-    /// sedan mittnoder i kantordning, så att ytan kan interpoleras med
+    /// Faces (edges in 2D) in the .inp format numbering S1, S2, ... Corner nodes first,
+    /// then midside nodes in edge order, so that the face can be interpolated with
     /// `face_shape`.
     pub fn faces(self) -> &'static [&'static [usize]] {
         match self {
@@ -162,7 +162,7 @@ impl Shape {
         }
     }
 
-    /// Geometri för en yta med `n` noder hos denna elementform.
+    /// Geometry for a face with `n` nodes of this element shape.
     pub fn face_shape(self, n: usize) -> Shape {
         match (self.pdim(), n) {
             (2, 2) => Shape::Line2,
@@ -186,7 +186,7 @@ const HEX_C: [[f64; 3]; 8] = [
     [-1.0, 1.0, 1.0],
 ];
 
-/// Mittnodernas naturliga koordinater för C3D20 (nod 9–20).
+/// Natural coordinates of the midside nodes for C3D20 (nodes 9–20).
 const HEX20_MID: [[f64; 3]; 12] = [
     [0.0, -1.0, -1.0],
     [1.0, 0.0, -1.0],
@@ -205,7 +205,7 @@ const HEX20_MID: [[f64; 3]; 12] = [
 const QUAD_C: [[f64; 2]; 4] = [[-1.0, -1.0], [1.0, -1.0], [1.0, 1.0], [-1.0, 1.0]];
 const QUAD8_MID: [[f64; 2]; 4] = [[0.0, -1.0], [1.0, 0.0], [0.0, 1.0], [-1.0, 0.0]];
 
-/// Formfunktioner som dualtal i punkten `p` (naturliga koordinater).
+/// Shape functions as dual numbers at the point `p` (natural coordinates).
 pub fn shape_dual(s: Shape, p: [f64; 3]) -> Vec<D> {
     let x = D::var(p[0], 0);
     let y = D::var(p[1], 1);
@@ -288,13 +288,13 @@ pub fn shape_dual(s: Shape, p: [f64; 3]) -> Vec<D> {
     }
 }
 
-/// Formfunktioner och derivator med avseende på de naturliga koordinaterna.
+/// Shape functions and derivatives with respect to the natural coordinates.
 pub fn shape(s: Shape, p: [f64; 3]) -> (Vec<f64>, Vec<[f64; 3]>) {
     let n = shape_dual(s, p);
     (n.iter().map(|d| d.v).collect(), n.iter().map(|d| d.d).collect())
 }
 
-/// Naturliga koordinater för elementets noder.
+/// Natural coordinates of the element's nodes.
 pub fn node_coords(s: Shape) -> Vec<[f64; 3]> {
     match s {
         Shape::Line2 => vec![[-1.0, 0.0, 0.0], [1.0, 0.0, 0.0]],
@@ -338,13 +338,13 @@ pub fn node_coords(s: Shape) -> Vec<[f64; 3]> {
 }
 
 // ---------------------------------------------------------------------------
-// Integrationsregler
+// Integration rules
 // ---------------------------------------------------------------------------
 
-/// Integrationsregel: punkter i naturliga koordinater och vikter.
+/// Integration rule: points in natural coordinates and weights.
 pub type Rule = Vec<([f64; 3], f64)>;
 
-/// Gausspunkter och vikter på [−1, 1] i stigande ordning.
+/// Gauss points and weights on [−1, 1] in ascending order.
 pub fn gauss1d(n: usize) -> Vec<(f64, f64)> {
     match n {
         1 => vec![(0.0, 2.0)],
@@ -364,7 +364,7 @@ pub fn gauss1d(n: usize) -> Vec<(f64, f64)> {
     }
 }
 
-/// n×n (×n) gaussregel med första koordinaten snabbast.
+/// n×n (×n) Gauss rule with the first coordinate fastest.
 pub fn gauss_tensor(n: usize, dim: usize) -> Rule {
     let g = gauss1d(n);
     let mut r = Vec::new();
@@ -394,14 +394,14 @@ pub fn gauss_tensor(n: usize, dim: usize) -> Rule {
     r
 }
 
-/// Triangelregler (area 1/2 i naturliga koordinater).
+/// Triangle rules (area 1/2 in natural coordinates).
 pub fn tri_rule(n: usize) -> Vec<([f64; 2], f64)> {
     match n {
         1 => vec![([1.0 / 3.0, 1.0 / 3.0], 0.5)],
         3 => vec![([1.0 / 6.0, 1.0 / 6.0], 1.0 / 6.0), ([2.0 / 3.0, 1.0 / 6.0], 1.0 / 6.0), ([1.0 / 6.0, 2.0 / 3.0], 1.0 / 6.0)],
         4 => vec![([1.0 / 3.0, 1.0 / 3.0], -27.0 / 96.0), ([0.2, 0.2], 25.0 / 96.0), ([0.6, 0.2], 25.0 / 96.0), ([0.2, 0.6], 25.0 / 96.0)],
         6 => {
-            // grad 4 (Dunavant)
+            // degree 4 (Dunavant)
             let (a, wa) = (0.445_948_490_915_965, 0.223_381_589_678_011 / 2.0);
             let (b, wb) = (0.091_576_213_509_771, 0.109_951_743_655_322 / 2.0);
             vec![
@@ -414,7 +414,7 @@ pub fn tri_rule(n: usize) -> Vec<([f64; 2], f64)> {
             ]
         }
         7 => {
-            // grad 5 (Radon)
+            // degree 5 (Radon)
             let (a, wa) = (0.470_142_064_105_115, 0.132_394_152_788_506 / 2.0);
             let (b, wb) = (0.101_286_507_323_456, 0.125_939_180_544_827 / 2.0);
             vec![
@@ -428,7 +428,7 @@ pub fn tri_rule(n: usize) -> Vec<([f64; 2], f64)> {
             ]
         }
         _ => {
-            // Kollapsad gaussregel (Duffy), 4×4 punkter, exakt för grad 5.
+            // Collapsed Gauss rule (Duffy), 4×4 points, exact for degree 5.
             let g: Vec<(f64, f64)> = gauss1d(4).into_iter().map(|(t, w)| (0.5 * (t + 1.0), 0.5 * w)).collect();
             let mut r = Vec::new();
             for &(u, wu) in &g {
@@ -441,7 +441,7 @@ pub fn tri_rule(n: usize) -> Vec<([f64; 2], f64)> {
     }
 }
 
-/// Tetraederregler (volym 1/6 i naturliga koordinater).
+/// Tetrahedron rules (volume 1/6 in natural coordinates).
 pub fn tet_rule(n: usize) -> Rule {
     match n {
         1 => vec![([0.25; 3], 1.0 / 6.0)],
@@ -449,7 +449,7 @@ pub fn tet_rule(n: usize) -> Rule {
             let a = 0.585_410_196_624_968_5;
             let b = 0.138_196_601_125_010_5;
             let w = 1.0 / 24.0;
-            // punktordning: i närheten av nod 1, 2, 3, 4
+            // point order: near node 1, 2, 3, 4
             vec![([b, b, b], w), ([a, b, b], w), ([b, a, b], w), ([b, b, a], w)]
         }
         5 => {
@@ -457,7 +457,7 @@ pub fn tet_rule(n: usize) -> Rule {
             vec![([0.25; 3], -4.0 / 30.0), ([1.0 / 6.0; 3], w), ([0.5, 1.0 / 6.0, 1.0 / 6.0], w), ([1.0 / 6.0, 0.5, 1.0 / 6.0], w), ([1.0 / 6.0, 1.0 / 6.0, 0.5], w)]
         }
         11 => {
-            // Keast, grad 4
+            // Keast, degree 4
             let mut r = vec![([0.25; 3], -0.013_155_555_555_555_6)];
             let (a, b) = (0.071_428_571_428_571_4, 0.785_714_285_714_286);
             for p in [[a, a, a], [b, a, a], [a, b, a], [a, a, b]] {
@@ -470,7 +470,7 @@ pub fn tet_rule(n: usize) -> Rule {
             r
         }
         14 => {
-            // Walkington, grad 5
+            // Walkington, degree 5
             let mut r = Vec::new();
             for (a, w) in [(0.092_735_250_310_891_23, 0.018_781_320_953_002_64), (0.310_885_919_263_300_6, 0.012_248_840_519_393_66)] {
                 let b = 1.0 - 3.0 * a;
@@ -485,7 +485,7 @@ pub fn tet_rule(n: usize) -> Rule {
             r
         }
         15 => {
-            // Keast, grad 5
+            // Keast, degree 5
             let mut r = vec![([0.25; 3], 0.030_283_678_097_089)];
             let t = 1.0 / 3.0;
             for p in [[0.0, t, t], [t, 0.0, t], [t, t, 0.0], [t, t, t]] {
@@ -502,8 +502,8 @@ pub fn tet_rule(n: usize) -> Rule {
             r
         }
         _ => {
-            // Kollapsad gaussregel (Duffy): ξ = u, η = v(1−u), ζ = w(1−u)(1−v),
-            // 4 punkter per riktning, exakt för polynom av grad 5.
+            // Collapsed Gauss rule (Duffy): ξ = u, η = v(1−u), ζ = w(1−u)(1−v),
+            // 4 points per direction, exact for polynomials of degree 5.
             let g: Vec<(f64, f64)> = gauss1d(4).into_iter().map(|(t, w)| (0.5 * (t + 1.0), 0.5 * w)).collect();
             let mut r = Vec::new();
             for &(u, wu) in &g {
@@ -519,7 +519,7 @@ pub fn tet_rule(n: usize) -> Rule {
     }
 }
 
-/// Kilregel: triangelregel (n_tri) gånger gaussregel (n_z) i ζ, triangeln snabbast.
+/// Wedge rule: triangle rule (n_tri) times Gauss rule (n_z) in ζ, the triangle fastest.
 pub fn wedge_rule(n_tri: usize, n_z: usize) -> Rule {
     let mut r = Vec::new();
     for &(z, wz) in &gauss1d(n_z) {
@@ -530,7 +530,7 @@ pub fn wedge_rule(n_tri: usize, n_z: usize) -> Rule {
     r
 }
 
-/// Regel för en yta (eller kant) som integrerar laster exakt nog.
+/// Rule for a face (or edge) that integrates loads accurately enough.
 pub fn face_rule(s: Shape) -> Rule {
     match s {
         Shape::Line2 | Shape::Line3 => gauss_tensor(4, 1),

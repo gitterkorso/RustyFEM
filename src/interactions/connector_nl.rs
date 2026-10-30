@@ -1,47 +1,47 @@
-//! Kopplingselementens kinematik med stora förskjutningar och rotationer
-//! (NLGEOM, inkluderas med `#[path]` från `connector.rs`).
+//! Connector element kinematics with large displacements and rotations
+//! (NLGEOM, included with `#[path]` from `connector.rs`).
 //!
-//! Med NLGEOM räknas varje komponent som en exakt (icke-linjäriserad)
-//! funktion av nodernas lägen x_a, x_b och rotationer R_a, R_b. De lokala
-//! axlarna roterar med noderna: a_i = R_a e_i^a, b_i = R_b e_i^b,
-//! d = x_b − x_a och ψ = log(R_b R_aᵀ) (den relativa rotationsvektorn,
-//! rumsliga komponenter). Komponentens värde är måttet minus måttet i
-//! referensläget:
+//! With NLGEOM each component is computed as an exact (non-linearized)
+//! function of the node positions x_a, x_b and rotations R_a, R_b. The local
+//! axes rotate with the nodes: a_i = R_a e_i^a, b_i = R_b e_i^b,
+//! d = x_b − x_a and ψ = log(R_b R_aᵀ) (the relative rotation vector,
+//! spatial components). The component value is the measure minus the measure
+//! in the reference configuration:
 //!
 //! - CARTESIAN, JOIN, SLOT, SLIDE-PLANE: a_i · d. PROJECTION CARTESIAN:
-//!   a_i^m · d med mittsystemet a_i^m = exp(½ψ) a_i.
-//! - AXIAL, LINK: |d|. RADIAL-THRUST: √((a_1·d)² + (a_2·d)²) och a_3 · d.
-//! - ALIGN, ROTATION, PROJECTION FLEXION-TORSION: a_i · ψ (rotationsvektorns
-//!   komponenter i a:s system); FLEXION-TORSION i ordningen (2, 3, 1).
-//! - REVOLUTE och UNIVERSAL: den relativa rotationen Q = Aᵀ B (Q_ij = a_i·b_j)
-//!   delas upp som Q = R_x(α) R_z(γ): komponent 4 = α = atan2(−Q₂₃, Q₃₃),
-//!   UNIVERSAL komponent 6 = γ = atan2(−Q₁₂, Q₁₁); villkoren är
-//!   Q₁₃ = a_1 · b_3 = 0 (båda) och −Q₁₂ = 0 (REVOLUTE).
-//! - CONSTANT VELOCITY: −ψ · ŝ, ŝ = (a_3 + b_3)/|a_3 + b_3| (ingen vridning
-//!   kring bisektrisen).
-//! - CARDAN och EULER: vinklarna ur Q med samma uppdelning som i referensläget
-//!   (`connector_kin.rs`), utan linjärisering.
+//!   a_i^m · d with the midway system a_i^m = exp(½ψ) a_i.
+//! - AXIAL, LINK: |d|. RADIAL-THRUST: √((a_1·d)² + (a_2·d)²) and a_3 · d.
+//! - ALIGN, ROTATION, PROJECTION FLEXION-TORSION: a_i · ψ (the rotation vector
+//!   components in a's system); FLEXION-TORSION in the order (2, 3, 1).
+//! - REVOLUTE and UNIVERSAL: the relative rotation Q = Aᵀ B (Q_ij = a_i·b_j)
+//!   is decomposed as Q = R_x(α) R_z(γ): component 4 = α = atan2(−Q₂₃, Q₃₃),
+//!   UNIVERSAL component 6 = γ = atan2(−Q₁₂, Q₁₁); the constraints are
+//!   Q₁₃ = a_1 · b_3 = 0 (both) and −Q₁₂ = 0 (REVOLUTE).
+//! - CONSTANT VELOCITY: −ψ · ŝ, ŝ = (a_3 + b_3)/|a_3 + b_3| (no twist
+//!   about the bisector).
+//! - CARDAN and EULER: the angles from Q with the same decomposition as in the
+//!   reference configuration (`connector_kin.rs`), without linearization.
 //!
-//! För små rörelser ger måtten exakt raderna i `connector_kin.rs`.
-//! Gradienterna mot translationerna räknas analytiskt och mot rotationerna
-//! (rumsliga spinn δw, R ← exp([δw]×) R som i `steps/nlgeom.rs`) med
-//! fyrpunkts centraldifferenser; den geometriska styvheten Σ F ∂²g/∂q² (behövs för
-//! kvadratisk konvergens vid stora rotationer) med differenser av
-//! gradienten. Vinkelmått följs kontinuerligt förbi ±π (närmast värdet vid
-//! föregående godkända inkrement).
+//! For small motions the measures give exactly the rows in `connector_kin.rs`.
+//! The gradients with respect to the translations are computed analytically and
+//! with respect to the rotations (spatial spins δw, R ← exp([δw]×) R as in
+//! `steps/nlgeom.rs`) with four-point central differences; the geometric
+//! stiffness Σ F ∂²g/∂q² (needed for quadratic convergence at large rotations)
+//! with differences of the gradient. Angular measures are tracked continuously
+//! past ±π (closest to the value at the previous converged increment).
 
 use crate::fem::dof::{Dof, NodeVec, U1, UR1, UR3};
 use crate::kinematics::tensor::{self, M3};
 
 type V3 = [f64; 3];
 
-/// Måttet för en komponent med stora rotationer.
+/// The measure of a component with large rotations.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Measure {
     None,
     /// a_i · d
     Trans(usize),
-    /// a_i^m · d (mittsystemet)
+    /// a_i^m · d (midway system)
     TransMid(usize),
     /// |d|
     Length,
@@ -67,7 +67,7 @@ impl Measure {
     }
 }
 
-/// Måtten för kopplingstyperna (samma uppdelning som `kin::components`).
+/// The measures of the connection types (same decomposition as `kin::components`).
 pub fn measures(types: &[String]) -> [Measure; 6] {
     use Measure::*;
     let mut m = [None; 6];
@@ -141,28 +141,28 @@ pub fn measures(types: &[String]) -> [Measure; 6] {
     m
 }
 
-/// Ett elements geometri för NLGEOM-kinematiken.
+/// An element's geometry for the NLGEOM kinematics.
 #[derive(Debug, Clone)]
 pub struct Geo {
     pub a: Option<usize>,
     pub b: Option<usize>,
-    /// Referenslägen (en jordad nod har den andra nodens läge).
+    /// Reference positions (a grounded node has the other node's position).
     pub xa: V3,
     pub xb: V3,
     pub ea: [V3; 3],
     pub eb: [V3; 3],
-    /// Noderna har rotationsfrihetsgrader som används.
+    /// The nodes have rotational DOFs that are used.
     pub ra: bool,
     pub rb: bool,
     pub dim: usize,
     pub meas: [Measure; 6],
-    /// Måttens värden i referensläget.
+    /// The measure values in the reference configuration.
     pub refv: [f64; 6],
-    /// EULER med singulär referens (samma axel e3): vinklarna skrivs som 0.
+    /// EULER with a singular reference (same e3 axis): the angles are written as 0.
     pub euler_singular: bool,
 }
 
-/// Ett läge: nodernas positioner och rotationer.
+/// A configuration: the node positions and rotations.
 #[derive(Clone, Copy)]
 struct Config {
     xa: V3,
@@ -178,7 +178,7 @@ fn norm(a: V3) -> f64 {
     dot(a, a).sqrt()
 }
 
-/// En variabel: (nod, frihetsgrad, a- eller b-nod, translation, riktning).
+/// A variable: (node, DOF, a or b node, translation, direction).
 #[derive(Clone, Copy)]
 struct Var {
     node: usize,
@@ -236,7 +236,7 @@ impl Geo {
         Config { xa, xb, ra, rb }
     }
 
-    /// Måtten (utan referensvärdet) i läget `c`.
+    /// The measures (without the reference value) in configuration `c`.
     fn raw(&self, c: &Config) -> [f64; 6] {
         let ax: [V3; 3] = std::array::from_fn(|i| tensor::mv(&c.ra, self.ea[i]));
         let bx: [V3; 3] = std::array::from_fn(|i| tensor::mv(&c.rb, self.eb[i]));
@@ -288,7 +288,7 @@ impl Geo {
         out
     }
 
-    /// Komponenternas värden (måttet minus referensvärdet; vinklar närmast `near`).
+    /// The component values (measure minus reference value; angles closest to `near`).
     fn values(&self, c: &Config, near: &[f64; 6]) -> [f64; 6] {
         let r = self.raw(c);
         let two_pi = 2.0 * std::f64::consts::PI;
@@ -301,7 +301,7 @@ impl Geo {
         })
     }
 
-    /// Läget med variabeln `v` störd med `e` (rotationer som rumsligt spinn).
+    /// The configuration with variable `v` perturbed by `e` (rotations as spatial spin).
     fn perturb(c: &Config, v: &Var, e: f64) -> Config {
         let mut c = *c;
         if v.rot {
@@ -321,15 +321,15 @@ impl Geo {
         c
     }
 
-    /// Gradienten för varje komponent mot variablerna (translationer analytiskt,
-    /// rotationer med centraldifferens).
+    /// The gradient of each component with respect to the variables
+    /// (translations analytically, rotations by central differences).
     fn grad(&self, c: &Config, vars: &[Var], near: &[f64; 6]) -> [Vec<f64>; 6] {
         let mut gr: [Vec<f64>; 6] = std::array::from_fn(|_| vec![0.0; vars.len()]);
         let ax: [V3; 3] = std::array::from_fn(|i| tensor::mv(&c.ra, self.ea[i]));
         let d = [c.xb[0] - c.xa[0], c.xb[1] - c.xa[1], c.xb[2] - c.xa[2]];
         let rel = tensor::mul_bt(&c.rb, &c.ra);
         let psi = tensor::log_so3(&rel);
-        // ∂g/∂x_b för translationsmåtten (∂g/∂x_a = −∂g/∂x_b)
+        // ∂g/∂x_b for the translational measures (∂g/∂x_a = −∂g/∂x_b)
         let tdir: [V3; 6] = std::array::from_fn(|k| match self.meas[k] {
             Measure::Trans(i) => ax[i],
             Measure::TransMid(i) => tensor::mv(&tensor::exp_so3([0.5 * psi[0], 0.5 * psi[1], 0.5 * psi[2]]), ax[i]),
@@ -344,7 +344,7 @@ impl Geo {
             }
             _ => [0.0; 3],
         });
-        // fyrpunkts centraldifferens (fel ~h⁴, avrundning ~10⁻¹³)
+        // four-point central difference (error ~h⁴, round-off ~10⁻¹³)
         const EPS: f64 = 1e-3;
         for (j, v) in vars.iter().enumerate() {
             if v.rot {
@@ -366,7 +366,7 @@ impl Geo {
     }
 }
 
-/// Komponenter, rader och (vid behov) Hessianer i läget `u`.
+/// Components, rows and (when needed) Hessians in configuration `u`.
 pub struct Eval {
     pub g: [f64; 6],
     pub rows: [Vec<(usize, Dof, f64)>; 6],
@@ -376,8 +376,8 @@ pub struct Eval {
 }
 
 impl Geo {
-    /// Utvärderar komponenterna i läget `u`; `near` = värdena vid föregående
-    /// godkända inkrement (för vinklarnas kontinuitet).
+    /// Evaluates the components in configuration `u`; `near` = the values at the
+    /// previous converged increment (for angle continuity).
     pub fn eval(&self, u: &[NodeVec], near: &[f64; 6]) -> Eval {
         let cfg = self.config(u);
         let vars = self.vars();
@@ -387,8 +387,8 @@ impl Geo {
         Eval { g, rows, vars, cfg, near: g }
     }
 
-    /// Den geometriska styvheten Σ_k F_k ∂²g_k/∂q² (symmetriserad) som
-    /// (nod, frihetsgrad, nod, frihetsgrad, värde), med differenser av gradienten.
+    /// The geometric stiffness Σ_k F_k ∂²g_k/∂q² (symmetrized) as
+    /// (node, DOF, node, DOF, value), with differences of the gradient.
     pub fn geometric(&self, ev: &Eval, f: &[f64; 6]) -> Vec<(usize, Dof, usize, Dof, f64)> {
         if f.iter().all(|&x| x == 0.0) {
             return Vec::new();

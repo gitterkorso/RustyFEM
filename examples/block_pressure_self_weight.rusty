@@ -1,0 +1,7 @@
+# 3D block with pressure on the top face, self-weight and prescribed displacement.
+material steel
+box x=0..0.6 y=0..0.2 z=0..0.15 size=0.05
+fix x=0
+support x=0.6 ux=-0.0001          # the end is compressed 0.1 mm
+pressure z=0.15 p=2e6               # pressure on the top face
+gravity

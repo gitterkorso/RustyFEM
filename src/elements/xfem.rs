@@ -1,39 +1,39 @@
-//! XFEM: `*ENRICHMENT` med nivåmängdsfunktionerna
-//! PHILSM (φ, avstånd till sprickytan) och PSILSM (ψ, avstånd till fronten)
-//! från `*INITIAL CONDITIONS, TYPE=ENRICHMENT`.
+//! XFEM: `*ENRICHMENT` with the level set functions
+//! PHILSM (φ, distance to the crack surface) and PSILSM (ψ, distance to the front)
+//! from `*INITIAL CONDITIONS, TYPE=ENRICHMENT`.
 //!
-//! `setup` (anropas när .inp-filen är läst) ersätter elementen i berikningens
-//! ELSET med XFEM-element (en läckt `XfemElem` per element, som delegerar till
-//! grundelementet när elementet inte är berikat) och lägger till de extra
-//! noderna för berikningen:
+//! `setup` (called when the .inp file has been read) replaces the elements in the enrichment's
+//! ELSET with XFEM elements (one leaked `XfemElem` per element, which delegates to
+//! the base element when the element is not enriched) and adds the extra
+//! nodes for the enrichment:
 //!
-//! - Heaviside (spricka genom element) med fantomnoder: en fantomnod per
-//!   berikad nod (nummer −(10⁹ + 8·nod)). I ett skuret element använder punkter
-//!   på nodens sida nodens förskjutning och punkter på andra sidan fantomnoden,
-//!   u = Σ Nᵢ ûᵢ(sida), så U i noderna är den fysiska förskjutningen.
-//! - TYPE=STATIONARY CRACK: dessutom spetsens fyra asymptotiska funktioner
-//!   Fα(r, θ) (förskjutna, Nᵢ (Fα − Fα(xᵢ)) bᵢα, noder −(10⁹ + 8·nod + α)) i
-//!   noderna till elementen inom två elementlager runt spetselementen
-//!   (oberoende av elementstorleken och av ENRICHMENT RADIUS). Heavisidenoder är noderna i helt genomskurna element;
-//!   i spetselementen används bara spetsfunktionerna (Heaviside där ger för
-//!   vek lösning).
-//! - TYPE=PROPAGATION CRACK: alla noder i domänen får fantomnoder från början
-//!   (ej använda fantomnoder hålls vid den verkliga noden med en mycket svag
-//!   fjäder). Sprickan växer ett elementlager per godkänt inkrement
-//!   (`Crack::propagate`, anropas från interaktionens `commit`) när
-//!   *DAMAGE INITIATION (MAXPS, MAXPE, MAXS, QUADS, MAXE, QUADE) i elementets
-//!   tyngdpunkt framför fronten når 1; det nya segmentet går genom
-//!   frontpunkten vinkelrätt mot största huvudspänningen (eller mot den globala
-//!   axeln NORMAL DIRECTION=). Sprickytorna följer traction–separation
-//!   (`materials/cohesive.rs`) med *DAMAGE EVOLUTION och *DAMAGE STABILIZATION,
-//!   initiala sprickor är dragfria, kontakt (hård, straff) med INTERACTION=.
+//! - Heaviside (crack through the element) with phantom nodes: one phantom node per
+//!   enriched node (number −(10⁹ + 8·node)). In a cut element, points
+//!   on the node's side use the node's displacement and points on the other side the phantom node,
+//!   u = Σ Nᵢ ûᵢ(side), so U at the nodes is the physical displacement.
+//! - TYPE=STATIONARY CRACK: additionally the four asymptotic tip functions
+//!   Fα(r, θ) (shifted, Nᵢ (Fα − Fα(xᵢ)) bᵢα, nodes −(10⁹ + 8·node + α)) at
+//!   the nodes of the elements within two element layers around the tip elements
+//!   (independent of the element size and of ENRICHMENT RADIUS). Heaviside nodes are the nodes of fully cut elements;
+//!   in the tip elements only the tip functions are used (Heaviside there gives a too
+//!   soft solution).
+//! - TYPE=PROPAGATION CRACK: all nodes in the domain get phantom nodes from the start
+//!   (unused phantom nodes are held at the real node with a very weak
+//!   spring). The crack grows one element layer per accepted increment
+//!   (`Crack::propagate`, called from the interaction's `commit`) when
+//!   *DAMAGE INITIATION (MAXPS, MAXPE, MAXS, QUADS, MAXE, QUADE) at the element
+//!   centroid ahead of the front reaches 1; the new segment passes through
+//!   the front point perpendicular to the maximum principal stress (or to the global
+//!   axis NORMAL DIRECTION=). The crack surfaces follow traction–separation
+//!   (`materials/cohesive.rs`) with *DAMAGE EVOLUTION and *DAMAGE STABILIZATION,
+//!   initial cracks are traction-free, contact (hard, penalty) with INTERACTION=.
 //!
-//! Integration: skurna element delas i delsimplex längs φ = 0 (spetselement
-//! även längs ψ = 0) med kollapsade gaussregler; berikade oskurna element
-//! använder 3×3×3 gausspunkter. Heavisideelement utan spetsfunktioner får
-//! grundelementets B-bar (C3D8, CPE4) per delelement (sida), som två överlagrade
-//! element. Spänningar redovisas bara för element utan
-//! berikning (inte i de internt genererade punkterna).
+//! Integration: cut elements are divided into subsimplices along φ = 0 (tip elements
+//! also along ψ = 0) with collapsed Gauss rules; enriched uncut elements
+//! use 3×3×3 Gauss points. Heaviside elements without tip functions get
+//! the base element's B-bar (C3D8, CPE4) per subelement (side), like two superimposed
+//! elements. Stresses are reported only for elements without
+//! enrichment (not at the internally generated points).
 
 #[path = "xfem_geom.rs"]
 pub mod geom;
@@ -50,14 +50,14 @@ use std::sync::{Arc, Mutex, OnceLock, RwLock};
 
 pub static TYPES: &[&dyn ElementType] = &[];
 
-/// Nummerförskjutning för berikningens extra noder.
+/// Number offset for the extra nodes of the enrichment.
 pub const LABEL_BASE: i64 = 1_000_000_000;
-/// Svag fjäder (relativt elementets styvhet) för oanvända berikningsfrihetsgrader.
+/// Weak spring (relative to the element stiffness) for unused enrichment degrees of freedom.
 const TIE: f64 = 1e-8;
-/// Huvudlängd i rubriken på elementets tillstånd.
+/// Header length in the element state.
 const HDR: usize = 4;
 
-/// Initieringskriterium.
+/// Initiation criterion.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Criterion {
     MaxPs(f64),
@@ -68,25 +68,25 @@ pub enum Criterion {
     QuadE([f64; 3]),
 }
 
-/// Sprickans material: initiering och kohesiv lag.
+/// The crack material: initiation and cohesive law.
 pub struct Law {
     pub crit: Criterion,
-    /// NORMAL DIRECTION= (0-baserad global axel), annars största huvudspänningens riktning.
+    /// NORMAL DIRECTION= (0-based global axis), otherwise the direction of the maximum principal stress.
     pub normal_dir: Option<usize>,
-    /// Kohesiv lag (TractionSeparation) eller None (ingen *DAMAGE EVOLUTION: elastisk).
+    /// Cohesive law (TractionSeparation) or None (no *DAMAGE EVOLUTION: elastic).
     pub ts: Arc<dyn MaterialModel>,
     pub visc: f64,
 }
 
-/// Ett sprickt element: nodvärden av φ och om segmentet är initialt (dragfritt).
+/// A cracked element: nodal values of φ and whether the segment is initial (traction-free).
 #[derive(Debug, Clone)]
 pub struct Seg {
     pub phi: Vec<f64>,
     pub initial: bool,
 }
 
-/// En sprickfront (propagation): punkt på elementets yta, tillväxtriktning
-/// och elementet framför.
+/// A crack front (propagation): point on the element face, growth direction
+/// and the element ahead.
 #[derive(Debug, Clone)]
 pub struct Front {
     pub p: [f64; 3],
@@ -94,7 +94,7 @@ pub struct Front {
     pub ahead: usize,
 }
 
-/// En spricka (*ENRICHMENT).
+/// A crack (*ENRICHMENT).
 pub struct Crack {
     pub name: String,
     pub stationary: bool,
@@ -103,38 +103,38 @@ pub struct Crack {
     pub domain: Vec<usize>,
     pub e_mod: f64,
     pub nu: f64,
-    /// Elementens nodnummer (modellindex) och koordinater för domänens element.
+    /// The node numbers (model indices) and coordinates of the domain's elements.
     pub conn: HashMap<usize, (Ref, Vec<usize>)>,
     pub coords: HashMap<usize, [f64; 3]>,
-    /// Ytgrannar inom domänen: element → (lokal yta, granne eller None).
+    /// Face neighbors within the domain: element → (local face, neighbor or None).
     pub faces: HashMap<usize, Vec<(Vec<usize>, Option<usize>)>>,
     pub law: Option<Law>,
     pub contact: bool,
     pub penalty: f64,
-    /// Nodvärden för utdata PHILSM/PSILSM (initiala).
+    /// Nodal values for the output PHILSM/PSILSM (initial).
     pub nodal: BTreeMap<usize, (f64, f64)>,
-    /// Initiala segment (propagation).
+    /// Initial segments (propagation).
     pub initial: HashMap<usize, Seg>,
-    /// Godkända segment (propagation).
+    /// Accepted segments (propagation).
     pub segs: RwLock<HashMap<usize, Seg>>,
-    /// Initiala och aktuella sprickfronter (propagation).
+    /// Initial and current crack fronts (propagation).
     pub init_fronts: RwLock<Vec<Front>>,
     pub fronts: RwLock<Vec<Front>>,
-    /// Senaste tyngdpunktsspänning per oskuret element (för initieringen).
+    /// The latest centroid stress per uncut element (for the initiation).
     pub stash: Mutex<HashMap<usize, Vec<f64>>>,
-    /// Sprickväxt av/på per steg (*ENRICHMENT ACTIVATION) och stegens sluttider.
+    /// Crack growth on/off per step (*ENRICHMENT ACTIVATION) and the end times of the steps.
     pub activation: Vec<(f64, bool)>,
     pub time: Mutex<f64>,
 }
 
-/// En extra nod i elementet efter grundnoderna.
+/// An extra node in the element after the base nodes.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Pseudo {
     Phantom(usize),
     Tip(usize, usize),
 }
 
-/// Fast geometri för stationära sprickor.
+/// Fixed geometry for stationary cracks.
 #[derive(Debug, Clone)]
 struct StatGeo {
     phi: Vec<f64>,
@@ -145,7 +145,7 @@ struct StatGeo {
     tipf: Vec<Option<[f64; 4]>>,
 }
 
-/// Elementets geometri i ett anrop.
+/// The element geometry in one call.
 struct Geo {
     phi: Vec<f64>,
     psi: Option<Vec<f64>>,
@@ -177,18 +177,18 @@ fn key(t: &dyn ElementType) -> usize {
     t as *const dyn ElementType as *const () as usize
 }
 
-/// XFEM-elementet bakom en elementtyp (om typen är ett XFEM-element).
+/// The XFEM element behind an element type (if the type is an XFEM element).
 pub fn as_xfem(t: &'static dyn ElementType) -> Option<&'static XfemElem> {
     registry().lock().unwrap().get(&key(t)).copied()
 }
 
-/// Sprickan med namnet `name` i modellen.
+/// The crack named `name` in the model.
 pub fn crack_of(model: &FeModel, name: &str) -> Option<&'static Crack> {
     let up = name.to_uppercase();
     model.elements.iter().filter_map(|e| as_xfem(e.etype)).map(|x| x.crack).find(|c| c.name == up)
 }
 
-/// Alla sprickor i modellen.
+/// All cracks in the model.
 pub fn cracks(model: &FeModel) -> Vec<&'static Crack> {
     let mut v: Vec<&'static Crack> = Vec::new();
     for e in &model.elements {
@@ -220,7 +220,7 @@ fn mode_of(name: &str) -> StressMode {
 }
 
 // ---------------------------------------------------------------------------
-// Uppsättning
+// Setup
 // ---------------------------------------------------------------------------
 
 fn kw(name: &str, params: &[(&str, &str)], data: Vec<Vec<String>>) -> RawKeyword {
@@ -235,15 +235,15 @@ fn kw(name: &str, params: &[(&str, &str)], data: Vec<Vec<String>>) -> RawKeyword
 
 fn elastic_of(def: &MaterialDef) -> Result<(f64, f64)> {
     let Some(e) = def.behavior("ELASTIC") else {
-        return fail(format!("material {}: XFEM kräver *ELASTIC", def.name));
+        return fail(format!("material {}: XFEM requires *ELASTIC", def.name));
     };
     if e.param_upper("TYPE").is_some_and(|t| t != "ISOTROPIC") {
-        return e.err("XFEM stöds bara med isotrop elasticitet");
+        return e.err("XFEM is supported only with isotropic elasticity");
     }
     let v = e.first_floats()?;
     let (em, nu) = (v.first().copied().unwrap_or(0.0), v.get(1).copied().unwrap_or(0.0));
     if !(em > 0.0) {
-        return e.err("elasticitetsmodulen ska vara positiv");
+        return e.err("the elastic modulus must be positive");
     }
     Ok((em, nu))
 }
@@ -255,10 +255,10 @@ fn law_of(def: &MaterialDef, em: f64, h: f64) -> Result<Option<Law>> {
     let s = v.get(1).copied().filter(|&x| x != 0.0).unwrap_or(a);
     let t = v.get(2).copied().filter(|&x| x != 0.0).unwrap_or(s);
     if !(a > 0.0) {
-        return di.err("initieringsvärdet ska vara positivt");
+        return di.err("the initiation value must be positive");
     }
     if let Some(p) = di.param_upper("POSITION").filter(|p| p != "CENTROID") {
-        return di.err(format!("POSITION={p} stöds inte ännu för XFEM (bara CENTROID)"));
+        return di.err(format!("POSITION={p} is not supported yet for XFEM (only CENTROID)"));
     }
     let crit = match di.param_upper("CRITERION").as_deref() {
         Some("MAXPS") => Criterion::MaxPs(a),
@@ -267,11 +267,11 @@ fn law_of(def: &MaterialDef, em: f64, h: f64) -> Result<Option<Law>> {
         Some("QUADS") => Criterion::QuadS([a, s, t]),
         Some("MAXE") => Criterion::MaxE([a, s, t]),
         Some("QUADE") => Criterion::QuadE([a, s, t]),
-        Some(o) => return di.err(format!("CRITERION={o} stöds inte för XFEM (MAXPS, MAXPE, MAXS, QUADS, MAXE, QUADE)")),
-        None => return di.err("CRITERION= saknas"),
+        Some(o) => return di.err(format!("CRITERION={o} is not supported for XFEM (MAXPS, MAXPE, MAXS, QUADS, MAXE, QUADE)")),
+        None => return di.err("CRITERION= is missing"),
     };
-    // MAXPS/MAXPE: normal längs största huvudriktningen; tractionkriterierna:
-    // NORMAL DIRECTION= (standard 1)
+    // MAXPS/MAXPE: normal along the maximum principal direction; the traction criteria:
+    // NORMAL DIRECTION= (default 1)
     let traction = matches!(crit, Criterion::MaxS(_) | Criterion::QuadS(_) | Criterion::MaxE(_) | Criterion::QuadE(_));
     let normal_dir = match di.param("NORMAL DIRECTION") {
         None if traction => Some(0),
@@ -280,10 +280,10 @@ fn law_of(def: &MaterialDef, em: f64, h: f64) -> Result<Option<Law>> {
             "1" => Some(0),
             "2" => Some(1),
             "3" => Some(2),
-            o => return di.err(format!("NORMAL DIRECTION={o} ska vara 1, 2 eller 3")),
+            o => return di.err(format!("NORMAL DIRECTION={o} must be 1, 2 or 3")),
         },
     };
-    // kohesiv lag: dragspänningsgränser i sprickans lokala riktningar
+    // cohesive law: traction limits in the local directions of the crack
     let lim = match crit {
         Criterion::MaxPs(x) => [x, x, x],
         Criterion::MaxPe(x) => [em * x / (1.0 - elastic_of(def)?.1.powi(2)); 3],
@@ -291,7 +291,7 @@ fn law_of(def: &MaterialDef, em: f64, h: f64) -> Result<Option<Law>> {
         Criterion::MaxE(l) | Criterion::QuadE(l) => [em * l[0], em * l[1], em * l[2]],
     };
     let tsc = if matches!(crit, Criterion::QuadS(_) | Criterion::QuadE(_)) { "QUADS" } else { "MAXS" };
-    // straffstyvhet ur grundmaterialet och elementstorleken
+    // penalty stiffness from the base material and the element size
     let k = em / h;
     let mut behaviors = vec![
         kw("ELASTIC", &[("TYPE", "TRACTION")], vec![vec![k.to_string(), k.to_string(), k.to_string()]]),
@@ -303,7 +303,7 @@ fn law_of(def: &MaterialDef, em: f64, h: f64) -> Result<Option<Law>> {
     let tdef = MaterialDef { name: format!("{}-XFEM", def.name), behaviors, density: 0.0 };
     let ts = crate::materials::build(&tdef)?;
     if ts.cohesive().is_none() {
-        return fail(format!("material {}: kunde inte bygga sprickans traction–separation", def.name));
+        return fail(format!("material {}: could not build the traction–separation of the crack", def.name));
     }
     let visc = match def.behavior("DAMAGE STABILIZATION") {
         Some(k) => k.first_floats()?.first().copied().unwrap_or(0.0),
@@ -312,7 +312,7 @@ fn law_of(def: &MaterialDef, em: f64, h: f64) -> Result<Option<Law>> {
     Ok(Some(Law { crit, normal_dir, ts, visc }))
 }
 
-/// Nodvärden för ett elements nivåmängder ur begynnelsevillkoren.
+/// Nodal values of an element's level sets from the initial conditions.
 struct Ic {
     phi: Vec<f64>,
     psi: Vec<f64>,
@@ -334,7 +334,7 @@ fn grad_at_centroid(r: Ref, x: &[[f64; 3]], vals: &[f64]) -> ([f64; 3], [f64; 3]
     (p, g, v)
 }
 
-/// Formfunktioner, globala derivator och det(J) i den naturliga punkten `p`.
+/// Shape functions, global derivatives and det(J) at the natural point `p`.
 pub fn physical(r: Ref, x: &[[f64; 3]], p: [f64; 3]) -> Result<(Vec<f64>, Vec<[f64; 3]>, f64)> {
     let (n, dn) = r.shape(p);
     let nn = r.nn();
@@ -379,17 +379,17 @@ fn sign_change(v: &[f64]) -> bool {
 }
 
 fn snap(v: &[f64], h: f64) -> Vec<f64> {
-    // värden mycket nära noll flyttas till +ε (noden ligger då på den positiva sidan)
+    // values very close to zero are moved to +ε (the node then lies on the positive side)
     v.iter().map(|&x| if x.abs() < 1e-9 * h { 1e-9 * h } else { x }).collect()
 }
 
-/// Ersätter elementen i *ENRICHMENT-domänerna med XFEM-element.
+/// Replaces the elements in the *ENRICHMENT domains with XFEM elements.
 pub fn setup(model: &mut FeModel) -> Result<()> {
     let enr: Vec<RawKeyword> = model.extra.iter().filter(|k| k.name == "ENRICHMENT").cloned().collect();
     let ics: Vec<RawKeyword> = model.extra.iter().filter(|k| k.name == "XFEM INITIAL").cloned().collect();
     if enr.is_empty() {
         if let Some(k) = ics.first() {
-            return fail(format!("{}: *INITIAL CONDITIONS, TYPE=ENRICHMENT utan *ENRICHMENT", k.location()));
+            return fail(format!("{}: *INITIAL CONDITIONS, TYPE=ENRICHMENT without *ENRICHMENT", k.location()));
         }
         return Ok(());
     }
@@ -400,25 +400,25 @@ pub fn setup(model: &mut FeModel) -> Result<()> {
 }
 
 fn setup_crack(model: &mut FeModel, kw0: &RawKeyword, ics: &[RawKeyword]) -> Result<()> {
-    let name = kw0.param_upper("NAME").ok_or_else(|| FemError(format!("{}: NAME= saknas", kw0.location())))?;
+    let name = kw0.param_upper("NAME").ok_or_else(|| FemError(format!("{}: NAME= is missing", kw0.location())))?;
     let ty = kw0.param_upper("TYPE").unwrap_or_else(|| "PROPAGATION CRACK".into());
     let stationary = match ty.as_str() {
         "PROPAGATION CRACK" => false,
         "STATIONARY CRACK" | "STATIONARY" => true,
-        o => return kw0.err(format!("TYPE={o} stöds inte (PROPAGATION CRACK, STATIONARY CRACK)")),
+        o => return kw0.err(format!("TYPE={o} is not supported (PROPAGATION CRACK, STATIONARY CRACK)")),
     };
-    let elset = kw0.param_upper("ELSET").ok_or_else(|| FemError(format!("{}: ELSET= saknas", kw0.location())))?;
+    let elset = kw0.param_upper("ELSET").ok_or_else(|| FemError(format!("{}: ELSET= is missing", kw0.location())))?;
     let domain = match model.elsets.get(&elset) {
         Some(s) => s.clone(),
         None => match model.elsets.iter().find(|(k, _)| k.ends_with(&format!(".{elset}"))) {
             Some((_, s)) => s.clone(),
-            None => return kw0.err(format!("elementsetet '{elset}' finns inte")),
+            None => return kw0.err(format!("the element set '{elset}' does not exist")),
         },
     };
     if domain.is_empty() {
-        return kw0.err("domänen är tom");
+        return kw0.err("the domain is empty");
     }
-    // grundelement, material
+    // base element, material
     let mut refs = HashMap::new();
     let mut dim = 0;
     let mut mname = String::new();
@@ -426,40 +426,40 @@ fn setup_crack(model: &mut FeModel, kw0: &RawKeyword, ics: &[RawKeyword]) -> Res
     for &e in &domain {
         let el = &model.elements[e];
         if as_xfem(el.etype).is_some() {
-            return kw0.err(format!("element {} hör redan till en annan berikning", el.label));
+            return kw0.err(format!("element {} already belongs to another enrichment", el.label));
         }
         let n = el.etype.name();
         let Some(r) = Ref::of(n) else {
-            return kw0.err(format!("elementtypen {n} kan inte berikas (XFEM stöds för C3D8, C3D8R, C3D4, CPE4, CPS4, CPE4R, CPS4R, CPE3, CPS3)"));
+            return kw0.err(format!("the element type {n} cannot be enriched (XFEM is supported for C3D8, C3D8R, C3D4, CPE4, CPS4, CPE4R, CPS4R, CPE3, CPS3)"));
         };
         if stationary && r.dim() == 2 {
             return kw0.err(format!(
-                "TYPE=STATIONARY CRACK tillåter bara tredimensionella element av första ordningen, inte {n}"
+                "TYPE=STATIONARY CRACK allows only first-order three-dimensional elements, not {n}"
             ));
         }
         if dim != 0 && dim != r.dim() {
-            return kw0.err("domänen blandar plana och tredimensionella element");
+            return kw0.err("the domain mixes plane and three-dimensional elements");
         }
         dim = r.dim();
         if ename.is_empty() {
             ename = n;
         } else if mode_of(ename) != mode_of(n) {
-            return kw0.err("domänen blandar plan spänning och plan töjning");
+            return kw0.err("the domain mixes plane stress and plane strain");
         }
-        let Some(si) = el.section else { return kw0.err(format!("element {} saknar tvärsnitt", el.label)) };
+        let Some(si) = el.section else { return kw0.err(format!("element {} has no section", el.label)) };
         let mn = model.sections[si].material.to_uppercase();
         if mname.is_empty() {
             mname = mn;
         } else if mname != mn {
-            return kw0.err("alla element i domänen ska ha samma material");
+            return kw0.err("all elements in the domain must have the same material");
         }
         refs.insert(e, r);
     }
     let mode = mode_of(ename);
-    let mi = model.material_index(&mname).ok_or_else(|| FemError(format!("materialet {mname} finns inte")))?;
+    let mi = model.material_index(&mname).ok_or_else(|| FemError(format!("the material {mname} does not exist")))?;
     let def = model.materials[mi].clone();
     let (em, nu) = elastic_of(&def)?;
-    // begynnelsevillkor för denna spricka
+    // initial conditions for this crack
     let mut ic: BTreeMap<usize, Ic> = BTreeMap::new();
     for k in ics {
         for d in &k.data {
@@ -471,10 +471,10 @@ fn setup_crack(model: &mut FeModel, kw0: &RawKeyword, ics: &[RawKeyword]) -> Res
             let phi: f64 = d.fields[3].parse().unwrap_or(0.0);
             let psi: f64 = d.fields[4].parse().unwrap_or(0.0);
             let Some(&r) = refs.get(&e) else {
-                return fail(format!("*INITIAL CONDITIONS, TYPE=ENRICHMENT: element {} hör inte till domänen för {name}", model.elements.get(e).map_or(0, |x| x.label)));
+                return fail(format!("*INITIAL CONDITIONS, TYPE=ENRICHMENT: element {} does not belong to the domain of {name}", model.elements.get(e).map_or(0, |x| x.label)));
             };
             if ln == 0 || ln > r.nn() {
-                return fail(format!("*INITIAL CONDITIONS, TYPE=ENRICHMENT: ogiltigt lokalt nodnummer {ln} för element {}", model.elements[e].label));
+                return fail(format!("*INITIAL CONDITIONS, TYPE=ENRICHMENT: invalid local node number {ln} for element {}", model.elements[e].label));
             }
             let en = ic.entry(e).or_insert_with(|| Ic { phi: vec![f64::NAN; r.nn()], psi: vec![f64::NAN; r.nn()] });
             en.phi[ln - 1] = phi;
@@ -483,10 +483,10 @@ fn setup_crack(model: &mut FeModel, kw0: &RawKeyword, ics: &[RawKeyword]) -> Res
     }
     for (&e, v) in &ic {
         if v.phi.iter().any(|x| x.is_nan()) {
-            return fail(format!("*INITIAL CONDITIONS, TYPE=ENRICHMENT: alla noder i element {} ska ha värden", model.elements[e].label));
+            return fail(format!("*INITIAL CONDITIONS, TYPE=ENRICHMENT: all nodes in element {} must have values", model.elements[e].label));
         }
     }
-    // geometri
+    // geometry
     let mut conn = HashMap::new();
     let mut coords = HashMap::new();
     let mut hsum = 0.0;
@@ -502,7 +502,7 @@ fn setup_crack(model: &mut FeModel, kw0: &RawKeyword, ics: &[RawKeyword]) -> Res
         conn.insert(e, (r, nodes));
     }
     let h = hsum / domain.len() as f64;
-    // ytgrannar
+    // face neighbors
     let mut face_map: HashMap<Vec<usize>, Vec<(usize, Vec<usize>)>> = HashMap::new();
     for &e in &domain {
         let (r, nodes) = &conn[&e];
@@ -519,15 +519,15 @@ fn setup_crack(model: &mut FeModel, kw0: &RawKeyword, ics: &[RawKeyword]) -> Res
             faces.entry(*e).or_default().push((f.clone(), other));
         }
     }
-    // element som delar noder med domänen men inte hör till den (grannar utanför) räknas som ospruckna
+    // elements that share nodes with the domain but do not belong to it (neighbors outside) count as uncracked
     let law = if stationary { None } else { law_of(&def, em, h)? };
     if !stationary && law.is_none() {
-        return kw0.err("TYPE=PROPAGATION CRACK kräver *DAMAGE INITIATION i domänens material");
+        return kw0.err("TYPE=PROPAGATION CRACK requires *DAMAGE INITIATION in the domain material");
     }
     let contact = kw0.param("INTERACTION").is_some();
     if let Some(i) = kw0.param_upper("INTERACTION") {
         if !model.extra.iter().any(|k| k.name == "SURFACE INTERACTION" && k.param_upper("NAME").as_deref() == Some(i.as_str())) {
-            return kw0.err(format!("*SURFACE INTERACTION {i} finns inte"));
+            return kw0.err(format!("*SURFACE INTERACTION {i} does not exist"));
         }
     }
     let mut nodal = BTreeMap::new();
@@ -536,7 +536,7 @@ fn setup_crack(model: &mut FeModel, kw0: &RawKeyword, ics: &[RawKeyword]) -> Res
             nodal.entry(n).or_insert((v.phi[i], v.psi[i]));
         }
     }
-    // stegens sluttider och *ENRICHMENT ACTIVATION
+    // the end times of the steps and *ENRICHMENT ACTIVATION
     let mut activation = Vec::new();
     let mut t = 0.0;
     let mut on = true;
@@ -642,7 +642,7 @@ fn setup_propagation(model: &mut FeModel, crack: &'static Crack) -> Result<()> {
 }
 
 fn setup_stationary(model: &mut FeModel, crack: &'static Crack, ic: &BTreeMap<usize, Ic>, h: f64) -> Result<()> {
-    // klassificering
+    // classification
     let mut cut = BTreeSet::new();
     let mut full = BTreeSet::new();
     let mut tips = BTreeSet::new();
@@ -651,7 +651,7 @@ fn setup_stationary(model: &mut FeModel, crack: &'static Crack, ic: &BTreeMap<us
         if !(sign_change(&ph) && v.psi.iter().any(|&x| x < 0.0)) {
             continue;
         }
-        // skuret bara om sprickytan (φ = 0, ψ < 0) verkligen går genom elementet
+        // cut only if the crack surface (φ = 0, ψ < 0) actually passes through the element
         if geom::partition(crack.conn[&e].0, &ph, Some(&v.psi)).facets.is_empty() {
             continue;
         }
@@ -663,10 +663,10 @@ fn setup_stationary(model: &mut FeModel, crack: &'static Crack, ic: &BTreeMap<us
         }
     }
     if cut.is_empty() {
-        return fail(format!("berikningen {}: inget element skärs av sprickan (kontrollera *INITIAL CONDITIONS, TYPE=ENRICHMENT)", crack.name));
+        return fail(format!("enrichment {}: no element is cut by the crack (check *INITIAL CONDITIONS, TYPE=ENRICHMENT)", crack.name));
     }
     let hnodes: BTreeSet<usize> = full.iter().flat_map(|e| crack.conn[e].1.iter().copied()).collect();
-    // spetsberikning: noderna i elementen inom två lager runt spetselementen
+    // tip enrichment: the nodes of the elements within two layers around the tip elements
     let mut node_elems: HashMap<usize, Vec<usize>> = HashMap::new();
     for &e in &crack.domain {
         for &n in &crack.conn[&e].1 {
@@ -681,7 +681,7 @@ fn setup_stationary(model: &mut FeModel, crack: &'static Crack, ic: &BTreeMap<us
         }
     }
     let tnodes: BTreeSet<usize> = ring.iter().flat_map(|e| crack.conn[e].1.iter().copied()).collect();
-    // nodvärden: begynnelsevillkoren, annars linjär extrapolation från närmaste skurna element
+    // nodal values: the initial conditions, otherwise linear extrapolation from the nearest cut element
     let fits: Vec<([f64; 3], [f64; 3], f64, [f64; 3], f64)> = cut
         .iter()
         .map(|e| {
@@ -745,7 +745,7 @@ fn setup_stationary(model: &mut FeModel, crack: &'static Crack, ic: &BTreeMap<us
 }
 
 // ---------------------------------------------------------------------------
-// Sprickväxt
+// Crack growth
 // ---------------------------------------------------------------------------
 
 fn sym3(mode: StressMode, s: &[f64]) -> [[f64; 3]; 3] {
@@ -757,7 +757,7 @@ fn sym3(mode: StressMode, s: &[f64]) -> [[f64; 3]; 3] {
 }
 
 impl Crack {
-    /// Sprickväxt aktiv vid tiden t.
+    /// Crack growth active at the time t.
     fn active_at(&self, t: f64) -> bool {
         for &(end, on) in &self.activation {
             if t <= end + 1e-12 {
@@ -767,7 +767,7 @@ impl Crack {
         self.activation.last().is_none_or(|a| a.1)
     }
 
-    /// Återställer sprickan till begynnelseläget (ny analys).
+    /// Resets the crack to the initial state (new analysis).
     pub fn reset(&self) {
         *self.segs.write().unwrap() = self.initial.clone();
         *self.fronts.write().unwrap() = self.init_fronts.read().unwrap().clone();
@@ -783,11 +783,11 @@ impl Crack {
         self.criterion(law, s).0
     }
 
-    /// Kriteriets värde och sprickplanets normal för spänningen `s`.
+    /// The criterion value and the crack plane normal for the stress `s`.
     fn criterion(&self, law: &Law, s: &[f64]) -> (f64, [f64; 3]) {
         let m = sym3(self.mode, s);
         let (vals, vecs) = crate::kinematics::tensor::eig_sym(&m);
-        // i planet: bara huvudriktningar i planet
+        // in the plane: only in-plane principal directions
         let mut best = (f64::MIN, [1.0, 0.0, 0.0]);
         for k in 0..3 {
             let v = [vecs[0][k], vecs[1][k], vecs[2][k]];
@@ -813,7 +813,7 @@ impl Crack {
         let f = match law.crit {
             Criterion::MaxPs(s0) => best.0.max(0.0) / s0,
             Criterion::MaxPe(e0) => {
-                // huvudtöjning ur spänningen (isotrop elasticitet)
+                // principal strain from the stress (isotropic elasticity)
                 let nu = self.nu;
                 let tr3 = vals[0] + vals[1] + vals[2];
                 let mut emax = (best.0 * (1.0 + nu) - nu * tr3) / em;
@@ -830,8 +830,8 @@ impl Crack {
         (f, n)
     }
 
-    /// Frontytor för ett sprucket element: ytor som skärs av sprickan och
-    /// gränsar till ett ospruckket element i domänen (eller utanför den).
+    /// Front faces of a cracked element: faces that are cut by the crack and
+    /// border an uncracked element in the domain (or outside it).
     fn front_nodes(&self, e: usize, phi: &[f64], segs: &HashMap<usize, Seg>) -> BTreeSet<usize> {
         let mut out = BTreeSet::new();
         let Some(fs) = self.faces.get(&e) else { return out };
@@ -851,7 +851,7 @@ impl Crack {
         out
     }
 
-    /// Snittpunkten (medelvärdet av kantskärningarna) mellan φ = 0 och en yta.
+    /// The intersection point (the mean of the edge intersections) between φ = 0 and a face.
     fn face_cut(&self, e: usize, phi: &[f64], f: &[usize]) -> Option<[f64; 3]> {
         let nodes = &self.conn[&e].1;
         let mut pts = Vec::new();
@@ -870,8 +870,8 @@ impl Crack {
         Some(geom::bary_point(&pts, &vec![1.0 / pts.len() as f64; pts.len()]))
     }
 
-    /// Fronten där sprickan (φ i element e, från punkten p i riktningen d)
-    /// lämnar elementet: ytan som skärs längst fram. None om den når en fri yta.
+    /// The front where the crack (φ in element e, from the point p in the direction d)
+    /// leaves the element: the face cut furthest ahead. None if it reaches a free surface.
     fn exit_front(&self, e: usize, phi: &[f64], p: [f64; 3], d: [f64; 3]) -> Option<Front> {
         let fs = self.faces.get(&e)?;
         let mut best: Option<(f64, [f64; 3], Option<usize>)> = None;
@@ -886,7 +886,7 @@ impl Crack {
         Some(Front { p: c, dir: d, ahead: nb? })
     }
 
-    /// Sprickväxt efter ett godkänt inkrement.
+    /// Crack growth after an accepted increment.
     pub fn propagate(&self) {
         let Some(law) = &self.law else { return };
         let t = *self.time.lock().unwrap();
@@ -909,7 +909,7 @@ impl Crack {
             common::scale(v, 1.0 / common::norm(v).max(1e-300))
         };
         if segs.is_empty() {
-            // ingen spricka ännu: elementet med störst kriterievärde ≥ 1, fronter åt båda håll
+            // no crack yet: the element with the largest criterion value ≥ 1, fronts in both directions
             let mut best: Option<(f64, usize, [f64; 3])> = None;
             for &e in &self.domain {
                 if let Some(s) = stash.get(&e) {
@@ -968,7 +968,7 @@ impl Crack {
 }
 
 // ---------------------------------------------------------------------------
-// Elementet
+// The element
 // ---------------------------------------------------------------------------
 
 impl XfemElem {
@@ -994,7 +994,7 @@ impl XfemElem {
         }
     }
 
-    /// Geometrin i detta anrop (None = elementet är inte berikat).
+    /// The geometry in this call (None = the element is not enriched).
     fn geo(&self) -> Option<Geo> {
         let nb = self.nb;
         if let Some(st) = &self.stat {
@@ -1022,7 +1022,7 @@ impl XfemElem {
         Some(Geo { phi: seg.phi.clone(), psi: None, side, hact, cut: true, tipf: vec![None; nb], initial: seg.initial, order: 2 })
     }
 
-    /// Integrationspunkter (naturlig punkt, vikt i referensmåttet, sida).
+    /// Integration points (natural point, weight in the reference measure, side).
     fn points(&self, g: &Geo) -> Vec<([f64; 3], f64, i8)> {
         if !g.cut {
             let n = if self.dim() == 3 { 3 } else { 4 };
@@ -1033,7 +1033,7 @@ impl XfemElem {
         let mut out = Vec::new();
         for (c, s) in &part.cells {
             let m = geom::measure(&c.v);
-            // framför fronten (ψ > 0) i spetselement finns ingen spricka: inget hopp
+            // ahead of the front (ψ > 0) in tip elements there is no crack: no jump
             let s = match &g.psi {
                 Some(ps) => {
                     let cc = geom::bary_point(&c.v, &vec![1.0 / c.v.len() as f64; c.v.len()]);
@@ -1052,7 +1052,7 @@ impl XfemElem {
         out
     }
 
-    /// Generaliserad integrationspunkt (formfunktioner per elementnod inklusive berikning).
+    /// Generalized integration point (shape functions per element node including enrichment).
     fn ip(&self, ctx: &ElemCtx, g: &Geo, p: [f64; 3], wnat: f64, side: i8, t: f64) -> Result<Ip> {
         let nb = self.nb;
         let (n, dndx, det) = physical(self.r, &ctx.x[..nb], p)?;
@@ -1111,7 +1111,7 @@ impl XfemElem {
         Ok(Ip { n: nv, dndx: gv, w: wnat * det * t })
     }
 
-    /// Grundelementets B-bar (C3D8, CPE4) eller ingen.
+    /// The base element's B-bar (C3D8, CPE4) or none.
     fn bbar(&self) -> common::Bbar {
         match self.base.name() {
             "C3D8" => common::Bbar::Volumetric,
@@ -1120,8 +1120,8 @@ impl XfemElem {
         }
     }
 
-    /// Integrationspunkter och B-matriser. Heavisideelement utan spetsfunktioner
-    /// får grundelementets B-bar per delelement (sida), som två överlagrade element.
+    /// Integration points and B matrices. Heaviside elements without tip functions
+    /// get the base element's B-bar per subelement (side), like two superimposed elements.
     fn ips_b(&self, ctx: &ElemCtx, g: &Geo) -> Result<(Vec<Ip>, Vec<Vec<f64>>)> {
         let mode = self.mode();
         let t = self.thickness(ctx);
@@ -1147,7 +1147,7 @@ impl XfemElem {
         Ok((ips, bs))
     }
 
-    /// Hoppoperatorn och lokala axlar i en punkt på sprickytan.
+    /// The jump operator and local axes at a point on the crack surface.
     fn jump(&self, ctx: &ElemCtx, g: &Geo, p: [f64; 3]) -> Result<(Vec<f64>, [[f64; 3]; 3])> {
         let nb = self.nb;
         let (n, dndx, _) = physical(self.r, &ctx.x[..nb], p)?;
@@ -1185,7 +1185,7 @@ impl XfemElem {
         Ok((c, [nrm, s, t]))
     }
 
-    /// Punkter på sprickytan: (naturlig punkt, fysisk vikt).
+    /// Points on the crack surface: (natural point, physical weight).
     fn facet_points(&self, ctx: &ElemCtx, g: &Geo) -> Vec<([f64; 3], f64)> {
         let part = geom::partition(self.r, &g.phi, None);
         let t = self.thickness(ctx);
@@ -1220,7 +1220,7 @@ impl XfemElem {
         self.crack.e_mod * if self.dim() == 2 { self.thickness(ctx) } else { h }
     }
 
-    /// Svaga fjädrar för berikningsfrihetsgrader som elementet inte använder.
+    /// Weak springs for enrichment degrees of freedom that the element does not use.
     fn ties(&self, ctx: &ElemCtx, g: Option<&Geo>, u: &[f64], fint: &mut [f64], k: Option<&mut Vec<f64>>) {
         let d = self.dim();
         let nd = d * self.nodes_total;
@@ -1277,7 +1277,7 @@ impl XfemElem {
         out
     }
 
-    /// Sprickytans kohesiva/kontaktbidrag.
+    /// The cohesive/contact contribution of the crack surface.
     #[allow(clippy::too_many_arguments)]
     fn faces_response(&self, ctx: &ElemCtx, g: &Geo, u: &[f64], so: &[f64], sn: &mut Vec<f64>, fint: &mut [f64], k: Option<&mut Vec<f64>>) -> Result<()> {
         let d = self.dim();
@@ -1317,7 +1317,7 @@ impl XfemElem {
             if tl.iter().all(|&x| x == 0.0) && dt.iter().flatten().all(|&x| x == 0.0) {
                 continue;
             }
-            // global dragspänning och tangent
+            // global traction and tangent
             let mut tg = [0.0; 3];
             for a in 0..3 {
                 for m in 0..3 {
@@ -1360,7 +1360,7 @@ impl XfemElem {
         Ok(())
     }
 
-    /// Tyngdpunktsspänning (elastisk) för initieringskriteriet.
+    /// Centroid stress (elastic) for the initiation criterion.
     fn stash_centroid(&self, ctx: &ElemCtx, u: &[f64]) -> Result<()> {
         if self.crack.stationary {
             return Ok(());
@@ -1437,14 +1437,14 @@ impl ElementType for XfemElem {
 
     fn internal_force(&self, ctx: &ElemCtx, u: &[f64], du: &[f64], so: &[f64], sn: &mut Vec<f64>, tangent: bool) -> Result<ElemResponse> {
         if ctx.nlgeom {
-            return super::api::not_implemented("geometrisk olinjäritet (NLGEOM) med XFEM", self.base.name());
+            return super::api::not_implemented("geometric nonlinearity (NLGEOM) with XFEM", self.base.name());
         }
         let d = self.dim();
         let nbd = d * self.nb;
         let geo = self.geo();
         let hdr: Vec<f64> = if so.len() >= HDR { so[..HDR].to_vec() } else { vec![0.0; HDR] };
         let Some(g) = geo else {
-            // inte berikat: grundelementet
+            // not enriched: the base element
             self.stash_centroid(ctx, u)?;
             let bctx = self.base_ctx(ctx);
             let bold = if hdr[3] == 0.0 && so.len() > HDR { &so[HDR..] } else { &[][..] };
@@ -1457,7 +1457,7 @@ impl ElementType for XfemElem {
             };
             let mut bnew = Vec::new();
             let r = self.base.internal_force(&bctx, &u[..nbd], &du[..nbd], bold, &mut bnew, tangent)?;
-            // initieringen: integrationspunkten med störst kriterievärde
+            // the initiation: the integration point with the largest criterion value
             if !self.crack.stationary {
                 let mat = ctx.material(self.base.name())?;
                 let ns = self.mode().ncomp();
@@ -1538,20 +1538,20 @@ impl ElementType for XfemElem {
     }
 }
 
-/// En integrationspunkt för konturintegraler.
+/// An integration point for contour integrals.
 pub struct FieldPoint {
     pub x: [f64; 3],
     pub w: f64,
-    /// Spänning och förskjutningsgradient g[j][i] = ∂u_j/∂x_i (tensorer).
+    /// Stress and displacement gradient g[j][i] = ∂u_j/∂x_i (tensors).
     pub s: [[f64; 3]; 3],
     pub g: [[f64; 3]; 3],
     pub eps: [[f64; 3]; 3],
-    /// Grundnodernas formfunktioner och derivator (för q).
+    /// The shape functions and derivatives of the base nodes (for q).
     pub n: Vec<f64>,
     pub dndx: Vec<[f64; 3]>,
 }
 
-/// Integrationspunkter (linjärt elastiskt) för elementets förskjutning `u`.
+/// Integration points (linear elastic) for the element displacement `u`.
 pub fn field_points(x: &XfemElem, ctx: &ElemCtx, u: &[f64]) -> Result<Vec<FieldPoint>> {
     let mode = x.mode();
     let mat = ctx.material(x.base.name())?;
@@ -1599,8 +1599,8 @@ pub fn field_points(x: &XfemElem, ctx: &ElemCtx, u: &[f64]) -> Result<Vec<FieldP
     Ok(out)
 }
 
-/// Spetselementen och nodernas nivåmängder för en stationär spricka:
-/// (element, φ, ψ per grundnod).
+/// The tip elements and the nodal level sets for a stationary crack:
+/// (element, φ, ψ per base node).
 pub fn tip_elements(model: &FeModel, crack: &'static Crack) -> Vec<(usize, Vec<f64>, Vec<f64>)> {
     let mut v = Vec::new();
     for &e in &crack.domain {

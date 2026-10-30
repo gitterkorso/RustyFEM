@@ -1,35 +1,35 @@
-//! Dragbegränsning för Mohr–Coulomb (*TENSION CUTOFF): Rankine-ytan.
-//! Modulen inkluderas från `mohr_coulomb.rs` (`#[path]`) och
-//! använder Mohr–Coulomb-modellens privata delar.
+//! Tension cutoff for Mohr–Coulomb (*TENSION CUTOFF): the Rankine surface.
+//! The module is included from `mohr_coulomb.rs` (`#[path]`) and
+//! uses private parts of the Mohr–Coulomb model.
 //!
 //!   F_t = R_r(Θ) q − p − σ_t(ε̄_t^pl) = σ_max − σ_t = 0,  R_r = (2/3) cos Θ,
 //!
-//! med nästan associativ flytning
+//! with nearly associated flow
 //!
 //!   G_t = √((ε_t σ_t|₀)² + (R_t(Θ, e_t) q)²) − p,
 //!   R_t = (2e_t/3) [4(1−e_t²)cos²Θ + (2e_t−1)²] / [2(1−e_t²)cos Θ + (2e_t−1)√(4(1−e_t²)cos²Θ + 5e_t² − 4e_t)],
 //!
-//! ε_t = 0,1 och e_t = 0,6 (fasta). Faktorn 2e_t/3 (= 0,4, så att
-//! R_t(0) = R_r(0) = 2/3 i enaxligt drag) är kontrollerad med plastiska
-//! töjningar i drag och i drag med skjuvning. Dragdelens hårdnandevariabel
-//! (PEEQT) är ε̄̇_t^pl = σ:ε̇_t^pl/σ_t (samma form som
-//! Mohr–Coulombs PEEQ). σ_t(ε̄_t^pl) ges som tabell på *TENSION CUTOFF.
+//! ε_t = 0.1 and e_t = 0.6 (fixed). The factor 2e_t/3 (= 0.4, so that
+//! R_t(0) = R_r(0) = 2/3 in uniaxial tension) is verified with plastic
+//! strains in tension and in tension with shear. The hardening variable of the tension part
+//! (PEEQT) is ε̄̇_t^pl = σ:ε̇_t^pl/σ_t (the same form as
+//! the Mohr–Coulomb PEEQ). σ_t(ε̄_t^pl) is given as a table on *TENSION CUTOFF.
 //!
-//! Retur i huvudspänningsrummet med implicit Euler: först den yta som
-//! prövospänningen överskrider mest, sedan den andra, sist båda samtidigt
-//! (två plastiska multiplikatorer, σ = σ_tr − D(Δλ₁ ∂G/∂σ + Δλ₂ ∂G_t/∂σ),
-//! Newton i (Δλ₁, Δλ₂)). Den första kombinationen som uppfyller båda
-//! villkoren med icke-negativa multiplikatorer väljs. Tangenten är numerisk
-//! (framåtdifferens av returalgoritmen) som för Mohr–Coulomb.
+//! Return in principal stress space with implicit Euler: first the surface that
+//! the trial stress exceeds most, then the other, finally both simultaneously
+//! (two plastic multipliers, σ = σ_tr − D(Δλ₁ ∂G/∂σ + Δλ₂ ∂G_t/∂σ),
+//! Newton in (Δλ₁, Δλ₂)). The first combination that satisfies both
+//! conditions with non-negative multipliers is chosen. The tangent is numerical
+//! (forward difference of the return algorithm) as for Mohr–Coulomb.
 
 use super::*;
 use crate::materials::principal::{fd_tangent, fold_theta, from_principal, grad_pq_theta, pq_theta, principal, root_from_zero};
 
-/// Fasta parametrar för Rankine-ytans flödespotential.
+/// Fixed parameters for the flow potential of the Rankine surface.
 const ECC_T: f64 = 0.6;
 const MER_T: f64 = 0.1;
 
-/// Tillstånd: Mohr–Coulombs [ε̄p, εp (6), ε (6)] följt av ε̄_t^pl.
+/// State: Mohr–Coulomb's [ε̄p, εp (6), ε (6)] followed by ε̄_t^pl.
 const PT: usize = NST;
 const NST_T: usize = NST + 1;
 
@@ -42,33 +42,33 @@ pub struct MohrCoulombCutoff {
     at: f64,
 }
 
-/// σ_t-tabell ur *TENSION CUTOFF (σ_t, ε̄_t^pl).
+/// σ_t table from *TENSION CUTOFF (σ_t, ε̄_t^pl).
 fn cutoff_table(kw: &RawKeyword) -> Result<Vec<(f64, f64)>> {
     if kw.has("DEPENDENCIES") {
-        return kw.err("fältberoende dragbegränsning stöds inte ännu");
+        return kw.err("field-dependent tension cutoff is not yet supported");
     }
     let mut t: Vec<(f64, f64)> = Vec::new();
     for d in kw.records() {
         let v = kw.floats(&d)?;
         if v.len() > 2 && v[2..].iter().any(|&x| x != 0.0) {
-            return kw.err_at(d.line, "temperaturberoende dragbegränsning stöds inte ännu");
+            return kw.err_at(d.line, "temperature-dependent tension cutoff is not yet supported");
         }
         let (s, p) = (v.first().copied().unwrap_or(0.0), v.get(1).copied().unwrap_or(0.0));
         if s < 0.0 {
-            return kw.err_at(d.line, "dragbegränsningen σ_t får inte vara negativ");
+            return kw.err_at(d.line, "the tension cutoff σ_t must not be negative");
         }
         match t.last() {
-            Some(&(pl, _)) if !(p > pl) => return kw.err_at(d.line, "den plastiska töjningen ska öka"),
-            None if p != 0.0 => return kw.err_at(d.line, "första punkten ska ha plastisk töjning 0"),
+            Some(&(pl, _)) if !(p > pl) => return kw.err_at(d.line, "the plastic strain must increase"),
+            None if p != 0.0 => return kw.err_at(d.line, "the first point must have plastic strain 0"),
             _ => {}
         }
         t.push((p, s));
     }
     if t.is_empty() {
-        return kw.err("dragbegränsning σ_t saknas");
+        return kw.err("tension cutoff σ_t is missing");
     }
     if !(t[0].1 > 0.0) {
-        return kw.err("den första dragbegränsningen σ_t ska vara positiv");
+        return kw.err("the first tension cutoff σ_t must be positive");
     }
     Ok(t)
 }
@@ -79,7 +79,7 @@ pub fn build(mc: MohrCoulomb, kw: &RawKeyword) -> Result<MohrCoulombCutoff> {
     Ok(MohrCoulombCutoff { mc, tc: Hardening::Table(tab), at: MER_T * s0 })
 }
 
-/// Menétrey–Willams R(Θ, e) utan skalfaktor och dR/dΘ.
+/// Menétrey–Willam R(Θ, e) without scale factor, and dR/dΘ.
 fn mw(th: f64, e: f64) -> (f64, f64) {
     let (c, s) = (th.cos(), th.sin());
     let w = 1.0 - e * e;
@@ -92,7 +92,7 @@ fn mw(th: f64, e: f64) -> (f64, f64) {
     (a / b, (da * b - a * db) / (b * b))
 }
 
-/// ε̄ vid inkrementets slut: (ε̄ − ε̄_n) h(ε̄) = Δλ σ:∂G/∂σ.
+/// ε̄ at the end of the increment: (ε̄ − ε̄_n) h(ε̄) = Δλ σ:∂G/∂σ.
 fn eq_at(hard: &Hardening, pn: f64, dl: f64, w: f64) -> f64 {
     let mut p = pn + dl * w / hard.eval(pn).0.max(1e-300);
     for _ in 0..60 {
@@ -111,7 +111,7 @@ fn eq_at(hard: &Hardening, pn: f64, dl: f64, w: f64) -> f64 {
     p
 }
 
-/// Resultat av en retur med givna multiplikatorer.
+/// Result of a return with given multipliers.
 struct Ret {
     s: [f64; 3],
     p: f64,
@@ -123,7 +123,7 @@ struct Ret {
 }
 
 impl MohrCoulombCutoff {
-    /// ∂G_t/∂σ i huvudspänningsrummet.
+    /// ∂G_t/∂σ in principal stress space.
     fn flow_t(&self, s: &[f64; 3]) -> [f64; 3] {
         let (_, q, th) = pq_theta(s);
         let (tf, sgn) = fold_theta(th);
@@ -144,7 +144,7 @@ impl MohrCoulombCutoff {
         s[0].max(s[1]).max(s[2]) - st
     }
 
-    /// σ(Δλ₁, Δλ₂): σ = σ_tr − D(Δλ₁ n_mc(σ) + Δλ₂ n_t(σ)) med Newton.
+    /// σ(Δλ₁, Δλ₂): σ = σ_tr − D(Δλ₁ n_mc(σ) + Δλ₂ n_t(σ)) with Newton.
     fn stress_at(&self, str_: &[f64; 3], d1: f64, d2: f64, s: &mut [f64; 3]) -> Result<()> {
         let mc = &self.mc;
         let scale = str_.iter().fold(0.0f64, |m, x| m.max(x.abs())).max(mc.hard.initial()).max(self.tc.initial());
@@ -172,7 +172,7 @@ impl MohrCoulombCutoff {
                 }
             }
             let Some(d) = crate::materials::anisotropic::solve_dense(&j, &r) else {
-                return fail("Mohr–Coulomb med dragbegränsning: singulär jacobian i returalgoritmen");
+                return fail("Mohr–Coulomb with tension cutoff: singular Jacobian in the return algorithm");
             };
             let mut t = 1.0;
             loop {
@@ -191,7 +191,7 @@ impl MohrCoulombCutoff {
         if nr <= 1e-10 * scale {
             return Ok(());
         }
-        fail("Mohr–Coulomb med dragbegränsning: returalgoritmen (spänning för givna multiplikatorer) konvergerade inte")
+        fail("Mohr–Coulomb with tension cutoff: the return algorithm (stress for given multipliers) did not converge")
     }
 
     fn eval(&self, ltr: &[f64; 3], pn: f64, ptn: f64, d1: f64, d2: f64, s0: &[f64; 3]) -> Result<Ret> {
@@ -227,7 +227,7 @@ impl MohrCoulombCutoff {
             let ftol = 1e-9 * scale;
             d1 >= 0.0 && d2 >= 0.0 && r.fm <= ftol && r.ft <= ftol
         };
-        // en yta i taget
+        // one surface at a time
         let single_mc = || -> Result<Option<(f64, f64, Ret)>> {
             if fm0 <= tol {
                 return Ok(None);
@@ -264,7 +264,7 @@ impl MohrCoulombCutoff {
                 },
                 x0t.max(1e-30),
                 1e-13 * scale,
-                "Mohr–Coulomb (dragbegränsning)",
+                "Mohr–Coulomb (tension cutoff)",
             )?;
             Ok(Some((0.0, d2, self.eval(&ltr, pn, ptn, 0.0, d2, &ltr)?)))
         };
@@ -300,7 +300,7 @@ impl MohrCoulombCutoff {
         Ok(from_principal(&r.s, &v, false))
     }
 
-    /// Båda ytorna aktiva: Newton i (Δλ₁, Δλ₂).
+    /// Both surfaces active: Newton in (Δλ₁, Δλ₂).
     fn corner(&self, ltr: &[f64; 3], pn: f64, ptn: f64, guess: (f64, f64), scale: f64) -> Result<(f64, f64, Ret)> {
         let (c0, t0) = (self.mc.hard.eval(pn).0.max(1e-300), self.tc.eval(ptn).0.max(1e-300));
         let mut x = [guess.0.max(0.0), guess.1.max(0.0)];
@@ -347,7 +347,7 @@ impl MohrCoulombCutoff {
             }
         }
         if f[0].abs().max(f[1].abs()) > 1e-8 {
-            return fail("Mohr–Coulomb med dragbegränsning: returalgoritmen i hörnet konvergerade inte");
+            return fail("Mohr–Coulomb with tension cutoff: the return algorithm at the corner did not converge");
         }
         Ok((x[0], x[1], r))
     }

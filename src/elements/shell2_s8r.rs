@@ -1,33 +1,33 @@
-//! S8R: åttanodigt dubbelkrökt tjockt skal med reducerad integrering (2×2),
-//! sex frihetsgrader per nod (U1–U3, UR1–UR3).
+//! S8R: eight-node doubly curved thick shell with reduced integration (2×2),
+//! six degrees of freedom per node (U1–U3, UR1–UR3).
 //!
-//! Geometri och kinematik (Mindlin–Reissner, isoparametrisk serendipity-
-//! interpolation, jfr Bathe kap. 5.4 och Hughes kap. 6):
+//! Geometry and kinematics (Mindlin–Reissner, isoparametric serendipity
+//! interpolation, cf. Bathe ch. 5.4 and Hughes ch. 6):
 //!
-//! - Nodnormalerna nᵢ: medelvärdet av elementens egna normaler (x,ξ × x,η i
-//!   noden) där de skiljer < 20°, eller `*NORMAL` (`elements/normals.rs`).
-//!   Drillstraffet i hörnen använder elementets egen normal, i mittnoderna
-//!   nodnormalen.
-//! - I varje integrationspunkt: normal n = x,ξ × x,η/|…|, lokala axler (e1, e2)
-//!   enligt `shell2::axes`, dN/dX i tangentplanet och rotationsvektorn
-//!   θ = Σ Nᵢ θᵢ. Direktörens ändring φ = θ × n, med derivatan
-//!   φ,α = θ,α × n + θ × n,α där n,α = Σ Nᵢ,α nᵢ.
-//! - Membran: εαβ = sym(eα·u,β).
-//! - Böjning: καβ = sym(eα·φ,β) plus tre termer i förskjutningsgradienten
+//! - The nodal normals nᵢ: the mean of the elements' own normals (x,ξ × x,η at
+//!   the node) where they differ by < 20°, or `*NORMAL` (`elements/normals.rs`).
+//!   The drill penalty at the corners uses the element's own normal, at the midside nodes
+//!   the nodal normal.
+//! - At each integration point: normal n = x,ξ × x,η/|…|, local axes (e1, e2)
+//!   according to `shell2::axes`, dN/dX in the tangent plane and the rotation vector
+//!   θ = Σ Nᵢ θᵢ. The change of the director φ = θ × n, with the derivative
+//!   φ,α = θ,α × n + θ × n,α where n,α = Σ Nᵢ,α nᵢ.
+//! - Membrane: εαβ = sym(eα·u,β).
+//! - Bending: καβ = sym(eα·φ,β) plus three terms in the displacement gradient
 //!   H_γβ = e_γ·u,β (Cαβ = n,α·eβ, ω = ½(H21 − H12), a = ½(C12 − C21)):
-//!   −½ω·[−(C12 + C21), C12 + C21, 2(C11 − C22)] (Sanders-term),
-//!   [(n·n,1) w,1, (n·n,2) w,2, (n·n,1) w,2 + (n·n,2) w,1] (w,β = n·u,β) och
+//!   −½ω·[−(C12 + C21), C12 + C21, 2(C11 − C22)] (Sanders term),
+//!   [(n·n,1) w,1, (n·n,2) w,2, (n·n,1) w,2 + (n·n,2) w,1] (w,β = n·u,β) and
 //!   a·[H21, −H12, H22 − H11] (Voigt: κ11, κ22, 2κ12).
-//! - Tvärskjuvning: γα = n·u,α + eα·φ med styvheten K·f(det J) i varje punkt
-//!   (K = 5/6·G·t, f = slankhetskompensationen med punktens area det J).
-//! - Drill: straff kᵢ(θᵢ·nᵢ − ωᵢ)² i varje nod. Hörn: ωᵢ = ½(e2·u,1 − e1·u,2)
-//!   i noden, kᵢ = K·det Jᵢ·f(det Jᵢ). Mittnoder: ωᵢ = kordans rotation
-//!   (u_q − u_p)·(nᵢ × τ)/L för kanten p→q, kᵢ = K·Ā·f(L²) med Ā = medelvärdet
-//!   av hörnens det J.
-//! - Massa: konsistent, 3×3 gausspunkter, ρt för förskjutningarna och ρt³/12
-//!   för alla tre rotationerna.
+//! - Transverse shear: γα = n·u,α + eα·φ with the stiffness K·f(det J) at each point
+//!   (K = 5/6·G·t, f = the slenderness compensation with the point's area det J).
+//! - Drill: penalty kᵢ(θᵢ·nᵢ − ωᵢ)² at each node. Corners: ωᵢ = ½(e2·u,1 − e1·u,2)
+//!   at the node, kᵢ = K·det Jᵢ·f(det Jᵢ). Midside nodes: ωᵢ = the chord rotation
+//!   (u_q − u_p)·(nᵢ × τ)/L for the edge p→q, kᵢ = K·Ā·f(L²) with Ā = the mean
+//!   of the corners' det J.
+//! - Mass: consistent, 3×3 Gauss points, ρt for the displacements and ρt³/12
+//!   for all three rotations.
 //!
-//! Tester i `tests/shells2.rs`.
+//! Tests in `tests/shells2.rs`.
 
 use super::super::api::{not_implemented, ElemCtx, ElemResponse, ElementType, Family, IpField, MassKind};
 use super::super::common::{self, cross, dot, norm, scale, sub, G2};
@@ -36,16 +36,16 @@ use crate::fem::dof::{Dof, U1, U2, U3, UR1, UR2, UR3};
 use crate::fem::model::DistLoad;
 use crate::model::{fail, Result};
 
-/// Naturliga koordinater för noderna (ordning: hörn, sedan mittnoder 1-2, 2-3, 3-4, 4-1).
+/// Natural coordinates of the nodes (order: corners, then midside nodes 1-2, 2-3, 3-4, 4-1).
 pub const NAT8: [[f64; 2]; 8] = [[-1.0, -1.0], [1.0, -1.0], [1.0, 1.0], [-1.0, 1.0], [0.0, -1.0], [1.0, 0.0], [0.0, 1.0], [-1.0, 0.0]];
-/// Kanter (hörn p → q) för mittnoderna 5–8.
+/// Edges (corners p → q) for the midside nodes 5–8.
 const EDGES: [(usize, usize); 4] = [(0, 1), (1, 2), (2, 3), (3, 0)];
-/// 2×2 gausspunkter (ξ snabbast).
+/// 2×2 Gauss points (ξ fastest).
 pub const GP4: [(f64, f64); 4] = [(-G2, -G2), (G2, -G2), (-G2, G2), (G2, G2)];
 const ND: usize = 6;
 const NDOF: usize = 48;
 
-/// Formfunktioner och derivator (dN/dξ, dN/dη) för serendipity-elementet.
+/// Shape functions and derivatives (dN/dξ, dN/dη) for the serendipity element.
 pub fn shape8(s: f64, t: f64) -> ([f64; 8], [[f64; 8]; 2]) {
     let mut n = [0.0; 8];
     let mut d = [[0.0; 8]; 2];
@@ -67,12 +67,12 @@ pub fn shape8(s: f64, t: f64) -> ([f64; 8], [[f64; 8]; 2]) {
     (n, d)
 }
 
-/// Ytans tangentvektorer x,ξ och x,η.
+/// The surface tangent vectors x,ξ and x,η.
 fn tangents(x: &[[f64; 3]], d: &[[f64; 8]; 2]) -> [[f64; 3]; 2] {
     [0, 1].map(|a| [0, 1, 2].map(|c| (0..8).map(|i| d[a][i] * x[i][c]).sum()))
 }
 
-/// Nodnormaler ur elementets geometri.
+/// Nodal normals from the element geometry.
 pub fn nodal_normals(x: &[[f64; 3]]) -> [[f64; 3]; 8] {
     NAT8.map(|[s, t]| {
         let (_, d) = shape8(s, t);
@@ -81,15 +81,15 @@ pub fn nodal_normals(x: &[[f64; 3]]) -> [[f64; 3]; 8] {
     })
 }
 
-/// Data i en punkt (ξ, η) av ytan.
+/// Data at a point (ξ, η) of the surface.
 pub struct Pt {
     pub n: [f64; 8],
-    /// dN/dX i de lokala axlarna (2 × 8).
+    /// dN/dX in the local axes (2 × 8).
     pub b: [[f64; 8]; 2],
-    /// Lokala axlar (rader e1, e2, n).
+    /// Local axes (rows e1, e2, n).
     pub r: [[f64; 3]; 3],
     pub det: f64,
-    /// n,X_α (globala vektorer) av de interpolerade nodnormalerna.
+    /// n,X_α (global vectors) of the interpolated nodal normals.
     pub nx: [[f64; 3]; 2],
     pub x: [f64; 3],
 }
@@ -114,15 +114,15 @@ pub fn point(ctx: &ElemCtx, x: &[[f64; 3]], nrm: &[[f64; 3]; 8], s: f64, t: f64)
     Pt { n, b, r, det, nx, x: xp }
 }
 
-/// Lägger 3-vektorn `v` (koefficient) på nod i:s förskjutning eller rotation.
+/// Adds the 3-vector `v` (coefficient) to node i's displacement or rotation.
 fn put(row: &mut [f64], i: usize, off: usize, v: [f64; 3], f: f64) {
     for c in 0..3 {
         row[i * ND + off + c] += f * v[c];
     }
 }
 
-/// B-operatorer i en integrationspunkt: membran (3 × 48), böjning (3 × 48)
-/// och tvärskjuvning (2 × 48), i punktens lokala axlar.
+/// B operators at an integration point: membrane (3 × 48), bending (3 × 48)
+/// and transverse shear (2 × 48), in the point's local axes.
 pub fn strain_ops(p: &Pt) -> (Vec<f64>, Vec<f64>, Vec<f64>) {
     let n = NDOF;
     let [e1, e2, nv] = p.r;
@@ -136,12 +136,12 @@ pub fn strain_ops(p: &Pt) -> (Vec<f64>, Vec<f64>, Vec<f64>) {
     let a_skew = 0.5 * (c[0][1] - c[1][0]);
     for i in 0..8 {
         let (b0, b1, ni) = (p.b[0][i], p.b[1][i], p.n[i]);
-        // membran
+        // membrane
         put(&mut bm[0..n], i, 0, e1, b0);
         put(&mut bm[n..2 * n], i, 0, e2, b1);
         put(&mut bm[2 * n..3 * n], i, 0, e1, b1);
         put(&mut bm[2 * n..3 * n], i, 0, e2, b0);
-        // böjning från φ,α: eβ·φ,α = θ·(Bα (n × eβ) + N (n,α × eβ))
+        // bending from φ,α: eβ·φ,α = θ·(Bα (n × eβ) + N (n,α × eβ))
         let phi = |al: usize, eb: [f64; 3]| -> [f64; 3] {
             let bal = p.b[al][i];
             let u = scale(cross(nv, eb), bal);
@@ -152,8 +152,8 @@ pub fn strain_ops(p: &Pt) -> (Vec<f64>, Vec<f64>, Vec<f64>) {
         put(&mut bb[n..2 * n], i, 3, phi(1, e2), 1.0);
         put(&mut bb[2 * n..3 * n], i, 3, phi(1, e1), 1.0);
         put(&mut bb[2 * n..3 * n], i, 3, phi(0, e2), 1.0);
-        // förskjutningstermer i krökningen: H[g][b] = e_g·u,b har koefficienten B_b e_g
-        // −½ω·om_c med ω = ½(H10 − H01)
+        // displacement terms in the curvature: H[g][b] = e_g·u,b has the coefficient B_b e_g
+        // −½ω·om_c with ω = ½(H10 − H01)
         for (r, &oc) in om_c.iter().enumerate() {
             let f = -0.5 * oc * 0.5;
             put(&mut bb[r * n..(r + 1) * n], i, 0, e2, f * b0);
@@ -168,7 +168,7 @@ pub fn strain_ops(p: &Pt) -> (Vec<f64>, Vec<f64>, Vec<f64>) {
         put(&mut bb[n..2 * n], i, 0, e1, -a_skew * b1);
         put(&mut bb[2 * n..3 * n], i, 0, e2, a_skew * b1);
         put(&mut bb[2 * n..3 * n], i, 0, e1, -a_skew * b0);
-        // tvärskjuvning γα = n·u,α + eα·φ, eα·(θ × n) = θ·(n × eα)
+        // transverse shear γα = n·u,α + eα·φ, eα·(θ × n) = θ·(n × eα)
         put(&mut bs[0..n], i, 0, nv, b0);
         put(&mut bs[0..n], i, 3, cross(nv, e1), ni);
         put(&mut bs[n..2 * n], i, 0, nv, b1);
@@ -199,7 +199,7 @@ impl ShellS8 {
                 return fail(format!("element {} ({}): {}", ctx.label, self.name, common::DISTORTED));
             }
         }
-        // område normals: medelvärdesbildade normaler / *NORMAL om sådana finns
+        // area normals: averaged normals / *NORMAL if present
         let nrm = match super::super::normals::of(ctx) {
             Some(v) if v.len() == 8 => [0, 1, 2, 3, 4, 5, 6, 7].map(|i| v[i]),
             _ => nodal_normals(x),
@@ -211,7 +211,7 @@ impl ShellS8 {
         Ok(Setup { nrm, sec: Sec::get(ctx, self.name)?, ips })
     }
 
-    /// Drillstraffet: vektorer gᵢ (48) och styvheter kᵢ.
+    /// The drill penalty: vectors gᵢ (48) and stiffnesses kᵢ.
     fn drill(ctx: &ElemCtx, su: &Setup) -> Vec<(Vec<f64>, f64)> {
         let x = &ctx.x;
         let own = nodal_normals(x);
@@ -221,13 +221,13 @@ impl ShellS8 {
         let mut out = Vec::with_capacity(8);
         for i in 0..8 {
             let [s, t] = NAT8[i];
-            // område normals: hörnen använder elementets egen normal (även när
-            // nodnormalerna är medelvärdesbildade), mittnoderna nodnormalen
+            // area normals: the corners use the element's own normal (even when
+            // the nodal normals are averaged), the midside nodes the nodal normal
             let ni = if i < 4 { own[i] } else { su.nrm[i] };
             let mut g = vec![0.0; NDOF];
             put(&mut g, i, 3, ni, 1.0);
             if i < 4 {
-                // standardaxlar räcker: ω är oberoende av vridningen i planet
+                // default axes suffice: ω is independent of the in-plane rotation
                 let (_, d) = shape8(s, t);
                 let a = tangents(x, &d);
                 let r = super::default_axes(ni);
@@ -285,7 +285,7 @@ impl ShellS8 {
         k
     }
 
-    /// Membranets integrationspunkter för NLGEOM (kvadratiska termer).
+    /// The membrane integration points for NLGEOM (quadratic terms).
     pub fn membrane_ops(su: &Setup) -> Vec<super::nlgeom::QuadGroup> {
         let n = NDOF;
         let mut c = [0.0; 9];
@@ -310,7 +310,7 @@ impl ShellS8 {
             .collect()
     }
 
-    /// Generaliserade töjningar i integrationspunkterna.
+    /// Generalized strains at the integration points.
     pub fn gen_strains(su: &Setup, u: &[f64]) -> Vec<GenStrain> {
         let n = NDOF;
         su.ips
@@ -330,7 +330,7 @@ impl ShellS8 {
     }
 }
 
-/// 3×3 gausspunkter (ξ, η, vikt).
+/// 3×3 Gauss points (ξ, η, weight).
 pub fn gp9() -> Vec<(f64, f64, f64)> {
     let g = 0.6f64.sqrt();
     let pts = [(-g, 5.0 / 9.0), (0.0, 8.0 / 9.0), (g, 5.0 / 9.0)];
@@ -343,7 +343,7 @@ pub fn gp9() -> Vec<(f64, f64, f64)> {
     v
 }
 
-/// Ytans area per punkt och normal: (N, normal (enhet), dA·vikt) för 3×3 punkter.
+/// The surface area per point and normal: (N, normal (unit), dA·weight) for 3×3 points.
 fn surface_points(x: &[[f64; 3]]) -> Vec<([f64; 8], [f64; 3], f64)> {
     gp9()
         .into_iter()
@@ -392,14 +392,14 @@ impl ElementType for ShellS8 {
         let su = self.setup(ctx)?;
         let k = Self::stiffness_of(ctx, &su);
         if ctx.nlgeom {
-            // korotationell formulering (shell2_nlgeom.rs)
+            // corotational formulation (shell2_nlgeom.rs)
             return super::nlgeom::response_s8r(ctx, self.name, &k, &Self::membrane_ops(&su), u, tangent);
         }
         Ok(ElemResponse { fint: common::matvec(&k, u), k: tangent.then_some(k) })
     }
 
     fn geometric_stiffness(&self, ctx: &ElemCtx, u: &[f64], _state: &[f64]) -> Result<Vec<f64>> {
-        // membrankrafterna i 2×2 punkter: ∫ N_αβ u,α·u,β dA
+        // the membrane forces at 2×2 points: ∫ N_αβ u,α·u,β dA
         let su = self.setup(ctx)?;
         Ok(super::nlgeom::geometric(&Self::membrane_ops(&su), u))
     }
@@ -422,7 +422,7 @@ impl ElementType for ShellS8 {
             }
         }
         if kind == MassKind::Lumped {
-            // diagonal massa med bevarad total massa (Hinton–Rock–Zienkiewicz)
+            // diagonal mass with preserved total mass (Hinton–Rock–Zienkiewicz)
             let mut out = vec![0.0; n * n];
             for d in 0..ND {
                 let tot: f64 = (0..8).map(|i| (0..8).map(|j| m[(i * ND + d) * n + j * ND + d]).sum::<f64>()).sum();
@@ -442,10 +442,10 @@ impl ElementType for ShellS8 {
         let mut f = vec![0.0; NDOF];
         let body = common::body_load_vector(&load.kind, load.magnitude, &load.extra, sec.rho, self.name)?;
         if load.kind != "P" && body.is_none() {
-            return not_implemented(&format!("lasttypen {}", load.kind), self.name);
+            return not_implemented(&format!("load type {}", load.kind), self.name);
         }
         for (nv, nrm, da) in surface_points(&ctx.x) {
-            // positivt tryck P verkar i normalens riktning (som för S4R)
+            // positive pressure P acts in the direction of the normal (as for S4R)
             let q = if load.kind == "P" { scale(nrm, load.magnitude) } else { scale(body.unwrap(), sec.t) };
             for i in 0..8 {
                 for c in 0..3 {
@@ -478,7 +478,7 @@ impl ElementType for ShellS8 {
         };
         let mut g = Self::gen_strains(&su, u);
         if ctx.nlgeom {
-            // membrantöjningens kvadratiska termer i det medföljande systemet
+            // the quadratic terms of the membrane strain in the co-rotating frame
             for (gi, eq) in g.iter_mut().zip(super::nlgeom::quad_strains(&Self::membrane_ops(&su), u)) {
                 for r in 0..3 {
                     gi.eps[r] += eq[r];

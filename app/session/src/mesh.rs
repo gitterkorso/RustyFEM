@@ -1,20 +1,20 @@
-//! Visningsgeometri: yttre ytor av solider, skalens och de plana elementens
-//! ytor, balkarnas och stängernas linjer. Andra ordningens ytor delas upp i
-//! trianglar via mittnoderna.
+//! Display geometry: exterior faces of solids, faces of shells and planar
+//! elements, lines of beams and trusses. Second-order faces are split into
+//! triangles via the midside nodes.
 //!
-//! Alla index pekar på modellens noder (`FeModel::nodes`), så förskjutningar
-//! och nodvärden kan läggas direkt på samma buffertar.
+//! All indices point to the model's nodes (`FeModel::nodes`), so displacements
+//! and nodal values can be applied directly to the same buffers.
 
 use rustyfem::fem::model::FeModel;
 use std::collections::HashMap;
 
-/// Hur ett element visas.
+/// How an element is displayed.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Shape {
     Tet,
     Wedge,
     Hex,
-    /// Plan yta (plana element, skal, membran, styva ytor).
+    /// Planar face (planar elements, shells, membranes, rigid surfaces).
     Face,
     Line,
     Point,
@@ -25,7 +25,7 @@ fn starts(name: &str, prefixes: &[&str]) -> bool {
     prefixes.iter().any(|p| name.starts_with(p))
 }
 
-/// Visningsform och antal noder som används (hörn + mittnoder).
+/// Display shape and number of nodes used (corners + midside nodes).
 pub fn shape(name: &str, n_conn: usize) -> (Shape, usize) {
     let solid = |n: usize| match n {
         4 | 10 => (Shape::Tet, n),
@@ -68,7 +68,7 @@ pub fn shape(name: &str, n_conn: usize) -> (Shape, usize) {
     }
 }
 
-/// Ytor (hörn i ordning) för solider.
+/// Faces (corners in order) for solids.
 fn solid_faces(s: Shape) -> &'static [&'static [usize]] {
     match s {
         Shape::Tet => &[&[0, 1, 2], &[0, 3, 1], &[1, 3, 2], &[2, 3, 0]],
@@ -78,7 +78,7 @@ fn solid_faces(s: Shape) -> &'static [&'static [usize]] {
     }
 }
 
-/// Kanter (hörn a, hörn b, mittnod) för andra ordningens element.
+/// Edges (corner a, corner b, midside node) for second-order elements.
 fn mid_edges(s: Shape, n: usize) -> &'static [(usize, usize, usize)] {
     match (s, n) {
         (Shape::Tet, 10) => &[(0, 1, 4), (1, 2, 5), (2, 0, 6), (0, 3, 7), (1, 3, 8), (2, 3, 9)],
@@ -107,31 +107,31 @@ fn mid_of(edges: &[(usize, usize, usize)], a: usize, b: usize) -> Option<usize> 
     edges.iter().find(|&&(x, y, _)| (x == a && y == b) || (x == b && y == a)).map(|e| e.2)
 }
 
-/// Ytgeometri för visning.
+/// Surface geometry for display.
 #[derive(Debug, Clone, Default)]
 pub struct DisplayMesh {
-    /// Trianglar (nodindex).
+    /// Triangles (node indices).
     pub tris: Vec<u32>,
-    /// Element för varje triangel.
+    /// Element for each triangle.
     pub tri_elem: Vec<u32>,
-    /// Elementkanter på ytan (nodpar), utan triangelns diagonaler.
+    /// Element edges on the surface (node pairs), without the triangle diagonals.
     pub edges: Vec<u32>,
-    /// Balkar, stänger och fjädrar (nodpar).
+    /// Beams, trusses and springs (node pairs).
     pub lines: Vec<u32>,
     pub line_elem: Vec<u32>,
-    /// Punktelement (massor).
+    /// Point elements (masses).
     pub points: Vec<u32>,
     pub point_elem: Vec<u32>,
-    /// Noder som används av något visat element.
+    /// Nodes used by some displayed element.
     pub used: Vec<bool>,
-    /// Hörn- och mittnoder per element (för utjämning av elementfält).
+    /// Corner and midside nodes per element (for averaging element fields).
     pub elem_nodes: Vec<Vec<u32>>,
 }
 
-/// En polygon (hörn och eventuella mittnoder) delad i trianglar och kanter.
+/// A polygon (corners and any midside nodes) split into triangles and edges.
 fn emit_polygon(out: &mut DisplayMesh, corners: &[usize], mids: &[Option<usize>], elem: u32, edge_set: &mut HashMap<(u32, u32), ()>) {
     let n = corners.len();
-    // kanter längs polygonen (via mittnoden om den finns)
+    // edges along the polygon (via the midside node if present)
     for i in 0..n {
         let (a, b) = (corners[i], corners[(i + 1) % n]);
         let mut add = |x: usize, y: usize| {
@@ -153,7 +153,7 @@ fn emit_polygon(out: &mut DisplayMesh, corners: &[usize], mids: &[Option<usize>]
         out.tri_elem.push(elem);
     };
     if mids.iter().all(|m| m.is_some()) {
-        // hörntrianglar + inre polygon av mittnoderna
+        // corner triangles + inner polygon of the midside nodes
         let m: Vec<usize> = mids.iter().map(|m| m.unwrap()).collect();
         for i in 0..n {
             tri(m[(i + n - 1) % n], corners[i], m[i]);
@@ -168,11 +168,11 @@ fn emit_polygon(out: &mut DisplayMesh, corners: &[usize], mids: &[Option<usize>]
     }
 }
 
-/// Extraherar visningsgeometrin för hela modellen.
+/// Extracts the display geometry for the whole model.
 pub fn extract(model: &FeModel) -> DisplayMesh {
     let mut out = DisplayMesh { used: vec![false; model.nodes.len()], ..Default::default() };
     let mut edge_set: HashMap<(u32, u32), ()> = HashMap::new();
-    // solidytor räknas först så att inre ytor kan tas bort
+    // solid faces are counted first so that interior faces can be removed
     let mut solid_faces_map: HashMap<Vec<usize>, (usize, usize, u8)> = HashMap::new();
     let mut shapes = Vec::with_capacity(model.elements.len());
     for (ei, el) in model.elements.iter().enumerate() {
@@ -228,10 +228,10 @@ pub fn extract(model: &FeModel) -> DisplayMesh {
     out
 }
 
-/// Packar nodkoordinater och visningsgeometri i en buffert:
-/// `u32` antal (noder, trianglar, kanter, linjer, punkter), därefter
-/// koordinater (f32 ×3), trianglar, triangelns element, kanter, linjer,
-/// linjens element, punkter och punktens element (alla u32).
+/// Packs node coordinates and display geometry into a buffer:
+/// `u32` counts (nodes, triangles, edges, lines, points), then
+/// coordinates (f32 ×3), triangles, triangle elements, edges, lines,
+/// line elements, points and point elements (all u32).
 pub fn pack(model: &FeModel, m: &DisplayMesh) -> Vec<u8> {
     let mut b: Vec<u8> = Vec::with_capacity(20 + model.nodes.len() * 12 + (m.tris.len() + m.tri_elem.len() + m.edges.len() + m.lines.len() * 2) * 4);
     for c in [model.nodes.len(), m.tri_elem.len(), m.edges.len() / 2, m.line_elem.len(), m.point_elem.len()] {

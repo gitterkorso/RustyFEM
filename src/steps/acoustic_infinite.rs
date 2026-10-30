@@ -1,31 +1,31 @@
-//! Område acoustics2: akustiska infinita element (ACIN*) i de akustiska
-//! stegen (inkluderas från `acoustic.rs`). Elementmatriserna kommer från
-//! `elements/acoustic_infinite.rs`; här assembleras de per material:
+//! Area acoustics2: acoustic infinite elements (ACIN*) in the acoustic
+//! steps (included from `acoustic.rs`). The element matrices come from
+//! `elements/acoustic_infinite.rs`; here they are assembled per material:
 //!
-//! - *FREQUENCY: styvheten K_g/ρ och massan, utan dämpning (se
+//! - *FREQUENCY: the stiffness K_g/ρ and the mass, without damping (see
 //!   `infinite_stiffness`),
-//! - *STEADY STATE DYNAMICS: K_g/ρ̃ − i (k̃/ρ̃) C_g − (Ω²/K̃) M_g med komplex
-//!   densitet och kompressionsmodul,
-//! - *DYNAMIC: styvhet K_g/ρ, dämpning −C_g/(ρc) + γ/(ρK) H_g och massa M_g/K.
+//! - *STEADY STATE DYNAMICS: K_g/ρ̃ − i (k̃/ρ̃) C_g − (Ω²/K̃) M_g with complex
+//!   density and bulk modulus,
+//! - *DYNAMIC: stiffness K_g/ρ, damping −C_g/(ρc) + γ/(ρK) H_g and mass M_g/K.
 
 use super::*;
 use crate::elements::acoustic_infinite as acin;
 
-/// Matriser för de infinita elementen med samma material.
+/// Matrices for the infinite elements with the same material.
 pub(super) struct InfGroup {
     pub props: AcousticProps,
-    /// K_g/ρ (alla frihetsgrader).
+    /// K_g/ρ (all DOFs).
     pub k: Gen,
     /// C_g/(ρ c).
     pub c: Gen,
     /// M_g/K.
     pub m: Gen,
-    /// H_g γ/(ρK) (volymetriskt motstånd i tidsdomänen).
+    /// H_g γ/(ρK) (volumetric drag in the time domain).
     pub cd: Gen,
 }
 
 impl<'a, 'm> Sys<'a, 'm> {
-    /// Bygger de infinita elementens matriser och lägger massan i M_f.
+    /// Builds the infinite elements' matrices and adds the mass to M_f.
     pub(super) fn build_infinite(&mut self) -> Result<Vec<InfGroup>> {
         let m = self.p.model;
         let na = self.n_all();
@@ -78,9 +78,9 @@ impl<'a, 'm> Sys<'a, 'm> {
         Ok(out)
     }
 
-    /// Styvheten K_g/ρ för alla grupper (för *FREQUENCY). Den osymmetriska
-    /// matrisen används (kontrollerat i
-    /// tests/cases/acoustics2/acin2d2_cylinder_freq; ½(K + Kᵀ) ger andra värden).
+    /// The stiffness K_g/ρ for all groups (for *FREQUENCY). The unsymmetric
+    /// matrix is used (verified in
+    /// tests/cases/acoustics2/acin2d2_cylinder_freq; ½(K + Kᵀ) gives other values).
     pub(super) fn infinite_stiffness(&self) -> Gen {
         let mut g = Gen::new(self.n_all());
         for grp in &self.inf {
@@ -96,9 +96,9 @@ impl<'a, 'm> Sys<'a, 'm> {
 }
 
 impl InfGroup {
-    /// Koefficienterna (för K, C, M) i frekvensdomänen vid Ω: K_g/ρ̃ =
-    /// (K_g/ρ)·(ρ/ρ̃), −i k̃/ρ̃ C_g = (C_g/(ρc))·(−i k̃ ρ c/ρ̃) och
-    /// −Ω² (K/K̃ − 1) M_g/K (korrektionen; M_g/K finns redan i M_f).
+    /// The coefficients (for K, C, M) in the frequency domain at Ω: K_g/ρ̃ =
+    /// (K_g/ρ)·(ρ/ρ̃), −i k̃/ρ̃ C_g = (C_g/(ρc))·(−i k̃ ρ c/ρ̃) and
+    /// −Ω² (K/K̃ − 1) M_g/K (the correction; M_g/K is already in M_f).
     pub(super) fn coeffs(&self, w: f64) -> (C, C, C) {
         let p = &self.props;
         let f = w / TWO_PI;

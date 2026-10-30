@@ -1,5 +1,5 @@
-//! Resultatfält för visning: katalog över steg, frames och fält, och värden
-//! per nod (elementfält utjämnade till noderna) som `f32`.
+//! Result fields for display: catalog of steps, frames and fields, and values
+//! per node (element fields averaged to the nodes) as `f32`.
 
 use crate::mesh::DisplayMesh;
 use rustyfem::fem::output::{AnalysisOutput, FrameData};
@@ -18,7 +18,7 @@ pub struct FieldInfo {
     pub name: String,
     pub position: Position,
     pub components: Vec<String>,
-    /// Enheten i modellens enhetssystem ("" om okänd, dimensionslös eller inte satt).
+    /// The unit in the model's unit system ("" if unknown, dimensionless or not set).
     pub unit: String,
 }
 
@@ -64,7 +64,7 @@ fn slot_names(names: &[&str]) -> Vec<String> {
     magnitude(&names.iter().map(|s| s.to_string()).collect::<Vec<_>>())
 }
 
-/// Fält som finns i en frame.
+/// Fields present in a frame.
 pub fn frame_fields(fr: &FrameData) -> Vec<FieldInfo> {
     let active = fr.active.iter().fold(0u16, |a, &b| a | b);
     let mut out = Vec::new();
@@ -109,7 +109,7 @@ pub fn frame_fields(fr: &FrameData) -> Vec<FieldInfo> {
     out
 }
 
-/// Katalog för alla steg.
+/// Catalog for all steps.
 pub fn catalog(out: &AnalysisOutput) -> Vec<StepResultInfo> {
     out.steps
         .iter()
@@ -141,7 +141,7 @@ fn norm(v: &[f64]) -> f64 {
     v.iter().map(|x| x * x).sum::<f64>().sqrt()
 }
 
-/// Ett elementfälts komponent i en punkt (Mises beräknas ur spänningarna).
+/// An element field's component at a point (Mises is computed from the stresses).
 fn point_value(labels: &[String], vals: &[f64], comp: &str) -> Option<f64> {
     if comp == "Mises" {
         let mut s = [0.0; 6];
@@ -155,7 +155,7 @@ fn point_value(labels: &[String], vals: &[f64], comp: &str) -> Option<f64> {
     labels.iter().position(|x| x == comp).map(|i| vals[i])
 }
 
-/// Elementets medelvärde av en komponent över alla integrations- och sektionspunkter.
+/// The element's mean value of a component over all integration and section points.
 pub fn element_mean(fr: &FrameData, e: usize, field: &str, comp: &str) -> Option<f64> {
     let f = fr.elem.get(e)?.iter().find(|f| f.name == field)?;
     let (mut s, mut n) = (0.0, 0usize);
@@ -168,7 +168,7 @@ pub fn element_mean(fr: &FrameData, e: usize, field: &str, comp: &str) -> Option
     (n > 0).then(|| s / n as f64)
 }
 
-/// Värden per nod (NaN där fältet saknas), samt min och max.
+/// Values per node (NaN where the field is missing), plus min and max.
 pub fn node_values(fr: &FrameData, mesh: &DisplayMesh, n_nodes: usize, field: &FieldInfo, comp: &str) -> (Vec<f32>, f64, f64) {
     let mut out = vec![f32::NAN; n_nodes];
     let ci = field.components.iter().position(|c| c == comp);
@@ -244,7 +244,7 @@ pub fn node_values(fr: &FrameData, mesh: &DisplayMesh, n_nodes: usize, field: &F
     (out, lo, hi)
 }
 
-/// Förskjutningar U1–U3 per nod som `f32`.
+/// Displacements U1–U3 per node as `f32`.
 pub fn displacement(fr: &FrameData, n_nodes: usize) -> Vec<f32> {
     let mut out = vec![0.0f32; n_nodes * 3];
     for (n, u) in fr.u.iter().enumerate().take(n_nodes) {

@@ -1,29 +1,29 @@
-//! Användarlaster och användarrandvillkor:
+//! User loads and user boundary conditions:
 //!
-//! - DLOAD för `*DLOAD` med lasttypen PnNU (normaltryck på yta n med storlek
-//!   från DLOAD i varje integrationspunkt på ytan). Lasttypen sparas av
-//!   .inp-läsaren som `PnNU@SETNAMN` (`inp/keywords/loads.rs`) så att rutinen
-//!   kan väljas med elementsetets namn. De ekvivalenta nodkrafterna är
-//!   Σ Nᵢ p(x_g) n dA över ytans Gausspunkter (2 per kant och 2×2 per
-//!   fyrhörning för linjära ytor, 3 respektive 3×3 för kvadratiska, 3 för
-//!   trianglar), positivt tryck in i materialet, i referensläget (som en
-//!   "död" last). F in till DLOAD är storleken på dataraden, rampad över
-//!   steget som andra laster.
-//! - DISP för `*BOUNDARY, USER`: värdet vid inkrementets slut ges av DISP
-//!   (U(1), totalvärde), anropat för varje nod och frihetsgrad.
+//! - DLOAD for `*DLOAD` with load type PnNU (normal pressure on face n with magnitude
+//!   from DLOAD at each integration point on the face). The load type is stored by
+//!   the .inp reader as `PnNU@SETNAME` (`inp/keywords/loads.rs`) so that the routine
+//!   can be selected by the element set name. The equivalent nodal forces are
+//!   Σ Nᵢ p(x_g) n dA over the face's Gauss points (2 per edge and 2×2 per
+//!   quadrilateral for linear faces, 3 and 3×3 respectively for quadratic, 3 for
+//!   triangles), positive pressure into the material, in the reference configuration (as a
+//!   "dead" load). F passed to DLOAD is the magnitude on the data line, ramped over
+//!   the step like other loads.
+//! - DISP for `*BOUNDARY, USER`: the value at the end of the increment is given by DISP
+//!   (U(1), total value), called for each node and degree of freedom.
 
 use crate::fem::assembly::Prepared;
 use crate::fem::model::DistLoad;
 use crate::model::{fail, Result};
 
-/// (yta n, setnamn) för en PnNU-last.
+/// (face n, set name) for a PnNU load.
 pub fn parse_nu(kind: &str) -> Option<(usize, &str)> {
     let (k, name) = kind.split_once('@').unwrap_or((kind, ""));
     let n = k.strip_prefix('P')?.strip_suffix("NU")?.parse::<usize>().ok()?;
     Some((n, name))
 }
 
-/// Gausspunkter och vikter på [−1, 1].
+/// Gauss points and weights on [−1, 1].
 fn gauss(n: usize) -> Vec<(f64, f64)> {
     match n {
         2 => {
@@ -37,7 +37,7 @@ fn gauss(n: usize) -> Vec<(f64, f64)> {
     }
 }
 
-/// Formfunktioner och derivator för ytan (lokala koordinater).
+/// Shape functions and derivatives for the face (local coordinates).
 fn face_shape(nn: usize, xi: f64, eta: f64) -> Option<(Vec<f64>, Vec<f64>, Vec<f64>)> {
     Some(match nn {
         2 => (vec![0.5 * (1.0 - xi), 0.5 * (1.0 + xi)], vec![-0.5, 0.5], vec![0.0, 0.0]),
@@ -88,7 +88,7 @@ fn face_shape(nn: usize, xi: f64, eta: f64) -> Option<(Vec<f64>, Vec<f64>, Vec<f
     })
 }
 
-/// Integrationspunkter (ξ, η, vikt) på en yta med `nn` noder; η = NaN för kanter.
+/// Integration points (ξ, η, weight) on a face with `nn` nodes; η = NaN for edges.
 fn face_points(nn: usize, dim: usize) -> Vec<(f64, f64, f64)> {
     if dim == 2 {
         return gauss(if nn == 2 { 2 } else { 3 }).into_iter().map(|(a, w)| (a, f64::NAN, w)).collect();
@@ -108,8 +108,8 @@ fn face_points(nn: usize, dim: usize) -> Vec<(f64, f64, f64)> {
     }
 }
 
-/// Ekvivalenta nodkrafter (elementvektor) för en PnNU-last, eller `None` om
-/// lasten inte är en användarlast.
+/// Equivalent nodal forces (element vector) for a PnNU load, or `None` if
+/// the load is not a user load.
 pub fn dload(p: &Prepared, l: &DistLoad, time: f64) -> Result<Option<Vec<f64>>> {
     let Some((face_no, set)) = parse_nu(&l.kind) else { return Ok(None) };
     let m = p.model;
@@ -117,16 +117,16 @@ pub fn dload(p: &Prepared, l: &DistLoad, time: f64) -> Result<Option<Vec<f64>>> 
     let et = el.etype;
     let faces = et.faces();
     if face_no == 0 || face_no > faces.len() {
-        return fail(format!("{} har bara ytorna P1–P{}, inte P{face_no}NU", et.name(), faces.len()));
+        return fail(format!("{} only has faces P1–P{}, not P{face_no}NU", et.name(), faces.len()));
     }
     use crate::elements::Family;
     let dim = match et.family() {
         Family::Continuum2D => 2,
         Family::Continuum3D => 3,
-        f => return fail(format!("{}: lasttypen P{face_no}NU stöds bara för plana element och solider (inte {f:?})", et.name())),
+        f => return fail(format!("{}: load type P{face_no}NU is only supported for plane elements and solids (not {f:?})", et.name())),
     };
     let Some(routine) = super::routines::find_dload(set)? else {
-        return super::routines::missing("DLOAD", "elementsetet", set);
+        return super::routines::missing("DLOAD", "element set", set);
     };
     let ctx = p.ctx(l.elem, false, time, 0.0);
     let thick = if dim == 2 { ctx.section.map_or(1.0, |s| s.solid_thickness()) } else { 1.0 };
@@ -140,7 +140,7 @@ pub fn dload(p: &Prepared, l: &DistLoad, time: f64) -> Result<Option<Vec<f64>>> 
     let mut fn_ = vec![[0.0; 3]; face.len()];
     for (g, (xi, eta, w)) in face_points(face.len(), dim).into_iter().enumerate() {
         let Some((n, dxi, deta)) = face_shape(face.len(), xi, eta) else {
-            return fail(format!("{}: ytor med {} noder stöds inte för PnNU", et.name(), face.len()));
+            return fail(format!("{}: faces with {} nodes are not supported for PnNU", et.name(), face.len()));
         };
         let mut xg = [0.0; 3];
         let mut a = [0.0; 3];
@@ -152,7 +152,7 @@ pub fn dload(p: &Prepared, l: &DistLoad, time: f64) -> Result<Option<Vec<f64>>> 
                 b[d] += deta[i] * xf[i][d];
             }
         }
-        // ytnormal gånger ytelement
+        // surface normal times surface element
         let mut nv = if dim == 2 { [a[1] * thick, -a[0] * thick, 0.0] } else { crate::elements::common::cross(a, b) };
         if crate::elements::common::dot(crate::elements::common::sub(fc, centroid), nv) < 0.0 {
             nv = crate::elements::common::scale(nv, -1.0);
@@ -177,7 +177,7 @@ pub fn dload(p: &Prepared, l: &DistLoad, time: f64) -> Result<Option<Vec<f64>>> 
             }
         }
     }
-    // till elementvektorn (förskjutningsfrihetsgraderna U1..U3 per nod)
+    // into the element vector (displacement degrees of freedom U1..U3 per node)
     let mut f = vec![0.0; et.n_dofs()];
     let mut off = vec![0usize; el.nodes.len() + 1];
     for k in 0..el.nodes.len() {
@@ -195,30 +195,30 @@ pub fn dload(p: &Prepared, l: &DistLoad, time: f64) -> Result<Option<Vec<f64>>> 
 
 // --------------------------------------------------------------------- DISP
 
-/// Nyckelordet i stegets `extra` som listar *BOUNDARY, USER-poster
-/// (datarader [nodindex, frihetsgrad, värde], parametern `_NAME` = nodsetet).
+/// Keyword in the step's `extra` that lists *BOUNDARY, USER entries
+/// (data lines [node index, degree of freedom, value], parameter `_NAME` = the node set).
 pub const USER_BC: &str = "_USER BOUNDARY";
 
-/// Ett randvillkor som DISP ger.
+/// A boundary condition given by DISP.
 #[derive(Debug, Clone)]
 pub struct UserBc {
     pub node: usize,
     pub slot: usize,
     pub jdof: i32,
-    /// Värdet på dataraden (U(1) in till DISP).
+    /// The value on the data line (U(1) passed to DISP).
     pub value: f64,
     pub set: String,
     pub label: i64,
     pub coords: [f64; 3],
 }
 
-/// Stegets *BOUNDARY, USER-poster.
+/// The step's *BOUNDARY, USER entries.
 pub fn user_bcs(model: &crate::fem::model::FeModel, step: &crate::fem::model::StepDef) -> Result<Vec<UserBc>> {
     let mut v = Vec::new();
     for k in step.extra.iter().filter(|k| k.name == USER_BC) {
         let set = k.param("_NAME").unwrap_or("").to_string();
         if super::routines::find_disp(&set)?.is_none() {
-            return super::routines::missing("DISP", "nodsetet", &set);
+            return super::routines::missing("DISP", "node set", &set);
         }
         for d in &k.data {
             let x = k.floats(d)?;
@@ -230,7 +230,7 @@ pub fn user_bcs(model: &crate::fem::model::FeModel, step: &crate::fem::model::St
     Ok(v)
 }
 
-/// Värden från DISP vid stegtidsandelen `t`. Fel i rutinen ger en varning och värdet på dataraden.
+/// Values from DISP at step time fraction `t`. An error in the routine gives a warning and the value on the data line.
 pub fn disp_values(items: &[UserBc], t: f64) -> Vec<(usize, usize, f64)> {
     let period = super::context::period();
     let st = t * period;
@@ -243,7 +243,7 @@ pub fn disp_values(items: &[UserBc], t: f64) -> Vec<(usize, usize, f64)> {
             match super::routines::find_disp(&b.set).map(|r| r.map(|r| r.disp(&mut a))) {
                 Ok(Some(Ok(()))) => (b.node, b.slot, a.u[0]),
                 Ok(Some(Err(e))) | Err(e) => {
-                    eprintln!("varning: DISP i nod {}: {e}", b.label);
+                    eprintln!("warning: DISP at node {}: {e}", b.label);
                     (b.node, b.slot, b.value)
                 }
                 Ok(None) => (b.node, b.slot, b.value),
@@ -252,15 +252,15 @@ pub fn disp_values(items: &[UserBc], t: f64) -> Vec<(usize, usize, f64)> {
         .collect()
 }
 
-// ------------------------------------------------- värmeledning: HETVAL, UMATHT, FILM
+// ------------------------------------------------- heat transfer: HETVAL, UMATHT, FILM
 
-/// (UMATHT, HETVAL) för materialet: *USER MATERIAL, TYPE=THERMAL respektive *HEAT GENERATION.
+/// (UMATHT, HETVAL) for the material: *USER MATERIAL, TYPE=THERMAL and *HEAT GENERATION respectively.
 pub fn heat_user(def: &crate::fem::model::MaterialDef) -> (bool, bool) {
     let umatht = def.behavior("USER MATERIAL").is_some_and(|k| k.param_upper("TYPE").as_deref() == Some("THERMAL"));
     (umatht, def.behavior("HEAT GENERATION").is_some())
 }
 
-/// Konstanterna på *USER MATERIAL, TYPE=THERMAL.
+/// The constants on *USER MATERIAL, TYPE=THERMAL.
 fn thermal_props(def: &crate::fem::model::MaterialDef) -> Result<Vec<f64>> {
     let Some(kw) = def.behavior("USER MATERIAL") else { return Ok(Vec::new()) };
     let mut p = Vec::new();
@@ -277,11 +277,11 @@ fn interp(n: &[f64], v: &[f64]) -> f64 {
     n.iter().zip(v).map(|(a, b)| a * b).sum()
 }
 
-/// Värmegenerering (HETVAL) som bidrag till det inre flödet (−∫ N r dV) och
-/// tangenten. `time` är total tid vid inkrementets början.
+/// Heat generation (HETVAL) as a contribution to the internal flux (−∫ N r dV) and
+/// the tangent. `time` is the total time at the start of the increment.
 pub fn hetval(def: &crate::fem::model::MaterialDef, ips: &[crate::elements::common::Ip], t: &[f64], told: &[f64], time: f64, dt: f64, tangent: bool) -> Result<(Vec<f64>, Option<Vec<f64>>)> {
     let Some(routine) = super::routines::find_hetval(&def.name)? else {
-        return super::routines::missing("HETVAL", "materialet", &def.name);
+        return super::routines::missing("HETVAL", "material", &def.name);
     };
     let nn = t.len();
     let mut f = vec![0.0; nn];
@@ -305,9 +305,9 @@ pub fn hetval(def: &crate::fem::model::MaterialDef, ips: &[crate::elements::comm
     Ok((f, tangent.then_some(k)))
 }
 
-/// UMATHT: inre flöde och tangent för ett värmeledningselement: ledning
-/// −∫∇Nᵢ·f dV med f = FLUX i `ips` och (transient) lagrad energi
-/// ∫ Nᵢ ρ ΔU/Δt dV i `cips` (U in till rutinen är 0, så U ut är ΔU).
+/// UMATHT: internal flux and tangent for a heat transfer element: conduction
+/// −∫∇Nᵢ·f dV with f = FLUX at `ips` and (transient) stored energy
+/// ∫ Nᵢ ρ ΔU/Δt dV at `cips` (U passed to the routine is 0, so U returned is ΔU).
 #[allow(clippy::too_many_arguments)]
 pub fn umatht(
     def: &crate::fem::model::MaterialDef,
@@ -324,7 +324,7 @@ pub fn umatht(
     tangent: bool,
 ) -> Result<(Vec<f64>, Option<Vec<f64>>)> {
     let Some(routine) = super::routines::find_umatht(&def.name)? else {
-        return super::routines::missing("UMATHT", "materialet", &def.name);
+        return super::routines::missing("UMATHT", "material", &def.name);
     };
     let props = thermal_props(def)?;
     let nn = t.len();
@@ -407,7 +407,7 @@ pub fn umatht(
     if transient && dt > 0.0 {
         let rho = def.density;
         if rho == 0.0 {
-            return fail(format!("material {}: *DENSITY saknas (krävs för transient värmeledning med UMATHT)", def.name));
+            return fail(format!("material {}: *DENSITY is missing (required for transient heat transfer with UMATHT)", def.name));
         }
         for (q, ip) in cips.iter().enumerate() {
             let (du, dudt, ..) = call(ip, q + 1)?;
@@ -424,10 +424,10 @@ pub fn umatht(
     Ok((f, tangent.then_some(k)))
 }
 
-/// FILM för en ytpunkt: (q, dq/dT) med q = h (T − T∞). `set` väljer rutinen.
+/// FILM for a surface point: (q, dq/dT) with q = h (T − T∞). `set` selects the routine.
 pub fn film(set: &str, face: usize, tp: f64, coords: [f64; 3], noel: i64, npt: usize, time: f64) -> Result<(f64, f64)> {
     let Some(routine) = super::routines::find_film(set)? else {
-        return super::routines::missing("FILM", "elementsetet", set);
+        return super::routines::missing("FILM", "element set", set);
     };
     let (kstep, kinc) = super::context::step_inc();
     let (fl, _) = super::context::point_fields();

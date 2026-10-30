@@ -1,23 +1,23 @@
-//! Akustiska infinita element (område acoustics2): ACIN2D2, ACIN2D3, ACIN3D3,
-//! ACIN3D4, ACIN3D6, ACIN3D8, ACINAX2 och ACINAX3.
+//! Acoustic infinite elements (area acoustics2): ACIN2D2, ACIN2D3, ACIN3D3,
+//! ACIN3D4, ACIN3D6, ACIN3D8, ACINAX2 and ACINAX3.
 //!
-//! Formulering (Astley 1994, konjugerade infinita element): elementet definieras av basytans noder
-//! (ytan mot det ändliga nätet) och en referenspunkt x₀ (*SOLID SECTION,
-//! REF NODE= eller koordinaterna efter tjockleken på dataraden). Varje basnod α
-//! har radien r_α = |x_α − x₀| och nodstrålen n_α = (x_α − x₀)/r_α. Avbildningen
+//! Formulation (Astley 1994, conjugated infinite elements): the element is defined by the base face nodes
+//! (the face towards the finite mesh) and a reference point x₀ (*SOLID SECTION,
+//! REF NODE= or the coordinates after the thickness on the data line). Each base node α
+//! has the radius r_α = |x_α − x₀| and the nodal ray n_α = (x_α − x₀)/r_α. The mapping
 //!
 //! ```text
 //!   x(g, h, ξ) = x₀ + 2/(1 − ξ) Σ b_α(g, h) r_α n_α,    ξ ∈ [−1, 1)
 //! ```
 //!
-//! ger r₀/r = (1 − ξ)/2. Lösningen p = Σ φ_j p_j e^{−ik(r−r₀)} och vikten
-//! δp = F φ_i e^{+ik(r−r₀)} med F = (r₀/r)² och φ = f b_α B_β, f = r₀/r
-//! (3D, axisymmetri) eller √(r₀/r) (plant), B₁ = 1 och B_β = (1 + ξ) B̂_β där
-//! B̂_β är ortogonala mot vikten (1 + ξ)² f² F (Jacobipolynom; tio funktioner i
-//! radiell led). Fasen r − r₀ = Σ r_α q_α b_α (1 + ξ)/(1 − ξ)
-//! med q_α = min över elementen vid noden av n_α · n_E (ytnormalen).
+//! gives r₀/r = (1 − ξ)/2. The solution p = Σ φ_j p_j e^{−ik(r−r₀)} and the weight
+//! δp = F φ_i e^{+ik(r−r₀)} with F = (r₀/r)² and φ = f b_α B_β, f = r₀/r
+//! (3D, axisymmetry) or √(r₀/r) (planar), B₁ = 1 and B_β = (1 + ξ) B̂_β where
+//! B̂_β are orthogonal with respect to the weight (1 + ξ)² f² F (Jacobi polynomials; ten functions in
+//! the radial direction). The phase r − r₀ = Σ r_α q_α b_α (1 + ξ)/(1 − ξ)
+//! with q_α = the minimum over the elements at the node of n_α · n_E (the surface normal).
 //!
-//! Elementmatriserna (konstanta för frekvensoberoende material):
+//! The element matrices (constant for frequency-independent materials):
 //!
 //! ```text
 //!   K_g = ∫ ∇(Fφ_i)·∇φ_j dV
@@ -26,16 +26,16 @@
 //!   H_g = ∫ F φ_i φ_j dV
 //! ```
 //!
-//! och i frekvensdomänen A(Ω) = K_g/ρ̃ − i (k̃/ρ̃) C_g − (Ω²/K_f) M_g med
-//! k̃ = Ω √(ρ̃/K_f). I tidsdomänen: styvhet K_g/ρ, dämpning −C_g/(ρ c) +
-//! γ/(ρ K_f) H_g och massa M_g/K_f. Matriserna byggs av de akustiska stegen
-//! (`steps/acoustic_infinite.rs`); elementets egen styvhet och massa är noll.
+//! and in the frequency domain A(Ω) = K_g/ρ̃ − i (k̃/ρ̃) C_g − (Ω²/K_f) M_g with
+//! k̃ = Ω √(ρ̃/K_f). In the time domain: stiffness K_g/ρ, damping −C_g/(ρ c) +
+//! γ/(ρ K_f) H_g and mass M_g/K_f. The matrices are built by the acoustic steps
+//! (`steps/acoustic_infinite.rs`); the element's own stiffness and mass are zero.
 //!
-//! Frihetsgrader: basnodernas tryck (POR, β = 1) och nio generaliserade
-//! frihetsgrader per basnod (β = 2..10) på delade interna noder med nummer
-//! −(3·10⁹ + 16·nod + k) som `add_nodes` skapar när filen är läst. Den första
-//! interna noden ligger i referenspunkten och den andra har q_α som
-//! x-koordinat (elementet läser dem därifrån).
+//! Degrees of freedom: the pressure of the base nodes (POR, β = 1) and nine generalized
+//! degrees of freedom per base node (β = 2..10) on shared internal nodes with the number
+//! −(3·10⁹ + 16·node + k) that `add_nodes` creates when the file has been read. The first
+//! internal node lies at the reference point and the second has q_α as its
+//! x coordinate (the element reads them from there).
 
 use super::api::{ElemCtx, ElementType, Family, MassKind};
 use crate::fem::dof::{Dof, POR};
@@ -43,7 +43,7 @@ use crate::fem::model::FeModel;
 use crate::materials::StressMode;
 use crate::model::{fail, Result};
 
-/// Antal funktioner i radiell led (alltid tio).
+/// Number of functions in the radial direction (always ten).
 pub const NRAD: usize = 10;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -70,11 +70,11 @@ impl Base {
     fn surface(self) -> bool {
         !matches!(self, Base::Line2 | Base::Line3)
     }
-    /// Formfunktioner och derivator (∂/∂g, ∂/∂h) i (g, h).
+    /// Shape functions and derivatives (∂/∂g, ∂/∂h) at (g, h).
     fn shape(self, g: f64, h: f64) -> (Vec<f64>, Vec<[f64; 2]>) {
         match self {
             Base::Line2 => (vec![0.5 * (1.0 - g), 0.5 * (1.0 + g)], vec![[-0.5, 0.0], [0.5, 0.0]]),
-            // nodordning: ändnoderna 1, 2 och mittnoden 3
+            // node order: the end nodes 1, 2 and the midside node 3
             Base::Line3 => (
                 vec![0.5 * g * (g - 1.0), 0.5 * g * (g + 1.0), 1.0 - g * g],
                 vec![[g - 0.5, 0.0], [g + 0.5, 0.0], [-2.0 * g, 0.0]],
@@ -116,7 +116,7 @@ impl Base {
                         0.25 * b * (1.0 + a * g) * (a * g + 2.0 * b * h),
                     ]);
                 }
-                // mittnoder 5 (h = −1), 6 (g = 1), 7 (h = 1), 8 (g = −1)
+                // midside nodes 5 (h = −1), 6 (g = 1), 7 (h = 1), 8 (g = −1)
                 n.push(0.5 * (1.0 - g * g) * (1.0 - h));
                 d.push([-g * (1.0 - h), -0.5 * (1.0 - g * g)]);
                 n.push(0.5 * (1.0 + g) * (1.0 - h * h));
@@ -129,7 +129,7 @@ impl Base {
             }
         }
     }
-    /// Nodernas parameterkoordinater.
+    /// The parameter coordinates of the nodes.
     fn node_coords(self) -> Vec<[f64; 2]> {
         match self {
             Base::Line2 => vec![[-1.0, 0.0], [1.0, 0.0]],
@@ -140,7 +140,7 @@ impl Base {
             Base::Quad8 => vec![[-1.0, -1.0], [1.0, -1.0], [1.0, 1.0], [-1.0, 1.0], [0.0, -1.0], [1.0, 0.0], [0.0, 1.0], [-1.0, 0.0]],
         }
     }
-    /// Integrationsregel på basytan ((g, h), vikt).
+    /// Integration rule on the base face ((g, h), weight).
     fn rule(self) -> Vec<([f64; 2], f64)> {
         let gl = |n: usize| gauss_legendre(n);
         match self {
@@ -163,7 +163,7 @@ impl Base {
                 if self == Base::Tri3 && rule_order(1) == 1 {
                     vec![([1.0 / 6.0, 1.0 / 6.0], 1.0 / 6.0), ([2.0 / 3.0, 1.0 / 6.0], 1.0 / 6.0), ([1.0 / 6.0, 2.0 / 3.0], 1.0 / 6.0)]
                 } else {
-                    // kollapsad kvadrat (Duffy) med n × n punkter
+                    // collapsed square (Duffy) with n × n points
                     let n = rule_order(if self == Base::Tri3 { 2 } else { 3 }).max(2);
                     let g = gl(n);
                     let mut v = Vec::new();
@@ -181,8 +181,8 @@ impl Base {
     }
 }
 
-/// Antal punkter per riktning på basytan (RUSTYFEM_ACIN_RULE=n ändrar, för
-/// felsökning).
+/// Number of points per direction on the base face (RUSTYFEM_ACIN_RULE=n changes it, for
+/// debugging).
 fn rule_order(default: usize) -> usize {
     std::env::var("RUSTYFEM_ACIN_RULE").ok().and_then(|v| v.parse().ok()).unwrap_or(default)
 }
@@ -197,7 +197,7 @@ impl AcInf {
     pub fn nb(&self) -> usize {
         self.base.n()
     }
-    /// 3D-avtagande (f = r₀/r) för rymd- och axisymmetriska element.
+    /// 3D decay (f = r₀/r) for spatial and axisymmetric elements.
     fn decay3(&self) -> bool {
         self.base.surface() || self.axisym
     }
@@ -216,12 +216,12 @@ pub static TYPES: &[&dyn ElementType] = &[&ACIN2D2, &ACIN2D3, &ACIN3D3, &ACIN3D4
 
 static ALL: &[&AcInf] = &[&ACIN2D2, &ACIN2D3, &ACIN3D3, &ACIN3D4, &ACIN3D6, &ACIN3D8, &ACINAX2, &ACINAX3];
 
-/// Det akustiska infinita elementet med namnet `name`.
+/// The acoustic infinite element named `name`.
 pub fn lookup(name: &str) -> Option<&'static AcInf> {
     ALL.iter().copied().find(|e| e.name == name)
 }
 
-/// Gauss–Legendre med n punkter på [−1, 1].
+/// Gauss–Legendre with n points on [−1, 1].
 pub fn gauss_legendre(n: usize) -> Vec<(f64, f64)> {
     let mut v = Vec::with_capacity(n);
     for i in 0..n {
@@ -247,9 +247,9 @@ pub fn gauss_legendre(n: usize) -> Vec<(f64, f64)> {
     v
 }
 
-/// Radiella funktioner B_β(ξ) och derivator (β = 1..NRAD): B₁ = 1,
-/// B_β = (1 + ξ) B̂_β med B̂ ortogonala mot (1 + ξ)² (1 − ξ)^a, a = 4 (3D) eller 3.
-/// Koefficienter i monombasen (ξ^k), ortogonaliserade med Gram–Schmidt.
+/// Radial functions B_β(ξ) and derivatives (β = 1..NRAD): B₁ = 1,
+/// B_β = (1 + ξ) B̂_β with B̂ orthogonal with respect to (1 + ξ)² (1 − ξ)^a, a = 4 (3D) or 3.
+/// Coefficients in the monomial basis (ξ^k), orthogonalized with Gram–Schmidt.
 fn radial_coeffs(a: i32) -> Vec<Vec<f64>> {
     let q = gauss_legendre(24);
     let w: Vec<f64> = q.iter().map(|&(x, w)| w * (1.0 + x).powi(2) * (1.0 - x).powi(a)).collect();
@@ -271,7 +271,7 @@ fn radial_coeffs(a: i32) -> Vec<Vec<f64>> {
         c.iter_mut().for_each(|v| *v /= nrm);
         basis.push(c);
     }
-    // B_β = (1 + ξ) B̂: koefficienter av grad k + 1
+    // B_β = (1 + ξ) B̂: coefficients of degree k + 1
     let mut out = vec![{
         let mut c = vec![0.0; NRAD];
         c[0] = 1.0;
@@ -304,8 +304,8 @@ fn radial(coeffs: &[Vec<f64>], x: f64) -> (Vec<f64>, Vec<f64>) {
     (b, d)
 }
 
-/// Elementmatriserna (radvisa, nn × nn med nn = NRAD · nb, nodordningen i
-/// elementet): K_g, C_g, M_g och H_g (se moduldokumentationen).
+/// The element matrices (row-wise, nn × nn with nn = NRAD · nb, the node order in
+/// the element): K_g, C_g, M_g and H_g (see the module documentation).
 pub struct InfMatrices {
     pub kg: Vec<f64>,
     pub cg: Vec<f64>,
@@ -313,36 +313,36 @@ pub struct InfMatrices {
     pub hg: Vec<f64>,
 }
 
-/// Elementets lokala frihetsgrad för (basnod α, radiell funktion β).
+/// The element's local degree of freedom for (base node α, radial function β).
 fn local(nb: usize, a: usize, b: usize) -> usize {
     if b == 0 { a } else { nb + a * (NRAD - 1) + (b - 1) }
 }
 
 impl AcInf {
-    /// Referenspunkten och q_α ur de interna noderna.
+    /// The reference point and q_α from the internal nodes.
     fn ref_data(&self, x: &[[f64; 3]]) -> Result<([f64; 3], Vec<f64>)> {
         let nb = self.nb();
         if x.len() != nb * NRAD {
-            return fail(format!("{}: de interna noderna saknas", self.name));
+            return fail(format!("{}: the internal nodes are missing", self.name));
         }
         let x0 = x[local(nb, 0, 1)];
         let q = (0..nb).map(|a| x[local(nb, a, 2)][0]).collect();
         Ok((x0, q))
     }
 
-    /// Elementmatriserna för nodkoordinaterna `x` (inklusive interna noder) och tjockleken.
+    /// The element matrices for the nodal coordinates `x` (including internal nodes) and the thickness.
     pub fn matrices(&self, x: &[[f64; 3]], thickness: f64) -> Result<InfMatrices> {
         let nb = self.nb();
         let (x0, q) = self.ref_data(x)?;
         let sdim = if self.base.surface() { 3 } else { 2 };
-        // r_α n_α och r_α q_α
+        // r_α n_α and r_α q_α
         let mut y = vec![[0.0; 3]; nb];
         let mut rq = vec![0.0; nb];
         for a in 0..nb {
             let d = [x[a][0] - x0[0], x[a][1] - x0[1], x[a][2] - x0[2]];
             let r = (d[0] * d[0] + d[1] * d[1] + d[2] * d[2]).sqrt();
             if r <= 0.0 {
-                return fail(format!("{}: en basnod ligger i referenspunkten", self.name));
+                return fail(format!("{}: a base node lies at the reference point", self.name));
             }
             y[a] = d;
             rq[a] = r * q[a];
@@ -375,7 +375,7 @@ impl AcInf {
             for &(xi, wr) in &rad {
                 let s = 2.0 / (1.0 - xi);
                 let sp = 2.0 / ((1.0 - xi) * (1.0 - xi));
-                // Jacobian: kolumner ∂x/∂g, (∂x/∂h), ∂x/∂ξ
+                // Jacobian: columns ∂x/∂g, (∂x/∂h), ∂x/∂ξ
                 let cols: Vec<[f64; 3]> = if sdim == 3 {
                     vec![[s * yg[0], s * yg[1], s * yg[2]], [s * yh[0], s * yh[1], s * yh[2]], [sp * yy[0], sp * yy[1], sp * yy[2]]]
                 } else {
@@ -388,7 +388,7 @@ impl AcInf {
                 } else if sdim == 2 {
                     wv *= thickness;
                 }
-                // fysikaliska gradienter av parametrarna: ∇a = rad a i J⁻¹
+                // physical gradients of the parameters: ∇a = row a of J⁻¹
                 let grad = |dpar: &[f64]| -> [f64; 3] {
                     let mut g = [0.0; 3];
                     for (k, dp) in dpar.iter().enumerate() {
@@ -408,7 +408,7 @@ impl AcInf {
                 let dt = 2.0 / ((1.0 - xi) * (1.0 - xi));
                 let dmu = if sdim == 3 { grad(&[qg * t, qh * t, qv * dt]) } else { grad(&[qg * t, qv * dt]) };
                 let mu2 = dmu[0] * dmu[0] + dmu[1] * dmu[1] + dmu[2] * dmu[2];
-                // φ och ∇φ, Fφ och ∇(Fφ) per lokal frihetsgrad
+                // φ and ∇φ, Fφ and ∇(Fφ) per local degree of freedom
                 let mut phi = vec![0.0; nn];
                 let mut gphi = vec![[0.0; 3]; nn];
                 let mut fphi = vec![0.0; nn];
@@ -444,8 +444,8 @@ impl AcInf {
     }
 }
 
-/// Determinant och invers (rader = parametrar, kolumner = x, y, z) för en
-/// Jacobian med kolumnerna `cols` (∂x/∂parameter).
+/// Determinant and inverse (rows = parameters, columns = x, y, z) for a
+/// Jacobian with the columns `cols` (∂x/∂parameter).
 fn invert(cols: &[[f64; 3]], n: usize) -> Result<(f64, [[f64; 3]; 3])> {
     let mut inv = [[0.0; 3]; 3];
     if n == 2 {
@@ -453,7 +453,7 @@ fn invert(cols: &[[f64; 3]], n: usize) -> Result<(f64, [[f64; 3]; 3])> {
         let (a, b, c, d) = (cols[0][0], cols[1][0], cols[0][1], cols[1][1]);
         let det = a * d - b * c;
         if det.abs() < 1e-300 {
-            return fail("akustiskt infinit element: singulär avbildning");
+            return fail("acoustic infinite element: singular mapping");
         }
         inv[0] = [d / det, -b / det, 0.0];
         inv[1] = [-c / det, a / det, 0.0];
@@ -462,9 +462,9 @@ fn invert(cols: &[[f64; 3]], n: usize) -> Result<(f64, [[f64; 3]; 3])> {
     let j = |r: usize, c: usize| cols[c][r];
     let det = j(0, 0) * (j(1, 1) * j(2, 2) - j(1, 2) * j(2, 1)) - j(0, 1) * (j(1, 0) * j(2, 2) - j(1, 2) * j(2, 0)) + j(0, 2) * (j(1, 0) * j(2, 1) - j(1, 1) * j(2, 0));
     if det.abs() < 1e-300 {
-        return fail("akustiskt infinit element: singulär avbildning");
+        return fail("acoustic infinite element: singular mapping");
     }
-    // (J⁻¹)[p][x]: parameter p, koordinat x
+    // (J⁻¹)[p][x]: parameter p, coordinate x
     for p in 0..3 {
         for xx in 0..3 {
             let (r1, r2) = ((xx + 1) % 3, (xx + 2) % 3);
@@ -475,13 +475,13 @@ fn invert(cols: &[[f64; 3]], n: usize) -> Result<(f64, [[f64; 3]; 3])> {
     Ok((det, inv))
 }
 
-/// (ρ_f, K_f) för elementet.
+/// (ρ_f, K_f) for the element.
 fn props(ctx: &ElemCtx, name: &str) -> Result<(f64, f64)> {
     let m = ctx.material(name)?;
     let t = m.tangent_linear(StressMode::ThreeD)?;
     let bulk = t.first().copied().unwrap_or(0.0);
-    if m.name() != "akustiskt medium" || bulk <= 0.0 {
-        return fail(format!("element {} ({name}) kräver ett akustiskt medium (*ACOUSTIC MEDIUM)", ctx.label));
+    if m.name() != "acoustic medium" || bulk <= 0.0 {
+        return fail(format!("element {} ({name}) requires an acoustic medium (*ACOUSTIC MEDIUM)", ctx.label));
     }
     Ok((ctx.density, bulk))
 }
@@ -515,7 +515,7 @@ impl ElementType for AcInf {
             Base::Quad8 => &[&[0, 1, 2, 3, 4, 5, 6, 7]],
         }
     }
-    /// Noll: matriserna byggs av de akustiska stegen (osymmetriska, frekvensberoende).
+    /// Zero: the matrices are built by the acoustic steps (unsymmetric, frequency-dependent).
     fn stiffness(&self, ctx: &ElemCtx) -> Result<Vec<f64>> {
         props(ctx, self.name)?;
         let n = self.n_nodes();
@@ -527,7 +527,7 @@ impl ElementType for AcInf {
     }
 }
 
-/// Elementets ytnormal i basnod `a` (enhetsvektor, riktad bort från `x0`).
+/// The element's surface normal at base node `a` (unit vector, directed away from `x0`).
 fn facet_normal(e: &AcInf, x: &[[f64; 3]], a: usize, x0: [f64; 3]) -> [f64; 3] {
     let p = e.base.node_coords()[a];
     let (_, d) = e.base.shape(p[0], p[1]);
@@ -549,7 +549,7 @@ fn facet_normal(e: &AcInf, x: &[[f64; 3]], a: usize, x0: [f64; 3]) -> [f64; 3] {
     if l > 0.0 {
         n.iter_mut().for_each(|v| *v /= l);
     }
-    // riktning: bort från referenspunkten (ytans tyngdpunkt)
+    // direction: away from the reference point (the face centroid)
     let mut c = [0.0; 3];
     for xk in x.iter().take(nb) {
         for k in 0..3 {
@@ -563,8 +563,8 @@ fn facet_normal(e: &AcInf, x: &[[f64; 3]], a: usize, x0: [f64; 3]) -> [f64; 3] {
     n
 }
 
-/// Skapar de interna noderna för alla akustiska infinita element (anropas från
-/// `FeModel::finalize`): referenspunkt, q_α och nio delade noder per basnod.
+/// Creates the internal nodes for all acoustic infinite elements (called from
+/// `FeModel::finalize`): reference point, q_α and nine shared nodes per base node.
 pub fn add_nodes(m: &mut FeModel) -> Result<()> {
     let elems: Vec<usize> = (0..m.elements.len())
         .filter(|&e| lookup(m.elements[e].etype.name()).is_some_and(|a| m.elements[e].nodes.len() == a.nb()))
@@ -572,11 +572,11 @@ pub fn add_nodes(m: &mut FeModel) -> Result<()> {
     if elems.is_empty() {
         return Ok(());
     }
-    // referenspunkt per tvärsnitt
+    // reference point per section
     let mut x0s: Vec<Option<[f64; 3]>> = vec![None; m.sections.len()];
     for &e in &elems {
         let Some(si) = m.elements[e].section else {
-            return fail(format!("{} saknar tvärsnitt (*SOLID SECTION med referenspunkt)", m.elem_name(e)));
+            return fail(format!("{} has no section (*SOLID SECTION with a reference point)", m.elem_name(e)));
         };
         if x0s[si].is_some() {
             continue;
@@ -591,12 +591,12 @@ pub fn add_nodes(m: &mut FeModel) -> Result<()> {
             };
             match nd {
                 Some(n) => m.nodes[n],
-                None => return s.raw.err(format!("REF NODE={r}: referensnoden finns inte (ett nodnummer eller ett set med en nod)")),
+                None => return s.raw.err(format!("REF NODE={r}: the reference node does not exist (a node number or a set with one node)")),
             }
         } else {
             let v = s.raw.first_floats().unwrap_or_default();
             if v.len() < 3 {
-                return s.raw.err("akustiska infinita element kräver en referenspunkt: REF NODE= eller koordinaterna efter tjockleken på dataraden");
+                return s.raw.err("acoustic infinite elements require a reference point: REF NODE= or the coordinates after the thickness on the data line");
             }
             [v[1], v[2], v.get(3).copied().unwrap_or(0.0)]
         };
@@ -617,14 +617,14 @@ pub fn add_nodes(m: &mut FeModel) -> Result<()> {
             let c = ray[0] * ne[0] + ray[1] * ne[1] + ray[2] * ne[2];
             let ent = q.entry(nd).or_insert((f64::INFINITY, x0));
             if (ent.1[0] - x0[0]).abs() + (ent.1[1] - x0[1]).abs() + (ent.1[2] - x0[2]).abs() > 1e-12 * (1.0 + r) {
-                return fail(format!("{}: noden delas av akustiska infinita element med olika referenspunkter", m.elem_name(e)));
+                return fail(format!("{}: the node is shared by acoustic infinite elements with different reference points", m.elem_name(e)));
             }
             ent.0 = ent.0.min(c);
         }
     }
     for (&nd, &(c, _)) in &q {
         if c <= 0.0 {
-            return fail(format!("akustiskt infinit element: negativ cosinus ({c:.4}) i nod {} – referenspunkten ligger fel", m.node_label[nd]));
+            return fail(format!("acoustic infinite element: negative cosine ({c:.4}) at node {} – the reference point is misplaced", m.node_label[nd]));
         }
     }
     for &e in &elems {

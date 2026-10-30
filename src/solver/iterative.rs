@@ -1,15 +1,15 @@
-//! Iterativ lösare för mycket stora, positivt definita modeller:
-//! förkonditionerad konjugerad gradient (PCG).
+//! Iterative solver for very large, positive definite models:
+//! preconditioned conjugate gradient (PCG).
 //!
-//! Lösare (välj med `--solver`, `RUSTYFEM_SOLVER` eller `*STATIC, SOLVER=ITERATIVE`):
-//! - `iterative`: PCG med algebraisk multigrid, utjämnad aggregering (`amg.rs`),
-//! - `iterative-ic0`: PCG med ofullständig Cholesky IC(0),
-//! - `iterative-jacobi`: PCG med diagonalförkonditionering.
+//! Solvers (select with `--solver`, `RUSTYFEM_SOLVER` or `*STATIC, SOLVER=ITERATIVE`):
+//! - `iterative`: PCG with algebraic multigrid, smoothed aggregation (`amg.rs`),
+//! - `iterative-ic0`: PCG with incomplete Cholesky IC(0),
+//! - `iterative-jacobi`: PCG with diagonal preconditioning.
 //!
-//! Ekvationerna numreras i nodordning (ingen utfyllnad behövs). Toleransen är
-//! ‖b − K x‖ ≤ tol·‖b‖ med tol = 10⁻¹⁰ (ändras med `RUSTYFEM_ITER_TOL`).
-//! Konvergerar inte PCG (t.ex. indefinit matris) löses systemet i stället
-//! direkt, med en varning; en mekanism rapporteras då som för `direct`.
+//! Equations are numbered in node order (no fill-in is needed). The tolerance is
+//! ‖b − K x‖ ≤ tol·‖b‖ with tol = 10⁻¹⁰ (change with `RUSTYFEM_ITER_TOL`).
+//! If PCG does not converge (e.g. indefinite matrix), the system is solved
+//! directly instead, with a warning; a mechanism is then reported as for `direct`.
 
 mod amg;
 pub mod csr;
@@ -38,16 +38,16 @@ pub static ITERATIVE_JACOBI: Iterative = Iterative(PrecondKind::Jacobi);
 
 pub static SOLVERS: &[&dyn LinearSolver] = &[&ITERATIVE_AMG, &ITERATIVE_IC0, &ITERATIVE_JACOBI];
 
-/// Standardtolerans för den relativa residualen.
+/// Default tolerance for the relative residual.
 pub const TOL: f64 = 1e-10;
 
 fn timing() -> bool {
     crate::settings::with(|s| s.timing)
 }
 
-/// Lösaren för ett steg: `*STATIC, SOLVER=ITERATIVE` (eller `*STEP, SOLVER=ITERATIVE`)
-/// ger `iterative`, `*STEP, UNSYMM=YES` ger `unsymmetric`. En lösare som valts
-/// uttryckligen (`explicit`: `--solver` eller `RUSTYFEM_SOLVER`) går före.
+/// The solver for a step: `*STATIC, SOLVER=ITERATIVE` (or `*STEP, SOLVER=ITERATIVE`)
+/// gives `iterative`, `*STEP, UNSYMM=YES` gives `unsymmetric`. A solver chosen
+/// explicitly (`explicit`: `--solver` or `RUSTYFEM_SOLVER`) takes precedence.
 pub fn for_step(step: &StepDef, default: &'static dyn LinearSolver, explicit: bool) -> Result<&'static dyn LinearSolver> {
     if explicit {
         return Ok(default);
@@ -61,7 +61,7 @@ pub fn for_step(step: &StepDef, default: &'static dyn LinearSolver, explicit: bo
         match s.as_str() {
             "ITERATIVE" => return Ok(&ITERATIVE_AMG),
             "DIRECT" => {}
-            other => return crate::model::fail(format!("SOLVER={other} ska vara DIRECT eller ITERATIVE")),
+            other => return crate::model::fail(format!("SOLVER={other} must be DIRECT or ITERATIVE")),
         }
     }
     if step.header.has("UNSYMM") && step.header.flag("UNSYMM", false)? {
@@ -70,7 +70,7 @@ pub fn for_step(step: &StepDef, default: &'static dyn LinearSolver, explicit: bo
     Ok(default)
 }
 
-/// Undre triangeln i nodordning (ekvationerna numreras block för block).
+/// Lower triangle in node order (equations are numbered block by block).
 pub fn natural_pattern(adj: &[Vec<usize>], ndof: &[usize]) -> (Vec<usize>, Lower) {
     let nb = ndof.len();
     let mut first = vec![0usize; nb];
@@ -105,7 +105,7 @@ struct IterMatrix {
     ndof: Vec<usize>,
     a: Option<Csr>,
     pre: Option<Box<dyn Precond>>,
-    /// Direkt faktor (reserv) och ekvationsmappning naturlig → direktlösarens.
+    /// Direct factor (fallback) and equation mapping natural → direct solver's.
     direct: Mutex<Option<(Symbolic, Factor, Vec<usize>)>>,
     tol: f64,
 }
@@ -138,8 +138,8 @@ impl LinearSolver for Iterative {
 }
 
 impl IterMatrix {
-    /// Direkt faktorisering med samma värden (reserv och diagnos av mekanismer).
-    /// `Err(ekvation)` i naturlig numrering.
+    /// Direct factorization with the same values (fallback and mechanism diagnosis).
+    /// `Err(equation)` in natural numbering.
     fn direct_factor(&self) -> std::result::Result<(Symbolic, Factor, Vec<usize>), usize> {
         let sym = sparse::analyse(&self.coords, &self.adj, &self.ndof);
         let mut map = vec![0usize; self.k.colptr.len() - 1];
@@ -170,7 +170,7 @@ impl IterMatrix {
             match self.direct_factor() {
                 Ok(d) => *guard = Some(d),
                 Err(_) => {
-                    eprintln!("varning: den direkta reservlösningen misslyckades (singulär matris)");
+                    eprintln!("warning: the direct fallback solution failed (singular matrix)");
                     b.iter_mut().for_each(|v| *v = f64::NAN);
                     return;
                 }
@@ -207,7 +207,7 @@ impl SystemMatrix for IterMatrix {
     }
     fn factor(&mut self) -> std::result::Result<(), usize> {
         let t0 = std::time::Instant::now();
-        // icke-positiv diagonal: diagnos med den direkta lösaren
+        // non-positive diagonal: diagnose with the direct solver
         if (0..self.n()).any(|c| !(self.k.val[self.k.colptr[c]] > 0.0)) {
             let d = self.direct_factor()?;
             *self.direct.lock().unwrap() = Some(d);
@@ -229,13 +229,13 @@ impl SystemMatrix for IterMatrix {
         match pre {
             Some(p) => {
                 if timing() {
-                    eprintln!("förkonditionering ({}): {:.3} s", p.name(), t0.elapsed().as_secs_f64());
+                    eprintln!("preconditioning ({}): {:.3} s", p.name(), t0.elapsed().as_secs_f64());
                 }
                 self.pre = Some(p);
                 self.a = Some(a);
             }
             None => {
-                // AMG kunde inte byggas (grövsta nivån singulär): direkt, med diagnos
+                // AMG could not be built (coarsest level singular): direct, with diagnosis
                 let d = self.direct_factor()?;
                 *self.direct.lock().unwrap() = Some(d);
             }
@@ -252,7 +252,7 @@ impl SystemMatrix for IterMatrix {
         let rep: PcgReport = pcg(a, b, &mut x, pre.as_ref(), self.tol, maxit);
         if timing() {
             eprintln!(
-                "PCG ({}): {} iterationer, relativ residual {:.2e}, {:.3} s",
+                "PCG ({}): {} iterations, relative residual {:.2e}, {:.3} s",
                 pre.name(),
                 rep.iterations,
                 rep.rel_residual,
@@ -261,7 +261,7 @@ impl SystemMatrix for IterMatrix {
         }
         if !rep.converged {
             eprintln!(
-                "varning: PCG konvergerade inte ({} iterationer, relativ residual {:.2e}); löser direkt",
+                "warning: PCG did not converge ({} iterations, relative residual {:.2e}); solving directly",
                 rep.iterations, rep.rel_residual
             );
             return self.solve_direct(b);
@@ -270,8 +270,8 @@ impl SystemMatrix for IterMatrix {
     }
 }
 
-/// PCG med vald förkonditionerare på en matris i undre triangeln (för tester
-/// och benchmark): returnerar lösningen och rapporten.
+/// PCG with the chosen preconditioner on a lower-triangle matrix (for tests
+/// and benchmarks): returns the solution and the report.
 pub fn solve_lower(k: &Lower, b: &[f64], kind: PrecondKind, coords: &[[f64; 3]], ndof: &[usize], tol: f64) -> (Vec<f64>, PcgReport) {
     let a = Csr::from_lower(k);
     let pre: Box<dyn Precond> = match kind {
@@ -283,7 +283,7 @@ pub fn solve_lower(k: &Lower, b: &[f64], kind: PrecondKind, coords: &[[f64; 3]],
                 bptr.push(bptr.last().unwrap() + d);
             }
             let (bm, nb) = rigid_body_modes(coords, ndof);
-            Box::new(amg::Amg::new(a.clone(), bptr, bm, nb).expect("AMG kunde inte byggas"))
+            Box::new(amg::Amg::new(a.clone(), bptr, bm, nb).expect("AMG could not be built"))
         }
     };
     let mut x = vec![0.0; b.len()];

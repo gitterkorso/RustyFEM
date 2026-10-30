@@ -1,35 +1,35 @@
-//! Geometrisk styvhet (spänningsstyvhet, "initial stress matrix") för
-//! linjär knäckning (*BUCKLE) och förspända egenfrekvenser.
+//! Geometric stiffness (stress stiffness, "initial stress matrix") for
+//! linear buckling (*BUCKLE) and prestressed natural frequencies.
 //!
-//! Kontinuum: linjäriseringen av de inre krafterna kring ett spänt tillstånd i
-//! en uppdaterad Lagrange-formulering där materialet beskrivs med
-//! Jaumann-hastigheten av Kirchhoff-spänningen. Den
-//! spänningsberoende delen av tangenten blir (Belytschko–Liu–Moran, box 5.1 och
-//! 6.x; Simo–Hughes kap. 7)
+//! Continuum: the linearization of the internal forces about a stressed state in
+//! an updated Lagrangian formulation where the material is described with
+//! the Jaumann rate of the Kirchhoff stress. The
+//! stress-dependent part of the tangent becomes (Belytschko–Liu–Moran, box 5.1 and
+//! 6.x; Simo–Hughes ch. 7)
 //!
 //! ```text
 //!   K_σ = ∫ (∇N)ᵀ σ (∇N) dV · I  −  ∫ Bᵀ C*(σ) B dV,
 //!   C*_ijkl = ½(δ_ik σ_jl + δ_il σ_jk + δ_jk σ_il + δ_jl σ_ik)
 //! ```
 //!
-//! dvs. den vanliga geometriska matrisen (andra variationen av Green–Lagranges
-//! töjning) plus korrektionen från Jaumann-hastigheten
-//! (se tests/cases/eigen).
+//! i.e. the usual geometric matrix (second variation of the Green–Lagrange
+//! strain) plus the correction from the Jaumann rate
+//! (see tests/cases/eigen).
 //!
-//! Stänger: K_σ = N/L [I −I; −I I].
+//! Trusses: K_σ = N/L [I −I; −I I].
 //!
-//! Balkar (Euler–Bernoulli, kubisk Hermite-interpolation): den konsistenta
-//! matrisen N/(30L)·[36 3L −36 3L; …] för varje böjningsplan plus N/L för
-//! axialförskjutningen. Normalkraften tas från elementets förskjutning
-//! (balkarna sparar inget spänningstillstånd). I egenvärdesstegen läggs de inre
-//! axialfrihetsgradernas bidrag till (`beam_mass::internal_dofs`), för B23 med
-//! en term från böjmomentet. Ingen vridningsterm
-//! (Wagner-term, vippning) ingår för B33: en B33-konsol
-//! med bara ändmoment ger nollmatris och en tryckt stång med liten
-//! vridstyvhet får ingen vridknäckning.
+//! Beams (Euler–Bernoulli, cubic Hermite interpolation): the consistent
+//! matrix N/(30L)·[36 3L −36 3L; …] for each bending plane plus N/L for
+//! the axial displacement. The axial force is taken from the element displacement
+//! (the beams store no stress state). In the eigenvalue steps the contribution of the internal
+//! axial degrees of freedom is added (`beam_mass::internal_dofs`), for B23 with
+//! a term from the bending moment. No torsion term
+//! (Wagner term, lateral-torsional buckling) is included for B33: a B33 cantilever
+//! with only end moments gives a zero matrix and a compressed bar with small
+//! torsional stiffness gets no torsional buckling.
 //!
-//! Funktionerna anropas från stubbarna `geometric_stiffness` i de befintliga
-//! elementfilerna.
+//! The functions are called from the `geometric_stiffness` stubs in the existing
+//! element files.
 
 use super::api::{ElemCtx, ElementType};
 use super::beam_eb::EulerBeam;
@@ -37,10 +37,10 @@ use super::common::{self, Bbar, Ip};
 use crate::materials::{MaterialModel, StressMode};
 use crate::model::Result;
 
-/// Modulen registrerar inga egna elementtyper.
+/// The module registers no element types of its own.
 pub static TYPES: &[&dyn ElementType] = &[];
 
-/// Spänningstensorn (3×3) ur tillståndsvektorn i en integrationspunkt.
+/// The stress tensor (3×3) from the state vector at an integration point.
 fn stress_tensor(mode: StressMode, s: &[f64]) -> [[f64; 3]; 3] {
     let g = |i: usize| s.get(i).copied().unwrap_or(0.0);
     match mode {
@@ -51,24 +51,24 @@ fn stress_tensor(mode: StressMode, s: &[f64]) -> [[f64; 3]; 3] {
     }
 }
 
-/// Geometrisk styvhet för kontinuumelement med integrationspunkterna `ips` och
-/// spänningarna i `state` (layout enligt `common::ip_stride`). Plana element
-/// använder bara de plana gradienterna (∂/∂z = 0).
+/// Geometric stiffness for continuum elements with the integration points `ips` and
+/// the stresses in `state` (layout according to `common::ip_stride`). Plane elements
+/// use only the in-plane gradients (∂/∂z = 0).
 pub fn continuum(mode: StressMode, ips: &[Ip], mat: &dyn MaterialModel, state: &[f64]) -> Result<Vec<f64>> {
     continuum_bbar(mode, ips, mat, state, Bbar::None)
 }
 
-/// Som `continuum`, för element med selektivt reducerad volymtöjning (B-bar:
-/// C3D8, CPE4). De formuleras med en modifierad deformationsgradient
-/// F̄ = (J̄/J)^{1/d} F där J̄ är elementets medelvärde av J (d = 3, plant 2).
-/// Andra ordningens term i ln J̄ − medel(ln J) = ½ Var(div u) ger tillägget
+/// Like `continuum`, for elements with selectively reduced volumetric strain (B-bar:
+/// C3D8, CPE4). They are formulated with a modified deformation gradient
+/// F̄ = (J̄/J)^{1/d} F where J̄ is the element mean of J (d = 3, planar 2).
+/// The second-order term in ln J̄ − mean(ln J) = ½ Var(div u) gives the addition
 ///
 /// ```text
 ///   K += ∫ (tr σ / d) (∂_i N_a − ⟨∂_i N_a⟩)(∂_j N_b − ⟨∂_j N_b⟩) dV
 /// ```
 ///
-/// (⟨·⟩ = volymmedelvärde, tr i planet för d = 2). I övrigt är K_σ densamma
-/// som utan B-bar. Se tests/cases/eigen/buckle_c3d8_pelare,
+/// (⟨·⟩ = volume mean, tr in the plane for d = 2). Otherwise K_σ is the same
+/// as without B-bar. See tests/cases/eigen/buckle_c3d8_pelare,
 /// buckle_cpe4_pelare.
 pub fn continuum_bbar(mode: StressMode, ips: &[Ip], mat: &dyn MaterialModel, state: &[f64], bbar: Bbar) -> Result<Vec<f64>> {
     let mut k = continuum_plain(mode, ips, mat, state)?;
@@ -138,7 +138,7 @@ fn continuum_plain(mode: StressMode, ips: &[Ip], mat: &dyn MaterialModel, state:
     Ok(k)
 }
 
-/// Geometrisk styvhet för en stång (T2D2/T3D2) med normalkraften N = S11 · A.
+/// Geometric stiffness for a truss (T2D2/T3D2) with the axial force N = S11 · A.
 pub fn truss(x: &[[f64; 3]], dim: usize, area: f64, state: &[f64]) -> Vec<f64> {
     let l = common::norm(common::sub(x[1], x[0]));
     let n = state.first().copied().unwrap_or(0.0) * area;
@@ -159,7 +159,7 @@ pub fn truss(x: &[[f64; 3]], dim: usize, area: f64, state: &[f64]) -> Vec<f64> {
     k
 }
 
-/// Konsistent geometrisk styvhet för böjning i ett plan, ordning [v1, θ1, v2, θ2].
+/// Consistent geometric stiffness for bending in one plane, ordering [v1, θ1, v2, θ2].
 fn bending_kg(n: f64, l: f64) -> [[f64; 4]; 4] {
     let c = n / (30.0 * l);
     [
@@ -170,8 +170,8 @@ fn bending_kg(n: f64, l: f64) -> [[f64; 4]; 4] {
     ]
 }
 
-/// Geometrisk styvhet för B23/B33 i globala koordinater givet elementets
-/// förskjutning `u` (normalkraften N = EA/L · Δu längs balken).
+/// Geometric stiffness for B23/B33 in global coordinates given the element's
+/// displacement `u` (axial force N = EA/L · Δu along the beam).
 pub fn beam(el: &EulerBeam, ctx: &ElemCtx, u: &[f64]) -> Result<Vec<f64>> {
     let d = el.data(ctx)?;
     let f = el.end_forces(ctx, u)?;
@@ -186,7 +186,7 @@ pub fn beam(el: &EulerBeam, ctx: &ElemCtx, u: &[f64]) -> Result<Vec<f64>> {
         }
     };
     if nd == 6 {
-        // [u1, v1, θ1, u2, v2, θ2]; normalkraft (drag positiv) = f[3]
+        // [u1, v1, θ1, u2, v2, θ2]; axial force (tension positive) = f[3]
         let n = f[3];
         put(&[1, 2, 4, 5], &bending_kg(n, l), [1.0; 4]);
         kl[0] += n / l;
@@ -194,11 +194,11 @@ pub fn beam(el: &EulerBeam, ctx: &ElemCtx, u: &[f64]) -> Result<Vec<f64>> {
         kl[3] -= n / l;
         kl[3 * nd] -= n / l;
     } else {
-        // [u, v, w, θx, θy, θz] per nod; normalkraft = f[6]
+        // [u, v, w, θx, θy, θz] per node; axial force = f[6]
         let n = f[6];
-        // x-y-planet: v, θz (som B23)
+        // x-y plane: v, θz (like B23)
         put(&[1, 5, 7, 11], &bending_kg(n, l), [1.0; 4]);
-        // x-z-planet: w, −θy
+        // x-z plane: w, −θy
         put(&[2, 4, 8, 10], &bending_kg(n, l), [1.0, -1.0, 1.0, -1.0]);
         kl[0] += n / l;
         kl[6 * nd + 6] += n / l;

@@ -1,18 +1,18 @@
-//! Andra ordningens skal och kontinuumskal (område shells2): S8R
-//! (`shell2_s8r.rs`), SC8R och SC6R (`shell2_sc.rs`), NLGEOM för dem
+//! Second-order shells and continuum shells (area shells2): S8R
+//! (`shell2_s8r.rs`), SC8R and SC6R (`shell2_sc.rs`), NLGEOM for them
 //! (`shell2_nlgeom.rs`).
 //!
-//! Den här filen innehåller det som elementen delar: tvärsnittet (homogent
-//! *SHELL SECTION med isotropt eller anisotropt linjärelastiskt material),
-//! lokala axlar (standardaxlar eller tvärsnittets ORIENTATION=), små
-//! matrishjälpare och utdata (S, SF, SM).
+//! This file contains what the elements share: the section (homogeneous
+//! *SHELL SECTION with isotropic or anisotropic linear elastic material),
+//! local axes (default axes or the section's ORIENTATION=), small
+//! matrix helpers and output (S, SF, SM).
 //!
-//! Lokala axlar: 1-axeln är projektionen av global X på skalets tangentplan
-//! (global Z om normalen ligger inom 0,1° från X), 2 = n × 1. Med
-//! *SHELL SECTION, ORIENTATION= är 1-axeln projektionen av orienteringens
-//! 1-axel på tangentplanet (orienteringens 3-axel om 1-axeln ligger inom 0,1°
-//! från normalen), där orienteringens axlar först vrids med den extra
-//! rotationen på *ORIENTATION:s andra datarad (se
+//! Local axes: the 1-axis is the projection of global X onto the shell's tangent plane
+//! (global Z if the normal lies within 0.1° of X), 2 = n × 1. With
+//! *SHELL SECTION, ORIENTATION= the 1-axis is the projection of the orientation's
+//! 1-axis onto the tangent plane (the orientation's 3-axis if the 1-axis lies within 0.1°
+//! of the normal), where the orientation axes are first rotated by the additional
+//! rotation on the second data line of *ORIENTATION (see
 //! tests/cases/shells2/s8r_platta_orientering).
 
 #[path = "shell2_nlgeom.rs"]
@@ -30,12 +30,12 @@ use crate::model::{fail, Result};
 
 pub static TYPES: &[&dyn ElementType] = &[&s8r::S8R, &sc::SC8R, &sc::SC6R];
 
-/// Elementtyper som stöder *SHELL SECTION, ORIENTATION= (läses av
+/// Element types that support *SHELL SECTION, ORIENTATION= (read by
 /// `inp/keywords/section.rs`).
 pub const ORIENTATION_TYPES: &[&str] = &["S8R", "SC6R", "SC8R"];
 
-/// Slankhetskompensationen för tvärskjuvstyvheten, f = 1/(1 + 0,25·10⁻⁴·a/t²)
-/// (a = arean som hör till integrationspunkten eller noden).
+/// The slenderness compensation for the transverse shear stiffness, f = 1/(1 + 0.25·10⁻⁴·a/t²)
+/// (a = the area belonging to the integration point or node).
 pub fn fp(a: f64, t: f64) -> f64 {
     1.0 / (1.0 + 0.25e-4 * a / (t * t))
 }
@@ -44,18 +44,18 @@ pub fn unit(v: [f64; 3]) -> [f64; 3] {
     scale(v, 1.0 / norm(v))
 }
 
-/// Homogent skaltvärsnitt för S8R/SC8R/SC6R.
+/// Homogeneous shell section for S8R/SC8R/SC6R.
 #[derive(Debug, Clone)]
 pub struct Sec {
     pub t: f64,
-    /// Plan spänning D (3×3, radvis) i de lokala axlarna (orienteringen).
+    /// Plane stress D (3×3, row-wise) in the local axes (the orientation).
     pub d: [f64; 9],
-    /// Tvärskjuvstyvhet [K11, K22, K12] (kraft per längd, före slankhetskompensation).
+    /// Transverse shear stiffness [K11, K22, K12] (force per length, before slenderness compensation).
     pub ks: [f64; 3],
-    /// Skjuvmodul för tjockleksmodulen (kontinuumskal: E_t = 2G).
+    /// Shear modulus for the thickness modulus (continuum shells: E_t = 2G).
     pub g: f64,
     pub rho: f64,
-    /// Antal sektionspunkter för utdata (Simpson), 3 för *SHELL GENERAL SECTION.
+    /// Number of section points for output (Simpson), 3 for *SHELL GENERAL SECTION.
     pub n_int: usize,
 }
 
@@ -64,27 +64,27 @@ impl Sec {
         let sec = ctx.section(name)?;
         let (t, n_int) = match &sec.kind {
             SectionKind::Shell { thickness, n_int } => (*thickness, *n_int),
-            _ => return fail(format!("element {} ({name}) kräver *SHELL SECTION (homogent)", ctx.label)),
+            _ => return fail(format!("element {} ({name}) requires *SHELL SECTION (homogeneous)", ctx.label)),
         };
         if !(t > 0.0) {
-            return fail(format!("element {} ({name}): skaltjockleken måste vara positiv", ctx.label));
+            return fail(format!("element {} ({name}): the shell thickness must be positive", ctx.label));
         }
         if let Some(o) = sec.raw.param_upper("OFFSET") {
             if !matches!(o.as_str(), "MIDDLE" | "0" | "0." | "0.0") {
-                return fail(format!("element {} ({name}): *SHELL SECTION, OFFSET={o} stöds inte (bara mittytan)", ctx.label));
+                return fail(format!("element {} ({name}): *SHELL SECTION, OFFSET={o} is not supported (midsurface only)", ctx.label));
             }
         }
         let mat = ctx.material(name)?;
         if !mat.is_linear() {
-            return super::api::not_implemented(&format!("olinjärt material ({})", mat.name()), name);
+            return super::api::not_implemented(&format!("nonlinear material ({})", mat.name()), name);
         }
         let dv = mat.tangent_linear(StressMode::PlaneStress)?;
         if dv.len() != 9 {
-            return fail(format!("{name}: materialet ger ingen plan spänningsmatris"));
+            return fail(format!("{name}: the material gives no plane stress matrix"));
         }
         let mut d = [0.0; 9];
         d.copy_from_slice(&dv);
-        // skjuvmoduler: isotropt G, annars G13 och G23 ur den tredimensionella matrisen
+        // shear moduli: isotropic G, otherwise G13 and G23 from the three-dimensional matrix
         let (g, g13, g23) = match mat.elastic_moduli() {
             Some((e, nu)) => {
                 let g = e / (2.0 * (1.0 + nu));
@@ -104,7 +104,7 @@ impl Sec {
             None if g13 > 0.0 && g23 > 0.0 => [5.0 / 6.0 * g13 * t, 5.0 / 6.0 * g23 * t, 0.0],
             None => {
                 return fail(format!(
-                    "element {} ({name}): materialet ger inga tvärskjuvmoduler (G13, G23) – ange *TRANSVERSE SHEAR STIFFNESS",
+                    "element {} ({name}): the material gives no transverse shear moduli (G13, G23) – specify *TRANSVERSE SHEAR STIFFNESS",
                     ctx.label
                 ))
             }
@@ -113,13 +113,13 @@ impl Sec {
         Ok(Sec { t, d, ks, g, rho: ctx.density, n_int })
     }
 
-    /// Tvärskjuvningens matris [[K11, K12], [K12, K22]] med kompensationen för arean `a`.
+    /// The transverse shear matrix [[K11, K12], [K12, K22]] with the compensation for the area `a`.
     pub fn shear_c(&self, a: f64) -> [f64; 4] {
         let f = fp(a, self.t);
         [self.ks[0] * f, self.ks[2] * f, self.ks[2] * f, self.ks[1] * f]
     }
 
-    /// Sektionspunktens z (Simpson, n punkter genom tjockleken).
+    /// z of the section point (Simpson, n points through the thickness).
     pub fn section_z(&self, sp: usize) -> f64 {
         let n = self.n_int.max(1);
         if n == 1 {
@@ -133,7 +133,7 @@ impl Sec {
     }
 }
 
-/// Standardaxlar för ett skal med normalen `n` (rader e1, e2, n).
+/// Default axes for a shell with the normal `n` (rows e1, e2, n).
 pub fn default_axes(n: [f64; 3]) -> [[f64; 3]; 3] {
     let n = unit(n);
     let g = if n[0].abs() > (0.1f64.to_radians()).cos() { [0.0, 0.0, 1.0] } else { [1.0, 0.0, 0.0] };
@@ -141,13 +141,13 @@ pub fn default_axes(n: [f64; 3]) -> [[f64; 3]; 3] {
     [e1, cross(n, e1), n]
 }
 
-/// Lokala axlar (rader e1, e2, n) i punkten `p` med normalen `n`, med
-/// tvärsnittets orientering om den finns.
+/// Local axes (rows e1, e2, n) at the point `p` with the normal `n`, with
+/// the section orientation if there is one.
 pub fn axes(ctx: &ElemCtx, n: [f64; 3], p: [f64; 3]) -> [[f64; 3]; 3] {
     let Some(o) = ctx.orientation else { return default_axes(n) };
     let n = unit(n);
-    // orienteringens axlar inklusive den extra rotationen (i rummet), sedan
-    // projektion på tangentplanet
+    // the orientation axes including the additional rotation (in space), then
+    // projection onto the tangent plane
     let ax = o.axes_at(p);
     let g = if dot(ax[0], n).abs() > (0.1f64.to_radians()).cos() { ax[2] } else { ax[0] };
     let e1 = unit(sub(g, scale(n, dot(g, n))));
@@ -155,10 +155,10 @@ pub fn axes(ctx: &ElemCtx, n: [f64; 3], p: [f64; 3]) -> [[f64; 3]; 3] {
 }
 
 // ---------------------------------------------------------------------------
-// Små täta matrishjälpare (radvisa)
+// Small dense matrix helpers (row-wise)
 // ---------------------------------------------------------------------------
 
-/// K += w · aᵀ C b för a, b med `r` rader och `n` kolumner, C r×r.
+/// K += w · aᵀ C b for a, b with `r` rows and `n` columns, C r×r.
 pub fn add_btcb(k: &mut [f64], n: usize, a: &[f64], c: &[f64], b: &[f64], r: usize, w: f64) {
     let mut cb = vec![0.0; r * n];
     for i in 0..r {
@@ -195,19 +195,19 @@ pub fn add_outer(k: &mut [f64], n: usize, g: &[f64], c: f64) {
     }
 }
 
-/// y = B u för B med `r` rader.
+/// y = B u for B with `r` rows.
 pub fn rows_dot(b: &[f64], r: usize, u: &[f64]) -> Vec<f64> {
     let n = u.len();
     (0..r).map(|i| (0..n).map(|q| b[i * n + q] * u[q]).sum()).collect()
 }
 
 // ---------------------------------------------------------------------------
-// Utdata
+// Output
 // ---------------------------------------------------------------------------
 
-/// Generaliserade töjningar i en integrationspunkt: membran ε (ε11, ε22, γ12),
-/// krökning κ, tvärskjuvning γ (γ13, γ23), tjockleksspänning·t (SF6) och
-/// kompenserad skjuvmatris.
+/// Generalized strains at an integration point: membrane ε (ε11, ε22, γ12),
+/// curvature κ, transverse shear γ (γ13, γ23), thickness stress·t (SF6) and
+/// the compensated shear matrix.
 pub struct GenStrain {
     pub eps: [f64; 3],
     pub kap: [f64; 3],
@@ -216,8 +216,8 @@ pub struct GenStrain {
     pub sf6: f64,
 }
 
-/// S i sektionspunkterna 1 och n, SF (SF1–SF6) och SM (SM1–SM3).
-/// `s33` = true ger S med komponenterna S11, S22, S33, S12 (kontinuumskal).
+/// S at section points 1 and n, SF (SF1–SF6) and SM (SM1–SM3).
+/// `s33` = true gives S with the components S11, S22, S33, S12 (continuum shells).
 pub fn output(sec: &Sec, pts: &[GenStrain], s33: bool) -> Vec<IpField> {
     let mut s = if s33 { IpField::new("S", &["S11", "S22", "S33", "S12"]) } else { IpField::new("S", &["S11", "S22", "S12"]) };
     let mut sf = IpField::new("SF", &["SF1", "SF2", "SF3", "SF4", "SF5", "SF6"]);

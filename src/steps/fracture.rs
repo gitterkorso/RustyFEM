@@ -1,37 +1,37 @@
-//! Brottmekanik: *CONTOUR INTEGRAL i *STATIC (domänintegralmetoden).
+//! Fracture mechanics: *CONTOUR INTEGRAL in *STATIC (domain integral method).
 //!
-//! Steg-typen tar *STATIC-steg (utan NLGEOM) som har *CONTOUR INTEGRAL, kör
-//! dem med den vanliga statiska steg-typen och räknar sedan konturintegralerna
-//! ur slutläget. Utdata skrivs som history med standardnamnen i regionen
+//! The step type takes *STATIC steps (without NLGEOM) that have *CONTOUR INTEGRAL, runs
+//! them with the regular static step type and then computes the contour integrals
+//! from the final state. Output is written as history with the standard names in the region
 //! "ElementSet  ALL ELEMENTS":
 //!
-//! | TYPE= | Utdata |
+//! | TYPE= | Output |
 //! |---|---|
-//! | J (standard) | `J at <SPRICKA>_<NODMÄNGD>_Contour_<k>` |
-//! | K FACTORS | `K1`, `K2` (`K3` i 3D), `JKs` (J ur K), `Cpd` (spricktillväxtriktning, MTS, grader) |
+//! | J (default) | `J at <CRACK>_<NODESET>_Contour_<k>` |
+//! | K FACTORS | `K1`, `K2` (`K3` in 3D), `JKs` (J from K), `Cpd` (crack propagation direction, MTS, degrees) |
 //! | T-STRESS | `T-stress` |
 //!
-//! Metod: kontur 1 är elementen runt sprickspetsens noder, kontur
-//! k + 1 elementen som gränsar till kontur k. Den virtuella sprickförlängningen
-//! q = 1 i alla noder innanför konturen och 0 utanför, interpolerad med
-//! elementens formfunktioner, och
+//! Method: contour 1 is the elements around the crack-tip nodes, contour
+//! k + 1 the elements adjacent to contour k. The virtual crack extension
+//! q = 1 at all nodes inside the contour and 0 outside, interpolated with
+//! the elements' shape functions, and
 //!
 //! J = ∫ (σᵢⱼ ∂uⱼ/∂x₁ − W δ₁ᵢ) ∂q/∂xᵢ dA
 //!
-//! i sprickspetsens lokala system (x₁ = q-vektorn) med spänning och töjning i
-//! elementens integrationspunkter och W = ½ σ:ε. Axisymmetri: integranden
-//! viktas med r, termen (σ_θθ u_r/r − W) q_r/r läggs till och J delas med
-//! spetsens radie. 3D: en virtuell förlängning per frontnod (q fördelad längs
-//! fronten med elementkanternas formfunktioner, normerad med ∫ q ds).
-//! K-faktorerna fås ur interaktionsintegralen med Williams fält (K = 1),
-//! T-spänningen med punktkraftsfältet (`fracture_aux.rs`). SYMM dubblar J,
-//! K₁ och T (halv modell, sprickplanet är symmetriplan). I 3D och axisymmetri
-//! läggs ν E* ε₃₃ (töjningen längs fronten i frontnoden) till T.
+//! in the crack tip's local system (x₁ = the q vector) with stress and strain at
+//! the elements' integration points and W = ½ σ:ε. Axisymmetry: the integrand
+//! is weighted by r, the term (σ_θθ u_r/r − W) q_r/r is added and J is divided by
+//! the tip radius. 3D: one virtual extension per front node (q distributed along
+//! the front with the element edges' shape functions, normalized with ∫ q ds).
+//! The K factors are obtained from the interaction integral with Williams fields (K = 1),
+//! the T-stress with the point-force field (`fracture_aux.rs`). SYMM doubles J,
+//! K₁ and T (half model, the crack plane is a symmetry plane). In 3D and axisymmetry
+//! ν E* ε₃₃ (the strain along the front at the front node) is added to T.
 //!
-//! Begränsningar: bara linjärt isotropt elastiska material utan termisk
-//! töjning eller tryck på sprickytorna; K och T i 3D-frontnoder på en fri yta
-//! är mindre noggranna än J; TYPE=C(t), CRACK TIP NODES och
-//! DIRECTION=MERR/KII0 stöds inte.
+//! Limitations: only linear isotropic elastic materials without thermal
+//! strain or pressure on the crack faces; K and T at 3D front nodes on a free surface
+//! are less accurate than J; TYPE=C(t), CRACK TIP NODES and
+//! DIRECTION=MERR/KII0 are not supported.
 
 #[path = "fracture_aux.rs"]
 pub mod aux;
@@ -51,7 +51,7 @@ pub struct ContourStatic;
 
 pub static STEP_TYPES: &[&dyn StepType] = &[&ContourStatic];
 
-/// History-regionen för konturintegraler i resultatfilen.
+/// History region for contour integrals in the results file.
 pub const REGION: &str = "ElementSet  ALL ELEMENTS";
 
 fn has_contour(step: &StepDef) -> bool {
@@ -60,7 +60,7 @@ fn has_contour(step: &StepDef) -> bool {
 
 impl StepType for ContourStatic {
     fn name(&self) -> &'static str {
-        "STATIC med *CONTOUR INTEGRAL"
+        "STATIC with *CONTOUR INTEGRAL"
     }
 
     fn claim(&self, step: &StepDef, nlgeom: bool) -> Option<i32> {
@@ -82,7 +82,7 @@ impl StepType for ContourStatic {
     }
 }
 
-/// Typ av konturintegral (TYPE=).
+/// Type of contour integral (TYPE=).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum IntegralType {
     J,
@@ -90,16 +90,16 @@ pub enum IntegralType {
     TStress,
 }
 
-/// En nodmängd längs sprickfronten (en datarad).
+/// A node set along the crack front (one data line).
 #[derive(Debug, Clone)]
 pub struct Front {
     pub name: String,
     pub nodes: Vec<usize>,
-    /// q-vektor (eller sprickplanets normal med NORMAL).
+    /// q vector (or the crack plane's normal with NORMAL).
     pub vec: [f64; 3],
 }
 
-/// En *CONTOUR INTEGRAL-begäran.
+/// A *CONTOUR INTEGRAL request.
 #[derive(Debug, Clone)]
 pub struct Request {
     pub crack: String,
@@ -124,7 +124,7 @@ fn node_set(model: &FeModel, kw: &RawKeyword, tok: &str) -> Result<Vec<usize>> {
             return Ok(vec![n]);
         }
     }
-    kw.err(format!("nodmängden eller noden '{tok}' finns inte"))
+    kw.err(format!("the node set or node '{tok}' does not exist"))
 }
 
 impl Request {
@@ -134,24 +134,24 @@ impl Request {
             Some(t) if t == "J" => IntegralType::J,
             Some(t) if t == "KFACTORS" => IntegralType::KFactors,
             Some(t) if t == "T-STRESS" => IntegralType::TStress,
-            Some(t) => return kw.err(format!("TYPE={t} stöds inte ännu (J, K FACTORS, T-STRESS)")),
+            Some(t) => return kw.err(format!("TYPE={t} is not yet supported (J, K FACTORS, T-STRESS)")),
         };
         if kw.has("CRACK TIP NODES") {
-            return kw.err("CRACK TIP NODES stöds inte ännu – ange en nodmängd per frontläge och q-vektorn");
+            return kw.err("CRACK TIP NODES is not yet supported – specify one node set per front position and the q vector");
         }
         if let Some(d) = kw.param_upper("DIRECTION") {
             if d != "MTS" {
-                return kw.err(format!("DIRECTION={d} stöds inte ännu (MTS)"));
+                return kw.err(format!("DIRECTION={d} is not yet supported (MTS)"));
             }
         }
         let contours = match kw.param("CONTOURS") {
-            Some(c) => c.trim().parse::<usize>().map_err(|_| FemError(format!("{}: CONTOURS={c} är inget heltal", kw.location())))?,
+            Some(c) => c.trim().parse::<usize>().map_err(|_| FemError(format!("{}: CONTOURS={c} is not an integer", kw.location())))?,
             None => 1,
         };
         let mut fronts = Vec::new();
         let normal = kw.has("NORMAL");
         let records = kw.records();
-        // NORMAL: första dataraden är sprickplanets normal, sedan nodmängderna
+        // NORMAL: the first data line is the crack plane's normal, then the node sets
         let mut nvec: Option<[f64; 3]> = None;
         for (ri, d) in records.iter().enumerate() {
             if d.fields.iter().all(|f| f.trim().is_empty()) {
@@ -161,7 +161,7 @@ impl Request {
                 let v: Vec<f64> = d.fields.iter().map(|f| crate::fem::model::parse_f64(f).unwrap_or(0.0)).collect();
                 let n = [v.first().copied().unwrap_or(0.0), v.get(1).copied().unwrap_or(0.0), v.get(2).copied().unwrap_or(0.0)];
                 if n.iter().all(|x| *x == 0.0) {
-                    return kw.err_at(d.line, "NORMAL: normalen saknas eller är noll");
+                    return kw.err_at(d.line, "NORMAL: the normal is missing or zero");
                 }
                 nvec = Some(n);
                 continue;
@@ -178,12 +178,12 @@ impl Request {
             let v: Vec<f64> = d.fields[1..].iter().map(|f| crate::fem::model::parse_f64(f).unwrap_or(0.0)).collect();
             let vec = [v.first().copied().unwrap_or(0.0), v.get(1).copied().unwrap_or(0.0), v.get(2).copied().unwrap_or(0.0)];
             if vec.iter().all(|x| *x == 0.0) {
-                return kw.err_at(d.line, "q-vektorn saknas eller är noll");
+                return kw.err_at(d.line, "the q vector is missing or zero");
             }
             fronts.push(Front { name: name.trim().to_uppercase(), nodes, vec });
         }
         if fronts.is_empty() {
-            return kw.err("datarad med nodmängd och q-vektor saknas");
+            return kw.err("data line with node set and q vector missing");
         }
         Ok(Request {
             crack: kw.param("CRACK NAME").map(|s| s.trim().to_uppercase()).unwrap_or_else(|| "H-OUTPUT-1".into()),
@@ -196,7 +196,7 @@ impl Request {
     }
 }
 
-/// Elementets geometri för domänintegralen.
+/// The element's geometry for the domain integral.
 #[derive(Debug, Clone, Copy)]
 struct Geo {
     shape: Shape,
@@ -228,23 +228,23 @@ fn geometry(name: &str) -> Option<Geo> {
     g(s.shape, s.rule, family, s.mode == StressMode::PlaneStress)
 }
 
-/// Isotropa elastiska konstanter (E, ν) för elementets material.
+/// Isotropic elastic constants (E, ν) for the element's material.
 fn elastic_of(prep: &Prepared, e: usize) -> Result<(f64, f64)> {
     let m = prep.model;
     let sec = m.elements[e].section.map(|s| &m.sections[s]);
     let Some(mi) = sec.and_then(|s| s.material_index) else {
-        return fail(format!("{}: material saknas för konturintegralen", m.elem_name(e)));
+        return fail(format!("{}: material missing for the contour integral", m.elem_name(e)));
     };
     let mat = &m.materials[mi];
     let Some(el) = mat.behavior("ELASTIC") else {
-        return fail(format!("material {}: konturintegraler kräver *ELASTIC (isotropt)", mat.name));
+        return fail(format!("material {}: contour integrals require *ELASTIC (isotropic)", mat.name));
     };
     if el.param_upper("TYPE").is_some_and(|t| t != "ISOTROPIC") {
-        return fail(format!("material {}: konturintegraler stöds bara för isotrop elasticitet", mat.name));
+        return fail(format!("material {}: contour integrals are only supported for isotropic elasticity", mat.name));
     }
     let v = el.first_floats()?;
     if v.len() < 2 {
-        return fail(format!("material {}: *ELASTIC saknar E och ν", mat.name));
+        return fail(format!("material {}: *ELASTIC has no E and ν", mat.name));
     }
     Ok((v[0], v[1]))
 }
@@ -263,7 +263,7 @@ fn unit(a: [f64; 3]) -> [f64; 3] {
     [a[0] / n, a[1] / n, a[2] / n]
 }
 
-/// Lokalt system i en frontpunkt: rader e₁ (q), e₂, e₃ (fronttangent).
+/// Local system at a front point: rows e₁ (q), e₂, e₃ (front tangent).
 fn frame_of(q: [f64; 3], tangent: [f64; 3]) -> [[f64; 3]; 3] {
     let e3 = unit(tangent);
     let q = sub(q, scale(e3, dot(q, e3)));
@@ -275,16 +275,16 @@ fn scale(a: [f64; 3], s: f64) -> [f64; 3] {
     [a[0] * s, a[1] * s, a[2] * s]
 }
 
-/// Värden i en integrationspunkt.
+/// Values at an integration point.
 struct IpData {
     x: [f64; 3],
     w: f64,
-    /// q och ∇q (globalt)
+    /// q and ∇q (global)
     q: f64,
     dq: [f64; 3],
-    /// ∇u globalt: g[j][i] = ∂u_j/∂x_i
+    /// ∇u global: g[j][i] = ∂u_j/∂x_i
     g: [[f64; 3]; 3],
-    /// u (för axisymmetrins u_r/r)
+    /// u (for the axisymmetric u_r/r)
     u: [f64; 3],
     s: [[f64; 3]; 3],
     eps: [[f64; 3]; 3],
@@ -333,15 +333,15 @@ fn rotv(r: &[[f64; 3]; 3], v: [f64; 3]) -> [f64; 3] {
     [dot(r[0], v), dot(r[1], v), dot(r[2], v)]
 }
 
-/// Integrationspunkterna i element `e` med q-värdena `qn` i elementets noder.
+/// The integration points in element `e` with the q values `qn` at the element's nodes.
 fn ip_data(prep: &Prepared, e: usize, geo: &Geo, u: &[NodeVec], out: &[IpField], qn: &[f64]) -> Result<Vec<IpData>> {
     let m = prep.model;
     let el = &m.elements[e];
     let x: Vec<[f64; 3]> = el.nodes.iter().map(|&n| m.nodes[n]).collect();
     let pdim = geo.shape.pdim();
     let rule = geo.rule.points(pdim);
-    let sfield = out.iter().find(|f| f.name == "S").ok_or_else(|| FemError(format!("{}: spänning saknas", m.elem_name(e))))?;
-    let efield = out.iter().find(|f| f.name == "E").ok_or_else(|| FemError(format!("{}: töjning saknas", m.elem_name(e))))?;
+    let sfield = out.iter().find(|f| f.name == "S").ok_or_else(|| FemError(format!("{}: stress missing", m.elem_name(e))))?;
+    let efield = out.iter().find(|f| f.name == "E").ok_or_else(|| FemError(format!("{}: strain missing", m.elem_name(e))))?;
     let mut res = Vec::with_capacity(rule.len());
     for (k, (p, w)) in rule.iter().enumerate() {
         let (n, dn) = shapes::shape(geo.shape, *p);
@@ -393,21 +393,21 @@ fn ip_data(prep: &Prepared, e: usize, geo: &Geo, u: &[NodeVec], out: &[IpField],
         let sv = sfield.points.iter().find(|pt| pt.0 == ipn).map(|pt| pt.2.clone());
         let ev = efield.points.iter().find(|pt| pt.0 == ipn).map(|pt| pt.2.clone());
         let (Some(sv), Some(ev)) = (sv, ev) else {
-            return fail(format!("{}: spänning i integrationspunkt {ipn} saknas", m.elem_name(e)));
+            return fail(format!("{}: stress at integration point {ipn} missing", m.elem_name(e)));
         };
         res.push(IpData { x: xp, w: w * det, q, dq, g, u: up, s: tensor(&sfield.labels, &sv, false), eps: tensor(&efield.labels, &ev, true) });
     }
     Ok(res)
 }
 
-/// Integraler för en virtuell förlängning: J och interaktionsintegralerna.
+/// Integrals for one virtual extension: J and the interaction integrals.
 #[derive(Debug, Clone, Copy, Default)]
 struct Sums {
     j: f64,
     i: [f64; 4],
 }
 
-/// Bidrag från en integrationspunkt. `r` = lokalt system, `tip` = spetsens läge.
+/// Contribution from one integration point. `r` = local system, `tip` = the tip position.
 fn contribution(d: &IpData, r: &[[f64; 3]; 3], tip: [f64; 3], qhat: [f64; 3], el: &Elastic, axi: bool, need_aux: bool) -> Sums {
     let s = rot(r, &d.s);
     let eps = rot(r, &d.eps);
@@ -428,10 +428,10 @@ fn contribution(d: &IpData, r: &[[f64; 3]; 3], tip: [f64; 3], qhat: [f64; 3], el
         }
         jv += f * dq[i];
     }
-    // radien och q_r (global r-komponent av Q = q·q̂)
+    // the radius and q_r (global r component of Q = q·q̂)
     let (rad, qr) = (d.x[0], d.q * qhat[0]);
     let ur_r = if axi { d.u[0] / rad } else { 0.0 };
-    // σ_θθ i lokala systemet: e₃ = θ (2D-planet är r–z)
+    // σ_θθ in the local system: e₃ = θ (the 2D plane is r–z)
     if axi {
         jv += (d.s[2][2] * ur_r - w) * qr / rad;
     }
@@ -457,7 +457,7 @@ fn contribution(d: &IpData, r: &[[f64; 3]; 3], tip: [f64; 3], qhat: [f64; 3], el
             }
             if axi {
                 let sa33 = a.s[2][2];
-                // hjälpfältets ε_θθ = 0 (plan töjning), termen σ_θθ u^aux_r/r ingår inte
+                // the auxiliary field's ε_θθ = 0 (plane strain), the term σ_θθ u^aux_r/r is not included
                 iv += (sa33 * ur_r - sae) * qr / rad;
             }
             out.i[m] = iv * wt;
@@ -466,7 +466,7 @@ fn contribution(d: &IpData, r: &[[f64; 3]; 3], tip: [f64; 3], qhat: [f64; 3], el
     out
 }
 
-/// Konturintegralerna för alla begäran: (history-namn, värde).
+/// The contour integrals for all requests: (history name, value).
 pub fn evaluate(prep: &Prepared, u: &[NodeVec], states: &[Vec<f64>], time: f64, reqs: &[Request]) -> Result<Vec<(String, f64)>> {
     let m = prep.model;
     let ne = m.elements.len();
@@ -483,7 +483,7 @@ pub fn evaluate(prep: &Prepared, u: &[NodeVec], states: &[Vec<f64>], time: f64, 
     let mut res = Vec::new();
     for req in reqs {
         let three_d = req.fronts.iter().any(|f| f.nodes.iter().any(|&n| node_elems[n].iter().any(|&e| geos[e].unwrap().family == Family::Continuum3D)));
-        // 2D: varje datarad är en egen sprickspets; 3D: raderna är fronten i ordning
+        // 2D: each data line is a separate crack tip; 3D: the lines are the front in order
         let groups: Vec<Vec<usize>> = if three_d { vec![(0..req.fronts.len()).collect()] } else { (0..req.fronts.len()).map(|i| vec![i]).collect() };
         for grp in groups {
             let fronts: Vec<&Front> = grp.iter().map(|&i| &req.fronts[i]).collect();
@@ -511,7 +511,7 @@ pub fn evaluate(prep: &Prepared, u: &[NodeVec], states: &[Vec<f64>], time: f64, 
     Ok(res)
 }
 
-/// Resultat per frontnod och kontur.
+/// Result per front node and contour.
 #[derive(Debug, Clone, Copy, Default)]
 pub struct Values {
     pub j: f64,
@@ -521,7 +521,7 @@ pub struct Values {
     pub t: f64,
 }
 
-/// MTS-kriteriets spricktillväxtvinkel i grader.
+/// The MTS criterion's crack propagation angle in degrees.
 pub fn mts_angle(k1: f64, k2: f64) -> f64 {
     if k2 == 0.0 {
         return 0.0;
@@ -546,7 +546,7 @@ fn evaluate_front(
     let m = prep.model;
     let nf = fronts.len();
     let pos: Vec<[f64; 3]> = fronts.iter().map(|f| m.nodes[f.nodes[0]]).collect();
-    // fronttangent i varje frontnod
+    // front tangent at each front node
     let tangent: Vec<[f64; 3]> = (0..nf)
         .map(|k| if !three_d || nf < 2 { [0.0, 0.0, 1.0] } else { unit(sub(pos[(k + 1).min(nf - 1)], pos[k.saturating_sub(1)])) })
         .collect();
@@ -554,7 +554,7 @@ fn evaluate_front(
         .map(|k| {
             let v = fronts[k].vec;
             if req.normal {
-                // q = t × n (t = fronttangenten från första till sista nodmängden)
+                // q = t × n (t = the front tangent from the first to the last node set)
                 cross(tangent[k], v)
             } else {
                 v
@@ -562,10 +562,10 @@ fn evaluate_front(
         })
         .collect();
     let frames: Vec<[[f64; 3]; 3]> = (0..nf).map(|k| frame_of(qvec[k], tangent[k])).collect();
-    // andra ordningens front: frontnoderna växlar hörn/mitt
+    // second-order front: the front nodes alternate corner/midside
     let quadratic = three_d
         && fronts.iter().any(|f| f.nodes.iter().any(|&n| node_elems[n].iter().any(|&e| m.elements[e].etype.n_nodes() >= 20)));
-    // vikter längs fronten: ∫ q_k ds och q_k i en punkt
+    // weights along the front: ∫ q_k ds and q_k at a point
     let segs: Vec<(usize, usize, usize)> = if !three_d {
         Vec::new()
     } else if quadratic {
@@ -585,7 +585,7 @@ fn evaluate_front(
             length[mid] += 2.0 * l / 3.0;
         }
     }
-    // q-värdet för frontnod k i läget x (3D)
+    // q value for front node k at position x (3D)
     let weight = |k: usize, x: [f64; 3]| -> f64 {
         if !three_d {
             return 1.0;
@@ -625,8 +625,8 @@ fn evaluate_front(
         }
     };
     let need_aux = req.kind != IntegralType::J;
-    // töjningen längs fronten (∂(u·t)/∂s) i varje frontnod: derivatan av
-    // andragradsinterpolationen genom noden och dess grannar (ensidig i ändarna)
+    // the strain along the front (∂(u·t)/∂s) at each front node: derivative of
+    // the quadratic interpolation through the node and its neighbors (one-sided at the ends)
     let eps_front: Vec<f64> = (0..nf)
         .map(|k| {
             if !three_d || nf < 3 {
@@ -644,7 +644,7 @@ fn evaluate_front(
                 dot([u[n][0], u[n][1], u[n][2]], t)
             }).collect();
             let x = sv[k - a];
-            // derivatan av Lagrangepolynomet genom (sv, uv) i x
+            // derivative of the Lagrange polynomial through (sv, uv) at x
             let mut d = 0.0;
             for i in 0..3 {
                 let mut term = 0.0;
@@ -667,8 +667,8 @@ fn evaluate_front(
         .collect();
     let mut inside: BTreeSet<usize> = fronts.iter().flat_map(|f| f.nodes.iter().copied()).collect();
     let mut used = vec![false; m.elements.len()];
-    // alla element i konturerna hittills (i 3D varierar q längs fronten även
-    // innanför konturen, så hela domänen integreras)
+    // all elements in the contours so far (in 3D q varies along the front even
+    // inside the contour, so the whole domain is integrated)
     let mut domain: Vec<usize> = Vec::new();
     let mut result = vec![vec![Values::default(); req.contours]; nf];
     let mut elastic: Option<(f64, f64)> = None;
@@ -686,7 +686,7 @@ fn evaluate_front(
             s.into_iter().collect()
         };
         if ring.is_empty() {
-            return fail(format!("*CONTOUR INTEGRAL {}: kontur {} saknar element (för få element runt sprickspetsen)", req.crack, c + 1));
+            return fail(format!("*CONTOUR INTEGRAL {}: contour {} has no elements (too few elements around the crack tip)", req.crack, c + 1));
         }
         let mut sums = vec![Sums::default(); nf];
         let mut plane_stress = false;
@@ -694,7 +694,7 @@ fn evaluate_front(
             used[e] = true;
             domain.push(e);
         }
-        // axisymmetri: termerna med q/r är nollskilda även där q = 1
+        // axisymmetry: the terms with q/r are nonzero even where q = 1
         let elems: &[usize] = if three_d || axi_any { &domain } else { &ring };
         for &e in elems {
             let geo = geos[e].unwrap();
@@ -756,8 +756,8 @@ fn evaluate_front(
                 k1 = 0.0;
             }
             let jks = (k1 * k1 + k2 * k2) / es + k3 * k3 / (2.0 * mu);
-            // 3D och axisymmetri: T = E*·I/f + ν E* ε₃₃ med töjningen längs fronten i frontnoden
-            // axisymmetri: ε₃₃ = ε_θθ = u_r/r i spetsen
+            // 3D and axisymmetry: T = E*·I/f + ν E* ε₃₃ with the strain along the front at the front node
+            // axisymmetry: ε₃₃ = ε_θθ = u_r/r at the tip
             let e33 = if three_d {
                 eps_front[k]
             } else if axi_any {
@@ -777,9 +777,9 @@ fn evaluate_front(
     Ok(result)
 }
 
-/// Mittnoder utanför konturen får q linjärt interpolerat längs kanten mellan
-/// hörnnoderna efter avståndet (q = 0,75 i en kvartspunktsnod
-/// intill sprickspetsen, 0,5 i en vanlig mittnod).
+/// Midside nodes outside the contour get q linearly interpolated along the edge between
+/// the corner nodes by distance (q = 0.75 at a quarter-point node
+/// next to the crack tip, 0.5 at a regular midside node).
 fn mid_average(shape: Shape, nodes: &[usize], x: &[[f64; 3]], inside: &BTreeSet<usize>, qn: &mut [f64]) {
     let edges: &[(usize, usize, usize)] = match shape {
         Shape::Tri6 => &[(3, 0, 1), (4, 1, 2), (5, 2, 0)],

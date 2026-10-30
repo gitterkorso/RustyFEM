@@ -1,34 +1,34 @@
-//! Område acoustics2: akustik i explicit analys (`*DYNAMIC, EXPLICIT` i
-//! modeller med akustiska element; inkluderas från `acoustic.rs`).
+//! Area acoustics2: acoustics in explicit analysis (`*DYNAMIC, EXPLICIT` in
+//! models with acoustic elements; included from `acoustic.rs`).
 //!
-//! Det kopplade systemet (se `acoustic.rs`)
+//! The coupled system (see `acoustic.rs`)
 //!
 //! ```text
 //!   M_s ü + C_s u̇ + K_s u − Sᵀ p = F
 //!   M_f p̈ + C_f ṗ + K_f p + S ü = Q
 //! ```
 //!
-//! integreras med centrala differenser (diagonal fluidmassa, samma
-//! centraldifferensmetod som för strukturen). Massorna radsummeras.
-//! Strukturens accelerationer räknas först och fluidens sedan med S ü
-//! (massmatrisen är blocktriangulär). Dämpningen (volymetriskt motstånd,
-//! impedans- och strålningsränder) använder halvstegshastigheten.
+//! is integrated with central differences (diagonal fluid mass, the same
+//! central difference method as for the structure). The masses are row-summed.
+//! The structural accelerations are computed first and the fluid's afterwards with S ü
+//! (the mass matrix is block triangular). The damping (volumetric drag,
+//! impedance and radiation boundaries) uses the half-step velocity.
 //!
-//! Kavitation (*ACOUSTIC MEDIUM, CAVITATION LIMIT p_c): nodvariabeln är
-//! pseudotrycket p_v och trycket p = max(p_v, p_c − p₀) med det statiska
-//! trycket p₀ (*INITIAL CONDITIONS, TYPE=ACOUSTIC STATIC PRESSURE; utan det
-//! ingen kavitation) används i styvhetstermen och som utdata POR
-//! (totalvågsformulering med pseudotrycket som tillstånd).
+//! Cavitation (*ACOUSTIC MEDIUM, CAVITATION LIMIT p_c): the nodal variable is
+//! the pseudo-pressure p_v and the pressure p = max(p_v, p_c − p₀) with the static
+//! pressure p₀ (*INITIAL CONDITIONS, TYPE=ACOUSTIC STATIC PRESSURE; without it
+//! no cavitation) is used in the stiffness term and as output POR
+//! (total-wave formulation with the pseudo-pressure as state).
 //!
-//! Strukturen måste vara linjär (styvheten ur bastillståndet); akustiska
-//! infinita element och föreskrivna värden ≠ 0 stöds inte i explicit.
-//! Stegtiden: `DIRECT USER CONTROL` (Δt på dataraden), annars
-//! Δt = min Lₑ/c_f över de akustiska elementen (Lₑ = kortaste kanten),
-//! utan hänsyn till strukturens stabilitetsgräns.
+//! The structure must be linear (stiffness from the base state); acoustic
+//! infinite elements and prescribed values ≠ 0 are not supported in explicit.
+//! Time increment: `DIRECT USER CONTROL` (Δt on the data line), otherwise
+//! Δt = min Lₑ/c_f over the acoustic elements (Lₑ = shortest edge),
+//! without regard to the structure's stability limit.
 
 use super::*;
 
-/// Diagonal (radsumman) av matrisen i de fria ekvationerna.
+/// Diagonal (row sum) of the matrix in the free equations.
 fn lumped(g: &Gen, n: usize) -> Vec<f64> {
     let mut d = vec![0.0; n];
     for (r, row) in g.rows.iter().enumerate().take(n) {
@@ -41,7 +41,7 @@ fn lumped(g: &Gen, n: usize) -> Vec<f64> {
     d
 }
 
-/// Stabil stegtid för de akustiska elementen (kortaste kanten / c_f).
+/// Stable time increment for the acoustic elements (shortest edge / c_f).
 fn stable_dt(m: &FeModel) -> Result<f64> {
     let mut dt = f64::INFINITY;
     for (e, el) in m.elements.iter().enumerate() {
@@ -65,7 +65,7 @@ fn stable_dt(m: &FeModel) -> Result<f64> {
     Ok(dt)
 }
 
-/// *BULK VISCOSITY b₁, b₂ (standard 0,06 och 1,2).
+/// *BULK VISCOSITY b₁, b₂ (default 0.06 and 1.2).
 fn bulk_parameters(step: &StepDef) -> Result<(f64, f64)> {
     let mut b = (0.06, 1.2);
     for k in step.extra.iter().filter(|k| k.name == "BULK VISCOSITY") {
@@ -75,8 +75,8 @@ fn bulk_parameters(step: &StepDef) -> Result<(f64, f64)> {
     Ok(b)
 }
 
-/// Karakteristisk längd Lₑ som i explicit analys (`explicit_dt::geometry`),
-/// annars kortaste kanten.
+/// Characteristic length Lₑ as in explicit analysis (`explicit_dt::geometry`),
+/// otherwise the shortest edge.
 fn char_length(a: &AcousticElem, x: &[[f64; 3]]) -> f64 {
     use crate::elements::heat::Shape;
     use crate::elements::Family;
@@ -113,7 +113,7 @@ pub(super) fn dynamic_explicit(ctx: &mut StepCtx) -> Result<()> {
     let p = ctx.prep;
     let model = p.model;
     if model.elements.iter().any(|e| crate::elements::acoustic_infinite::lookup(e.etype.name()).is_some()) {
-        return fail("akustiska infinita element stöds inte ännu i *DYNAMIC, EXPLICIT");
+        return fail("acoustic infinite elements are not supported yet in *DYNAMIC, EXPLICIT");
     }
     for e in 0..model.elements.len() {
         if ac::lookup(model.elements[e].etype.name()).is_some() {
@@ -121,17 +121,17 @@ pub(super) fn dynamic_explicit(ctx: &mut StepCtx) -> Result<()> {
         }
         let c = p.ctx(e, false, 0.0, 0.0);
         if c.material.is_some_and(|mm| !mm.is_linear()) || ctx.nlgeom {
-            return fail("*DYNAMIC, EXPLICIT med akustiska element: strukturen måste vara linjärelastisk (utan NLGEOM)");
+            return fail("*DYNAMIC, EXPLICIT with acoustic elements: the structure must be linear elastic (without NLGEOM)");
         }
     }
     let h = if h > 0.0 { h } else { stable_dt(model)? };
     if !(h > 0.0 && h.is_finite()) {
-        return fail("*DYNAMIC, EXPLICIT: kunde inte bestämma stegtiden");
+        return fail("*DYNAMIC, EXPLICIT: could not determine the time increment");
     }
     let _ = direct;
     let mut sys = Sys::new(ctx, true)?;
-    // U skrivs i de bundna fluidnoderna (nodbaserad *TIE):
-    // strukturens förskjutning med kopplingsvikterna
+    // U is written in the tied fluid nodes (node-based *TIE):
+    // the structure's displacement with the coupling weights
     {
         let mut w: std::collections::BTreeMap<usize, std::collections::BTreeMap<usize, f64>> = Default::default();
         for c in crate::interactions::acoustic::couplings(model)? {
@@ -143,7 +143,7 @@ pub(super) fn dynamic_explicit(ctx: &mut StepCtx) -> Result<()> {
             if sys.fluid_u.iter().any(|f| f.0 == pn) {
                 continue;
             }
-            // sammanfallande strukturnod: dess förskjutning
+            // coincident structural node: its displacement
             let xp = model.nodes[pn];
             if let Some(&un) = m.keys().find(|&&un| {
                 let d = model.nodes[un];
@@ -160,11 +160,11 @@ pub(super) fn dynamic_explicit(ctx: &mut StepCtx) -> Result<()> {
     }
     let sys = sys;
     if !sys.improved.is_empty() {
-        return fail("NONREFLECTING=IMPROVED stöds inte ännu i *DYNAMIC, EXPLICIT");
+        return fail("NONREFLECTING=IMPROVED is not supported yet in *DYNAMIC, EXPLICIT");
     }
     let n = sys.n;
     let nn = model.nodes.len();
-    // matriser (fria ekvationer)
+    // matrices (free equations)
     let mst = sys.minus_st();
     let coeffs: Vec<(f64, f64, f64)> = sys.imp.iter().map(|b| b.time_coeffs()).collect();
     let mut kt: Vec<(&Gen, f64)> = vec![(&sys.k0, 1.0), (&mst, 1.0)];
@@ -175,9 +175,9 @@ pub(super) fn dynamic_explicit(ctx: &mut StepCtx) -> Result<()> {
         ct.push((&b.h, c.1));
         kt.push((&b.h, c.2));
     }
-    // volymviskositet i de akustiska elementen (avstängd med
-    // *BULK VISCOSITY 0, 0): trycket i
-    // styvhetstermen blir p + b₁ (Lₑ/c_f) ṗ, dvs. dämpningen b₁ Lₑ/c_f · K_e
+    // bulk viscosity in the acoustic elements (switched off with
+    // *BULK VISCOSITY 0, 0): the pressure in
+    // the stiffness term becomes p + b₁ (Lₑ/c_f) ṗ, i.e. the damping b₁ Lₑ/c_f · K_e
     let (b1, _b2) = bulk_parameters(ctx.step)?;
     let mut cbv = Gen::new(sys.n_all());
     if b1 != 0.0 {
@@ -203,12 +203,12 @@ pub(super) fn dynamic_explicit(ctx: &mut StepCtx) -> Result<()> {
     for q in 0..n {
         if !(mdiag[q] > 0.0) {
             let (nd, sl) = sys.dm.owner[q];
-            return fail(format!("*DYNAMIC, EXPLICIT: frihetsgrad {} i nod {} saknar massa", crate::fem::dof::SLOT_DOF[sl], model.node_name(nd)));
+            return fail(format!("*DYNAMIC, EXPLICIT: DOF {} at node {} has no mass", crate::fem::dof::SLOT_DOF[sl], model.node_name(nd)));
         }
     }
-    // kavitationsgräns p_c − p₀ per tryckekvation; utan statiskt tryck
-    // (*INITIAL CONDITIONS, TYPE=ACOUSTIC STATIC PRESSURE) antas ett
-    // stort tryck och ingen kavitation
+    // cavitation limit p_c − p₀ per pressure equation; without static pressure
+    // (*INITIAL CONDITIONS, TYPE=ACOUSTIC STATIC PRESSURE) a
+    // large pressure and no cavitation is assumed
     let mut p0: Vec<Option<f64>> = vec![None; nn];
     for k in model.extra.iter().filter(|k| k.name == "INITIAL CONDITIONS" && k.has(crate::inp::keywords::acoustics2::RESOLVED)) {
         for d in &k.data {
@@ -237,7 +237,7 @@ pub(super) fn dynamic_explicit(ctx: &mut StepCtx) -> Result<()> {
         let f = assembly::external(p, &lev.cloads_at(t), &lev.dloads_at(t), &z, false, ctx.state.time + t)?;
         Ok((0..n).map(|q| f[sys.dm.owner[q].0][sys.dm.owner[q].1]).collect())
     };
-    // acceleration: strukturen först, sedan fluiden med S ü
+    // acceleration: the structure first, then the fluid with S ü
     let accel = |f: &[f64], x: &[f64], v: &[f64]| -> Vec<f64> {
         let kx = km.mul(&cap(x));
         let cv = cm.mul(v);
@@ -271,7 +271,7 @@ pub(super) fn dynamic_explicit(ctx: &mut StepCtx) -> Result<()> {
     let mut frames = vec![emit(ctx, 0.0, &x, &v, &a, 0)?];
     let nsteps = ((period / h) - 1e-9).ceil().max(1.0) as usize;
     if nsteps > ctx.step.max_increments.max(1_000_000) {
-        return fail(format!("*DYNAMIC, EXPLICIT: {nsteps} inkrement behövs (Δt = {h:.3e})"));
+        return fail(format!("*DYNAMIC, EXPLICIT: {nsteps} increments needed (Δt = {h:.3e})"));
     }
     let mut t = 0.0;
     let mut next_out = 1usize;

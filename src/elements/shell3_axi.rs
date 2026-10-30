@@ -1,24 +1,24 @@
-//! Axisymmetriska skal SAX1, SAX2 och membran MAX1, MAX2 (område shells3).
+//! Axisymmetric shells SAX1, SAX2 and membranes MAX1, MAX2 (area shells3).
 //!
-//! Koordinat 1 är radien r och 2 axeln z; frihetsgrader U1 (u_r), U2 (u_z)
-//! och, för skalen, UR3 (rotationen β i r–z-planet). Noderna i SAX2/MAX2 är
-//! 1, 2 (mitt), 3. Integrationen tas över hela varvet (2πr).
+//! Coordinate 1 is the radius r and 2 the axis z; degrees of freedom U1 (u_r), U2 (u_z)
+//! and, for the shells, UR3 (the rotation β in the r–z plane). The nodes of SAX2/MAX2 are
+//! 1, 2 (middle), 3. The integration is taken over the full revolution (2πr).
 //!
-//! Formulering:
+//! Formulation:
 //!
-//! - Meridianens tangent t = x,s, normal n = (−t_z, t_r) (tangenten vriden
-//!   90° moturs).
-//! - Membran: ε_s = t·u,s, ε_θ = u_r/r.
-//! - Böjning: κ_s = β,s, κ_θ = β·t_r/r.
-//! - Tvärskjuvning: γ = n·u,s − β med styvheten 5/6·G·t·f, där
-//!   f = 1/(1 + 0,25·10⁻⁴·a/t²) och a = 2πr·ds för integrationspunkten.
-//! - Integrering: SAX1/MAX1 en punkt, SAX2/MAX2 två gausspunkter.
-//! - Massa: SAX1/MAX1 diagonal (halva massan per nod), SAX2/MAX2 konsistent
-//!   med 3 gausspunkter; ingen rotationströghet.
-//! - Utdata: S (S11 meridional, S22 i ringled) i sektionspunkterna 1 och n,
-//!   (S33 = S12 = 0), SF (SF11 = N_s, SF22 = N_θ, SF33 = 0, SF12 = tvärkraft)
-//!   och SM (SM1 = M_θ, SM2 = M_s, SM3 = 0); krökningen redovisas
-//!   med omvänt tecken (sektionspunkt n på sidan −n).
+//! - The meridian tangent t = x,s, normal n = (−t_z, t_r) (the tangent rotated
+//!   90° counterclockwise).
+//! - Membrane: ε_s = t·u,s, ε_θ = u_r/r.
+//! - Bending: κ_s = β,s, κ_θ = β·t_r/r.
+//! - Transverse shear: γ = n·u,s − β with the stiffness 5/6·G·t·f, where
+//!   f = 1/(1 + 0.25·10⁻⁴·a/t²) and a = 2πr·ds for the integration point.
+//! - Integration: SAX1/MAX1 one point, SAX2/MAX2 two Gauss points.
+//! - Mass: SAX1/MAX1 diagonal (half the mass per node), SAX2/MAX2 consistent
+//!   with 3 Gauss points; no rotary inertia.
+//! - Output: S (S11 meridional, S22 hoop) at section points 1 and n,
+//!   (S33 = S12 = 0), SF (SF11 = N_s, SF22 = N_θ, SF33 = 0, SF12 = transverse shear force)
+//!   and SM (SM1 = M_θ, SM2 = M_s, SM3 = 0); the curvature is reported
+//!   with the opposite sign (section point n on the side −n).
 
 use super::super::api::{not_implemented, ElemCtx, ElemResponse, ElementType, Family, IpField, MassKind};
 use super::super::common;
@@ -39,7 +39,7 @@ pub static SAX2: Axi = Axi { name: "SAX2", nn: 3, shell: true };
 pub static MAX1: Axi = Axi { name: "MAX1", nn: 2, shell: false };
 pub static MAX2: Axi = Axi { name: "MAX2", nn: 3, shell: false };
 
-/// Formfunktioner och dN/dξ (nodordning 1, 2 (mitt), 3 för tre noder).
+/// Shape functions and dN/dξ (node order 1, 2 (middle), 3 for three nodes).
 pub fn shape(nn: usize, xi: f64) -> (Vec<f64>, Vec<f64>) {
     if nn == 2 {
         (vec![0.5 * (1.0 - xi), 0.5 * (1.0 + xi)], vec![-0.5, 0.5])
@@ -48,7 +48,7 @@ pub fn shape(nn: usize, xi: f64) -> (Vec<f64>, Vec<f64>) {
     }
 }
 
-/// Gausspunkter (ξ, vikt).
+/// Gauss points (ξ, weight).
 pub fn gauss(n: usize) -> Vec<(f64, f64)> {
     match n {
         1 => vec![(0.0, 2.0)],
@@ -60,7 +60,7 @@ pub fn gauss(n: usize) -> Vec<(f64, f64)> {
     }
 }
 
-/// Data i en punkt: N, dN/ds, r, ds/dξ, t, n.
+/// Data at a point: N, dN/ds, r, ds/dξ, t, n.
 struct Pt {
     n: Vec<f64>,
     ns: Vec<f64>,
@@ -95,12 +95,12 @@ impl Axi {
         for (xi, _) in gauss(3) {
             let p = point(&ctx.x, self.nn, xi);
             if !(p.j > 0.0) || !(p.r > 0.0) {
-                return fail(format!("element {} ({}): radien måste vara positiv och elementet ha längd", ctx.label, self.name));
+                return fail(format!("element {} ({}): the radius must be positive and the element must have a length", ctx.label, self.name));
             }
         }
         Ok(())
     }
-    /// Operatorer i integrationspunkterna: (membran 2×n, böjning 2×n, skjuvning n, vikt dA, skjuvstyvhet).
+    /// Operators at the integration points: (membrane 2×n, bending 2×n, shear n, weight dA, shear stiffness).
     fn ops(&self, ctx: &ElemCtx, ks: f64, t: f64) -> Vec<(Vec<f64>, Vec<f64>, Vec<f64>, f64, f64)> {
         let nd = self.nd();
         let n = nd * self.nn;
@@ -212,7 +212,7 @@ impl ElementType for Axi {
 
     fn internal_force(&self, ctx: &ElemCtx, u: &[f64], _du: &[f64], _so: &[f64], _sn: &mut Vec<f64>, tangent: bool) -> Result<ElemResponse> {
         if ctx.nlgeom {
-            return not_implemented("geometrisk olinjäritet (NLGEOM)", self.name);
+            return not_implemented("geometric nonlinearity (NLGEOM)", self.name);
         }
         let k = self.stiffness_of(ctx)?;
         Ok(ElemResponse { fint: common::matvec(&k, u), k: tangent.then_some(k) })
@@ -226,7 +226,7 @@ impl ElementType for Axi {
         let mut m = vec![0.0; n * n];
         let mt = sec.rho * sec.t;
         if self.nn == 2 {
-            // diagonal: halva massan (2π r_mitt L ρ t) per nod
+            // diagonal: half the mass (2π r_mid L ρ t) per node
             let p = point(&ctx.x, 2, 0.0);
             let half = 0.5 * 2.0 * PI * p.r * 2.0 * p.j * mt;
             for i in 0..2 {
@@ -257,12 +257,12 @@ impl ElementType for Axi {
         let mut f = vec![0.0; nd * self.nn];
         let body = common::body_load_vector(&load.kind, load.magnitude, &load.extra, sec.rho, self.name)?;
         if load.kind != "P" && body.is_none() {
-            return not_implemented(&format!("lasttypen {}", load.kind), self.name);
+            return not_implemented(&format!("load type {}", load.kind), self.name);
         }
         for (xi, w) in gauss(3) {
             let p = point(&ctx.x, self.nn, xi);
             let da = 2.0 * PI * p.r * p.j * w;
-            // positivt tryck P verkar i normalens riktning n = (−t_z, t_r)
+            // positive pressure P acts in the direction of the normal n = (−t_z, t_r)
             let q = match body {
                 Some(b) if load.kind != "P" => [b[0] * sec.t, b[1] * sec.t],
                 _ => [load.magnitude * p.nv[0], load.magnitude * p.nv[1]],
@@ -301,14 +301,14 @@ impl ElementType for Axi {
             let ip = q + 1;
             let dot = |b: &[f64]| -> f64 { (0..n).map(|p| b[p] * u[p]).sum() };
             let e = [dot(&bm[..n]), dot(&bm[n..])];
-            // krökningen redovisas med motsatt tecken (positiv z = −n)
+            // the curvature is reported with the opposite sign (positive z = −n)
             let k = [-dot(&bb[..n]), -dot(&bb[n..])];
             let dv = |v: [f64; 2]| [d2[0] * v[0] + d2[1] * v[1], d2[2] * v[0] + d2[3] * v[1]];
             let sn = dv(e);
             let mb = dv(k);
             if self.shell {
                 sf.points.push((ip, 0, vec![sn[0] * sec.t, sn[1] * sec.t, 0.0, kss * dot(&bs)]));
-                // SM1 = M_θ och SM2 = M_s
+                // SM1 = M_θ and SM2 = M_s
                 sm.points.push((ip, 0, vec![mb[1] * tb, mb[0] * tb, 0.0]));
                 let sps = if sec.n_int > 1 { vec![1, sec.n_int] } else { vec![1] };
                 for sp in sps {

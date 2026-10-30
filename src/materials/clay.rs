@@ -1,42 +1,42 @@
-//! Modifierad Cam-clay (*CLAY PLASTICITY, *CLAY HARDENING) och porös
-//! elasticitet (*POROUS ELASTIC), en kritisk-tillståndsmodell (Roscoe &
+//! Modified Cam-clay (*CLAY PLASTICITY, *CLAY HARDENING) and porous
+//! elasticity (*POROUS ELASTIC), a critical state model (Roscoe &
 //! Burland 1968).
 //!
-//! Porös elasticitet (logaritmisk, små töjningar, ε_v = tr ε):
+//! Porous elasticity (logarithmic, small strains, ε_v = tr ε):
 //!
 //!   p = −p_t^el + (p0 + p_t^el) exp[(1 + e0)/κ (1 − exp ε_v^el)],
 //!
-//! där p0 är begynnelsetrycket (*INITIAL CONDITIONS, TYPE=STRESS) och e0
-//! portalet (*INITIAL CONDITIONS, TYPE=RATIO). Deviatoriskt: SHEAR=G ger
-//! S = S0 + 2G e^el; SHEAR=POISSON (standard) ger ΔS = 2Ĝ Δe^el med
-//! Ĝ = 3(1 − 2ν)/(2(1 + ν)) · K̄, där K̄ = −Δp/Δε_v^el är inkrementets
-//! sekantkompressionsmodul (oberoende av inkrementens storlek för
-//! proportionella vägar).
-//! Med *ELASTIC (bara HARDENING=TABULAR) är K och G konstanta.
+//! where p0 is the initial pressure (*INITIAL CONDITIONS, TYPE=STRESS) and e0
+//! the void ratio (*INITIAL CONDITIONS, TYPE=RATIO). Deviatoric: SHEAR=G gives
+//! S = S0 + 2G e^el; SHEAR=POISSON (default) gives ΔS = 2Ĝ Δe^el with
+//! Ĝ = 3(1 − 2ν)/(2(1 + ν)) · K̄, where K̄ = −Δp/Δε_v^el is the increment's
+//! secant bulk modulus (independent of the increment size for
+//! proportional paths).
+//! With *ELASTIC (only HARDENING=TABULAR) K and G are constant.
 //!
-//! Flytyta (associativ flytning):
+//! Yield surface (associated flow):
 //!
 //!   F = ((p − p_t)/a − 1)²/β² + (t/(M a))² − 1 = 0,
 //!   t = q/2 [1 + 1/K − (1 − 1/K)(r/q)³],
 //!
-//! med β = 1 på den torra sidan (p − p_t < a). Hårdnande:
+//! with β = 1 on the dry side (p − p_t < a). Hardening:
 //! - HARDENING=EXPONENTIAL: a = a0 exp[(1 + e0)(1 − J^pl)/(λ − κ J^pl)],
-//!   J^pl = exp(tr ε^pl); a0 direkt eller ur INTERCEPT=e1:
+//!   J^pl = exp(tr ε^pl); a0 directly or from INTERCEPT=e1:
 //!   a0 = exp[(e1 − e0 − κ ln p0)/(λ − κ)]/(1 + β).
-//! - HARDENING=TABULAR: p_c(x) och p_t(x) (*CLAY HARDENING, TYPE=COMPRESSION/
-//!   TENSION) med x = ε_vol^pl|0 − tr ε^pl, a = (p_c − p_t)/(1 + β).
+//! - HARDENING=TABULAR: p_c(x) and p_t(x) (*CLAY HARDENING, TYPE=COMPRESSION/
+//!   TENSION) with x = ε_vol^pl|0 − tr ε^pl, a = (p_c − p_t)/(1 + β).
 //!
-//! Ligger begynnelsespänningen utanför flytytan flyttas ytan så att punkten
-//! hamnar på den (a0 respektive ε_vol^pl|0 justeras).
+//! If the initial stress lies outside the yield surface, the surface is moved so that the point
+//! lies on it (a0 or ε_vol^pl|0, respectively, is adjusted).
 //!
-//! Implicit Euler: med K = 1 behåller den deviatoriska spänningen
-//! riktningen hos S_n + 2Ĝ Δe, och de två okända Δε_v^pl och Δε_q^pl löses
-//! med Newton ur F = 0 och normalitetsvillkoret Δε_v^pl ∂F/∂q + Δε_q^pl ∂F/∂p
-//! = 0. Med K ≠ 1 löses hela systemet (S, Δε_v^pl, Δλ) med Newton. Den
-//! konsistenta tangenten är numerisk (centraldifferens av hela
-//! returalgoritmen), osymmetrisk i allmänhet.
+//! Implicit Euler: with K = 1 the deviatoric stress keeps
+//! the direction of S_n + 2Ĝ Δe, and the two unknowns Δε_v^pl and Δε_q^pl are solved
+//! with Newton from F = 0 and the normality condition Δε_v^pl ∂F/∂q + Δε_q^pl ∂F/∂p
+//! = 0. With K ≠ 1 the full system (S, Δε_v^pl, Δλ) is solved with Newton. The
+//! consistent tangent is numerical (central difference of the full
+//! return algorithm), unsymmetric in general.
 //!
-//! Utdata: PEEQ = a (flytytans centrum) och PE.
+//! Output: PEEQ = a (center of the yield surface) and PE.
 
 use super::plasticity::{M6, V6};
 use super::{MatInput, MatOutput, MaterialFactory, MaterialModel, StressMode};
@@ -45,25 +45,25 @@ use crate::model::{fail, Result};
 use std::sync::Arc;
 
 pub static FACTORIES: &[MaterialFactory] = &[MaterialFactory {
-    name: "Cam-clay-plasticitet / porös elasticitet",
+    name: "Cam-clay plasticity / porous elasticity",
     consumes: &["CLAY HARDENING", "CLAY PLASTICITY", "ELASTIC", "POROUS ELASTIC"],
     priority: 10,
     build: Some(build),
 }];
 
-/// Tillståndslayout per integrationspunkt.
-const XEL: usize = 0; // elastisk volymtöjning sedan start
+/// State layout per integration point.
+const XEL: usize = 0; // elastic volumetric strain since the start
 const EPV: usize = 1; // tr ε^pl
-const A: usize = 2; // flytytans storlek a
-const EP: usize = 3; // ε^pl (6, ingenjörsskjuvning)
-const P0: usize = 9; // begynnelsetryck
-const E0: usize = 10; // begynnelseportal (NaN = inte givet)
-const A0: usize = 11; // a0 (exponentiellt) eller ε_vol^pl|0 (tabell)
+const A: usize = 2; // yield surface size a
+const EP: usize = 3; // ε^pl (6, engineering shear)
+const P0: usize = 9; // initial pressure
+const E0: usize = 10; // initial void ratio (NaN = not given)
+const A0: usize = 11; // a0 (exponential) or ε_vol^pl|0 (table)
 const NST: usize = 12;
 
 #[derive(Debug, Clone)]
 enum Elastic {
-    /// κ, G (SHEAR=G) eller ν (SHEAR=POISSON), p_t^el.
+    /// κ, G (SHEAR=G) or ν (SHEAR=POISSON), p_t^el.
     Porous { kappa: f64, g: Option<f64>, nu: f64, pt: f64 },
     Linear { k: f64, g: f64, e: f64, nu: f64 },
 }
@@ -71,7 +71,7 @@ enum Elastic {
 #[derive(Debug, Clone)]
 enum Hard {
     Exponential { lam: f64, a0: f64, e1: Option<f64> },
-    /// (x, p_c), (x, p_t) med x = ε_vol^pl|0 − tr ε^pl; x0 = ε_vol^pl|0.
+    /// (x, p_c), (x, p_t) with x = ε_vol^pl|0 − tr ε^pl; x0 = ε_vol^pl|0.
     Tabular { pc: Vec<(f64, f64)>, pt: Vec<(f64, f64)>, x0: f64 },
 }
 
@@ -93,44 +93,44 @@ fn num(kw: &RawKeyword, key: &str) -> Result<Option<f64>> {
     match kw.param(key) {
         Some(s) => crate::fem::model::parse_f64(s.trim())
             .map(Some)
-            .ok_or_else(|| crate::model::FemError(format!("{}: {key}={s} är inget tal", kw.location()))),
+            .ok_or_else(|| crate::model::FemError(format!("{}: {key}={s} is not a number", kw.location()))),
         None => Ok(None),
     }
 }
 
 fn single_row(kw: &RawKeyword) -> Result<Vec<f64>> {
     if kw.data.len() > 1 || kw.has("DEPENDENCIES") {
-        return kw.err("temperatur- och fältberoende parametrar stöds inte ännu");
+        return kw.err("temperature- and field-dependent parameters are not yet supported");
     }
     kw.first_floats()
 }
 
 fn hardening_table(kw: &RawKeyword, tension: bool) -> Result<Vec<(f64, f64)>> {
     if kw.has("DEPENDENCIES") {
-        return kw.err("fältberoende hårdnande stöds inte ännu");
+        return kw.err("field-dependent hardening is not yet supported");
     }
     let mut t: Vec<(f64, f64)> = Vec::new();
     for d in kw.records() {
         let v = kw.floats(&d)?;
         if v.len() > 2 && v[2..].iter().any(|&x| x != 0.0) {
-            return kw.err_at(d.line, "temperaturberoende hårdnande stöds inte ännu");
+            return kw.err_at(d.line, "temperature-dependent hardening is not yet supported");
         }
         let (p, x) = (v.first().copied().unwrap_or(0.0), v.get(1).copied().unwrap_or(0.0));
         if !tension && !(p > 0.0) {
-            return kw.err_at(d.line, "p_c ska vara positivt");
+            return kw.err_at(d.line, "p_c must be positive");
         }
         if tension && p > 0.0 {
-            return kw.err_at(d.line, "p_t ska vara noll eller negativt");
+            return kw.err_at(d.line, "p_t must be zero or negative");
         }
         match t.last() {
-            Some(&(xl, _)) if !(x > xl) => return kw.err_at(d.line, "den volymetriska plastiska töjningen ska öka"),
-            None if x != 0.0 => return kw.err_at(d.line, "första punkten ska ha volymetrisk plastisk töjning 0"),
+            Some(&(xl, _)) if !(x > xl) => return kw.err_at(d.line, "the volumetric plastic strain must increase"),
+            None if x != 0.0 => return kw.err_at(d.line, "the first point must have volumetric plastic strain 0"),
             _ => {}
         }
         t.push((x, p));
     }
     if t.is_empty() {
-        return kw.err("hårdnandetabell saknas");
+        return kw.err("hardening table is missing");
     }
     Ok(t)
 }
@@ -143,14 +143,14 @@ fn build(def: &MaterialDef) -> Result<Option<Arc<dyn MaterialModel>>> {
     }
     if def.behavior("CLAY HARDENING").is_some() && clay.is_none() {
         let kw = def.behavior("CLAY HARDENING").unwrap();
-        return kw.err("*CLAY HARDENING kräver *CLAY PLASTICITY, HARDENING=TABULAR");
+        return kw.err("*CLAY HARDENING requires *CLAY PLASTICITY, HARDENING=TABULAR");
     }
     let el = match (porous, def.behavior("ELASTIC")) {
-        (Some(_), Some(e)) => return e.err("*POROUS ELASTIC och *ELASTIC kan inte användas i samma material"),
+        (Some(_), Some(e)) => return e.err("*POROUS ELASTIC and *ELASTIC cannot be used in the same material"),
         (Some(pk), None) => {
             let ty = pk.param_upper("TYPE").unwrap_or_else(|| "LOGARITHMIC".into());
             if ty != "LOGARITHMIC" {
-                return pk.err(format!("TYPE={ty} stöds inte ännu (bara LOGARITHMIC)"));
+                return pk.err(format!("TYPE={ty} is not yet supported (only LOGARITHMIC)"));
             }
             let shear = pk.param_upper("SHEAR").unwrap_or_else(|| "POISSON".into());
             let v = single_row(pk)?;
@@ -158,38 +158,38 @@ fn build(def: &MaterialDef) -> Result<Option<Arc<dyn MaterialModel>>> {
             let s = v.get(1).copied().unwrap_or(0.0);
             let pt = v.get(2).copied().unwrap_or(0.0);
             if v.get(3).is_some_and(|&t| t != 0.0) {
-                return pk.err("temperaturberoende parametrar stöds inte ännu");
+                return pk.err("temperature-dependent parameters are not yet supported");
             }
             if !(kappa > 0.0) {
-                return pk.err("κ ska vara positivt");
+                return pk.err("κ must be positive");
             }
             if pt < 0.0 {
-                return pk.err("p_t^el får inte vara negativt");
+                return pk.err("p_t^el must not be negative");
             }
             match shear.as_str() {
                 "G" => {
                     if !(s > 0.0) {
-                        return pk.err("G ska vara positivt");
+                        return pk.err("G must be positive");
                     }
                     Elastic::Porous { kappa, g: Some(s), nu: 0.0, pt }
                 }
                 "POISSON" => {
                     if !(s > -1.0 && s < 0.5) {
-                        return pk.err("ν ska ligga mellan −1 och 0,5");
+                        return pk.err("ν must lie between −1 and 0.5");
                     }
                     Elastic::Porous { kappa, g: None, nu: s, pt }
                 }
-                o => return pk.err(format!("SHEAR={o} stöds inte (G, POISSON)")),
+                o => return pk.err(format!("SHEAR={o} is not supported (G, POISSON)")),
             }
         }
         (None, Some(_)) => {
             let ck = clay.unwrap();
-            let (e, nu) = super::mohr_coulomb::iso_elastic(def, ck, "Cam-clay med *ELASTIC")?;
+            let (e, nu) = super::mohr_coulomb::iso_elastic(def, ck, "Cam-clay with *ELASTIC")?;
             Elastic::Linear { k: e / (3.0 * (1.0 - 2.0 * nu)), g: e / (2.0 * (1.0 + nu)), e, nu }
         }
         (None, None) => {
             let ck = clay.unwrap();
-            return ck.err("*CLAY PLASTICITY kräver *POROUS ELASTIC eller *ELASTIC");
+            return ck.err("*CLAY PLASTICITY requires *POROUS ELASTIC or *ELASTIC");
         }
     };
     let yld = match clay {
@@ -208,57 +208,57 @@ fn build(def: &MaterialDef) -> Result<Option<Arc<dyn MaterialModel>>> {
                 k => k,
             };
             if v.get(5).is_some_and(|&t| t != 0.0) {
-                return ck.err("temperaturberoende parametrar stöds inte ännu");
+                return ck.err("temperature-dependent parameters are not yet supported");
             }
             if !(m > 0.0) {
-                return ck.err("M ska vara positivt");
+                return ck.err("M must be positive");
             }
             if !(beta > 0.0) {
-                return ck.err("β ska vara positivt");
+                return ck.err("β must be positive");
             }
             if !(0.778..=1.0).contains(&kk) {
-                return ck.err("K ska ligga mellan 0,778 och 1,0");
+                return ck.err("K must lie between 0.778 and 1.0");
             }
             let hardening = ck.param_upper("HARDENING").unwrap_or_else(|| "EXPONENTIAL".into());
             let hard = match hardening.as_str() {
                 "EXPONENTIAL" => {
                     let Elastic::Porous { kappa, .. } = el else {
-                        return ck.err("HARDENING=EXPONENTIAL kräver *POROUS ELASTIC");
+                        return ck.err("HARDENING=EXPONENTIAL requires *POROUS ELASTIC");
                     };
                     if !(lam > kappa) {
-                        return ck.err("λ ska vara större än κ");
+                        return ck.err("λ must be greater than κ");
                     }
                     let e1 = num(ck, "INTERCEPT")?;
                     if e1.is_none() && !(a0 > 0.0) {
-                        return ck.err("a0 ska vara positivt (eller ange INTERCEPT=e1)");
+                        return ck.err("a0 must be positive (or give INTERCEPT=e1)");
                     }
                     if def.behavior("CLAY HARDENING").is_some() {
-                        return ck.err("*CLAY HARDENING kräver HARDENING=TABULAR");
+                        return ck.err("*CLAY HARDENING requires HARDENING=TABULAR");
                     }
                     Hard::Exponential { lam, a0, e1 }
                 }
                 "TABULAR" => {
                     if ck.has("INTERCEPT") {
-                        return ck.err("INTERCEPT kan inte användas med HARDENING=TABULAR");
+                        return ck.err("INTERCEPT cannot be used with HARDENING=TABULAR");
                     }
                     let mut pc = None;
                     let mut pt = vec![(0.0, 0.0)];
                     for hk in def.behaviors.iter().filter(|b| b.name == "CLAY HARDENING") {
                         if hk.has("SR") {
-                            return hk.err("SR= (*SOFTENING REGULARIZATION) stöds inte ännu");
+                            return hk.err("SR= (*SOFTENING REGULARIZATION) is not yet supported");
                         }
                         match hk.param_upper("TYPE").unwrap_or_else(|| "COMPRESSION".into()).as_str() {
                             "COMPRESSION" => pc = Some(hardening_table(hk, false)?),
                             "TENSION" => pt = hardening_table(hk, true)?,
-                            o => return hk.err(format!("TYPE={o} stöds inte (COMPRESSION, TENSION)")),
+                            o => return hk.err(format!("TYPE={o} is not supported (COMPRESSION, TENSION)")),
                         }
                     }
                     let Some(pc) = pc else {
-                        return ck.err("HARDENING=TABULAR kräver *CLAY HARDENING (TYPE=COMPRESSION)");
+                        return ck.err("HARDENING=TABULAR requires *CLAY HARDENING (TYPE=COMPRESSION)");
                     };
                     Hard::Tabular { pc, pt, x0: a0 }
                 }
-                o => return ck.err(format!("HARDENING={o} stöds inte (EXPONENTIAL, TABULAR)")),
+                o => return ck.err(format!("HARDENING={o} is not supported (EXPONENTIAL, TABULAR)")),
             };
             Some(Yield { m, beta, kk, hard })
         }
@@ -270,7 +270,7 @@ fn interp(t: &[(f64, f64)], x: f64) -> f64 {
     super::principal::interp(t, x).0
 }
 
-/// Inverterar en stigande (eller fallande) styckvis linjär tabell: x där y(x) = y.
+/// Inverts an ascending (or descending) piecewise linear table: x where y(x) = y.
 fn inverse(t: &[(f64, f64)], y: f64) -> Option<f64> {
     if t.len() == 1 {
         return None;
@@ -284,8 +284,8 @@ fn inverse(t: &[(f64, f64)], y: f64) -> Option<f64> {
     None
 }
 
-/// Deviatoriska invarianter för en spänningslik vektor (tensorskjuvning):
-/// q, t (t̃ med K) och ∂t/∂S (deviatorisk tensor, Voigt med tensorskjuvning).
+/// Deviatoric invariants for a stress-like vector (tensor shear):
+/// q, t (t̃ with K) and ∂t/∂S (deviatoric tensor, Voigt with tensor shear).
 fn t_measure(s: &V6, kk: f64) -> (f64, f64, V6) {
     let m = [[s[0], s[3], s[4]], [s[3], s[1], s[5]], [s[4], s[5], s[2]]];
     let mut ss = 0.0;
@@ -322,7 +322,7 @@ fn t_measure(s: &V6, kk: f64) -> (f64, f64, V6) {
     (q, t, n)
 }
 
-/// Spänningar och storheter vid inkrementets slut för givna plastiska delar.
+/// Stresses and quantities at the end of the increment for given plastic parts.
 struct EndState {
     p: f64,
     g: f64,
@@ -336,7 +336,7 @@ impl Clay {
         }
     }
 
-    /// p som funktion av total elastisk volymtöjning x.
+    /// p as a function of the total elastic volumetric strain x.
     fn p_of(&self, st: &[f64], x: f64) -> f64 {
         match self.el {
             Elastic::Porous { kappa, pt, .. } => {
@@ -347,14 +347,14 @@ impl Clay {
         }
     }
 
-    /// Skjuvmodul för inkrementet: Δx = elastisk volymtöjningsändring.
+    /// Shear modulus for the increment: Δx = elastic volumetric strain change.
     fn g_of(&self, st: &[f64], pn: f64, dx: f64) -> f64 {
         match self.el {
             Elastic::Porous { g: Some(g), .. } => g,
             Elastic::Porous { kappa, g: None, nu, pt } => {
                 let b = (1.0 + st[E0]) / kappa;
                 let xn = st[XEL];
-                // sekant (p(xn+dx) − p(xn))/dx utan kancellation
+                // secant (p(xn+dx) − p(xn))/dx without cancellation
                 let kbar = if dx == 0.0 {
                     (pn + pt) * b * xn.exp()
                 } else {
@@ -367,7 +367,7 @@ impl Clay {
         }
     }
 
-    /// Flytytans storlek a och p_t vid tr ε^pl = epv.
+    /// Yield surface size a and p_t at tr ε^pl = epv.
     fn size(&self, y: &Yield, st: &[f64], epv: f64) -> (f64, f64) {
         match &y.hard {
             Hard::Exponential { lam, .. } => {
@@ -388,26 +388,26 @@ impl Clay {
         ((p - pt) / a - 1.0).powi(2) / (b * b) + (t / (y.m * a)).powi(2) - 1.0
     }
 
-    /// ∂F/∂p och ∂F/∂t.
+    /// ∂F/∂p and ∂F/∂t.
     fn yield_grad(y: &Yield, p: f64, t: f64, a: f64, pt: f64) -> (f64, f64) {
         let b = if p - pt < a { 1.0 } else { y.beta };
         (2.0 / (b * b * a) * ((p - pt) / a - 1.0), 2.0 * t / (y.m * y.m * a * a))
     }
 
-    /// Spänningsuppdatering i 3D. `de`: töjningsinkrement (ingenjörsskjuvning),
-    /// `sn`: spänning vid inkrementets början. Returnerar ny spänning; `stn`
-    /// får nytt tillstånd.
+    /// Stress update in 3D. `de`: strain increment (engineering shear),
+    /// `sn`: stress at the start of the increment. Returns the new stress; `stn`
+    /// receives the new state.
     fn update3d(&self, de: &V6, sn: &V6, st: &[f64], stn: &mut [f64]) -> Result<V6> {
         let needs_e0 = matches!(self.el, Elastic::Porous { .. }) || self.yld.as_ref().is_some_and(|y| matches!(y.hard, Hard::Exponential { .. }));
         if needs_e0 && st[E0].is_nan() {
-            return fail("*POROUS ELASTIC och HARDENING=EXPONENTIAL kräver portalet e0 (*INITIAL CONDITIONS, TYPE=RATIO)");
+            return fail("*POROUS ELASTIC and HARDENING=EXPONENTIAL require the void ratio e0 (*INITIAL CONDITIONS, TYPE=RATIO)");
         }
         stn[..NST].copy_from_slice(&st[..NST]);
         let pn = -(sn[0] + sn[1] + sn[2]) / 3.0;
         let s_n: V6 = [sn[0] + pn, sn[1] + pn, sn[2] + pn, sn[3], sn[4], sn[5]];
         let dv = de[0] + de[1] + de[2];
         let dd: V6 = [de[0] - dv / 3.0, de[1] - dv / 3.0, de[2] - dv / 3.0, de[3] / 2.0, de[4] / 2.0, de[5] / 2.0];
-        // elastiskt prov
+        // elastic trial
         let end = |v: f64| -> EndState {
             let p = self.p_of(st, st[XEL] + dv - v);
             let g = self.g_of(st, pn, dv - v);
@@ -439,7 +439,7 @@ impl Clay {
         Ok(sig(es.p, &s_end))
     }
 
-    /// Retur med K = 1: okända v = Δε_v^pl och w = Δε_q^pl.
+    /// Return with K = 1: unknowns v = Δε_v^pl and w = Δε_q^pl.
     #[allow(clippy::type_complexity)]
     fn return_k1(&self, y: &Yield, st: &[f64], s_n: &V6, dd: &V6, _dv: f64, end: &dyn Fn(f64) -> EndState) -> Result<(f64, V6, V6)> {
         let eval = |v: f64, w: f64| -> (f64, f64, V6, f64, f64) {
@@ -458,7 +458,7 @@ impl Clay {
         };
         let (mut v, mut w) = (0.0f64, 0.0f64);
         let mut r = res(v, w);
-        // normerad residual: F är dimensionslös, normalitetsvillkoret i töjning
+        // normalized residual: F is dimensionless, the normality condition in strain
         let norm = |r: &[f64; 2], v: f64, w: f64| r[0].abs().max(r[1].abs() / v.abs().max(w.abs()).max(1e-12));
         for _ in 0..100 {
             let n0 = norm(&r, v, w);
@@ -474,7 +474,7 @@ impl Clay {
             }
             let dvv = (r[0] * j[1][1] - r[1] * j[0][1]) / det;
             let dww = (j[0][0] * r[1] - j[1][0] * r[0]) / det;
-            // dämpat steg om residualen inte minskar
+            // damped step if the residual does not decrease
             let mut t = 1.0;
             let (vn, wn, rn) = loop {
                 let (vn, wn) = (v - t * dvv, (w - t * dww).max(0.0));
@@ -493,14 +493,14 @@ impl Clay {
             }
         }
         if !(norm(&r, v, w) <= 1e-9) {
-            return fail("Cam-clay: returalgoritmen konvergerade inte");
+            return fail("Cam-clay: the return algorithm did not converge");
         }
         let (_, q, s, _, _) = eval(v, w);
         let dep: V6 = if q > 0.0 { std::array::from_fn(|i| 1.5 * w * s[i] / q) } else { [0.0; 6] };
         Ok((v, s, dep))
     }
 
-    /// Retur med K ≠ 1: okända S (6), v = Δε_v^pl och Δλ.
+    /// Return with K ≠ 1: unknowns S (6), v = Δε_v^pl and Δλ.
     #[allow(clippy::too_many_arguments)]
     fn return_general(&self, y: &Yield, st: &[f64], s_n: &V6, dd: &V6, _dv: f64, end: &dyn Fn(f64) -> EndState, str_: &V6) -> Result<(f64, V6, V6)> {
         let scale = str_.iter().fold(0.0f64, |m, x| m.max(x.abs())).max(end(0.0).p.abs()).max(1e-30);
@@ -553,7 +553,7 @@ impl Clay {
             }
         }
         if !ok && norm(&r) > 1e-10 {
-            return fail("Cam-clay: returalgoritmen konvergerade inte");
+            return fail("Cam-clay: the return algorithm did not converge");
         }
         let s: V6 = std::array::from_fn(|i| x[i]);
         let (v, dl) = (x[6], x[7]);
@@ -565,7 +565,7 @@ impl Clay {
         Ok((v, s, dep))
     }
 
-    /// Uppdatering i elementets spänningstillstånd (komponenterna i `mode`).
+    /// Update in the element's stress state (the components in `mode`).
     fn update_mode(&self, mode: StressMode, de: &[f64], sn: &[f64], st: &[f64], stn: &mut [f64]) -> Result<Vec<f64>> {
         let n = mode.ncomp();
         let mut d6 = [0.0; 6];
@@ -609,7 +609,7 @@ impl MaterialModel for Clay {
 
     fn init_state_at(&self, mode: StressMode, stress: &[f64], void_ratio: Option<f64>, state: &mut [f64]) -> Result<()> {
         if matches!(mode, StressMode::PlaneStress | StressMode::Uniaxial) {
-            return fail(format!("{} stöds inte i plan spänning eller enaxligt spänningstillstånd", self.name()));
+            return fail(format!("{} is not supported in plane stress or uniaxial stress states", self.name()));
         }
         let p0 = -(stress.iter().take(3).sum::<f64>()) / 3.0;
         state[P0] = p0;
@@ -618,7 +618,7 @@ impl MaterialModel for Clay {
         }
         if let Elastic::Porous { pt, .. } = self.el {
             if !(p0 + pt > 0.0) {
-                return fail("porös elasticitet kräver p0 + p_t^el > 0 (begynnelsetryck, *INITIAL CONDITIONS, TYPE=STRESS)");
+                return fail("porous elasticity requires p0 + p_t^el > 0 (initial pressure, *INITIAL CONDITIONS, TYPE=STRESS)");
             }
         }
         let Some(y) = &self.yld else { return Ok(()) };
@@ -628,10 +628,10 @@ impl MaterialModel for Clay {
         let (_, t, _) = t_measure(&s, y.kk);
         if let Hard::Exponential { lam, e1: Some(e1), .. } = &y.hard {
             if state[E0].is_nan() {
-                return fail("INTERCEPT= kräver portalet e0 (*INITIAL CONDITIONS, TYPE=RATIO)");
+                return fail("INTERCEPT= requires the void ratio e0 (*INITIAL CONDITIONS, TYPE=RATIO)");
             }
             if !(p0 > 0.0) {
-                return fail("INTERCEPT= kräver ett positivt begynnelsetryck p0");
+                return fail("INTERCEPT= requires a positive initial pressure p0");
             }
             let k = self.kappa();
             state[A0] = ((e1 - state[E0] - k * p0.ln()) / (lam - k)).exp() / (1.0 + y.beta);
@@ -639,31 +639,31 @@ impl MaterialModel for Clay {
         let (a, pt) = self.size(y, state, 0.0);
         state[A] = a;
         if Self::yield_f(y, p0, t, a, pt) > 1e-12 {
-            // begynnelsepunkten utanför flytytan: flytta ytan så att punkten ligger på den
+            // initial point outside the yield surface: move the surface so that the point lies on it
             let pp = p0 - pt;
             let tm = t / y.m;
-            // torra sidan (β = 1): a = (p² + (t/M)²)/(2p), gäller om p < a
+            // dry side (β = 1): a = (p² + (t/M)²)/(2p), valid if p < a
             let dry = if pp > 0.0 { (pp * pp + tm * tm) / (2.0 * pp) } else { f64::INFINITY };
             let anew = if pp < dry {
                 dry
             } else {
-                // våta sidan: (p u − 1)²/β² + (t u/M)² = 1 med u = 1/a
+                // wet side: (p u − 1)²/β² + (t u/M)² = 1 with u = 1/a
                 let b2 = y.beta * y.beta;
                 let qa = pp * pp / b2 + tm * tm;
                 let qb = -2.0 * pp / b2;
                 let qc = 1.0 / b2 - 1.0;
-                // största roten u (minsta a) ger p − p_t ≥ a, dvs. punkten på våta sidan
+                // the largest root u (smallest a) gives p − p_t ≥ a, i.e. the point on the wet side
                 let disc = (qb * qb - 4.0 * qa * qc).max(0.0).sqrt();
                 2.0 * qa / (-qb + disc)
             };
             match &y.hard {
                 Hard::Exponential { .. } => state[A0] = anew,
                 Hard::Tabular { pc, pt: ptab, .. } => {
-                    // p_c(x) − p_t(x) = (1 + β) a: sök x i p_c-tabellen (p_t antas konstant här)
+                    // p_c(x) − p_t(x) = (1 + β) a: search for x in the p_c table (p_t assumed constant here)
                     let target = (1.0 + y.beta) * anew + interp(ptab, state[A0]);
                     match inverse(pc, target) {
                         Some(x) => state[A0] = x,
-                        None => return fail("Cam-clay: begynnelsespänningen ligger utanför flytytan och hårdnandetabellen räcker inte för att flytta ytan dit"),
+                        None => return fail("Cam-clay: the initial stress lies outside the yield surface and the hardening table is not sufficient to move the surface there"),
                     }
                 }
             }
@@ -675,11 +675,11 @@ impl MaterialModel for Clay {
     fn update(&self, input: &MatInput, state_old: &[f64], state_new: &mut [f64]) -> Result<MatOutput> {
         let mode = input.mode;
         if matches!(mode, StressMode::PlaneStress | StressMode::Uniaxial) {
-            return fail(format!("{} stöds inte i plan spänning eller enaxligt spänningstillstånd", self.name()));
+            return fail(format!("{} is not supported in plane stress or uniaxial stress states", self.name()));
         }
         let n = mode.ncomp();
         let stress = self.update_mode(mode, input.dstrain, input.stress_old, state_old, state_new)?;
-        // numerisk konsistent tangent: centraldifferens av hela uppdateringen
+        // numerical consistent tangent: central difference of the full update
         let scale = input.dstrain.iter().fold(0.0f64, |m, x| m.max(x.abs())).max(1e-4);
         let h = 1e-7 * scale;
         let mut tmp = vec![0.0; NST];
@@ -699,7 +699,7 @@ impl MaterialModel for Clay {
     }
 
     fn tangent_linear(&self, mode: StressMode) -> Result<Vec<f64>> {
-        // elastisk tangent vid p = 1 (bara för linjära hjälpberäkningar)
+        // elastic tangent at p = 1 (only for linear auxiliary calculations)
         let (k, g) = match self.el {
             Elastic::Porous { kappa, g, nu, pt } => {
                 let k = (1.0 + pt) / kappa;

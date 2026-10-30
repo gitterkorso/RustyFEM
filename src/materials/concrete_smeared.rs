@@ -1,51 +1,51 @@
-//! Betong med utsmetad sprickbildning (*CONCRETE med *TENSION STIFFENING,
-//! *SHEAR RETENTION och *FAILURE RATIOS) för implicit analys.
+//! Concrete with smeared cracking (*CONCRETE with *TENSION STIFFENING,
+//! *SHEAR RETENTION and *FAILURE RATIOS) for implicit analysis.
 //!
-//! Tryckytan (isotropt hårdnande, associativ flytning):
+//! Compression surface (isotropic hardening, associated flow):
 //!
 //!   f_c = q − √3 a0 p − √3 τ_c(κ) = 0,  τ_c = (1/√3 − a0/3) σ_c(κ),
 //!   dε^pl = dλ (1 + c0 (p/σ_c)²) ∂f_c/∂σ,  dκ = dλ (1 + c0/9)(1 − a0/√3),
 //!
-//! där σ_c(κ) är *CONCRETE-tabellen (κ = plastisk töjning i enaxligt tryck,
-//! utdata PEEQ), a0 och c0 ur brottkvoterna r_bc^σ och r_bc^ε.
+//! where σ_c(κ) is the *CONCRETE table (κ = plastic strain in uniaxial compression,
+//! output PEEQ), a0 and c0 from the failure ratios r_bc^σ and r_bc^ε.
 //!
-//! Sprickdetektering (Coulomblinje, associativ "plasticitet" under
-//! inkrementet då sprickan bildas):
+//! Crack detection (Coulomb line, associated "plasticity" during
+//! the increment in which the crack forms):
 //!
 //!   f_t = q − (3 − b0 s) p − (2 − b0 s/3) σ_t = 0,  s = σ_t/σ_tu,
 //!
-//! σ_tu = r_t^σ · σ_cu (σ_cu = största spänningen i *CONCRETE), b0 ur
-//! kvoterna r_t^σ och f. Under detekteringsinkrementet är
-//! σ_t = σ_tu g̃(x) med x = Δε^pl_nn − (σ_tu − σ_t)/E (Δε^pl_nn = största
-//! huvudtöjningen av detekteringens plastiska töjning) och
-//! g̃ = 0,01 + 0,99 g, där g är tabellen i *TENSION STIFFENING (spänningskvot
-//! mot töjning efter sprickbildning; TYPE=DISPLACEMENT: linjärt till noll vid
-//! töjningen u0/L − σ_t/E efter sprickbildningen, L = elementets
-//! karakteristiska längd, dvs. u0 räknas på den totala töjningen).
-//! Materialet mjuknar alltså till
-//! 1 % av spänningen, inte till noll.
+//! σ_tu = r_t^σ · σ_cu (σ_cu = largest stress in *CONCRETE), b0 from
+//! the ratios r_t^σ and f. During the detection increment
+//! σ_t = σ_tu g̃(x) with x = Δε^pl_nn − (σ_tu − σ_t)/E (Δε^pl_nn = largest
+//! principal strain of the detection's plastic strain) and
+//! g̃ = 0.01 + 0.99 g, where g is the *TENSION STIFFENING table (stress ratio
+//! versus post-cracking strain; TYPE=DISPLACEMENT: linear to zero at
+//! the strain u0/L − σ_t/E after cracking, L = the element's
+//! characteristic length, i.e. u0 is measured on the total strain).
+//! The material thus softens to
+//! 1 % of the stress, not to zero.
 //!
-//! Sprickans normal är detekteringsspänningens största huvudriktning. Efter
-//! sprickbildningen: normalkomponenten av detekteringens plastiska
-//! töjning blir elastisk; de elastiska töjningarna i de andra riktningarna
-//! blir (σ_ββ − ν σ_γγ)/E (normalspänningens tvärkontraktion tas bort) och
-//! resten plastisk (utdata PE). Därefter skadad elasticitet i sprickans
-//! koordinatsystem med den elastiska normaltöjningen e = ε_nn − ε^pl_nn:
-//! - öppen spricka (e > 0): σ_nn = σ_d g̃(e − ε_c) vid pålastning
-//!   (e ≥ e_max), annars sekant mot origo σ_nn = e σ_open(e_max)/e_max;
-//!   σ_d = normalspänningen vid detekteringen, ε_c = σ_d/E; ingen
-//!   tvärkontraktion mellan normalriktningen och de övriga; skjuvmodulen för
-//!   sprickans skjuvkomponenter ρ G med ρ = ρ_close (1 − e/ε_max) (
-//!   produkten av *SHEAR RETENTION-värdena);
-//! - stängd spricka (e ≤ 0): full elasticitet, skjuvmodul ρ_close G.
+//! The crack normal is the largest principal direction of the detection stress. After
+//! cracking: the normal component of the detection's plastic
+//! strain becomes elastic; the elastic strains in the other directions
+//! become (σ_ββ − ν σ_γγ)/E (the transverse contraction from the normal stress is removed) and
+//! the rest plastic (output PE). Thereafter damaged elasticity in the crack's
+//! coordinate system with the elastic normal strain e = ε_nn − ε^pl_nn:
+//! - open crack (e > 0): σ_nn = σ_d g̃(e − ε_c) on loading
+//!   (e ≥ e_max), otherwise secant to the origin σ_nn = e σ_open(e_max)/e_max;
+//!   σ_d = the normal stress at detection, ε_c = σ_d/E; no
+//!   transverse contraction between the normal direction and the others; the shear modulus for
+//!   the crack's shear components ρ G with ρ = ρ_close (1 − e/ε_max) (
+//!   the product of the *SHEAR RETENTION values);
+//! - closed crack (e ≤ 0): full elasticity, shear modulus ρ_close G.
 //!
-//! Med stängd spricka prövas tryckytan som i osprucket material (den
-//! isotropa elastiska matrisen används i returen).
+//! With a closed crack the compression surface is checked as in uncracked material (the
+//! isotropic elastic matrix is used in the return).
 //!
-//! Begränsningar: högst en spricka per integrationspunkt (ingen ytterligare
-//! sprickdetektering i ett sprucket läge); temperatur- och fältberoende data
-//! stöds inte.
-//! Tangenten är numerisk (framåtdifferens av hela uppdateringen).
+//! Limitations: at most one crack per integration point (no further
+//! crack detection in a cracked state); temperature- and field-dependent data
+//! are not supported.
+//! The tangent is numerical (forward difference of the whole update).
 
 use super::plasticity::{iso_d6, mv6, update_reduced, M6, V6};
 use super::principal::{fd_tangent, interp, principal};
@@ -56,25 +56,25 @@ use crate::model::{fail, Result};
 use std::sync::Arc;
 
 pub static FACTORIES: &[MaterialFactory] = &[MaterialFactory {
-    name: "betong med utsmetad sprickbildning",
+    name: "concrete with smeared cracking",
     consumes: &["CONCRETE", "ELASTIC", "FAILURE RATIOS", "SHEAR RETENTION", "TENSION STIFFENING"],
     priority: 10,
     build: Some(build),
 }];
 
-const EPL: usize = 0; // oelastisk töjning (6, ingenjörsskjuvning) = PE
-const KAPPA: usize = 6; // tryckytans hårdnandevariabel (PEEQ)
-const NCR: usize = 7; // antal sprickor (0 eller 1)
-const RR: usize = 8; // sprickans koordinatsystem (3×3, kolumner = lokala axlar)
-const SD: usize = 17; // normalspänning vid detekteringen
+const EPL: usize = 0; // inelastic strain (6, engineering shear) = PE
+const KAPPA: usize = 6; // hardening variable of the compression surface (PEEQ)
+const NCR: usize = 7; // number of cracks (0 or 1)
+const RR: usize = 8; // crack coordinate system (3×3, columns = local axes)
+const SD: usize = 17; // normal stress at detection
 const EC: usize = 18; // ε_c = σ_d/E
-const EMAX: usize = 19; // största elastiska normaltöjning (öppen spricka)
-const EPS3: usize = 20; // 3D-töjning (för plan spänning)
+const EMAX: usize = 19; // largest elastic normal strain (open crack)
+const EPS3: usize = 20; // 3D strain (for plane stress)
 const NST: usize = 26;
 
 #[derive(Debug, Clone)]
 enum Stiffening {
-    /// (töjning efter sprickbildning, spänningskvot)
+    /// (post-cracking strain, stress ratio)
     Strain(Vec<(f64, f64)>),
     /// u0
     Displacement(f64),
@@ -101,7 +101,7 @@ pub struct ConcreteSmeared {
 
 fn single(kw: &RawKeyword) -> Result<Vec<f64>> {
     if kw.data.len() > 1 || kw.has("DEPENDENCIES") {
-        return kw.err("temperatur- och fältberoende data stöds inte ännu");
+        return kw.err("temperature- and field-dependent data are not supported yet");
     }
     kw.first_floats()
 }
@@ -110,27 +110,27 @@ fn build(def: &MaterialDef) -> Result<Option<Arc<dyn MaterialModel>>> {
     let Some(ck) = def.behavior("CONCRETE") else { return Ok(None) };
     let (e, nu) = super::mohr_coulomb::iso_elastic(def, ck, "*CONCRETE")?;
     if ck.has("DEPENDENCIES") {
-        return ck.err("fältberoende tryckhårdnande stöds inte ännu");
+        return ck.err("field-dependent compression hardening is not supported yet");
     }
     let mut hard: Vec<(f64, f64)> = Vec::new();
     for d in ck.records() {
         let v = ck.floats(&d)?;
         if v.len() > 2 && v[2..].iter().any(|&x| x != 0.0) {
-            return ck.err_at(d.line, "temperaturberoende tryckhårdnande stöds inte ännu");
+            return ck.err_at(d.line, "temperature-dependent compression hardening is not supported yet");
         }
         let (s, p) = (v.first().copied().unwrap_or(0.0), v.get(1).copied().unwrap_or(0.0));
         if !(s > 0.0) {
-            return ck.err_at(d.line, "tryckspänningen ska vara positiv");
+            return ck.err_at(d.line, "the compressive stress must be positive");
         }
         match hard.last() {
-            Some(&(pl, _)) if !(p > pl) => return ck.err_at(d.line, "den plastiska töjningen ska öka"),
-            None if p != 0.0 => return ck.err_at(d.line, "första punkten ska ha plastisk töjning 0"),
+            Some(&(pl, _)) if !(p > pl) => return ck.err_at(d.line, "the plastic strain must increase"),
+            None if p != 0.0 => return ck.err_at(d.line, "the first point must have plastic strain 0"),
             _ => {}
         }
         hard.push((p, s));
     }
     if hard.is_empty() {
-        return ck.err("tryckhårdnandetabell saknas");
+        return ck.err("compression hardening table is missing");
     }
     let (mut rbc, mut rt, mut rbe, mut f) = (1.16, 0.09, 1.28, 1.0 / 3.0);
     if let Some(fk) = def.behavior("FAILURE RATIOS") {
@@ -142,29 +142,29 @@ fn build(def: &MaterialDef) -> Result<Option<Arc<dyn MaterialModel>>> {
         f = get(3, f);
     }
     let Some(tk) = def.behavior("TENSION STIFFENING") else {
-        return ck.err("*CONCRETE kräver *TENSION STIFFENING");
+        return ck.err("*CONCRETE requires *TENSION STIFFENING");
     };
     let ts = match tk.param_upper("TYPE").unwrap_or_else(|| "STRAIN".into()).as_str() {
         "STRAIN" => {
             if tk.has("DEPENDENCIES") {
-                return tk.err("fältberoende stöds inte ännu");
+                return tk.err("field dependence is not supported yet");
             }
             let mut t: Vec<(f64, f64)> = Vec::new();
             for d in tk.records() {
                 let v = tk.floats(&d)?;
                 if v.len() > 2 && v[2..].iter().any(|&x| x != 0.0) {
-                    return tk.err_at(d.line, "temperaturberoende stöds inte ännu");
+                    return tk.err_at(d.line, "temperature dependence is not supported yet");
                 }
                 let (r, x) = (v.first().copied().unwrap_or(0.0), v.get(1).copied().unwrap_or(0.0));
                 match t.last() {
-                    Some(&(xl, _)) if !(x > xl) => return tk.err_at(d.line, "töjningen ska öka"),
-                    None if x != 0.0 || r != 1.0 => return tk.err_at(d.line, "första punkten ska vara spänningskvot 1 vid töjning 0"),
+                    Some(&(xl, _)) if !(x > xl) => return tk.err_at(d.line, "the strain must increase"),
+                    None if x != 0.0 || r != 1.0 => return tk.err_at(d.line, "the first point must be stress ratio 1 at strain 0"),
                     _ => {}
                 }
                 t.push((x, r));
             }
             if t.len() < 2 {
-                return tk.err("*TENSION STIFFENING kräver minst två punkter");
+                return tk.err("*TENSION STIFFENING requires at least two points");
             }
             Stiffening::Strain(t)
         }
@@ -172,11 +172,11 @@ fn build(def: &MaterialDef) -> Result<Option<Arc<dyn MaterialModel>>> {
             let v = single(tk)?;
             let u0 = v.first().copied().unwrap_or(0.0);
             if !(u0 > 0.0) {
-                return tk.err("u0 ska vara positivt");
+                return tk.err("u0 must be positive");
             }
             Stiffening::Displacement(u0)
         }
-        o => return tk.err(format!("TYPE={o} stöds inte (STRAIN, DISPLACEMENT)")),
+        o => return tk.err(format!("TYPE={o} is not supported (STRAIN, DISPLACEMENT)")),
     };
     let (rho_close, eps_max) = match def.behavior("SHEAR RETENTION") {
         Some(sk) => {
@@ -209,7 +209,7 @@ fn build(def: &MaterialDef) -> Result<Option<Arc<dyn MaterialModel>>> {
     })))
 }
 
-/// Voigt (ingenjörsskjuvning om `eng`) → tensor.
+/// Voigt (engineering shear if `eng`) → tensor.
 fn tens(v: &V6, eng: bool) -> M3 {
     let f = if eng { 0.5 } else { 1.0 };
     [[v[0], f * v[3], f * v[4]], [f * v[3], v[1], f * v[5]], [f * v[4], f * v[5], v[2]]]
@@ -220,7 +220,7 @@ fn voigt(a: &M3, eng: bool) -> V6 {
     [a[0][0], a[1][1], a[2][2], f * a[0][1], f * a[0][2], f * a[1][2]]
 }
 
-/// Rᵀ A R (till lokala axlar) eller R A Rᵀ (till globala).
+/// Rᵀ A R (to local axes) or R A Rᵀ (to global).
 fn rot(a: &M3, r: &M3, to_local: bool) -> M3 {
     let mut o = [[0.0; 3]; 3];
     for i in 0..3 {
@@ -242,9 +242,9 @@ impl ConcreteSmeared {
         interp(&self.hard, kappa).0
     }
 
-    /// g̃(x) = 0,01 + 0,99 g(x). `sref`: spänningen vid sprickbildningen
-    /// (TYPE=DISPLACEMENT: u0 räknas från den totala töjningen, så att
-    /// mjuknandet slutar vid töjningen u0/L − σ_ref/E efter sprickbildningen).
+    /// g̃(x) = 0.01 + 0.99 g(x). `sref`: the stress at cracking
+    /// (TYPE=DISPLACEMENT: u0 is measured from the total strain, so that
+    /// softening ends at the strain u0/L − σ_ref/E after cracking).
     fn gmod(&self, x: f64, len: f64, sref: f64) -> f64 {
         let g = match &self.ts {
             Stiffening::Strain(t) => interp(t, x.max(0.0)).0,
@@ -271,7 +271,7 @@ impl ConcreteSmeared {
         q - (3.0 - self.b0 * r) * p - (2.0 - self.b0 * r / 3.0) * st
     }
 
-    /// Liten Newton med numerisk jacobian för två okända.
+    /// Small Newton with numerical Jacobian for two unknowns.
     fn newton2(mut x: [f64; 2], scale: [f64; 2], mut res: impl FnMut(&[f64; 2]) -> [f64; 2], what: &str) -> Result<[f64; 2]> {
         let mut r = res(&x);
         for _ in 0..100 {
@@ -308,10 +308,10 @@ impl ConcreteSmeared {
         if r[0].abs().max(r[1].abs()) <= 1e-9 {
             return Ok(x);
         }
-        fail(format!("betong (*CONCRETE): returalgoritmen för {what} konvergerade inte"))
+        fail(format!("concrete (*CONCRETE): the return mapping for {what} did not converge"))
     }
 
-    /// Spänningsuppdatering i 3D (total töjning, ingenjörsskjuvning).
+    /// Stress update in 3D (total strain, engineering shear).
     fn ret(&self, eps: &V6, len: f64, st: &[f64], stn: &mut [f64]) -> Result<V6> {
         stn[..NST].copy_from_slice(&st[..NST]);
         if st[NCR] == 0.0 {
@@ -319,7 +319,7 @@ impl ConcreteSmeared {
         }
         let s = self.cracked(eps, len, st, stn);
         if stn[NCR] < 0.0 {
-            // stängd spricka: tryckytan som i osprucket material
+            // closed crack: compression surface as in uncracked material
             stn[NCR] = 1.0;
             if self.f_c(&s, st[KAPPA]) > 1e-12 * s.iter().fold(0.0f64, |m, x| m.max(x.abs())).max(self.stu) {
                 return self.compression(eps, &s, st, stn);
@@ -339,14 +339,14 @@ impl ConcreteSmeared {
         self.detect(eps, len, &str_, st, stn)
     }
 
-    /// Retur på tryckytan från prövospänningen `str_` (isotrop elasticitet).
+    /// Return to the compression surface from the trial stress `str_` (isotropic elasticity).
     fn compression(&self, _eps: &V6, str_: &V6, st: &[f64], stn: &mut [f64]) -> Result<V6> {
         let kn = st[KAPPA];
         let scale = str_.iter().fold(0.0f64, |m, x| m.max(x.abs())).max(self.stu);
         let (p_tr, q_tr, d_tr) = Self::pq(str_);
         let s3 = 3f64.sqrt();
         {
-            // tryckytan: okända Δλ och p
+            // compression surface: unknowns Δλ and p
             let kfac = (1.0 + self.c0 / 9.0) * (1.0 - self.a0 / s3);
             let sc0 = self.sig_c(kn);
             let x = Self::newton2(
@@ -360,7 +360,7 @@ impl ConcreteSmeared {
                     let pp = p_tr + self.k * s3 * self.a0 * dmu;
                     [(p - pp) / sc0, (q - s3 * self.a0 * p - s3 * (1.0 / s3 - self.a0 / 3.0) * sc) / sc0]
                 },
-                "tryckytan",
+                "the compression surface",
             )?;
             let (dl, p) = (x[0], x[1]);
             let sc = self.sig_c(kn + dl * kfac);
@@ -377,7 +377,7 @@ impl ConcreteSmeared {
         }
     }
 
-    /// Sprickdetektering från prövospänningen `str_`.
+    /// Crack detection from the trial stress `str_`.
     fn detect(&self, eps: &V6, len: f64, str_: &V6, st: &[f64], stn: &mut [f64]) -> Result<V6> {
         let str_ = *str_;
         let scale = str_.iter().fold(0.0f64, |m, x| m.max(x.abs())).max(self.stu);
@@ -385,9 +385,9 @@ impl ConcreteSmeared {
         if self.f_t(&str_, self.stu) <= 1e-12 * scale {
             return Ok(str_);
         }
-        // sprickdetektering: okända Δλ och σ_t
+        // crack detection: unknowns Δλ and σ_t
         let (lt, v) = principal(&str_);
-        let smax = lt[0] + p_tr; // största deviatoriska huvudvärdet
+        let smax = lt[0] + p_tr; // largest deviatoric principal value
         let nmax = |dl: f64, kf: f64| -> f64 { dl * (if q_tr > 0.0 { 1.5 * smax / q_tr } else { 0.0 } + kf) };
         let x = Self::newton2(
             [0.0, self.stu],
@@ -401,7 +401,7 @@ impl ConcreteSmeared {
                 let xx = nmax(dl, kf) - (self.stu - sgt) / self.e;
                 [(q - (3.0 - self.b0 * r) * p - (2.0 - self.b0 * r / 3.0) * sgt) / self.stu, (sgt - self.stu * self.gmod(xx, len, sgt)) / self.stu]
             },
-            "sprickdetekteringen",
+            "crack detection",
         )?;
         let (dl, sgt) = (x[0], x[1]);
         let kf = 1.0 - self.b0 * sgt / self.stu / 3.0;
@@ -409,7 +409,7 @@ impl ConcreteSmeared {
         let p = p_tr + 3.0 * self.k * kf * dl;
         let f = if q_tr > 0.0 { q / q_tr } else { 0.0 };
         let s: V6 = std::array::from_fn(|i| d_tr[i] * f - if i < 3 { p } else { 0.0 });
-        // huvudspänningar i sprickans system (koaxiella med prövospänningen)
+        // principal stresses in the crack system (coaxial with the trial stress)
         let sl = rot(&tens(&s, false), &v, true);
         let (s1, s2, s3v) = (sl[0][0], sl[1][1], sl[2][2]);
         let el = rot(&tens(eps, true), &v, true);
@@ -446,7 +446,7 @@ impl ConcreteSmeared {
         if e[0] > 0.0 {
             let (sd, mut ec, emax) = (st[SD], st[EC], st[EMAX]);
             if matches!(self.ts, Stiffening::Displacement(_)) {
-                // TYPE=DISPLACEMENT: mjuknandelinjen går genom σ_d vid σ_d/(0,99 E)
+                // TYPE=DISPLACEMENT: the softening line passes through σ_d at σ_d/(0.99 E)
                 ec /= 0.99;
             }
             s[0] = if e[0] >= emax {
@@ -462,7 +462,7 @@ impl ConcreteSmeared {
             s[4] = rho * g * e[4];
             s[5] = g * e[5];
         } else {
-            // markera stängd spricka (tryckytan prövas i `ret`)
+            // mark closed crack (the compression surface is checked in `ret`)
             stn[NCR] = -1.0;
             let tr = e[0] + e[1] + e[2];
             for i in 0..3 {
@@ -503,7 +503,7 @@ impl MaterialModel for ConcreteSmeared {
 
     fn update_with_length(&self, input: &MatInput, length: f64, state_old: &[f64], state_new: &mut [f64]) -> Result<MatOutput> {
         if input.mode == StressMode::Uniaxial {
-            return fail("*CONCRETE stöds inte ännu i stänger och balkar");
+            return fail("*CONCRETE is not yet supported in trusses and beams");
         }
         let eps_old: V6 = std::array::from_fn(|i| state_old[EPS3 + i]);
         let mut f = |e: &V6| -> Result<(V6, M6)> { self.update3d(e, length, state_old, state_new) };
@@ -532,7 +532,7 @@ impl MaterialModel for ConcreteSmeared {
         let mut v = vec![state[KAPPA]];
         v.extend(super::plasticity::pe_labels(mode).1.iter().map(|&i| state[EPL + i]));
         if mode == StressMode::PlaneStress {
-            // PE33 = 0 redovisas i plan spänning
+            // PE33 = 0 is reported in plane stress
             v[3] = 0.0;
         }
         v

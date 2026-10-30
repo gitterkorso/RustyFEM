@@ -1,17 +1,17 @@
-//! Matriselement: linjära element med given styvhets- och massmatris.
+//! Matrix elements: linear elements with a given stiffness and mass matrix.
 //!
-//! Används för
-//! - substrukturer (*ELEMENT, TYPE=Zn, FILE=jobb + *SUBSTRUCTURE PROPERTY):
-//!   den kondenserade matrisen från *SUBSTRUCTURE GENERATE
-//!   (`steps/substructure.rs`). Elementets noder motsvarar de bevarade noderna
-//!   i stigande nodnummerordning. *SUBSTRUCTURE PROPERTY
-//!   (translation på första raden, rotation a, b, vinkel på andra) roterar
-//!   matriserna: K' = T K Tᵀ, där T roterar förskjutningar och rotationer
-//!   nodvis.
-//! - matriser som läses in (*MATRIX INPUT + *MATRIX ASSEMBLE,
-//!   `inp/keywords/infrastructure.rs`): ett element över matrisens noder.
+//! Used for
+//! - substructures (*ELEMENT, TYPE=Zn, FILE=job + *SUBSTRUCTURE PROPERTY):
+//!   the condensed matrix from *SUBSTRUCTURE GENERATE
+//!   (`steps/substructure.rs`). The element's nodes correspond to the retained nodes
+//!   in ascending node number order. *SUBSTRUCTURE PROPERTY
+//!   (translation on the first line, rotation a, b, angle on the second) rotates
+//!   the matrices: K' = T K Tᵀ, where T rotates displacements and rotations
+//!   node by node.
+//! - matrices that are read in (*MATRIX INPUT + *MATRIX ASSEMBLE,
+//!   `inp/keywords/infrastructure.rs`): one element over the matrix's nodes.
 //!
-//! Elementtyperna skapas när filen läses och lever resten av processen.
+//! The element types are created when the file is read and live for the rest of the process.
 
 use super::api::{ElemCtx, ElementType, Family, MassKind};
 use crate::fem::dof::Dof;
@@ -21,30 +21,30 @@ use crate::model::{FemError, Result};
 use std::collections::HashMap;
 use std::sync::{Mutex, OnceLock};
 
-/// Inga statiska typer.
+/// No static types.
 pub static TYPES: &[&dyn ElementType] = &[];
 
 pub struct MatrixElement {
     pub name: &'static str,
-    /// Frihetsgrader per nod (stigande).
+    /// Degrees of freedom per node (ascending).
     pub dofs: Vec<&'static [Dof]>,
-    /// Styvhet, tät och radvis (n×n, n = antal frihetsgrader).
+    /// Stiffness, dense and row-wise (n×n, n = number of degrees of freedom).
     pub k: Vec<f64>,
     pub m: Option<Vec<f64>>,
     pub dim: usize,
-    /// Substruktur: *SUBSTRUCTURE PROPERTY kan rotera matriserna.
+    /// Substructure: *SUBSTRUCTURE PROPERTY can rotate the matrices.
     pub substructure: bool,
 }
 
 impl MatrixElement {
-    /// Skapar (och läcker) en elementtyp.
+    /// Creates (and leaks) an element type.
     pub fn leak(name: &str, dofs: Vec<Vec<Dof>>, k: Vec<f64>, m: Option<Vec<f64>>, substructure: bool) -> &'static MatrixElement {
         let dim = if dofs.iter().flatten().all(|d| matches!(d, 1 | 2 | 6 | 11)) { 2 } else { 3 };
         let dofs: Vec<&'static [Dof]> = dofs.into_iter().map(|d| &*Box::leak(d.into_boxed_slice())).collect();
         Box::leak(Box::new(MatrixElement { name: Box::leak(name.to_string().into_boxed_str()), dofs, k, m, dim, substructure }))
     }
 
-    /// Rotationsmatrisen (radvis 3×3) från *SUBSTRUCTURE PROPERTY.
+    /// The rotation matrix (row-wise 3×3) from *SUBSTRUCTURE PROPERTY.
     fn rotation(&self, ctx: &ElemCtx) -> Result<Option<[[f64; 3]; 3]>> {
         if !self.substructure {
             return Ok(None);
@@ -59,7 +59,7 @@ impl MatrixElement {
         let axis = [v[3] - v[0], v[4] - v[1], v[5] - v[2]];
         let len = (axis[0] * axis[0] + axis[1] * axis[1] + axis[2] * axis[2]).sqrt();
         if len == 0.0 {
-            return kw.err("rotationsaxelns punkter a och b sammanfaller");
+            return kw.err("the points a and b of the rotation axis coincide");
         }
         let mut r = [[0.0; 3]; 3];
         for j in 0..3 {
@@ -71,12 +71,12 @@ impl MatrixElement {
             }
         }
         if self.dim == 2 && (axis[0].abs() > 1e-12 * len || axis[1].abs() > 1e-12 * len) {
-            return kw.err("en plan substruktur kan bara roteras kring z-axeln");
+            return kw.err("a planar substructure can only be rotated about the z axis");
         }
         Ok(Some(r))
     }
 
-    /// T A Tᵀ med nodvis rotation av förskjutningar (1–3) och rotationer (4–6).
+    /// T A Tᵀ with node-wise rotation of displacements (1–3) and rotations (4–6).
     fn rotate(&self, a: &[f64], r: &[[f64; 3]; 3]) -> Result<Vec<f64>> {
         let n = self.n_dofs();
         let mut t = vec![0.0; n * n];
@@ -91,9 +91,9 @@ impl MatrixElement {
                 }
                 let planar = self.dim == 2;
                 if planar && group[0] == 1 {
-                    // plan rotation kring z: U1, U2
+                    // plane rotation about z: U1, U2
                     let (Some(a1), Some(a2)) = (idx[0], idx[1]) else {
-                        return Err(FemError(format!("{}: nod {} saknar U1 eller U2 och kan inte roteras", self.name, node + 1)));
+                        return Err(FemError(format!("{}: node {} lacks U1 or U2 and cannot be rotated", self.name, node + 1)));
                     };
                     for (p, ap) in [(0, a1), (1, a2)] {
                         for (q, aq) in [(0, a1), (1, a2)] {
@@ -107,7 +107,7 @@ impl MatrixElement {
                     continue;
                 }
                 if present != 3 {
-                    return Err(FemError(format!("{}: nod {} har inte alla tre frihetsgraderna {:?} och kan inte roteras", self.name, node + 1, group)));
+                    return Err(FemError(format!("{}: node {} does not have all three degrees of freedom {:?} and cannot be rotated", self.name, node + 1, group)));
                 }
                 for p in 0..3 {
                     for q in 0..3 {
@@ -180,8 +180,8 @@ impl ElementType for MatrixElement {
     }
 }
 
-/// Elementtypen för *ELEMENT, TYPE=Zn (substruktur), eller `None` om typen
-/// inte är Zn. Substrukturen hämtas från `steps::substructure::find`.
+/// The element type for *ELEMENT, TYPE=Zn (substructure), or `None` if the type
+/// is not Zn. The substructure is fetched from `steps::substructure::find`.
 pub fn lookup_substructure(ctx: &InpCtx, kw: &RawKeyword, ty: &str) -> Result<Option<&'static dyn ElementType>> {
     let up = ty.trim().to_uppercase();
     if up.strip_prefix('Z').and_then(|s| s.parse::<u32>().ok()).is_none() {

@@ -1,33 +1,33 @@
-//! Materialdata som beror av fältvariabler (DEPENDENCIES=n) och USDFLD
+//! Material data that depends on field variables (DEPENDENCIES=n) and USDFLD
 //! (*USER DEFINED FIELD).
 //!
-//! Beteenden med DEPENDENCIES=n har n fältvariabler sist i varje post (efter
-//! temperaturen):
+//! Behaviors with DEPENDENCIES=n have n field variables last in each entry (after
+//! the temperature):
 //!
-//! - `*ELASTIC` (isotrop): E, ν, T, f1, ..., fn
-//! - `*PLASTIC` (isotropt hårdnande): σ0, ε̄p, T, f1, ..., fn
-//! - `*EXPANSION` (ISO, ORTHO, ANISO): α..., T, f1, ..., fn (ZERO= som vanligt)
+//! - `*ELASTIC` (isotropic): E, ν, T, f1, ..., fn
+//! - `*PLASTIC` (isotropic hardening): σ0, ε̄p, T, f1, ..., fn
+//! - `*EXPANSION` (ISO, ORTHO, ANISO): α..., T, f1, ..., fn (ZERO= as usual)
 //!
-//! Högst 8 värden per datarad; längre poster fortsätter på nästa rad.
-//! Posterna står med temperaturen som snabbast varierande variabel, sedan f1,
-//! f2, ... Interpolationen är linjär i varje variabel,
-//! hierarkiskt från den yttersta (fn) inåt, med konstanta värden utanför
-//! tabellen (`field_vars::DepTable`).
+//! At most 8 values per data line; longer entries continue on the next line.
+//! The entries are ordered with temperature as the fastest varying variable, then f1,
+//! f2, ... Interpolation is linear in each variable,
+//! hierarchically from the outermost (fn) inwards, with constant values outside
+//! the table (`field_vars::DepTable`).
 //!
-//! Genomförande: i varje materialpunkt "löses" fältberoendet upp – för de
-//! aktuella fältvärdena byggs en vanlig materialdefinition med tabeller i
-//! temperaturen (unionen av tabellens temperaturer och, för *PLASTIC,
-//! plastiska töjningar; interpolationen är då exakt densamma) och den
-//! vanliga modellen (elasticitet, von Mises, temperaturberoende) uppdaterar
-//! spänningen. Modellerna sparas per fältvärde. Termisk töjning räknas här i
-//! totalform ε_th = α(T, f)(T − θ0) − α(T_I, f_I)(T_I − θ0).
+//! Implementation: at each material point the field dependence is "resolved" – for the
+//! current field values an ordinary material definition is built with tables in
+//! temperature (the union of the table's temperatures and, for *PLASTIC,
+//! plastic strains; the interpolation is then exactly the same) and the
+//! ordinary model (elasticity, von Mises, temperature dependence) updates
+//! the stress. The models are cached per field value. Thermal strain is computed here in
+//! total form ε_th = α(T, f)(T − θ0) − α(T_I, f_I)(T_I − θ0).
 //!
-//! *USER DEFINED FIELD: USDFLD (`user::routines::Usdfld`, väljs med
-//! materialnamnet) anropas först i varje punkt och sätter fältvariablerna i
-//! punkten (även för en UMAT:s PREDEF). Med *DEPVAR utan *USER MATERIAL
-//! får USDFLD egna tillståndsvariabler (utdata SDV1..). Fältvärdena från
-//! USDFLD sparas i tillståndet (FV1..) och blir värdena vid nästa inkrements
-//! början.
+//! *USER DEFINED FIELD: USDFLD (`user::routines::Usdfld`, selected by
+//! the material name) is called first at each point and sets the field variables at
+//! the point (also for a UMAT's PREDEF). With *DEPVAR without *USER MATERIAL
+//! USDFLD gets its own state variables (output SDV1..). The field values from
+//! USDFLD are stored in the state (FV1..) and become the values at the start of the next
+//! increment.
 
 use super::{MatInput, MatOutput, MaterialFactory, MaterialModel, StressMode};
 use crate::fem::model::{DataLine, MaterialDef, RawKeyword};
@@ -36,28 +36,28 @@ use crate::model::{fail, Result};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
-/// Väljs före registret (`materials::build` anropar `claim` först), eftersom
-/// de vanliga fabrikerna avvisar DEPENDENCIES= med ett fel.
+/// Selected before the registry (`materials::build` calls `claim` first), since
+/// the ordinary factories reject DEPENDENCIES= with an error.
 pub static FACTORIES: &[MaterialFactory] = &[];
 
-/// Modellen om materialet har fältberoende data eller *USER DEFINED FIELD.
+/// The model if the material has field-dependent data or *USER DEFINED FIELD.
 pub fn claim(def: &MaterialDef) -> Result<Option<Arc<dyn MaterialModel>>> {
     build(def)
 }
 
-/// Antal fältvariabler i DEPENDENCIES= (0 om parametern saknas).
+/// Number of field variables in DEPENDENCIES= (0 if the parameter is missing).
 pub fn dependencies(kw: &RawKeyword) -> Result<usize> {
     match kw.param("DEPENDENCIES") {
         None => Ok(0),
         Some(v) if v.trim().is_empty() => Ok(0),
         Some(v) => match crate::inp::parse_label(v) {
             Some(n) if n >= 0 => Ok(n as usize),
-            _ => kw.err(format!("DEPENDENCIES={v} ska vara ett heltal")),
+            _ => kw.err(format!("DEPENDENCIES={v} must be an integer")),
         },
     }
 }
 
-/// Beteenden som stöder DEPENDENCIES här: (namn, antal egenskaper, inre variabler).
+/// Behaviors that support DEPENDENCIES here: (name, number of properties, internal variables).
 fn layout(kw: &RawKeyword) -> Option<(usize, usize)> {
     match kw.name.as_str() {
         "ELASTIC" if kw.param_upper("TYPE").map_or(true, |t| t == "ISOTROPIC") => Some((2, 0)),
@@ -73,7 +73,7 @@ fn layout(kw: &RawKeyword) -> Option<(usize, usize)> {
 }
 
 struct Dep {
-    /// Index i materialdefinitionens beteenden.
+    /// Index into the behaviors of the material definition.
     index: usize,
     table: DepTable,
     ndep: usize,
@@ -81,7 +81,7 @@ struct Dep {
 
 struct Usd {
     routine: Arc<dyn crate::user::routines::Usdfld>,
-    /// Antal fältvariabler som USDFLD sätter (största DEPENDENCIES=, minst 1).
+    /// Number of field variables set by USDFLD (largest DEPENDENCIES=, at least 1).
     nfield: usize,
     nstatv: usize,
 }
@@ -94,13 +94,13 @@ struct Exp {
 
 pub struct FieldDependent {
     name: String,
-    /// Definitionen utan fältberoende beteenden (EXPANSION med beroenden och
-    /// *USER DEFINED FIELD borttagna; *DEPVAR borttagen om USDFLD äger den).
+    /// The definition without field-dependent behaviors (EXPANSION with dependencies and
+    /// *USER DEFINED FIELD removed; *DEPVAR removed if USDFLD owns it).
     def: MaterialDef,
     deps: Vec<Dep>,
     exp: Option<Exp>,
     usd: Option<Usd>,
-    /// Modellen vid fältvärdena 0 (layout och utdata).
+    /// The model at field values 0 (layout and output).
     reference: Arc<dyn MaterialModel>,
     cache: Mutex<HashMap<Vec<u64>, Arc<dyn MaterialModel>>>,
 }
@@ -121,11 +121,11 @@ fn build(def: &MaterialDef) -> Result<Option<Arc<dyn MaterialModel>>> {
     let mut exp = None;
     if let Some(k) = def.behavior("EXPANSION").filter(|k| dependencies(k).unwrap_or(0) > 0) {
         if k.has("USER") || k.has("PORE FLUID") {
-            return k.err("USER och PORE FLUID tillsammans med DEPENDENCIES stöds inte");
+            return k.err("USER and PORE FLUID together with DEPENDENCIES are not supported");
         }
-        let (n, _) = layout(k).ok_or_else(|| crate::model::FemError(format!("{}: TYPE stöds inte med DEPENDENCIES", k.location())))?;
+        let (n, _) = layout(k).ok_or_else(|| crate::model::FemError(format!("{}: TYPE is not supported with DEPENDENCIES", k.location())))?;
         let zero = match k.param("ZERO") {
-            Some(z) => crate::fem::model::parse_f64(z).ok_or_else(|| crate::model::FemError(format!("{}: ZERO={z} är inget tal", k.location())))?,
+            Some(z) => crate::fem::model::parse_f64(z).ok_or_else(|| crate::model::FemError(format!("{}: ZERO={z} is not a number", k.location())))?,
             None => 0.0,
         };
         exp = Some(Exp { table: DepTable::parse(k, n, 0, dependencies(k)?)?, ncomp: n, zero });
@@ -140,7 +140,7 @@ fn build(def: &MaterialDef) -> Result<Option<Arc<dyn MaterialModel>>> {
             continue;
         }
         let Some((np, inner)) = layout(b) else {
-            return b.err(format!("DEPENDENCIES= stöds inte ännu för *{} (bara *ELASTIC isotrop, *PLASTIC isotropt hårdnande, *EXPANSION och *CONDUCTIVITY)", b.name));
+            return b.err(format!("DEPENDENCIES= is not yet supported for *{} (only *ELASTIC isotropic, *PLASTIC isotropic hardening, *EXPANSION and *CONDUCTIVITY)", b.name));
         };
         deps.push(Dep { index: i, table: DepTable::parse(b, np, inner, n)?, ndep: n });
     }
@@ -150,7 +150,7 @@ fn build(def: &MaterialDef) -> Result<Option<Arc<dyn MaterialModel>>> {
     let usd = match udf {
         Some(_) => {
             let Some(routine) = crate::user::routines::find_usdfld(&def.name)? else {
-                return crate::user::routines::missing("USDFLD", "materialet", &def.name);
+                return crate::user::routines::missing("USDFLD", "material", &def.name);
             };
             let mut nstatv = 0;
             if def.behavior("USER MATERIAL").is_none() {
@@ -191,7 +191,7 @@ fn sorted_unique(mut v: Vec<f64>) -> Vec<f64> {
 }
 
 impl FieldDependent {
-    /// Materialdefinitionen vid fältvärdena `f` (saknade värden = 0).
+    /// The material definition at field values `f` (missing values = 0).
     fn resolve(&self, f: &[f64]) -> MaterialDef {
         let mut def = self.def.clone();
         for d in &self.deps {
@@ -204,8 +204,8 @@ impl FieldDependent {
             kw.params.retain(|(k, _)| k != "DEPENDENCIES");
             kw.data.clear();
             if kw.name == "PLASTIC" {
-                // [σ0 | ε̄p, T, f...]: unionen av ε̄p och T
-                // nprops = 2 (σ0, ε̄p), variablerna [T, f...]
+                // [σ0 | ε̄p, T, f...]: the union of ε̄p and T
+                // nprops = 2 (σ0, ε̄p), the variables [T, f...]
                 let temps = sorted_unique(tab.rows.iter().map(|r| r[np]).collect());
                 let eps = sorted_unique(tab.rows.iter().map(|r| r[1]).collect());
                 for &t in &temps {
@@ -236,13 +236,13 @@ impl FieldDependent {
         def
     }
 
-    /// σ0 vid [ε̄p, T, f...]: inre variabeln ε̄p interpoleras per kurva.
+    /// σ0 at [ε̄p, T, f...]: the internal variable ε̄p is interpolated per curve.
     fn plastic_eval(&self, tab: &DepTable, x: &[f64]) -> f64 {
-        // DepTable med nprops = 2 ([σ0, ε̄p]) och variablerna [T, f...]:
-        // interpolera kurvorna i ε̄p (konstant efter sista punkten) i varje grupp
-        let np = tab.nprops; // σ0 och ε̄p
+        // DepTable with nprops = 2 ([σ0, ε̄p]) and the variables [T, f...]:
+        // interpolate the curves in ε̄p (constant after the last point) in each group
+        let np = tab.nprops; // σ0 and ε̄p
         let nvars = tab.nvars;
-        // grupper (samma T och f) i ordning
+        // groups (same T and f) in order
         let mut groups: Vec<(Vec<f64>, Vec<(f64, f64)>)> = Vec::new();
         for r in &tab.rows {
             let key = r[np..np + nvars].to_vec();
@@ -298,7 +298,7 @@ impl FieldDependent {
         }
     }
 
-    /// Tillståndslayout: [termisk töjning (6)?, FV (nfield)?, SDV (nstatv)?, inre].
+    /// State layout: [thermal strain (6)?, FV (nfield)?, SDV (nstatv)?, internal].
     fn offsets(&self) -> (usize, usize, usize) {
         let a = self.nth();
         let b = a + self.usd.as_ref().map_or(0, |u| u.nfield);
@@ -306,7 +306,7 @@ impl FieldDependent {
         (a, b, c)
     }
 
-    /// α(T, f)(T − θ0) som töjning (ingenjörsskjuvning).
+    /// α(T, f)(T − θ0) as strain (engineering shear).
     fn secant(&self, e: &Exp, t: f64, f: &[f64]) -> [f64; 6] {
         let mut x = vec![t];
         let nf = e.table.nvars - 1;
@@ -327,7 +327,7 @@ impl FieldDependent {
 
 impl MaterialModel for FieldDependent {
     fn name(&self) -> &str {
-        "fältberoende material"
+        "field-dependent material"
     }
 
     fn n_state(&self) -> usize {
@@ -400,7 +400,7 @@ impl MaterialModel for FieldDependent {
             if pnewdt < 1.0 {
                 crate::user::context::request_pnewdt(pnewdt);
             }
-            // fältvärdena vid inkrementets början: de som USDFLD gav i förra inkrementet
+            // the field values at the start of the increment: those USDFLD gave in the previous increment
             f_old = state_old[a..b].to_vec();
             f = field.clone();
             state_new[a..b].copy_from_slice(&field);
@@ -469,7 +469,7 @@ impl MaterialModel for FieldDependent {
     }
 }
 
-/// "SDV1", "FV1", ... med statisk livstid.
+/// "SDV1", "FV1", ... with static lifetime.
 fn names(prefix: &str, n: usize) -> Vec<&'static str> {
     use std::sync::OnceLock;
     static NAMES: OnceLock<Mutex<HashMap<String, &'static str>>> = OnceLock::new();
@@ -482,7 +482,7 @@ fn names(prefix: &str, n: usize) -> Vec<&'static str> {
         .collect()
 }
 
-/// Fel om ett materialbeteende med DEPENDENCIES inte stöds.
+/// Error if a material behavior with DEPENDENCIES is not supported.
 pub fn unsupported(kw: &RawKeyword) -> Result<()> {
-    fail(format!("{}: DEPENDENCIES= stöds inte för *{}", kw.location(), kw.name))
+    fail(format!("{}: DEPENDENCIES= is not supported for *{}", kw.location(), kw.name))
 }

@@ -1,25 +1,25 @@
-//! Volymviskositet (*BULK VISCOSITY b₁, b₂; standard 0,06 och 1,2) i explicit
-//! dynamik (Belytschko, Liu & Moran kap. 6.2):
+//! Bulk viscosity (*BULK VISCOSITY b₁, b₂; default 0.06 and 1.2) in explicit
+//! dynamics (Belytschko, Liu & Moran ch. 6.2):
 //!
 //! ```text
 //! p_bv = b₁ ρ c_d Lₑ ε̇_vol − ρ (b₂ Lₑ)² ε̇_vol² [ε̇_vol < 0]      (σ_bv = p_bv I)
 //! ```
 //!
-//! där ε̇_vol = Σᵢ bᵢ·u̇ᵢ / V beräknas med halvstegshastigheten u̇(i+½) och
-//! bᵢ = ∫∇Nᵢ dV, Lₑ och c_d som i stabilitetsgränsen (`explicit_dt`).
-//! Nodkraften är fᵢ = −p_bv t bᵢ (t = tjocklek för plana element och skal).
-//! Den viskösa spänningen ingår i reaktionerna och energin ALLVD men inte i S.
+//! where ε̇_vol = Σᵢ bᵢ·u̇ᵢ / V is computed with the half-step velocity u̇(i+½) and
+//! bᵢ = ∫∇Nᵢ dV, Lₑ and c_d as in the stability limit (`explicit_dt`).
+//! The nodal force is fᵢ = −p_bv t bᵢ (t = thickness for planar elements and shells).
+//! The viscous stress is included in the reactions and the energy ALLVD but not in S.
 //!
-//! - Solider och plana element: båda termerna; den kvadratiska med faktorn
-//!   1/8 för fullt integrerade hexaedrar (`quadratic_factor`). Dämpningskvoten
-//!   ξ i stabilitetsgränsen behåller faktorn 1 (med 1/8 där avvek de
-//!   validerade fallen c3d8_explicit_volymviskositet och
-//!   stang_smooth_step_plast).
-//! - Borttagna element (*MODEL CHANGE, skada) har ingen volymviskositet.
-//! - Skal och membran: den linjära termen med membrantöjningshastigheten i planet.
-//! - Stänger: bara den linjära termen (b₂ påverkar inte
-//!   resultatet), σ_bv = b₁ ρ c Lₑ ε̇ med Lₑ = 0,99 L.
-//! - Balkar, fjädrar m.m.: ingen volymviskositet (varning om b₁ ≠ 0).
+//! - Solids and planar elements: both terms; the quadratic one with the factor
+//!   1/8 for fully integrated hexahedra (`quadratic_factor`). The damping ratio
+//!   ξ in the stability limit keeps the factor 1 (with 1/8 the
+//!   validated cases c3d8_explicit_volymviskositet and
+//!   stang_smooth_step_plast deviated).
+//! - Removed elements (*MODEL CHANGE, damage) have no bulk viscosity.
+//! - Shells and membranes: the linear term with the in-plane membrane strain rate.
+//! - Trusses: only the linear term (b₂ does not affect
+//!   the result), σ_bv = b₁ ρ c Lₑ ε̇ with Lₑ = 0.99 L.
+//! - Beams, springs etc.: no bulk viscosity (warning if b₁ ≠ 0).
 
 use super::dt::{geometry, wave_speed};
 use crate::elements::Family;
@@ -27,29 +27,29 @@ use crate::fem::assembly::Prepared;
 use crate::fem::dof::NodeVec;
 use crate::model::Result;
 
-/// Ett element med volymviskositet.
+/// An element with bulk viscosity.
 pub struct BulkElem {
     pub e: usize,
     rho: f64,
     c: f64,
-    /// Oskalad densitet och våghastighet (massskalning).
+    /// Unscaled density and wave speed (mass scaling).
     rho0: f64,
     c0: f64,
-    /// Modulfaktor (c_d,3D/c)² för skal och membran, annars 1.
+    /// Modulus factor (c_d,3D/c)² for shells and membranes, otherwise 1.
     fmod: f64,
-    /// Tjocklek (plana element, skal), area (stänger) eller 1.
+    /// Thickness (planar elements, shells), area (trusses) or 1.
     t: f64,
     family: Family,
-    /// Volym (area) i referenskonfigurationen (aktuell densitet vid NLGEOM).
+    /// Volume (area) in the reference configuration (current density with NLGEOM).
     vol0: f64,
-    /// Faktor på den kvadratiska termen (`quadratic_factor`).
+    /// Factor on the quadratic term (`quadratic_factor`).
     qfac: f64,
 }
 
-/// Faktor på den kvadratiska termen: 1/8 för fullt integrerade hexaedrar
-/// (C3D8, C3D8I, C3D8H), annars 1 (kontrollerat med
-/// enaxlig SMOOTH STEP-hoptryckning 10 % med b₁ = 0, oberoende av b₂,
-/// elementform och nätstorlek).
+/// Factor on the quadratic term: 1/8 for fully integrated hexahedra
+/// (C3D8, C3D8I, C3D8H), otherwise 1 (verified with
+/// uniaxial SMOOTH STEP compression of 10 % with b₁ = 0, independent of b₂,
+/// element shape and mesh size).
 pub fn quadratic_factor(family: Family, n_ips: usize, n_nodes: usize) -> f64 {
     if family == Family::Continuum3D && n_nodes == 8 && n_ips == 8 {
         0.125
@@ -62,23 +62,23 @@ pub struct BulkViscosity {
     pub b1: f64,
     pub b2: f64,
     pub elems: Vec<BulkElem>,
-    /// Element som saknar volymviskositet i RustyFEM (balkar m.m.).
+    /// Elements without bulk viscosity in RustyFEM (beams etc.).
     pub unsupported: Vec<usize>,
-    /// Kvoten c_d,eff/c_d per element (index = element) från materialets
-    /// effektiva moduler (`explicit_moduli`); 1 för linjära material.
+    /// The ratio c_d,eff/c_d per element (index = element) from the material's
+    /// effective moduli (`explicit_moduli`); 1 for linear materials.
     pub cratio: Vec<f64>,
-    /// Aktuell densitet ρ₀V₀/V och aktuell geometri (NLGEOM).
+    /// Current density ρ₀V₀/V and current geometry (NLGEOM).
     pub nlgeom: bool,
-    /// Bara den linjära termen (stegets början, t = 0: den kvadratiska
-    /// termen ingår inte där).
+    /// Only the linear term (start of the step, t = 0: the quadratic
+    /// term is not included there).
     pub linear_only: bool,
-    /// Område acoustics2: volymviskositetens effekt per massenhet σ_bv ε̇_vol/ρ
-    /// per element vid senaste `forces` (för EOS-energin, `materials/eos.rs`).
+    /// Area acoustics2: the bulk viscosity power per unit mass σ_bv ε̇_vol/ρ
+    /// per element at the latest `forces` (for the EOS energy, `materials/eos.rs`).
     pub work: std::sync::Mutex<Vec<(usize, f64)>>,
-    /// Faktor s på Lₑ per element (index = element; tom = 1). Område coupled2:
-    /// när den termiska gränsen styr elementets tidsinkrement används
-    /// c_d·Δtₑ = s·Lₑ i den linjära termen och s²·Lₑ i den
-    /// kvadratiska (`explicit_coupled_full.rs`).
+    /// Factor s on Lₑ per element (index = element; empty = 1). Area coupled2:
+    /// when the thermal limit governs the element's time increment,
+    /// c_d·Δtₑ = s·Lₑ is used in the linear term and s²·Lₑ in the
+    /// quadratic one (`explicit_coupled_full.rs`).
     pub le_scale: Vec<f64>,
 }
 
@@ -105,8 +105,8 @@ impl BulkViscosity {
                         Family::Continuum2D | Family::Shell | Family::Membrane | Family::Truss => ctx.section.map_or(1.0, |s| s.solid_thickness()),
                         _ => 1.0,
                     };
-                    // skal och membran: volymviskositeten använder modulen λ + 2μ
-                    // (3D) i stället för E/(1 − ν²)
+                    // shells and membranes: the bulk viscosity uses the modulus λ + 2μ
+                    // (3D) instead of E/(1 − ν²)
                     let fmod = match (fam, ctx.material.and_then(|mm| mm.elastic_moduli())) {
                         (Family::Shell | Family::Membrane, Some((_, nu))) => (1.0 - nu) * (1.0 - nu * nu) / ((1.0 + nu) * (1.0 - 2.0 * nu)),
                         _ => 1.0,
@@ -124,7 +124,7 @@ impl BulkViscosity {
         Ok(BulkViscosity { b1, b2, elems, unsupported, cratio, nlgeom: false, linear_only: false, work: Default::default(), le_scale: Vec::new() })
     }
 
-    /// Massskalning: densiteten ρ₀fₑ och våghastigheten c₀/√fₑ.
+    /// Mass scaling: the density ρ₀fₑ and the wave speed c₀/√fₑ.
     pub fn scale_density(&mut self, f: &[f64]) {
         for be in &mut self.elems {
             let s = f.get(be.e).copied().unwrap_or(1.0);
@@ -133,8 +133,8 @@ impl BulkViscosity {
         }
     }
 
-    /// Lägger volymviskositetens nodkrafter i `fv` för konfigurationen `x(e)`
-    /// och hastigheten `v`. Returnerar ε̇_vol per element (samma ordning som `elems`).
+    /// Adds the bulk viscosity nodal forces to `fv` for the configuration `x(e)`
+    /// and the velocity `v`. Returns ε̇_vol per element (same order as `elems`).
     pub fn forces(&self, p: &Prepared, x: &dyn Fn(usize) -> Vec<[f64; 3]>, v: &[NodeVec], fv: &mut [NodeVec]) -> Vec<f64> {
         let m = p.model;
         let dim = m.dim();
@@ -142,7 +142,7 @@ impl BulkViscosity {
         let mut work = Vec::new();
         for be in &self.elems {
             let el = &m.elements[be.e];
-            // borttagna element (*MODEL CHANGE, skada) har ingen volymviskositet
+            // removed elements (*MODEL CHANGE, damage) have no bulk viscosity
             if p.activity.is_removed(be.e) {
                 rates.push(0.0);
                 continue;
@@ -168,8 +168,8 @@ impl BulkViscosity {
             }
             let rate: f64 = el.nodes.iter().zip(&g.b).map(|(&n, b)| (0..3).map(|c| b[c] * v[n][c]).sum::<f64>()).sum::<f64>() / g.vol;
             let continuum = matches!(be.family, Family::Continuum2D | Family::Continuum3D);
-            // aktuell densitet och materialets effektiva
-            // dilatationsvåghastighet (plasticitet sänker skjuvmodulen)
+            // current density and the material's effective
+            // dilatational wave speed (plasticity lowers the shear modulus)
             let rho = if self.nlgeom && continuum && g.vol > 0.0 { be.rho * be.vol0 / g.vol } else { be.rho };
             let mut c = be.c * self.cratio.get(be.e).copied().unwrap_or(1.0);
             if rho != be.rho {
@@ -178,8 +178,8 @@ impl BulkViscosity {
             let lchar = g.lchar * self.le_scale.get(be.e).copied().unwrap_or(1.0);
             let mut pbv = self.b1 * rho * c * lchar * rate * be.fmod;
             if rate < 0.0 && continuum && !self.linear_only {
-                // termiskt styrt (s < 1): den kvadratiska termen är nästan borta;
-                // längden s²·Lₑ
+                // thermally governed (s < 1): the quadratic term is almost gone;
+                // the length s²·Lₑ
                 let sc = self.le_scale.get(be.e).copied().unwrap_or(1.0);
                 let lq = g.lchar * sc * sc;
                 pbv -= be.qfac * rho * (self.b2 * lq * rate).powi(2);
@@ -198,14 +198,14 @@ impl BulkViscosity {
         rates
     }
 
-    /// Elementets effektiva dilatationsvåghastighet (element nr `i` i `elems`).
+    /// The element's effective dilatational wave speed (element no. `i` in `elems`).
     pub fn wave_speed_of(&self, i: usize) -> f64 {
         let be = &self.elems[i];
         be.c * self.cratio.get(be.e).copied().unwrap_or(1.0)
     }
 
-    /// Kritisk dämpningskvot i högsta moden för element nr `i` i `elems`:
-    /// ξ = b₁ − b₂² Lₑ/c_d · min(0, ε̇_vol) (stänger: b₁).
+    /// Critical damping ratio in the highest mode for element no. `i` in `elems`:
+    /// ξ = b₁ − b₂² Lₑ/c_d · min(0, ε̇_vol) (trusses: b₁).
     pub fn xi(&self, i: usize, lchar: f64, rate: f64) -> f64 {
         let be = &self.elems[i];
         if be.family == Family::Truss {

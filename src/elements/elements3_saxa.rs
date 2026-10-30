@@ -1,36 +1,36 @@
-//! SAXA1N och SAXA2N (N = 1..4): axisymmetriska skal med asymmetrisk
-//! deformation (område elements3).
+//! SAXA1N and SAXA2N (N = 1..4): axisymmetric shells with asymmetric
+//! deformation (area elements3).
 //!
-//! Noder och frihetsgrader (U1, U2, UR3 i varje nod):
-//! - plan θ_k = kπ/N, k = 0..N: elementets noder (k = 0) och genererade noder
-//!   med numret nod + 100000·k (skapas av `setup` när filen är läst, delas
-//!   mellan element) bär de jämna komponenterna u_r, u_z och β (rotationen i
-//!   r–z-planet, som SAX1) som värden i planet; mellan planen interpoleras med
+//! Nodes and degrees of freedom (U1, U2, UR3 at each node):
+//! - planes θ_k = kπ/N, k = 0..N: the element's nodes (k = 0) and generated nodes
+//!   with the number node + 100000·k (created by `setup` when the file has been read, shared
+//!   between elements) carry the even components u_r, u_z and β (the rotation in
+//!   the r–z plane, like SAX1) as values in the plane; between the planes they are interpolated with
 //!   cos(mθ), m = 0..N.
-//! - udda noder (en per meridiannod och mod m = 1..N;
-//!   nod + 10⁷·m, delade mellan elementen) bär de udda komponenterna u_θ,
-//!   ω_r, ω_z som koefficienter för sin(mθ). Randvillkor på elementets nod
-//!   gäller bara planet θ = 0.
+//! - odd nodes (one per meridian node and mode m = 1..N;
+//!   node + 10⁷·m, shared between the elements) carry the odd components u_θ,
+//!   ω_r, ω_z as coefficients of sin(mθ). Boundary conditions on the element's node
+//!   apply only to the plane θ = 0.
 //!
-//! Planens noder skapas redan av *ELEMENT (`create_plane_nodes`) så att
-//! *BOUNDARY och *CLOAD kan ange dem; `setup` lägger dem i elementen när
-//! filen är läst. Bara linjär elasticitet utan NLGEOM; ingen elementutdata.
+//! The plane nodes are already created by *ELEMENT (`create_plane_nodes`) so that
+//! *BOUNDARY and *CLOAD can reference them; `setup` adds them to the elements when
+//! the file has been read. Only linear elasticity without NLGEOM; no element output.
 //!
-//! Formulering: tredimensionell skalkinematik i (s, θ) med lokala axlar
-//! e1 = meridianens tangent, e2 = e_θ, n = e1 × e2:
-//! - membran ε = (e1·u,s, e2·u,θ/r, e1·u,θ/r + e2·u,s) och böjning ur
-//!   normalens ändring δn = ω × n (som SAX1), 2κ12 får dessutom −t_z ω_n/r;
-//!   integreras exakt runt varvet och i en (SAXA1) respektive två (SAXA2)
-//!   gausspunkter längs meridianen,
-//! - tvärskjuvning γ1 = n·u,s + δn·e1 i meridianens gausspunkter och planen
-//!   θ = kπ/N med vikten 2π/(2N+1), γ2 = n·u,θ/r + δn·e2 i meridiannoderna
-//!   (lika vikt per nod) och θ = jπ/(N+1), j = 0..2N+1, med vikten π/(2N+1)
-//!   (radien i vikten är elementets mittradie); styvheten 5/6·G·t·f(a) med
-//!   a = r·L·(2π/3) respektive r·L·π/(2N+1),
-//! - rotationen kring normalen: straffet G·t/40·(ω·n + e1·u,θ/r)² i
-//!   meridiannoderna och samma θ-punkter som γ2 med vikten π/3,
-//! - massa: diagonal längs meridianen (halva elementet per nod, SAXA1) eller
-//!   konsistent (SAXA2), exakt runt varvet, ingen rotationströghet.
+//! Formulation: three-dimensional shell kinematics in (s, θ) with local axes
+//! e1 = the meridian tangent, e2 = e_θ, n = e1 × e2:
+//! - membrane ε = (e1·u,s, e2·u,θ/r, e1·u,θ/r + e2·u,s) and bending from
+//!   the change of the normal δn = ω × n (like SAX1), 2κ12 additionally gets −t_z ω_n/r;
+//!   integrated exactly around the revolution and at one (SAXA1) or two (SAXA2)
+//!   Gauss points along the meridian, respectively,
+//! - transverse shear γ1 = n·u,s + δn·e1 at the meridian Gauss points and the planes
+//!   θ = kπ/N with the weight 2π/(2N+1), γ2 = n·u,θ/r + δn·e2 at the meridian nodes
+//!   (equal weight per node) and θ = jπ/(N+1), j = 0..2N+1, with the weight π/(2N+1)
+//!   (the radius in the weight is the element's mid radius); the stiffness 5/6·G·t·f(a) with
+//!   a = r·L·(2π/3) and r·L·π/(2N+1), respectively,
+//! - the rotation about the normal: the penalty G·t/40·(ω·n + e1·u,θ/r)² at
+//!   the meridian nodes and the same θ points as γ2 with the weight π/3,
+//! - mass: diagonal along the meridian (half the element per node, SAXA1) or
+//!   consistent (SAXA2), exact around the revolution, no rotary inertia.
 
 use super::super::api::{not_implemented, ElemCtx, ElemResponse, ElementType, Family, MassKind};
 use super::super::common::{self, cross, dot, scale};
@@ -43,9 +43,9 @@ use std::f64::consts::PI;
 
 pub struct Saxa {
     pub name: &'static str,
-    /// Noder längs meridianen (2 eller 3).
+    /// Nodes along the meridian (2 or 3).
     pub nn: usize,
-    /// Antal Fouriermoder N.
+    /// Number of Fourier modes N.
     pub modes: usize,
 }
 
@@ -60,10 +60,10 @@ pub static SAXA24: Saxa = Saxa { name: "SAXA24", nn: 3, modes: 4 };
 
 pub static ALL: [&Saxa; 8] = [&SAXA11, &SAXA12, &SAXA13, &SAXA14, &SAXA21, &SAXA22, &SAXA23, &SAXA24];
 
-/// Nodnummersteget för de genererade planen.
+/// The node number step for the generated planes.
 pub const PLANE_OFFSET: i64 = 100000;
-/// Nodnummersteget för de udda komponenternas noder (en per meridiannod och
-/// mod; nod + 10⁷·m).
+/// The node number step for the nodes of the odd components (one per meridian node and
+/// mode; node + 10⁷·m).
 pub const ODD_OFFSET: i64 = 10_000_000;
 
 type V3 = [f64; 3];
@@ -72,12 +72,12 @@ fn add3(a: V3, b: V3) -> V3 {
     [a[0] + b[0], a[1] + b[1], a[2] + b[2]]
 }
 
-/// Meridianens formfunktioner (nodordning 1, 2 (mitt), 3).
+/// The meridian shape functions (node order 1, 2 (middle), 3).
 fn shape(nn: usize, xi: f64) -> (Vec<f64>, Vec<f64>) {
     super::super::shell3::axi::shape(nn, xi)
 }
 
-/// Inverterad 3×3/n×n-matris (Gauss–Jordan) för planinterpolationen.
+/// Inverted 3×3/n×n matrix (Gauss–Jordan) for the plane interpolation.
 fn invert(a: &[f64], n: usize) -> Vec<f64> {
     let mut m = a.to_vec();
     let mut inv = vec![0.0; n * n];
@@ -110,7 +110,7 @@ fn invert(a: &[f64], n: usize) -> Vec<f64> {
     inv
 }
 
-/// Punktdata längs meridianen.
+/// Point data along the meridian.
 struct Mer {
     n: Vec<f64>,
     ns: Vec<f64>,
@@ -118,7 +118,7 @@ struct Mer {
     /// ds/dξ
     j: f64,
     t: [f64; 2],
-    /// dn/ds i (r, z)
+    /// dn/ds in (r, z)
     dn: [f64; 2],
 }
 
@@ -144,7 +144,7 @@ fn mer(x: &[[f64; 3]], nn: usize, xi: f64) -> Mer {
     Mer { ns: d.iter().map(|v| v / j).collect(), n, r, j, t, dn }
 }
 
-/// Fält (vektor per frihetsgrad) och deras derivator.
+/// Fields (vector per degree of freedom) and their derivatives.
 struct Fields {
     u: Vec<V3>,
     us: Vec<V3>,
@@ -154,7 +154,7 @@ struct Fields {
     wt: Vec<V3>,
 }
 
-/// Töjningar i en punkt (rader över elementets frihetsgrader).
+/// Strains at a point (rows over the element's degrees of freedom).
 struct Ops {
     m: [Vec<f64>; 3],
     b: [Vec<f64>; 3],
@@ -170,7 +170,7 @@ impl Saxa {
     fn nd(&self) -> usize {
         3 * self.nodes_total()
     }
-    /// Lokal nod för meridiannod a i planet k (jämna komponenter).
+    /// Local node for meridian node a in plane k (even components).
     fn even_node(&self, a: usize, k: usize) -> usize {
         if k == 0 {
             a
@@ -178,12 +178,12 @@ impl Saxa {
             self.nn + self.nn * self.modes + (k - 1) * self.nn + a
         }
     }
-    /// Lokal nod för meridiannod a och mod m = 1..N (udda komponenter).
+    /// Local node for meridian node a and mode m = 1..N (odd components).
     fn odd_node(&self, a: usize, m: usize) -> usize {
         self.nn + (m - 1) * self.nn + a
     }
 
-    /// Vikter för planvärdena: f(θ) = Σ_k c_k(θ) f_k och derivatan.
+    /// Weights for the plane values: f(θ) = Σ_k c_k(θ) f_k and the derivative.
     fn even_weights(&self, th: f64) -> (Vec<f64>, Vec<f64>) {
         let n = self.modes;
         let np = n + 1;
@@ -255,7 +255,7 @@ impl Saxa {
         f
     }
 
-    /// Operatorer i meridianpunkten `me` (formfunktionsvärden `nsv`) och θ.
+    /// Operators at the meridian point `me` (shape function values `nsv`) and θ.
     fn ops(&self, me: &Mer, nsv: &[f64], th: f64) -> Ops {
         let nd = self.nd();
         let f = self.fields(me, nsv, th);
@@ -294,12 +294,12 @@ impl Saxa {
 
     fn check(&self, ctx: &ElemCtx) -> Result<()> {
         if ctx.x.len() != self.nodes_total() {
-            return fail(format!("element {} ({}) saknar de genererade noderna (har {} noder)", ctx.label, self.name, ctx.x.len()));
+            return fail(format!("element {} ({}) lacks the generated nodes (has {} nodes)", ctx.label, self.name, ctx.x.len()));
         }
         for (xi, _) in super::super::shell3::axi::gauss(3) {
             let p = mer(&ctx.x, self.nn, xi);
             if !(p.j > 0.0) || !(p.r > 0.0) {
-                return fail(format!("element {} ({}): radien måste vara positiv och elementet ha längd", ctx.label, self.name));
+                return fail(format!("element {} ({}): the radius must be positive and the element must have a length", ctx.label, self.name));
             }
         }
         Ok(())
@@ -342,7 +342,7 @@ impl Saxa {
                     }
                 }
             }
-            // γ1 i planen θ = kπ/N
+            // γ1 in the planes θ = kπ/N
             let w1 = 2.0 * PI / (2 * nm + 1) as f64;
             for kk in 0..2 * nm {
                 let o = self.ops(&me, &nsv, kk as f64 * PI / nm as f64);
@@ -350,7 +350,7 @@ impl Saxa {
                 add(&mut k, &o.g1, &o.g1, ks * fp(a * 2.0 * PI / 3.0, t) * w1 * a);
             }
         }
-        // γ2 och rotationen kring normalen i meridiannoderna
+        // γ2 and the rotation about the normal at the meridian nodes
         let rmid = mer(x, self.nn, 0.0).r;
         let w2 = PI / (2 * nm + 1) as f64;
         let nodes_xi: Vec<f64> = if self.nn == 2 { vec![-1.0, 1.0] } else { vec![-1.0, 0.0, 1.0] };
@@ -369,14 +369,14 @@ impl Saxa {
         k
     }
 
-    /// Massa per meridiannod (lumpad, SAXA1) eller konsistent (SAXA2) gånger
-    /// den exakta θ-integralen.
+    /// Mass per meridian node (lumped, SAXA1) or consistent (SAXA2) times
+    /// the exact θ integral.
     fn mass_of(&self, ctx: &ElemCtx, sec: &Sec) -> Vec<f64> {
         let nd = self.nd();
         let nm = self.modes;
         let mut m = vec![0.0; nd * nd];
         let rho_t = sec.rho * sec.t;
-        // meridianmatris S[a][b] = ∫ N_a N_b r ds
+        // meridian matrix S[a][b] = ∫ N_a N_b r ds
         let mut sm = vec![0.0; self.nn * self.nn];
         if self.nn == 2 {
             let me = mer(&ctx.x, 2, 0.0);
@@ -393,7 +393,7 @@ impl Saxa {
                 }
             }
         }
-        // θ-integraler för planvikterna
+        // θ integrals for the plane weights
         let nth = 8 * nm + 8;
         let np = nm + 1;
         let mut ce = vec![0.0; np * np];
@@ -458,11 +458,11 @@ impl ElementType for Saxa {
 
     fn internal_force(&self, ctx: &ElemCtx, u: &[f64], _du: &[f64], _so: &[f64], _sn: &mut Vec<f64>, tangent: bool) -> Result<ElemResponse> {
         if ctx.nlgeom {
-            return not_implemented("geometrisk olinjäritet (NLGEOM)", self.name);
+            return not_implemented("geometric nonlinearity (NLGEOM)", self.name);
         }
         if let Some(m) = ctx.material {
             if !m.is_linear() {
-                return not_implemented(&format!("olinjärt material ({})", m.name()), self.name);
+                return not_implemented(&format!("nonlinear material ({})", m.name()), self.name);
             }
         }
         let k = self.stiffness(ctx)?;
@@ -480,9 +480,9 @@ impl ElementType for Saxa {
         let sec = section(ctx, self.name, false)?;
         let body = common::body_load_vector(&load.kind, load.magnitude, &load.extra, sec.rho, self.name)?;
         if load.kind != "P" && body.is_none() {
-            return not_implemented(&format!("lasttypen {}", load.kind), self.name);
+            return not_implemented(&format!("load type {}", load.kind), self.name);
         }
-        // axisymmetrisk last: planvikterna ∫ c_k(θ) dθ
+        // axisymmetric load: the plane weights ∫ c_k(θ) dθ
         let nm = self.modes;
         let nth = 8 * nm + 8;
         let mut ck = vec![0.0; nm + 1];
@@ -513,9 +513,9 @@ impl ElementType for Saxa {
     }
 }
 
-/// Skapar planens noder (nod + 100000·k) och de udda komponenternas noder
-/// (nod + 10⁷·m) med samma läge som noden för SAXA-elementen `ids`
-/// (anropas av *ELEMENT, så att *BOUNDARY och *CLOAD kan ange dem).
+/// Creates the plane nodes (node + 100000·k) and the odd component nodes
+/// (node + 10⁷·m) with the same position as the node for the SAXA elements `ids`
+/// (called by *ELEMENT, so that *BOUNDARY and *CLOAD can reference them).
 pub fn create_plane_nodes(m: &mut FeModel, ids: &[usize]) {
     for &e in ids {
         let name = m.elements[e].etype.name();
@@ -536,9 +536,9 @@ pub fn create_plane_nodes(m: &mut FeModel, ids: &[usize]) {
     }
 }
 
-/// Lägger de udda noderna och planens noder sist i SAXA-elementens
-/// nodlistor (randvillkor på elementens noder gäller bara planet
-/// θ = 0, inte de udda komponenterna). Anropas när filen är läst (efter `FeModel::finalize`).
+/// Appends the odd nodes and the plane nodes to the node lists of the SAXA elements
+/// (boundary conditions on the element nodes apply only to the plane
+/// θ = 0, not to the odd components). Called when the file has been read (after `FeModel::finalize`).
 pub fn setup(m: &mut FeModel) -> Result<()> {
     for e in 0..m.elements.len() {
         let name = m.elements[e].etype.name();

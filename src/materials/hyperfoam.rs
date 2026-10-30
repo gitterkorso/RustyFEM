@@ -1,21 +1,21 @@
-//! Elastomerskum (*HYPERFOAM, N=n): kompressibel Ogden-form enligt Storåkers
+//! Elastomeric foam (*HYPERFOAM, N=n): compressible Ogden form according to Storåkers
 //! (1986).
 //!
 //!   U = Σ_i 2μ_i/α_i² [ λ1^α_i + λ2^α_i + λ3^α_i − 3 + (1/β_i)(J^(−α_i β_i) − 1) ]
 //!
-//! med huvudsträckningarna λ_a (inte deviatoriska), J = λ1 λ2 λ3 och
+//! with the principal stretches λ_a (not deviatoric), J = λ1 λ2 λ3 and
 //! β_i = ν_i/(1 − 2ν_i). Data: μ1, α1, ..., μn, αn, ν1, ..., νn (n ≤ 6);
-//! med `POISSON=ν` gäller ν för alla termer och datat är bara μ_i, α_i.
-//! β_i = 0 (ν_i = 0) ger gränsvärdet −α_i ln J i hakparentesen.
+//! with `POISSON=ν`, ν applies to all terms and the data is just μ_i, α_i.
+//! β_i = 0 (ν_i = 0) gives the limit −α_i ln J in the square brackets.
 //!
-//! Kirchhoffspänningen har huvudvärdena τ_a = Σ_i (2μ_i/α_i)(λ_a^α_i − J^(−α_i β_i)),
-//! dvs τ = Σ_i (2μ_i/α_i)(b^(α_i/2) − J^(−α_i β_i) I) med b = F Fᵀ. Initial
-//! skjuvmodul μ0 = Σ μ_i och kompressionsmodul K0 = Σ 2μ_i (1/3 + β_i).
+//! The Kirchhoff stress has the principal values τ_a = Σ_i (2μ_i/α_i)(λ_a^α_i − J^(−α_i β_i)),
+//! i.e. τ = Σ_i (2μ_i/α_i)(b^(α_i/2) − J^(−α_i β_i) I) with b = F Fᵀ. Initial
+//! shear modulus μ0 = Σ μ_i and bulk modulus K0 = Σ 2μ_i (1/3 + β_i).
 //!
-//! Modellen delas inte i deviatorisk och volymetrisk del, så den ger hela
-//! spänningen genom `HyperModel::kirchhoff_full`; kontinuumelementen (F-bar i
-//! C3D8/CPE4, plan spänning i CPS4, motorn i `solid_higher.rs` för CAX4 m.fl.)
-//! använder den direkt. Hybridelement stöds inte med *HYPERFOAM.
+//! The model is not split into deviatoric and volumetric parts, so it gives the full
+//! stress through `HyperModel::kirchhoff_full`; the continuum elements (F-bar in
+//! C3D8/CPE4, plane stress in CPS4, the engine in `solid_higher.rs` for CAX4 etc.)
+//! use it directly. Hybrid elements are not supported with *HYPERFOAM.
 
 use super::hyperelastic_split::{self as hs, HyperModel};
 use super::{MatInput, MatOutput, MaterialFactory, MaterialModel, StressMode};
@@ -24,18 +24,18 @@ use crate::kinematics::tensor::{self as t, M3};
 use crate::model::{fail, FemError, Result};
 use std::sync::Arc;
 
-pub static FACTORIES: &[MaterialFactory] = &[MaterialFactory { name: "elastomerskum (*HYPERFOAM)", consumes: &["HYPERFOAM"], priority: 10, build: Some(build) }];
+pub static FACTORIES: &[MaterialFactory] = &[MaterialFactory { name: "elastomeric foam (*HYPERFOAM)", consumes: &["HYPERFOAM"], priority: 10, build: Some(build) }];
 
-/// Hyperfoam: termer (μ_i, α_i, β_i).
+/// Hyperfoam: terms (μ_i, α_i, β_i).
 #[derive(Debug, Clone)]
 pub struct HyperFoam {
     pub terms: Vec<(f64, f64, f64)>,
 }
 
-/// N= på ett hyperelastiskt nyckelord (1–6, standard 1).
+/// N= on a hyperelastic keyword (1–6, default 1).
 pub fn n_param(kw: &crate::fem::model::RawKeyword) -> Result<usize> {
     match kw.param("N") {
-        Some(s) => s.trim().parse::<usize>().ok().filter(|&n| (1..=6).contains(&n)).ok_or_else(|| FemError(format!("{}: N={s} ska vara 1–6", kw.location()))),
+        Some(s) => s.trim().parse::<usize>().ok().filter(|&n| (1..=6).contains(&n)).ok_or_else(|| FemError(format!("{}: N={s} must be 1–6", kw.location()))),
         None => Ok(1),
     }
 }
@@ -43,29 +43,29 @@ pub fn n_param(kw: &crate::fem::model::RawKeyword) -> Result<usize> {
 fn build(def: &MaterialDef) -> Result<Option<Arc<dyn MaterialModel>>> {
     let Some(kw) = def.behavior("HYPERFOAM") else { return Ok(None) };
     if def.behavior("ELASTIC").is_some() || def.behavior("HYPERELASTIC").is_some() {
-        return kw.err("*HYPERFOAM tillsammans med *ELASTIC eller *HYPERELASTIC i samma material stöds inte");
+        return kw.err("*HYPERFOAM together with *ELASTIC or *HYPERELASTIC in the same material is not supported");
     }
     if def.behavior("MULLINS EFFECT").is_some() {
-        // byggs av mullins.rs
+        // built by mullins.rs
         return Ok(None);
     }
     Ok(Some(Arc::new(parse(def)?)))
 }
 
-/// Läser *HYPERFOAM ur materialdefinitionen.
+/// Reads *HYPERFOAM from the material definition.
 pub fn parse(def: &MaterialDef) -> Result<HyperFoam> {
-    let Some(kw) = def.behavior("HYPERFOAM") else { return fail(format!("material {}: *HYPERFOAM saknas", def.name)) };
+    let Some(kw) = def.behavior("HYPERFOAM") else { return fail(format!("material {}: *HYPERFOAM is missing", def.name)) };
     for p in ["TEST DATA INPUT", "USER", "PROPERTIES"] {
         if kw.has(p) {
-            return kw.err(format!("parametern {p} stöds inte ännu för *HYPERFOAM"));
+            return kw.err(format!("parameter {p} is not yet supported for *HYPERFOAM"));
         }
     }
     if kw.has("MODULI") && kw.param_upper("MODULI").as_deref() != Some("LONG TERM") {
-        return kw.err("MODULI stöds bara som LONG TERM");
+        return kw.err("MODULI is only supported as LONG TERM");
     }
     let n = n_param(kw)?;
     let poisson = match kw.param("POISSON") {
-        Some(s) => Some(s.trim().parse::<f64>().map_err(|_| FemError(format!("{}: POISSON={s} är inget tal", kw.location())))?),
+        Some(s) => Some(s.trim().parse::<f64>().map_err(|_| FemError(format!("{}: POISSON={s} is not a number", kw.location())))?),
         None => None,
     };
     let mut v = Vec::new();
@@ -74,26 +74,26 @@ pub fn parse(def: &MaterialDef) -> Result<HyperFoam> {
     }
     let need = if poisson.is_some() { 2 * n } else { 3 * n };
     if v.len() < need {
-        return kw.err(format!("*HYPERFOAM, N={n} kräver {need} konstanter, {} angivna", v.len()));
+        return kw.err(format!("*HYPERFOAM, N={n} requires {need} constants, {} given", v.len()));
     }
     if v[need..].iter().any(|&x| x != 0.0) {
-        return kw.err("temperaturberoende konstanter (flera datarader) stöds inte ännu");
+        return kw.err("temperature-dependent constants (several data lines) are not yet supported");
     }
     let mut terms = Vec::with_capacity(n);
     for i in 0..n {
         let (mu, al) = (v[2 * i], v[2 * i + 1]);
         let nu = poisson.unwrap_or_else(|| v[2 * n + i]);
         if al == 0.0 {
-            return kw.err("*HYPERFOAM: α_i = 0 är inte tillåtet");
+            return kw.err("*HYPERFOAM: α_i = 0 is not allowed");
         }
         if !(nu < 0.5 && nu > -1.0) {
-            return kw.err(format!("*HYPERFOAM: ν_{} = {nu} ska ligga i (−1, 0,5)", i + 1));
+            return kw.err(format!("*HYPERFOAM: ν_{} = {nu} must lie in (−1, 0.5)", i + 1));
         }
         terms.push((mu, al, nu / (1.0 - 2.0 * nu)));
     }
     let m = HyperFoam { terms };
     if !(m.mu0() > 0.0 && m.k0() > 0.0) {
-        return kw.err("*HYPERFOAM: den initiala skjuvmodulen Σμ_i och kompressionsmodulen ska vara positiva");
+        return kw.err("*HYPERFOAM: the initial shear modulus Σμ_i and the bulk modulus must be positive");
     }
     Ok(m)
 }
@@ -102,7 +102,7 @@ impl HyperFoam {
     fn tau(&self, f: &M3) -> Result<M3> {
         let j = t::det(f);
         if !(j > 0.0) {
-            return fail("*HYPERFOAM: J ≤ 0 (elementet har vänts ut och in)");
+            return fail("*HYPERFOAM: J ≤ 0 (the element has been turned inside out)");
         }
         let b = t::mul_bt(f, f);
         let (ev, vecs) = t::eig_sym(&b);
@@ -122,7 +122,7 @@ impl HyperFoam {
         Ok(tau)
     }
 
-    /// Töjningsenergin per referensvolym.
+    /// Strain energy per reference volume.
     pub fn energy_total(&self, f: &M3) -> f64 {
         let j = t::det(f);
         let (ev, _) = t::eig_sym(&t::mul_bt(f, f));
@@ -136,7 +136,7 @@ impl HyperFoam {
     }
 }
 
-/// Isotrop elastisk tangent (μ, K) i 6×6 reducerad till spänningstillståndet.
+/// Isotropic elastic tangent (μ, K) in 6×6 reduced to the stress state.
 pub fn isotropic_tangent(mu: f64, k: f64, mode: StressMode) -> Vec<f64> {
     let lam = k - 2.0 * mu / 3.0;
     let mut d = [[0.0; 6]; 6];
@@ -150,7 +150,7 @@ pub fn isotropic_tangent(mu: f64, k: f64, mode: StressMode) -> Vec<f64> {
     super::anisotropic::reduce_6x6(&d, mode)
 }
 
-/// (E, ν) ur (μ, K).
+/// (E, ν) from (μ, K).
 pub fn moduli(mu: f64, k: f64) -> (f64, f64) {
     if !k.is_finite() {
         return (3.0 * mu, 0.5);
@@ -200,7 +200,7 @@ impl MaterialModel for HyperFoam {
 
     fn update(&self, input: &MatInput, _state_old: &[f64], _state_new: &mut [f64]) -> Result<MatOutput> {
         if input.defgrad.is_none() {
-            return fail("*HYPERFOAM kräver NLGEOM=YES på *STEP");
+            return fail("*HYPERFOAM requires NLGEOM=YES on *STEP");
         }
         hs::update_hyper_hist(self, input, &[], &mut [])
     }

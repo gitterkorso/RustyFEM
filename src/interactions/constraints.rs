@@ -1,17 +1,17 @@
-//! Linjära villkor: *EQUATION, *MPC (BEAM, PIN, TIE), *TIE (nod mot yta och
-//! yta mot yta), *COUPLING med *KINEMATIC eller *DISTRIBUTING och
+//! Linear constraints: *EQUATION, *MPC (BEAM, PIN, TIE), *TIE (node-to-surface
+//! and surface-to-surface), *COUPLING with *KINEMATIC or *DISTRIBUTING and
 //! *KINEMATIC COUPLING.
 //!
-//! Alla villkor formuleras för små förskjutningar och rotationer (linjäriserad
-//! stelkroppsrörelse u = u_R + θ_R × r) och elimineras av kärnan
-//! (`fem/mpc.rs`). Den första termen i varje villkor är den frihetsgrad som i
-//! första hand elimineras.
+//! All constraints are formulated for small displacements and rotations
+//! (linearized rigid-body motion u = u_R + θ_R × r) and are eliminated by the
+//! core (`fem/mpc.rs`). The first term in each constraint is the degree of
+//! freedom that is preferably eliminated.
 //!
-//! Fördelande coupling (*DISTRIBUTING) följer av virtuellt arbete: om
-//! referensnodens kraft F och moment M fördelas på kopplingsnoderna som
-//! Fᵢ = w̄ᵢ F + w̄ᵢ (T⁻¹ m̃) × rᵢ med rᵢ = xᵢ − x̄ (x̄ = viktad tyngdpunkt),
-//! T = Σ w̄ᵢ (|rᵢ|² I − rᵢ rᵢᵀ) och m̃ = M + (x_R − x̄) × F, så är den duala
-//! kinematiken θ_R = T⁻¹ Σ w̄ᵢ rᵢ × uᵢ och u_R = Σ w̄ᵢ uᵢ + θ_R × (x_R − x̄).
+//! Distributing coupling (*DISTRIBUTING) follows from virtual work: if the
+//! reference node's force F and moment M are distributed to the coupling nodes
+//! as Fᵢ = w̄ᵢ F + w̄ᵢ (T⁻¹ m̃) × rᵢ with rᵢ = xᵢ − x̄ (x̄ = weighted centroid),
+//! T = Σ w̄ᵢ (|rᵢ|² I − rᵢ rᵢᵀ) and m̃ = M + (x_R − x̄) × F, then the dual
+//! kinematics are θ_R = T⁻¹ Σ w̄ᵢ rᵢ × uᵢ and u_R = Σ w̄ᵢ uᵢ + θ_R × (x_R − x̄).
 
 use super::geom::{self, Facet};
 use super::{Interaction, InteractionFactory, LinearConstraint};
@@ -28,7 +28,7 @@ pub static FACTORIES: &[InteractionFactory] = &[
     InteractionFactory { keywords: &["TIE"], build: tie },
 ];
 
-/// En samling linjära villkor från ett nyckelord.
+/// A collection of linear constraints from one keyword.
 pub struct Linear {
     pub name: String,
     pub constraints: Vec<LinearConstraint>,
@@ -54,12 +54,12 @@ fn boxed(name: String, constraints: Vec<LinearConstraint>, active: Vec<(usize, D
     Ok(vec![Box::new(Linear { name, constraints, active })])
 }
 
-/// Index i `model.extra` för nyckelordet (för underordnade nyckelord som följer det).
+/// Index of the keyword in `model.extra` (for subordinate keywords that follow it).
 pub fn position(m: &FeModel, kw: &RawKeyword) -> usize {
     m.extra.iter().position(|k| std::ptr::eq(k, kw)).unwrap_or(m.extra.len())
 }
 
-/// Nyckelord som direkt följer `kw` i `model.extra` och vars namn finns i `names`.
+/// Keywords that directly follow `kw` in `model.extra` and whose names are in `names`.
 pub fn sub_options<'a>(m: &'a FeModel, kw: &RawKeyword, names: &[&str]) -> Vec<&'a RawKeyword> {
     let i = position(m, kw);
     m.extra.iter().skip(i + 1).take_while(|k| names.contains(&k.name.as_str())).collect()
@@ -68,7 +68,7 @@ pub fn sub_options<'a>(m: &'a FeModel, kw: &RawKeyword, names: &[&str]) -> Vec<&
 fn dof_of(kw: &RawKeyword, line: usize, s: &str) -> Result<Dof> {
     match crate::inp::parse_label(s) {
         Some(d @ (1..=7 | 11)) => Ok(d as Dof),
-        _ => kw.err_at(line, format!("'{s}' är ingen frihetsgrad")),
+        _ => kw.err_at(line, format!("'{s}' is not a degree of freedom")),
     }
 }
 
@@ -76,8 +76,8 @@ fn dof_of(kw: &RawKeyword, line: usize, s: &str) -> Result<Dof> {
 
 fn equation(m: &FeModel, kw: &RawKeyword) -> Result<Vec<Box<dyn Interaction>>> {
     let mut out = Vec::new();
-    // Varje ekvation: antal termer N, sedan N tripletter (nod, frihetsgrad, koefficient).
-    // Dataraderna har högst 12 fält, så vi läser radvis: först N, sedan tripletter.
+    // Each equation: number of terms N, then N triplets (node, DOF, coefficient).
+    // Data lines have at most 12 fields, so we read line by line: first N, then triplets.
     let mut lines = kw.data.iter().peekable();
     while let Some(d) = lines.next() {
         let first: Vec<&str> = d.fields.iter().map(|s| s.trim()).filter(|s| !s.is_empty()).collect();
@@ -85,24 +85,24 @@ fn equation(m: &FeModel, kw: &RawKeyword) -> Result<Vec<Box<dyn Interaction>>> {
             continue;
         }
         let Some(nt) = crate::inp::parse_label(first[0]).filter(|&n| n >= 1) else {
-            return kw.err_at(d.line, format!("antal termer väntades, fick '{}'", first[0]));
+            return kw.err_at(d.line, format!("expected number of terms, got '{}'", first[0]));
         };
         let mut items: Vec<(String, usize)> = first[1..].iter().map(|s| (s.to_string(), d.line)).collect();
         while items.len() < 3 * nt as usize {
-            let Some(d2) = lines.next() else { return kw.err("ekvationen har för få termer") };
+            let Some(d2) = lines.next() else { return kw.err("the equation has too few terms") };
             items.extend(d2.fields.iter().map(|s| s.trim()).filter(|s| !s.is_empty()).map(|s| (s.to_string(), d2.line)));
         }
-        // nodset expanderas: ekvationen gäller för varje nod i seten (i ordning)
+        // node sets are expanded: the equation applies to each node in the set (in order)
         let mut terms: Vec<(Vec<usize>, Dof, f64)> = Vec::new();
         for t in items.chunks(3) {
             let nodes = geom::node_ref(m, kw, &t[0].0)?;
             let dof = dof_of(kw, t[1].1, &t[1].0)?;
-            let c = parse_f64(&t[2].0).ok_or_else(|| FemError(format!("{}: '{}' är inget tal", kw.location(), t[2].0)))?;
+            let c = parse_f64(&t[2].0).ok_or_else(|| FemError(format!("{}: '{}' is not a number", kw.location(), t[2].0)))?;
             terms.push((nodes, dof, c));
         }
         let count = terms.iter().map(|t| t.0.len()).max().unwrap_or(1);
         if terms.iter().any(|t| t.0.len() != 1 && t.0.len() != count) {
-            return kw.err_at(d.line, "nodseten i ekvationen har olika antal noder");
+            return kw.err_at(d.line, "the node sets in the equation have different numbers of nodes");
         }
         for k in 0..count {
             let tt = terms.iter().map(|(ns, d, c)| (if ns.len() == 1 { ns[0] } else { ns[k] }, *d, *c)).collect();
@@ -112,11 +112,11 @@ fn equation(m: &FeModel, kw: &RawKeyword) -> Result<Vec<Box<dyn Interaction>>> {
     boxed(format!("*EQUATION ({})", kw.location()), out, Vec::new())
 }
 
-// ---------------------------------------------------------------- stel kropp
+// ---------------------------------------------------------------- rigid body
 
-/// Villkor för att `node` följer referensnoden `r` som en stel kropp (små
-/// rotationer): u = u_R + θ_R × (x − x_R) för de translationer i `dofs`, θ = θ_R
-/// för rotationer i `dofs` som noden har.
+/// Constraints making `node` follow the reference node `r` as a rigid body
+/// (small rotations): u = u_R + θ_R × (x − x_R) for the translations in `dofs`,
+/// θ = θ_R for the rotations in `dofs` that the node has.
 fn rigid_link(m: &FeModel, active: &[u16], node: usize, r: usize, dofs: &[Dof], out: &mut Vec<LinearConstraint>) {
     let dim = m.dim();
     let x = sub(m.nodes[node], m.nodes[r]);
@@ -137,7 +137,7 @@ fn rigid_link(m: &FeModel, active: &[u16], node: usize, r: usize, dofs: &[Dof], 
                     t.push((r, UR1 + j as Dof, -x[k]));
                     t.push((r, UR1 + k as Dof, x[j]));
                 } else {
-                    // bara θ3: (θ3 e3 × x) = (−θ3 x2, θ3 x1)
+                    // only θ3: (θ3 e3 × x) = (−θ3 x2, θ3 x1)
                     if i == 0 {
                         t.push((r, UR3, x[1]));
                     } else {
@@ -159,7 +159,7 @@ fn rigid_link(m: &FeModel, active: &[u16], node: usize, r: usize, dofs: &[Dof], 
     }
 }
 
-/// Referensnodens frihetsgrader (translationer och rotationer) i modellens dimension.
+/// Reference node DOFs (translations and rotations) in the model dimension.
 fn ref_dofs(m: &FeModel, r: usize, rot: bool) -> Vec<(usize, Dof)> {
     let dim = m.dim();
     let mut v: Vec<(usize, Dof)> = geom::trans_dofs(dim).iter().map(|&d| (r, d)).collect();
@@ -169,7 +169,7 @@ fn ref_dofs(m: &FeModel, r: usize, rot: bool) -> Vec<(usize, Dof)> {
     v
 }
 
-/// Frihetsgrader från datarader "första, sista" (alla om de saknas).
+/// DOFs from data lines "first, last" (all if missing).
 fn dof_ranges(kws: &[&RawKeyword]) -> Result<Vec<Dof>> {
     let mut v = Vec::new();
     for kw in kws {
@@ -210,19 +210,19 @@ fn mpc(m: &FeModel, kw: &RawKeyword) -> Result<Vec<Box<dyn Interaction>>> {
             if f.is_empty() {
                 continue;
             }
-            return kw.err_at(d.line, "skriv MPC-typ, nod a, nod b");
+            return kw.err_at(d.line, "write MPC type, node a, node b");
         }
         let ty = f[0].to_uppercase();
         let a = geom::node_ref(m, kw, f[1])?;
         let b = geom::node_ref(m, kw, f[2])?;
         if b.len() != 1 && b.len() != a.len() {
-            return kw.err_at(d.line, "nodseten har olika antal noder");
+            return kw.err_at(d.line, "the node sets have different numbers of nodes");
         }
         for (k, &na) in a.iter().enumerate() {
             let nb = if b.len() == 1 { b[0] } else { b[k] };
             match ty.as_str() {
                 "BEAM" => {
-                    // a följer b som en stel balk; båda noderna har rotationer
+                    // a follows b as a rigid beam; both nodes have rotations
                     for &d in geom::trans_dofs(dim).iter().chain(geom::rot_dofs(dim)) {
                         act.push((na, d));
                         act.push((nb, d));
@@ -244,7 +244,7 @@ fn mpc(m: &FeModel, kw: &RawKeyword) -> Result<Vec<Box<dyn Interaction>>> {
                         }
                     }
                 }
-                other => return kw.err_at(d.line, format!("MPC-typen {other} stöds inte ännu (BEAM, PIN, TIE)")),
+                other => return kw.err_at(d.line, format!("MPC type {other} is not supported yet (BEAM, PIN, TIE)")),
             }
         }
     }
@@ -257,7 +257,7 @@ fn ref_node(m: &FeModel, kw: &RawKeyword) -> Result<usize> {
     let r = crate::inp::required(kw, "REF NODE")?;
     let v = geom::node_ref(m, kw, r)?;
     if v.len() != 1 {
-        return kw.err(format!("REF NODE={r} ska vara en enda nod"));
+        return kw.err(format!("REF NODE={r} must be a single node"));
     }
     Ok(v[0])
 }
@@ -267,14 +267,14 @@ fn coupling(m: &FeModel, kw: &RawKeyword) -> Result<Vec<Box<dyn Interaction>>> {
     let sname = crate::inp::required(kw, "SURFACE")?;
     let surf = geom::surface(m, kw, sname)?;
     if kw.has("INFLUENCE RADIUS") {
-        return kw.err("INFLUENCE RADIUS= stöds inte ännu");
+        return kw.err("INFLUENCE RADIUS= is not supported yet");
     }
     if kw.has("ORIENTATION") {
-        return kw.err("ORIENTATION= stöds inte ännu");
+        return kw.err("ORIENTATION= is not supported yet");
     }
     let subs = sub_options(m, kw, &["KINEMATIC", "DISTRIBUTING"]);
     let Some(kind) = subs.first() else {
-        return kw.err("*COUPLING ska följas av *KINEMATIC eller *DISTRIBUTING");
+        return kw.err("*COUPLING must be followed by *KINEMATIC or *DISTRIBUTING");
     };
     let mut nodes = geom::surface_nodes(m, surf)?;
     nodes.retain(|&n| n != r);
@@ -284,8 +284,8 @@ fn coupling(m: &FeModel, kw: &RawKeyword) -> Result<Vec<Box<dyn Interaction>>> {
     let name = format!("*COUPLING {} ({})", kw.param("CONSTRAINT NAME").unwrap_or(""), kw.location());
     let mut out = Vec::new();
     if kind.name == "KINEMATIC" {
-        // Kopplade rotationer aktiveras även i noder som saknar dem (där
-        // kopplingsnodernas UR då följer referensnoden).
+        // Coupled rotations are activated also at nodes that lack them (where
+        // the coupling nodes' UR then follow the reference node).
         let mut act = ref_dofs(m, r, true);
         for &n in &nodes {
             act.extend(geom::rot_dofs(dim).iter().filter(|d| dofs.contains(d)).map(|&d| (n, d)));
@@ -299,7 +299,7 @@ fn coupling(m: &FeModel, kw: &RawKeyword) -> Result<Vec<Box<dyn Interaction>>> {
         }
         return boxed(name, out, act);
     }
-    // fördelande coupling
+    // distributing coupling
     let method = kind.param_upper("WEIGHTING METHOD").unwrap_or_else(|| "UNIFORM".into());
     let mut w: Vec<f64> = match surf.kind.as_str() {
         "NODE" => {
@@ -312,7 +312,7 @@ fn coupling(m: &FeModel, kw: &RawKeyword) -> Result<Vec<Box<dyn Interaction>>> {
             v
         }
         _ => {
-            // elementytor: vikten är nodens andel av ytan
+            // element surfaces: the weight is the node's share of the area
             let mut v = vec![0.0; nodes.len()];
             for f in geom::facets(m, surf, &name)? {
                 let x = geom::coords(m, &f, None);
@@ -326,11 +326,11 @@ fn coupling(m: &FeModel, kw: &RawKeyword) -> Result<Vec<Box<dyn Interaction>>> {
         }
     };
     if method != "UNIFORM" {
-        return kind.err(format!("WEIGHTING METHOD={method} stöds inte ännu (UNIFORM)"));
+        return kind.err(format!("WEIGHTING METHOD={method} is not supported yet (UNIFORM)"));
     }
     let wsum: f64 = w.iter().sum();
     if wsum <= 0.0 {
-        return kw.err("kopplingsnodernas vikter är noll");
+        return kw.err("the coupling node weights are zero");
     }
     w.iter_mut().for_each(|x| *x /= wsum);
     let xr = m.nodes[r];
@@ -343,7 +343,7 @@ fn coupling(m: &FeModel, kw: &RawKeyword) -> Result<Vec<Box<dyn Interaction>>> {
     let rot = dofs.iter().any(|&d| (4..=6).contains(&d));
     let dvec = sub(xr, xc);
     let rs: Vec<[f64; 3]> = nodes.iter().map(|&n| sub(m.nodes[n], xc)).collect();
-    // T⁻¹ (3D) eller 1/Σw|r|² (2D)
+    // T⁻¹ (3D) or 1/Σw|r|² (2D)
     let mut tinv = [[0.0; 3]; 3];
     if rot {
         if dim == 3 {
@@ -358,7 +358,7 @@ fn coupling(m: &FeModel, kw: &RawKeyword) -> Result<Vec<Box<dyn Interaction>>> {
             }
             let (inv, det) = crate::elements::common::inv3(t);
             if det.abs() < 1e-14 * (t[0][0] + t[1][1] + t[2][2]).powi(3).max(1e-300) {
-                return kw.err("kopplingsnoderna ligger på en linje – rotationen kring linjen är obestämd");
+                return kw.err("the coupling nodes lie on a line – the rotation about the line is undetermined");
             }
             tinv = inv;
         } else {
@@ -379,7 +379,7 @@ fn coupling(m: &FeModel, kw: &RawKeyword) -> Result<Vec<Box<dyn Interaction>>> {
                 if !geom::has(&active, n, d) {
                     continue;
                 }
-                // koefficient för u_c i (T⁻¹ (r × u))_a = Σ_e T⁻¹_ae ε_ebc r_b
+                // coefficient of u_c in (T⁻¹ (r × u))_a = Σ_e T⁻¹_ae ε_ebc r_b
                 let mut coef = 0.0;
                 for e in 0..3 {
                     let (b1, c1) = ((e + 1) % 3, (e + 2) % 3);
@@ -479,7 +479,7 @@ fn kinematic_coupling(m: &FeModel, kw: &RawKeyword) -> Result<Vec<Box<dyn Intera
 
 // ---------------------------------------------------------------- *TIE
 
-/// Masterytans ytor med nodkoordinater i referensläget.
+/// Master surface facets with nodal coordinates in the reference configuration.
 struct Master {
     facets: Vec<Facet>,
     x: Vec<Vec<[f64; 3]>>,
@@ -503,7 +503,7 @@ impl Master {
         Master { facets: f, x, size }
     }
 
-    /// Närmaste yta: (yta, ξ, avstånd).
+    /// Closest facet: (facet, ξ, distance).
     fn closest(&self, p: [f64; 3]) -> Option<(usize, [f64; 2], f64, bool)> {
         let mut best: Option<(usize, [f64; 2], f64, bool)> = None;
         for (i, f) in self.facets.iter().enumerate() {
@@ -535,9 +535,9 @@ fn tie(m: &FeModel, kw: &RawKeyword) -> Result<Vec<Box<dyn Interaction>>> {
             continue;
         }
         if f.len() < 2 {
-            return kw.err_at(d.line, "skriv slavyta, masteryta");
+            return kw.err_at(d.line, "write slave surface, master surface");
         }
-        // område akustik: akustisk–strukturella par kopplas i interactions/acoustic.rs
+        // acoustics: acoustic–structural pairs are coupled in interactions/acoustic.rs
         if super::acoustic::is_acoustic_pair(m, kw, f[0], f[1])? {
             asi += 1;
             continue;
@@ -545,7 +545,7 @@ fn tie(m: &FeModel, kw: &RawKeyword) -> Result<Vec<Box<dyn Interaction>>> {
         let slave = geom::surface(m, kw, f[0])?;
         let msurf = geom::surface(m, kw, f[1])?;
         if msurf.kind == "NODE" {
-            return kw.err("masterytan ska vara elementbaserad");
+            return kw.err("the master surface must be element-based");
         }
         let master = Master::new(m, geom::facets(m, msurf, &name)?);
         let tol = tol_given.unwrap_or(0.05 * master.size);
@@ -553,16 +553,16 @@ fn tie(m: &FeModel, kw: &RawKeyword) -> Result<Vec<Box<dyn Interaction>>> {
         mnodes.sort_unstable();
         mnodes.dedup();
         let snodes = geom::surface_nodes(m, slave)?;
-        // Villkor per slavnod A: Σ_B D_AB u_B − Σ_C M_AC u_C = 0 (D för slavnoder,
-        // M för masternoder). Nod mot yta: D = I och M = masterytans
-        // formfunktioner i slavnodens projektion. Yta mot yta (mortar):
-        // D_AB = ∫ N_A N_B dA och M_AC = ∫ N_A M_C(proj) dA över slavytan.
+        // Constraint per slave node A: Σ_B D_AB u_B − Σ_C M_AC u_C = 0 (D for slave
+        // nodes, M for master nodes). Node-to-surface: D = I and M = the master
+        // surface shape functions at the slave node's projection. Surface-to-surface
+        // (mortar): D_AB = ∫ N_A N_B dA and M_AC = ∫ N_A M_C(proj) dA over the slave surface.
         let mut rows: Vec<(usize, Vec<(usize, f64)>)> = Vec::new();
         let s2s = ty == "SURFACE TO SURFACE" && slave.kind != "NODE";
         if s2s {
-            // Mortar med elementvis dual bas Φ på slavytan: villkoret för
-            // slavnod A blir u_A = Σ_C (∫ Φ_A M_C dA / ∫ N_A dA) u_C, dvs.
-            // varje slavnod kopplas bara till närliggande masternoder.
+            // Mortar with an element-wise dual basis Φ on the slave surface: the
+            // constraint for slave node A becomes u_A = Σ_C (∫ Φ_A M_C dA / ∫ N_A dA) u_C,
+            // i.e. each slave node is coupled only to nearby master nodes.
             use std::collections::BTreeMap;
             let mut acc: BTreeMap<usize, (f64, BTreeMap<usize, f64>)> = BTreeMap::new();
             let mpts: Vec<[f64; 3]> = mnodes.iter().map(|&n| m.nodes[n]).collect();
@@ -593,7 +593,7 @@ fn tie(m: &FeModel, kw: &RawKeyword) -> Result<Vec<Box<dyn Interaction>>> {
             }
             for (sn, (area, map)) in acc {
                 let tot: f64 = map.values().sum();
-                // slavnoder som inte (helt) täcks av masterytan binds inte
+                // slave nodes not (fully) covered by the master surface are not tied
                 if area <= 0.0 || (tot / area - 1.0).abs() > 1e-6 {
                     continue;
                 }
@@ -616,7 +616,7 @@ fn tie(m: &FeModel, kw: &RawKeyword) -> Result<Vec<Box<dyn Interaction>>> {
         }
         for (sn, row) in rows {
             if mnodes.binary_search(&sn).is_ok() {
-                continue; // slavnoden är också masternod (gemensam nod)
+                continue; // the slave node is also a master node (shared node)
             }
             let mut dofs: Vec<Dof> = geom::trans_dofs(dim).to_vec();
             if !no_rot {
@@ -635,7 +635,7 @@ fn tie(m: &FeModel, kw: &RawKeyword) -> Result<Vec<Box<dyn Interaction>>> {
         return Ok(Vec::new());
     }
     if out.is_empty() {
-        return fail(format!("{name}: inga slavnoder ligger inom positionstoleransen"));
+        return fail(format!("{name}: no slave nodes lie within the position tolerance"));
     }
     boxed(name, out, Vec::new())
 }

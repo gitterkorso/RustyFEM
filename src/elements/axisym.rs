@@ -1,12 +1,12 @@
-//! Axisymmetriska kontinuumelement: CAX3, CAX4, CAX4R, CAX4I, CAX6, CAX8, CAX8R.
+//! Axisymmetric continuum elements: CAX3, CAX4, CAX4R, CAX4I, CAX6, CAX8, CAX8R.
 //!
-//! Koordinat 1 är radien r och koordinat 2 axeln z. Töjningarnas
-//! ordning är [εrr, εzz, εθθ, γrz] med εθθ = u_r / r. Integrationen tas över
-//! hela varvet (vikten innehåller 2πr), så krafter och reaktioner är totala
-//! värden runt axeln.
+//! Coordinate 1 is the radius r and coordinate 2 the axis z. The strain
+//! order is [εrr, εzz, εθθ, γrz] with εθθ = u_r / r. The integration is taken over
+//! the full revolution (the weight contains 2πr), so forces and reactions are total
+//! values around the axis.
 //!
-//! Elementen använder motorn i `solid_higher.rs`. CAX4 har selektivt
-//! reducerad integrering (B-bar av εrr+εzz+εθθ) som CPE4/C3D8.
+//! The elements use the engine in `solid_higher.rs`. CAX4 has selectively
+//! reduced integration (B-bar of εrr+εzz+εθθ) like CPE4/C3D8.
 
 use super::solid_higher::shapes::Shape;
 use super::solid_higher::{RuleKind, Solid, Tech};
@@ -27,7 +27,7 @@ pub static CAX8R: Solid = ax("CAX8R", Shape::Quad8, RuleKind::Gauss(2), Tech::Fu
 
 pub static TYPES: &[&dyn ElementType] = &[&CAX3, &CAX4, &CAX4I, &CAX4R, &CAX6, &CAX8, &CAX8R];
 
-/// B-matris (4 × 2n) för axisymmetri: rader [εrr, εzz, εθθ, γrz], kolumner (u_r, u_z) per nod.
+/// B matrix (4 × 2n) for axisymmetry: rows [εrr, εzz, εθθ, γrz], columns (u_r, u_z) per node.
 pub fn bmat_axi(n: &[f64], dndx: &[[f64; 3]], r: f64) -> Vec<f64> {
     let nn = n.len();
     let nd = 2 * nn;

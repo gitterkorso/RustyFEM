@@ -1,20 +1,20 @@
-//! Materialets effektiva moduler i explicit dynamik:
-//! dilatationsvåghastigheten för volymviskositeten och stabilitetsgränsen
-//! räknas ur spännings- och töjningsinkrementet i varje element,
+//! Effective material moduli in explicit dynamics:
+//! the dilatational wave speed for the bulk viscosity and the stability limit
+//! is computed from the stress and strain increments in each element,
 //!
 //! ```text
 //! 3K̂ = Δp / Δε_vol,   2μ̂ = Δs : Δe / (Δe : Δe),   c_d = √((K̂ + 4μ̂/3)/ρ)
 //! ```
 //!
-//! (Δs, Δe = deviatoriska delar av elementets medelspänningsökning och
-//! töjningsinkrementet Δε = sym Σᵢ bᵢ ⊗ Δuᵢ / V). K̂ räknas bara när
-//! |Δε_vol| är minst 1e-3 av töjningsinkrementet (annars den elastiska K) och
-//! μ̂ begränsas till [0, μ]. De elastiska K och μ tas ur materialets linjära
-//! tangent. Linjära material behåller den elastiska våghastigheten (kvot 1).
+//! (Δs, Δe = deviatoric parts of the element's mean stress increment and
+//! the strain increment Δε = sym Σᵢ bᵢ ⊗ Δuᵢ / V). K̂ is computed only when
+//! |Δε_vol| is at least 1e-3 of the strain increment (otherwise the elastic K) and
+//! μ̂ is limited to [0, μ]. The elastic K and μ are taken from the material's linear
+//! tangent. Linear materials keep the elastic wave speed (ratio 1).
 //!
-//! Kvoten används i volymviskositetens linjära term och i stabilitetsgränsen.
-//! Plasticitet sänker då våghastigheten och förlänger Δt; för *EOS (Us–Up)
-//! ger K̂ den styvnande Hugoniot-kurvans kortare Δt.
+//! The ratio is used in the linear term of the bulk viscosity and in the stability limit.
+//! Plasticity thus lowers the wave speed and lengthens Δt; for *EOS (Us–Up)
+//! K̂ gives the shorter Δt of the stiffening Hugoniot curve.
 
 use super::dt::geometry;
 use crate::elements::common::ip_stride;
@@ -32,16 +32,16 @@ fn mode_of(family: Family, name: &str) -> Option<StressMode> {
     }
 }
 
-/// Uppdaterar `ratio[e]` = c_d,eff/c_d för olinjära kontinuumelement efter ett
-/// inkrement med förskjutningsökningen `du`, i konfigurationen `x(e)`.
+/// Updates `ratio[e]` = c_d,eff/c_d for nonlinear continuum elements after an
+/// increment with the displacement increment `du`, in the configuration `x(e)`.
 pub fn update(p: &Prepared, x: &dyn Fn(usize) -> Vec<[f64; 3]>, du: &[NodeVec], old: &[Vec<f64>], new: &[Vec<f64>], ratio: &mut [f64]) {
     let m = p.model;
     let mut cache: Vec<(usize, (f64, f64))> = Vec::new();
     for (e, el) in m.elements.iter().enumerate() {
         let ctx = p.ctx(e, false, 0.0, 0.0);
         let Some(mat) = ctx.material else { continue };
-        // område coupled2: termisk töjning ovanpå ett linjärt material ändrar
-        // inte våghastigheten (Δε innehåller den termiska delen)
+        // area coupled2: thermal strain on top of a linear material does not change
+        // the wave speed (Δε contains the thermal part)
         if mat.is_linear() || mat.is_linear_at_given_temperature() {
             continue;
         }
@@ -73,7 +73,7 @@ pub fn update(p: &Prepared, x: &dyn Fn(usize) -> Vec<[f64; 3]>, du: &[NodeVec], 
         }
         let xe = x(e);
         let Some(g) = geometry(fam, el.etype.name(), &xe) else { continue };
-        // töjningsinkrement (tensor) ur bᵢ
+        // strain increment (tensor) from bᵢ
         let mut de = [[0.0f64; 3]; 3];
         for (k, &n) in el.nodes.iter().enumerate() {
             for i in 0..3 {
@@ -82,7 +82,7 @@ pub fn update(p: &Prepared, x: &dyn Fn(usize) -> Vec<[f64; 3]>, du: &[NodeVec], 
                 }
             }
         }
-        // medelspänningsökning
+        // mean stress increment
         let mut ds = [[0.0f64; 3]; 3];
         for q in 0..nips {
             let d: Vec<f64> = (0..nc).map(|c| (sn[q * stride + c] - so[q * stride + c]) / nips as f64).collect();
@@ -112,7 +112,7 @@ pub fn update(p: &Prepared, x: &dyn Fn(usize) -> Vec<[f64; 3]>, du: &[NodeVec], 
         ds[2][0] = ds[0][2];
         ds[2][1] = ds[1][2];
         if mode == StressMode::PlaneStress {
-            // tjocklekstöjningen ur plan spänning (elastiskt)
+            // thickness strain from plane stress (elastic)
             let lam = kb - 2.0 * mu / 3.0;
             de[2][2] = -lam / (lam + 2.0 * mu) * (de[0][0] + de[1][1]);
         }
@@ -128,12 +128,12 @@ pub fn update(p: &Prepared, x: &dyn Fn(usize) -> Vec<[f64; 3]>, du: &[NodeVec], 
             }
         }
         let scale = de.iter().flatten().map(|v| v.abs()).fold(0.0, f64::max);
-        // kompressionsmodulen: materialets aktuella (t.ex. *EOS) som medelvärde
-        // över integrationspunkterna, annars den elastiska (Δp/Δε_vol gav brus)
+        // bulk modulus: the material's current one (e.g. *EOS) as the mean
+        // over the integration points, otherwise the elastic one (Δp/Δε_vol was noisy)
         let kcur: Vec<f64> = (0..nips).filter_map(|q| mat.current_bulk_modulus(&sn[q * stride + nc..(q + 1) * stride])).collect();
         let kh = if kcur.len() == nips && nips > 0 { kcur.iter().sum::<f64>() / nips as f64 } else { kb };
         if scale < 1e-300 {
-            // utan töjningsinkrement (stegets början): bara den aktuella kompressionsmodulen
+            // without strain increment (start of the step): only the current bulk modulus
             if kcur.len() == nips && nips > 0 {
                 let r = ((kh + 4.0 * mu / 3.0) / (kb + 4.0 * mu / 3.0)).sqrt();
                 ratio[e] = if r.is_finite() { r } else { 1.0 };

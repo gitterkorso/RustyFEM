@@ -1,24 +1,24 @@
-//! Packningsbeteende (*GASKET BEHAVIOR) för packningselementen i
+//! Gasket behavior (*GASKET BEHAVIOR) for the gasket elements in
 //! `elements/gasket.rs`.
 //!
-//! Materialet används med packningens egen komponentordning (som i
-//! utdata för packningar): töjningen är
-//! [stängning, ε₂₂, ε₃₃, γ₁₂, γ₁₃, ε₂₃] och spänningen
-//! [tryck, S22, S33, S12, S13, S23]:
+//! The material is used with the gasket's own component order (as in
+//! the output for gaskets): the strain is
+//! [closure, ε₂₂, ε₃₃, γ₁₂, γ₁₃, ε₂₃] and the stress
+//! [pressure, S22, S33, S12, S13, S23]:
 //!
-//! - Tjockleksled (*GASKET THICKNESS BEHAVIOR): tryck mot stängning ur
-//!   belastningskurvan (styckvis linjär, sista lutningen förlängs).
-//!   TYPE=ELASTIC-PLASTIC: elastiskt med den första lutningen k₀ upp till
-//!   flytgränsen (första punkten där lutningen sjunker mer än YIELD ONSET,
-//!   standard 10 %, under k₀), därefter belastningskurvan; avlastning och
-//!   återbelastning med k₀ från den plastiska stängningen; efter kurvans sista
-//!   punkt fortsätter den med k₀ (DAMAGE: sista lutningen). TYPE=DAMAGE utan
-//!   avlastningskurvor: avlastning längs belastningskurvan (så görs när
-//!   ingen avlastningskurva anges). Drag: TENSILE STIFFNESS FACTOR (standard
-//!   10⁻³) gånger k₀.
-//! - Membran (*GASKET ELASTICITY, COMPONENT=MEMBRANE): plan spänning med E, ν.
-//! - Tvärskjuvning (*GASKET ELASTICITY, COMPONENT=TRANSVERSE SHEAR):
-//!   S12 = G·γ₁₂ med γ som relativ förskjutning.
+//! - Thickness direction (*GASKET THICKNESS BEHAVIOR): pressure versus closure from
+//!   the loading curve (piecewise linear, the last slope is extrapolated).
+//!   TYPE=ELASTIC-PLASTIC: elastic with the first slope k₀ up to
+//!   the yield point (the first point where the slope drops more than YIELD ONSET,
+//!   default 10 %, below k₀), then the loading curve; unloading and
+//!   reloading with k₀ from the plastic closure; after the last point of the curve
+//!   it continues with k₀ (DAMAGE: the last slope). TYPE=DAMAGE without
+//!   unloading curves: unloading along the loading curve (this is done when
+//!   no unloading curve is given). Tension: TENSILE STIFFNESS FACTOR (default
+//!   10⁻³) times k₀.
+//! - Membrane (*GASKET ELASTICITY, COMPONENT=MEMBRANE): plane stress with E, ν.
+//! - Transverse shear (*GASKET ELASTICITY, COMPONENT=TRANSVERSE SHEAR):
+//!   S12 = G·γ₁₂ with γ as relative displacement.
 
 use super::api::{MatInput, MatOutput, MaterialFactory, MaterialModel};
 use crate::fem::model::{MaterialDef, RawKeyword};
@@ -29,26 +29,26 @@ pub const THICKNESS: &str = "GASKET THICKNESS BEHAVIOR";
 pub const THICKNESS_UNLOADING: &str = "GASKET THICKNESS BEHAVIOR UNLOADING";
 pub const MEMBRANE: &str = "GASKET ELASTICITY MEMBRANE";
 pub const SHEAR: &str = "GASKET ELASTICITY TRANSVERSE SHEAR";
-/// Markör som *GASKET BEHAVIOR lägger i materialet.
+/// Marker that *GASKET BEHAVIOR adds to the material.
 pub const MARKER: &str = "GASKET BEHAVIOR";
 
 pub static FACTORIES: &[MaterialFactory] = &[MaterialFactory {
-    name: "packning",
+    name: "gasket",
     consumes: &[MARKER, THICKNESS, THICKNESS_UNLOADING, MEMBRANE, SHEAR],
     priority: 50,
     build: Some(build),
 }];
 
-/// Modellens namn (elementen kontrollerar att materialet är en packning).
+/// The model's name (the elements check that the material is a gasket).
 pub const NAME: &str = "GASKET";
 
 #[derive(Debug, Clone)]
 pub struct Gasket {
-    /// Belastningskurvan (stängning, tryck), stigande stängning, börjar i (0, 0).
+    /// The loading curve (closure, pressure), ascending closure, starts at (0, 0).
     curve: Vec<(f64, f64)>,
     plastic: bool,
     k0: f64,
-    /// Stängningen där flytning börjar (ELASTIC-PLASTIC).
+    /// The closure at which yielding starts (ELASTIC-PLASTIC).
     c_yield: f64,
     tension: f64,
     membrane: Option<(f64, f64)>,
@@ -64,24 +64,24 @@ fn build(def: &MaterialDef) -> Result<Option<Arc<dyn MaterialModel>>> {
         return Ok(None);
     }
     let Some(tb) = def.behavior(THICKNESS) else {
-        return fail(format!("packningsbeteendet {} saknar *GASKET THICKNESS BEHAVIOR", def.name));
+        return fail(format!("the gasket behavior {} lacks *GASKET THICKNESS BEHAVIOR", def.name));
     };
     if def.behavior(THICKNESS_UNLOADING).is_some() {
-        return tb.err("avlastningskurvor (DIRECTION=UNLOADING) stöds inte ännu");
+        return tb.err("unloading curves (DIRECTION=UNLOADING) are not supported yet");
     }
     for p in ["DEPENDENCIES", "TEMPERATURE"] {
         if tb.has(p) {
-            return tb.err(format!("{p}= stöds inte ännu för packningar"));
+            return tb.err(format!("{p}= is not supported yet for gaskets"));
         }
     }
     let plastic = match tb.param_upper("TYPE").as_deref() {
         None | Some("DAMAGE") => false,
         Some("ELASTIC-PLASTIC") => true,
-        Some(t) => return tb.err(format!("TYPE={t} stöds inte (DAMAGE, ELASTIC-PLASTIC)")),
+        Some(t) => return tb.err(format!("TYPE={t} is not supported (DAMAGE, ELASTIC-PLASTIC)")),
     };
     if let Some(m) = tb.param_upper("YIELD ONSET METHOD") {
         if m != "RELATIVE SLOPE DROP" {
-            return tb.err(format!("YIELD ONSET METHOD={m} stöds inte ännu"));
+            return tb.err(format!("YIELD ONSET METHOD={m} is not supported yet"));
         }
     }
     let onset = tb.param("YIELD ONSET").and_then(crate::fem::model::parse_f64).unwrap_or(0.1);
@@ -89,7 +89,7 @@ fn build(def: &MaterialDef) -> Result<Option<Arc<dyn MaterialModel>>> {
     let mut curve: Vec<(f64, f64)> = Vec::new();
     for v in floats(tb)? {
         if v.len() < 2 {
-            return tb.err("varje datarad ska ha tryck och stängning");
+            return tb.err("each data line must have pressure and closure");
         }
         curve.push((v[1], v[0]));
     }
@@ -98,15 +98,15 @@ fn build(def: &MaterialDef) -> Result<Option<Arc<dyn MaterialModel>>> {
     }
     for w in curve.windows(2) {
         if w[1].0 <= w[0].0 {
-            return tb.err("stängningen ska öka i belastningskurvan");
+            return tb.err("the closure must increase in the loading curve");
         }
     }
     if curve.len() < 2 {
-        return tb.err("belastningskurvan behöver minst en punkt utöver (0, 0)");
+        return tb.err("the loading curve needs at least one point besides (0, 0)");
     }
     let k0 = curve[1].1 / curve[1].0;
     if k0 <= 0.0 {
-        return tb.err("belastningskurvans första lutning måste vara positiv");
+        return tb.err("the first slope of the loading curve must be positive");
     }
     let mut c_yield = f64::INFINITY;
     for i in 1..curve.len() - 1 {
@@ -131,11 +131,11 @@ fn build(def: &MaterialDef) -> Result<Option<Arc<dyn MaterialModel>>> {
 }
 
 impl Gasket {
-    /// Belastningskurvan och dess lutning i stängningen c ≥ 0.
+    /// The loading curve and its slope at the closure c ≥ 0.
     fn loading(&self, c: f64) -> (f64, f64) {
         let n = self.curve.len();
-        // ELASTIC-PLASTIC: efter kurvans sista punkt fortsätter den med k₀
-        // DAMAGE: med sista lutningen
+        // ELASTIC-PLASTIC: after the last point of the curve it continues with k₀
+        // DAMAGE: with the last slope
         let last = self.curve[n - 1];
         if self.plastic && c > last.0 {
             return (last.1 + self.k0 * (c - last.0), self.k0);
@@ -149,7 +149,7 @@ impl Gasket {
         (a.1 + s * (c - a.0), s)
     }
 
-    /// Tryck, tangent och ny plastisk stängning.
+    /// Pressure, tangent and new plastic closure.
     pub fn thickness(&self, c: f64, cp_old: f64) -> (f64, f64, f64) {
         if !self.plastic {
             if c < 0.0 {
@@ -188,7 +188,7 @@ impl MaterialModel for Gasket {
     fn update(&self, input: &MatInput, state_old: &[f64], state_new: &mut [f64]) -> Result<MatOutput> {
         let e = input.strain;
         if e.len() != 6 {
-            return fail("packningsbeteendet kan bara användas av packningselement (GK*)");
+            return fail("the gasket behavior can only be used by gasket elements (GK*)");
         }
         let (p, kc, cp) = self.thickness(e[0], state_old.first().copied().unwrap_or(0.0));
         if let Some(s) = state_new.first_mut() {

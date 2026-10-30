@@ -1,4 +1,4 @@
-//! *NSET och *ELSET (med GENERATE, INSTANCE= och setnamn på dataraderna).
+//! *NSET and *ELSET (with GENERATE, INSTANCE= and set names on the data lines).
 
 use crate::fem::model::RawKeyword;
 use crate::inp::{parse_label, required, InpCtx, Keyword, Kind};
@@ -9,7 +9,7 @@ pub static KEYWORDS: &[Keyword] = &[
     Keyword { name: "NSET", kind: Kind::Model, handler: nset },
 ];
 
-/// Alla poster på dataraderna: nummer (eller intervall vid GENERATE) och setnamn.
+/// All entries on the data lines: labels (or ranges with GENERATE) and set names.
 fn members(ctx: &InpCtx, kw: &RawKeyword, nodes: bool) -> Result<Vec<usize>> {
     let inst = kw.param("INSTANCE").map(|s| s.trim().to_uppercase());
     let generate = kw.has("GENERATE");
@@ -19,7 +19,7 @@ fn members(ctx: &InpCtx, kw: &RawKeyword, nodes: bool) -> Result<Vec<usize>> {
         if generate {
             let v: Vec<i64> = toks.iter().filter_map(|t| parse_label(t)).collect();
             if v.len() < 2 || v.len() != toks.len() {
-                return kw.err_at(d.line, "GENERATE kräver 'första, sista[, steg]'");
+                return kw.err_at(d.line, "GENERATE requires 'first, last[, increment]'");
             }
             let step = v.get(2).copied().unwrap_or(1).max(1);
             let mut l = v[0];

@@ -1,27 +1,27 @@
-//! Område explicit_adv: kopplad Euler–Lagrange-kontakt (CEL) i general
-//! contact (`*CONTACT` med `*CONTACT INCLUSIONS, ALL EXTERIOR`), där
-//! Euler-materialets yta automatiskt ingår.
+//! Area explicit_adv: coupled Eulerian–Lagrangian contact (CEL) in general
+//! contact (`*CONTACT` with `*CONTACT INCLUSIONS, ALL EXTERIOR`), where
+//! the Eulerian material's surface is included automatically.
 //!
-//! Lagrange-solidernas yttre ytor är slavar mot Euler-materialet med en
-//! straffmetod (immersed boundary). Slavpunkterna är ytornas noder och, för
-//! fyrhörningar, kantmittpunkterna och mittpunkten (värdena interpoleras med
-//! ytans formfunktioner), så att materialet inte rinner förbi mellan noderna:
+//! The outer surfaces of the Lagrangian solids are slaves against the Eulerian material with a
+//! penalty method (immersed boundary). The slave points are the surface nodes and, for
+//! quadrilaterals, the edge midpoints and the center point (the values are interpolated with
+//! the surface shape functions), so that the material does not flow past between the nodes:
 //!
-//! - punkten hittas i det Euler-element som innehåller den (isoparametrisk
-//!   invers), materialets hastighet interpoleras från Euler-noderna;
-//! - när elementet innehåller material (volymandel ≥ ½) växer
-//!   genomträngningen d med den relativa normalhastigheten mot ytan,
-//!   d ← max(0, d − Δt (v_f − v_s)·n), n = ytans utåtriktade normal;
-//!   d nollställs när punkten lämnar materialet;
-//! - kraften F = m*/Δt² (κ d + γ Δd) (massbaserad straffstyvhet,
-//!   `explicit_contact.rs`), m* = minsta av punktens (ytans nodmassor genom
-//!   antalet punkter per nod) och den interpolerade Euler-massan, verkar på
-//!   ytans noder längs −n och på Euler-noderna längs +n med formfunktionerna.
+//! - the point is located in the Eulerian element that contains it (isoparametric
+//!   inverse), the material velocity is interpolated from the Eulerian nodes;
+//! - when the element contains material (volume fraction ≥ ½) the
+//!   penetration d grows with the relative normal velocity towards the surface,
+//!   d ← max(0, d − Δt (v_f − v_s)·n), n = the outward surface normal;
+//!   d is reset when the point leaves the material;
+//! - the force F = m*/Δt² (κ d + γ Δd) (mass-based penalty stiffness,
+//!   `explicit_contact.rs`), m* = the smaller of the point's mass (the surface nodal masses divided by
+//!   the number of points per node) and the interpolated Eulerian mass, acts on
+//!   the surface nodes along −n and on the Eulerian nodes along +n with the shape functions.
 //!
-//! Begränsningar: inga skal eller stela ytor som Lagrange-yta, ingen
-//! friktion mellan Euler-material och Lagrange-kropp, Lagrange-kroppen
-//! tränger inte undan materialet i element den täcker i början (de ska
-//! vara tomma).
+//! Limitations: no shells or rigid surfaces as the Lagrangian surface, no
+//! friction between Eulerian material and Lagrangian body, the Lagrangian body
+//! does not displace the material in elements it covers initially (they must
+//! be empty).
 
 use super::euler::Euler;
 use super::{Eval, Sink};
@@ -30,19 +30,19 @@ use crate::fem::assembly::Prepared;
 use crate::model::Result;
 use std::collections::HashMap;
 
-/// En slavpunkt: ytans noder med vikter och den utåtriktade normalen.
+/// A slave point: the surface nodes with weights and the outward normal.
 struct Slave {
     nodes: Vec<(usize, f64)>,
     normal: [f64; 3],
-    /// Punktens andel av nodernas massa.
+    /// The point's share of the nodal masses.
     share: f64,
 }
 
 pub struct Cel {
     slaves: Vec<Slave>,
-    /// Genomträngning per slavpunkt.
+    /// Penetration per slave point.
     pen: Vec<f64>,
-    /// Euler-elementens begränsningslådor (fast nät).
+    /// Bounding boxes of the Eulerian elements (fixed mesh).
     boxes: Vec<([f64; 3], [f64; 3])>,
 }
 
@@ -56,8 +56,8 @@ fn unit(a: [f64; 3]) -> Option<[f64; 3]> {
 }
 
 impl Cel {
-    /// Kontakten byggs när modellen har Euler-element, Lagrange-solider och
-    /// general contact med ALL EXTERIOR.
+    /// The contact is built when the model has Eulerian elements, Lagrangian solids and
+    /// general contact with ALL EXTERIOR.
     pub fn build(p: &Prepared, eu: &Euler) -> Result<Option<Cel>> {
         let m = p.model;
         let general = m.extra.iter().enumerate().any(|(i, k)| {
@@ -66,7 +66,7 @@ impl Cel {
         if !general {
             return Ok(None);
         }
-        // yttre ytor av Lagrange-solider
+        // outer surfaces of Lagrangian solids
         let mut faces: HashMap<Vec<usize>, (usize, usize, usize)> = HashMap::new();
         for (e, el) in m.elements.iter().enumerate() {
             if el.etype.family() != Family::Continuum3D {
@@ -96,7 +96,7 @@ impl Cel {
                     a[k] += 0.5 * c[k];
                 }
             }
-            // utåt: bort från elementets tyngdpunkt
+            // outward: away from the element centroid
             let xe: Vec<[f64; 3]> = el.nodes.iter().map(|&n| m.nodes[n]).collect();
             let ce = crate::elements::common::centroid(&xe);
             let cf = crate::elements::common::centroid(&x);
@@ -111,7 +111,7 @@ impl Cel {
             }
             let Some(nrm) = unit(a) else { continue };
             if fnodes.len() == 4 {
-                // kantmittpunkter och mittpunkt med bilinjära vikter
+                // edge midpoints and center point with bilinear weights
                 for (r, s) in [(0.0, -1.0), (1.0, 0.0), (0.0, 1.0), (-1.0, 0.0), (0.0, 0.0)] {
                     let nat = [(-1.0, -1.0), (1.0, -1.0), (1.0, 1.0), (-1.0, 1.0)];
                     let w: Vec<(usize, f64)> = (0..4).map(|k| (fnodes[k], 0.25 * (1.0 + nat[k].0 * r) * (1.0 + nat[k].1 * s))).filter(|x| x.1 > 0.0).collect();
@@ -131,7 +131,7 @@ impl Cel {
         if slaves.is_empty() {
             return Ok(None);
         }
-        // varje nods massa delas mellan dess slavpunkter
+        // each node's mass is divided among its slave points
         for s in slaves.iter_mut() {
             let c: f64 = s.nodes.iter().map(|&(n, w)| w / node_count[&n].max(1e-300)).sum::<f64>();
             s.share = c / s.nodes.iter().map(|x| x.1).sum::<f64>().max(1e-300);

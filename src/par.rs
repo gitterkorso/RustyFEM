@@ -1,17 +1,17 @@
-//! Enkla parallella hjälpfunktioner ovanpå std::thread::scope.
+//! Simple parallel helper functions on top of std::thread::scope.
 
 pub fn threads() -> usize {
     std::thread::available_parallelism().map(|n| n.get()).unwrap_or(1)
 }
 
-/// `f(0..n)` parallellt med bevarad ordning.
+/// `f(0..n)` in parallel with preserved order.
 pub fn map<T: Send, F: Fn(usize) -> T + Sync>(n: usize, threads: usize, f: F) -> Vec<T> {
     let t = threads.min(n / 16).max(1);
     if t == 1 {
         return (0..n).map(f).collect();
     }
     let chunk = n.div_ceil(t);
-    // användarrutinernas körkontext (steg, inkrement, fält) följer med till arbetstrådarna
+    // the user routines' run context (step, increment, fields) is carried over to the worker threads
     let run = crate::user::context::current();
     std::thread::scope(|s| {
         let f = &f;
@@ -28,7 +28,7 @@ pub fn map<T: Send, F: Fn(usize) -> T + Sync>(n: usize, threads: usize, f: F) ->
     })
 }
 
-/// Kör `f(rad, radbuffert)` för `nrows` rader i `buf` (radlängd `stride`).
+/// Runs `f(row, row buffer)` for `nrows` rows in `buf` (row length `stride`).
 pub fn rows_mut<C, F>(buf: &mut [f64], stride: usize, nrows: usize, threads: usize, cost: C, f: F)
 where
     C: Fn(usize) -> f64,
@@ -41,8 +41,8 @@ where
     });
 }
 
-/// Delar `nrows` rader i `buf` (radlängd `stride`) i sammanhängande block med
-/// ungefär lika stor kostnad och kör `f(första rad, block)` för varje block.
+/// Splits `nrows` rows in `buf` (row length `stride`) into contiguous blocks of
+/// roughly equal cost and runs `f(first row, block)` for each block.
 pub fn blocks_mut<C, F>(buf: &mut [f64], stride: usize, nrows: usize, threads: usize, cost: C, f: F)
 where
     C: Fn(usize) -> f64,

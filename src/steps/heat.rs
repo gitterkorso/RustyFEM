@@ -1,34 +1,34 @@
-//! *HEAT TRANSFER: stationär (STEADY STATE) och transient värmeledning med NT11.
+//! *HEAT TRANSFER: steady-state (STEADY STATE) and transient heat conduction with NT11.
 //!
-//! Värmebalansen för de fria temperaturerna T löses med Newton–Raphson
+//! The heat balance for the free temperatures T is solved with Newton–Raphson
 //! (`newton.rs`):
 //!
-//! R(T) = Q_ext − Q_ledning(T) − Q_film/strålning(T) − C(T)/Δt = 0
+//! R(T) = Q_ext − Q_conduction(T) − Q_film/radiation(T) − C(T)/Δt = 0
 //!
-//! - ledning, kapacitet och ytflöden räknas av elementen i `elements/heat.rs`;
-//! - transient: bakåt-Euler (implicit), kapacitetstermen ρ c(T) (T − Tₙ)/Δt
-//!   med c vid inkrementets slut;
-//! - stationär: ingen kapacitetsterm, stegtiden är bara en lastparameter.
+//! - conduction, capacity and surface fluxes are computed by the elements in `elements/heat.rs`;
+//! - transient: backward Euler (implicit), capacity term ρ c(T) (T − Tₙ)/Δt
+//!   with c at the end of the increment;
+//! - steady state: no capacity term, the step time is only a load parameter.
 //!
-//! Inkrementering: datarad `Δt0, tidsperiod, Δtmin, Δtmax` och
-//! parametern DELTMX=. Transient utan DELTMX ger fasta inkrement Δt0. Med
-//! DELTMX väljs inkrementet automatiskt så att största temperaturändringen per
-//! inkrement håller sig under DELTMX (se `run_deltmx`).
-//! Stationär analys använder Newton-drivarens automatiska inkrementering.
+//! Incrementation: data line `Δt0, time period, Δtmin, Δtmax` and
+//! the parameter DELTMX=. Transient without DELTMX gives fixed increments Δt0. With
+//! DELTMX the increment is chosen automatically so that the largest temperature change per
+//! increment stays below DELTMX (see `run_deltmx`).
+//! Steady-state analysis uses the Newton driver's automatic incrementation.
 //!
-//! Laster: *CFLUX (punktflöde på frihetsgrad 11), *DFLUX BF/Sn, *FILM Fn,
-//! *RADIATE Rn (kräver *PHYSICAL CONSTANTS) och *BOUNDARY på frihetsgrad 11.
-//! Starttemperaturer från *INITIAL CONDITIONS, TYPE=TEMPERATURE.
-//! Standardamplitud: RAMP för STEADY STATE, STEP för transient.
-//! AMPLITUDE= på *BOUNDARY, *CFLUX, *DFLUX, *FILM (T∞) och FILM AMPLITUDE= (h);
-//! transient använder flödena *CFLUX/*DFLUX amplitudens medelvärde av värdena
-//! vid inkrementets början och slut. *FILM med *FILM PROPERTY
-//! (h(T) vid ytans temperatur), *LATENT HEAT (`materials/heat.rs`), termisk
-//! kontakt *GAP CONDUCTANCE/*GAP RADIATION (`interactions/thermal_contact.rs`)
-//! och *CONTROLS, PARAMETERS=FIELD (R_n, C_n).
+//! Loads: *CFLUX (point flux on DOF 11), *DFLUX BF/Sn, *FILM Fn,
+//! *RADIATE Rn (requires *PHYSICAL CONSTANTS) and *BOUNDARY on DOF 11.
+//! Initial temperatures from *INITIAL CONDITIONS, TYPE=TEMPERATURE.
+//! Default amplitude: RAMP for STEADY STATE, STEP for transient.
+//! AMPLITUDE= on *BOUNDARY, *CFLUX, *DFLUX, *FILM (T∞) and FILM AMPLITUDE= (h);
+//! transient uses, for the *CFLUX/*DFLUX fluxes, the mean of the amplitude values
+//! at the start and end of the increment. *FILM with *FILM PROPERTY
+//! (h(T) at the surface temperature), *LATENT HEAT (`materials/heat.rs`), thermal
+//! contact *GAP CONDUCTANCE/*GAP RADIATION (`interactions/thermal_contact.rs`)
+//! and *CONTROLS, PARAMETERS=FIELD (R_n, C_n).
 //!
-//! Utdata per frame: NT11, RFL11 (reaktionsflöde) och HFL (värmeflöde −k∇T)
-//! i integrationspunkterna.
+//! Output per frame: NT11, RFL11 (reaction flux) and HFL (heat flux −k∇T)
+//! at the integration points.
 
 use super::api::{StepCtx, StepType};
 use super::newton::{self, Controls, NonlinearSystem, Residual};
@@ -49,18 +49,18 @@ pub struct HeatTransfer;
 
 pub static STEP_TYPES: &[&dyn StepType] = &[&HeatTransfer];
 
-/// Slot för temperaturen NT11.
+/// Slot for the temperature NT11.
 pub const TS: usize = 7;
 
-/// Nyckel i `SolutionState::vectors` för begynnelsetemperaturerna (slot 7).
+/// Key in `SolutionState::vectors` for the initial temperatures (slot 7).
 pub const INIT_KEY: &str = "NT11 INITIAL";
 
-/// Film och strålning på första ordningens ytor integreras diagonalt (varje
-/// hörn får vikten av närmaste gausspunkt), som volymflöde och kapacitet.
+/// Film and radiation on first-order surfaces are integrated diagonally (each
+/// corner gets the weight of the nearest Gauss point), like body flux and capacity.
 const FILM_LUMPED: bool = true;
 
-/// Noder för en referens i modelldata som lagrats rått: nodnummer (i
-/// standardinstansen), "INSTANS.nummer" eller nodset.
+/// Nodes for a reference stored raw in the model data: node number (in
+/// the default instance), "INSTANCE.number" or node set.
 pub fn resolve_nodes(model: &FeModel, token: &str) -> Option<Vec<usize>> {
     let tok = token.trim();
     let up = tok.to_uppercase();
@@ -82,7 +82,7 @@ pub fn resolve_nodes(model: &FeModel, token: &str) -> Option<Vec<usize>> {
     model.nsets.get(&up).cloned()
 }
 
-/// Begynnelsetemperaturer från *INITIAL CONDITIONS, TYPE=TEMPERATURE (nod → T).
+/// Initial temperatures from *INITIAL CONDITIONS, TYPE=TEMPERATURE (node → T).
 pub fn initial_temperatures(model: &FeModel) -> Result<BTreeMap<usize, f64>> {
     let mut out = BTreeMap::new();
     for kw in model.extra.iter().filter(|k| k.name == "INITIAL CONDITIONS") {
@@ -91,11 +91,11 @@ pub fn initial_temperatures(model: &FeModel) -> Result<BTreeMap<usize, f64>> {
         }
         for p in ["FILE", "USER", "INPUT", "INTERPOLATE"] {
             if kw.has(p) {
-                return kw.err(format!("{p}= stöds inte ännu för TYPE=TEMPERATURE"));
+                return kw.err(format!("{p}= is not supported yet for TYPE=TEMPERATURE"));
             }
         }
         if kw.has(crate::materials::thermal::RESOLVED) {
-            // upplöst av `inp/keywords/temperature.rs`: [nodindex, temperatur]
+            // resolved by `inp/keywords/temperature.rs`: [node index, temperature]
             for d in &kw.data {
                 let v = kw.floats(d)?;
                 if let (Some(&n), Some(&t)) = (v.first(), v.get(1)) {
@@ -107,12 +107,12 @@ pub fn initial_temperatures(model: &FeModel) -> Result<BTreeMap<usize, f64>> {
         for d in &kw.data {
             let f: Vec<&str> = d.fields.iter().map(|s| s.as_str()).filter(|s| !s.trim().is_empty()).collect();
             if f.len() < 2 {
-                return kw.err_at(d.line, "skriv 'nod/nset, temperatur'");
+                return kw.err_at(d.line, "write 'node/nset, temperature'");
             }
             let Some(nodes) = resolve_nodes(model, f[0]) else {
-                return kw.err_at(d.line, format!("noden/nodsetet '{}' finns inte", f[0]));
+                return kw.err_at(d.line, format!("node/node set '{}' does not exist", f[0]));
             };
-            let t = crate::fem::model::parse_f64(f[1]).ok_or_else(|| FemError(format!("{} rad {}: '{}' är inget tal", kw.file, d.line, f[1])))?;
+            let t = crate::fem::model::parse_f64(f[1]).ok_or_else(|| FemError(format!("{} line {}: '{}' is not a number", kw.file, d.line, f[1])))?;
             for n in nodes {
                 out.insert(n, t);
             }
@@ -121,7 +121,7 @@ pub fn initial_temperatures(model: &FeModel) -> Result<BTreeMap<usize, f64>> {
     Ok(out)
 }
 
-/// Sätter begynnelsetemperaturerna i tillståndet första gången de behövs.
+/// Sets the initial temperatures in the state the first time they are needed.
 pub fn ensure_initial(model: &FeModel, state: &mut SolutionState) -> Result<()> {
     if state.vectors.contains_key(INIT_KEY) {
         return Ok(());
@@ -138,14 +138,14 @@ pub fn ensure_initial(model: &FeModel, state: &mut SolutionState) -> Result<()> 
     Ok(())
 }
 
-/// (absoluta nollpunkten, Stefan–Boltzmanns konstant) från *PHYSICAL CONSTANTS.
+/// (absolute zero, Stefan–Boltzmann constant) from *PHYSICAL CONSTANTS.
 fn physical_constants(model: &FeModel) -> Result<(Option<f64>, Option<f64>)> {
     let mut z = None;
     let mut s = None;
     for kw in model.extra.iter().filter(|k| k.name == "PHYSICAL CONSTANTS") {
         let num = |key: &str| -> Result<Option<f64>> {
             match kw.param(key) {
-                Some(v) => crate::fem::model::parse_f64(v).map(Some).ok_or_else(|| FemError(format!("{}: {key}={v} är inget tal", kw.location()))),
+                Some(v) => crate::fem::model::parse_f64(v).map(Some).ok_or_else(|| FemError(format!("{}: {key}={v} is not a number", kw.location()))),
                 None => Ok(None),
             }
         };
@@ -159,18 +159,18 @@ fn physical_constants(model: &FeModel) -> Result<(Option<f64>, Option<f64>)> {
     Ok((z, s))
 }
 
-/// Ett värmeledningselement med sina förberäknade integrationspunkter.
+/// A heat conduction element with its precomputed integration points.
 struct HElem {
     el: &'static HeatElem,
     props: usize,
     thickness: f64,
     ips: Vec<Ip>,
-    /// Punkter för kapacitet och volymflöde (diagonala för första ordningen).
+    /// Points for capacity and body flux (diagonal for first order).
     cips: Vec<Ip>,
     bips: Vec<Ip>,
 }
 
-/// Värmebalansen för ett steg som `NonlinearSystem`.
+/// The heat balance for a step as a `NonlinearSystem`.
 pub struct HeatSystem<'p, 'm> {
     pub p: &'p Prepared<'m>,
     pub loads: StepLoads,
@@ -190,24 +190,24 @@ pub struct HeatSystem<'p, 'm> {
     linear: bool,
     abs_zero: f64,
     sigma: f64,
-    /// Amplituder (*AMPLITUDE) när någon last eller något randvillkor har AMPLITUDE=.
+    /// Amplitudes (*AMPLITUDE) when any load or boundary condition has AMPLITUDE=.
     amps: Option<BTreeMap<String, super::dynamic::amplitude::Amplitude>>,
-    /// Filmkoefficienter h(T) från *FILM PROPERTY.
+    /// Film coefficients h(T) from *FILM PROPERTY.
     film_props: BTreeMap<String, crate::materials::heat::Table>,
-    /// Termisk kontakt (*GAP CONDUCTANCE, *GAP RADIATION).
+    /// Thermal contact (*GAP CONDUCTANCE, *GAP RADIATION).
     pub gaps: Vec<crate::interactions::thermal_contact::ThermalPair>,
-    /// Spaltavståndet följer förskjutningarna i `u` (kopplad analys).
+    /// The gap distance follows the displacements in `u` (coupled analysis).
     pub gap_disp: bool,
-    /// Extra tillfört värmeflöde per nod (t.ex. Joulevärme från
-    /// `steps/thermal_electric.rs`); tom = inget.
+    /// Extra supplied heat flux per node (e.g. Joule heat from
+    /// `steps/thermal_electric.rs`); empty = none.
     pub source: Vec<f64>,
-    /// Kavitetsstrålning (`steps/heat_cavity.rs`); None = ingen.
+    /// Cavity radiation (`steps/heat_cavity.rs`); None = none.
     pub cavities: Option<super::heat_cavity::Radiation>,
-    /// Påtvingad konvektion (`steps/heat_convection.rs`); None = ingen.
+    /// Forced convection (`steps/heat_convection.rs`); None = none.
     pub convection: Option<super::heat_convection::Convection>,
 }
 
-/// Lägger till elementmatrisen (symmetriserad) i systemmatrisen.
+/// Adds the element matrix (symmetrized) to the system matrix.
 fn add_matrix(k: &mut dyn SystemMatrix, map: &[usize], ke: &[f64]) {
     let nd = map.len();
     for a in 0..nd {
@@ -232,8 +232,8 @@ impl<'p, 'm> HeatSystem<'p, 'm> {
         Self::new_with(p, loads, state, transient, solver, period, &HeatProps::from_def)
     }
 
-    /// Som `new` men med materialegenskaperna från `props_of` (t.ex.
-    /// masstransport, `steps/mass_diffusion.rs`).
+    /// Like `new` but with the material properties from `props_of` (e.g.
+    /// mass transport, `steps/mass_diffusion.rs`).
     #[allow(clippy::too_many_arguments)]
     pub fn new_with(
         p: &'p Prepared<'m>,
@@ -250,38 +250,38 @@ impl<'p, 'm> HeatSystem<'p, 'm> {
         let mut elems = Vec::with_capacity(model.elements.len());
         let mut linear = true;
         for (e, el) in model.elements.iter().enumerate() {
-            // påtvingad konvektion (DCC-element): `steps/heat_convection.rs`
+            // forced convection (DCC elements): `steps/heat_convection.rs`
             if crate::elements::heat_convection::lookup(el.etype.name()).is_some() {
                 elems.push(None);
                 continue;
             }
             let Some(he) = hel::lookup(el.etype.name()).or_else(|| crate::elements::thermal_electric::lookup(el.etype.name())) else {
                 if el.etype.family() == Family::Heat {
-                    return fail(format!("{}: värmeelementet stöds inte av *HEAT TRANSFER", model.elem_name(e)));
+                    return fail(format!("{}: the heat element is not supported by *HEAT TRANSFER", model.elem_name(e)));
                 }
                 return fail(format!(
-                    "{}: *HEAT TRANSFER kräver värmeledningselement (DC2D4, DC3D8, ...); mekaniska element hör till andra steg",
+                    "{}: *HEAT TRANSFER requires heat conduction elements (DC2D4, DC3D8, ...); mechanical elements belong to other steps",
                     model.elem_name(e)
                 ));
             };
             let Some(si) = el.section else {
-                return fail(format!("{}: saknar *SOLID SECTION", model.elem_name(e)));
+                return fail(format!("{}: missing *SOLID SECTION", model.elem_name(e)));
             };
             let sec = &model.sections[si];
             let Some(mi) = sec.material_index else {
-                return fail(format!("{}: tvärsnittet saknar material", model.elem_name(e)));
+                return fail(format!("{}: the section has no material", model.elem_name(e)));
             };
             let pi = match pidx.get(&mi) {
                 Some(&i) => i,
                 None => {
                     let hp = props_of(&model.materials[mi])?;
-                    // UMATHT och HETVAL (user/loads.rs)
+                    // UMATHT and HETVAL (user/loads.rs)
                     let (umatht, hetval) = crate::user::loads::heat_user(&model.materials[mi]);
                     if umatht || hetval {
                         linear = false;
                     }
                     if hp.cond.is_none() && !umatht {
-                        return fail(format!("material {}: *CONDUCTIVITY saknas", hp.name));
+                        return fail(format!("material {}: *CONDUCTIVITY is missing", hp.name));
                     }
                     if hp.cond.as_ref().is_some_and(|c| c.1.varies())
                         || (transient && hp.specific_heat.as_ref().is_some_and(|c| c.varies()))
@@ -308,10 +308,10 @@ impl<'p, 'm> HeatSystem<'p, 'm> {
         let (z, s) = physical_constants(model)?;
         let needs_rad = loads.dload.iter().any(|(l, _)| l.kind.starts_with("RAD:"));
         if needs_rad && (z.is_none() || s.is_none()) {
-            return fail("*RADIATE kräver *PHYSICAL CONSTANTS, ABSOLUTE ZERO=..., STEFAN BOLTZMANN=...");
+            return fail("*RADIATE requires *PHYSICAL CONSTANTS, ABSOLUTE ZERO=..., STEFAN BOLTZMANN=...");
         }
-        // kopplade element: förskjutningarna hör till den mekaniska delen och
-        // låses här (rena DC-modeller har bara temperaturer)
+        // coupled elements: the displacements belong to the mechanical part and
+        // are locked here (pure DC models only have temperatures)
         let mut constrained = loads.constrained();
         for (n, &a) in p.active.iter().enumerate() {
             for s in (0..SLOTS).filter(|&s| s != TS && a & (1 << s) != 0) {
@@ -371,7 +371,7 @@ impl<'p, 'm> HeatSystem<'p, 'm> {
         })
     }
 
-    /// Föreskrivna temperaturer vid stegtidsandelen `t` (med amplituder).
+    /// Prescribed temperatures at the step time fraction `t` (with amplitudes).
     pub fn bc_now(&self, t: f64) -> Vec<(usize, usize, f64)> {
         match self.eval_loads() {
             Some(e) => e.bc_at(t * self.period),
@@ -379,10 +379,10 @@ impl<'p, 'm> HeatSystem<'p, 'm> {
         }
     }
 
-    /// Amplitudens faktor för ett flöde i inkrementet som slutar vid `t`: i
-    /// transient analys medelvärdet av amplitudens värden vid inkrementets
-    /// början och slut (trapetsregeln, även när en
-    /// tabellpunkt ligger inne i inkrementet), annars värdet vid `t`.
+    /// Amplitude factor for a flux in the increment ending at `t`: in
+    /// transient analysis the mean of the amplitude values at the start and
+    /// end of the increment (trapezoidal rule, also when a
+    /// table point lies inside the increment), otherwise the value at `t`.
     fn flux_amp(&self, name: &str, b: f64, t: f64) -> Option<f64> {
         let amp = self.amps.as_ref()?.get(name)?;
         let s1 = t * self.period;
@@ -432,7 +432,7 @@ impl<'p, 'm> HeatSystem<'p, 'm> {
         self.p.model.elements[e].nodes.iter().map(|&n| u[n][TS]).collect()
     }
 
-    /// Reaktionsflöden (F_int − F_ext i låsta frihetsgrader).
+    /// Reaction fluxes (F_int − F_ext in locked DOFs).
     pub fn reactions(&self) -> Vec<NodeVec> {
         let mut r = vec![[0.0; SLOTS]; self.u.len()];
         for (n, rn) in r.iter_mut().enumerate() {
@@ -445,12 +445,12 @@ impl<'p, 'm> HeatSystem<'p, 'm> {
         r
     }
 
-    /// Utdata HFL per element.
+    /// Output HFL per element.
     pub fn element_output(&self, u: &[NodeVec]) -> Result<Vec<Vec<IpField>>> {
         let mut out = Vec::with_capacity(self.elems.len());
         for (e, he) in self.elems.iter().enumerate() {
             match he {
-                // UMATHT: HFL skrivs inte (flödet finns bara i rutinen)
+                // UMATHT: HFL is not written (the flux only exists in the routine)
                 Some(h) if self.p.model.materials.iter().find(|m| m.name == self.props[h.props].name).is_some_and(|d| crate::user::loads::heat_user(d).0) => out.push(Vec::new()),
                 Some(h) => {
                     let t = self.temps(e, u);
@@ -482,7 +482,7 @@ impl<'p, 'm> HeatSystem<'p, 'm> {
         })
     }
 
-    /// Värmeflödet över termisk kontakt per slavnod (nodfältet HFL, −q).
+    /// Heat flux across thermal contact per slave node (nodal field HFL, −q).
     fn contact_output(&self) -> Vec<(String, Vec<String>, Vec<Vec<f64>>)> {
         if self.gaps.is_empty() {
             return Vec::new();
@@ -496,9 +496,9 @@ impl<'p, 'm> HeatSystem<'p, 'm> {
         vec![("HFL".into(), vec!["HFL".into()], v)]
     }
 
-    /// Ytflöden, film och strålning vid stegtiden `t1`. Lägger till yttre och
-    /// inre flöden och returnerar elementmatriserna (ekvationsnummer, matris)
-    /// för film och strålning om `tangent`.
+    /// Surface fluxes, film and radiation at step time `t1`. Adds external and
+    /// internal fluxes and returns the element matrices (equation numbers, matrix)
+    /// for film and radiation if `tangent`.
     fn surface_terms(&self, fint: &mut [NodeVec], fext: &mut [NodeVec], tangent: bool) -> Result<Vec<(Vec<usize>, Vec<f64>)>> {
         let model = self.p.model;
         let mut mats = Vec::new();
@@ -537,7 +537,7 @@ impl<'p, 'm> HeatSystem<'p, 'm> {
                     for (g, fp) in h.el.face_points(&x, f, h.thickness, lumped).map_err(wrap)?.into_iter().enumerate() {
                         let tp: f64 = fp.n.iter().zip(&t).map(|(a, b)| a * b).sum();
                         let (q, dq) = if kind == "FILMU" {
-                            // FILM (user/loads.rs): h och T∞ i ytpunkten
+                            // FILM (user/loads.rs): h and T∞ at the surface point
                             let mut xc = [0.0; 3];
                             for (ni, xi) in fp.n.iter().zip(&x) {
                                 for c in 0..3 {
@@ -548,9 +548,9 @@ impl<'p, 'm> HeatSystem<'p, 'm> {
                         } else if kind == "FILM" {
                             (l.magnitude * tp, l.magnitude)
                         } else if kind == "FILMP" {
-                            // h(T) ur *FILM PROPERTY vid ytans temperatur
+                            // h(T) from *FILM PROPERTY at the surface temperature
                             let Some(tab) = self.film_props.get(prop) else {
-                                return fail(format!("filmegenskapen {prop} finns inte (*FILM PROPERTY, NAME={prop})"));
+                                return fail(format!("film property {prop} does not exist (*FILM PROPERTY, NAME={prop})"));
                             };
                             let sink = l.extra.first().copied().unwrap_or(0.0);
                             let (hv, dh) = tab.eval(tp);
@@ -579,7 +579,7 @@ impl<'p, 'm> HeatSystem<'p, 'm> {
                         mats.push((nodes.iter().map(|&n| self.dm.eq[n][TS]).collect(), ke));
                     }
                 }
-                _ => return fail(format!("{}: lasttypen {} stöds inte i *HEAT TRANSFER", model.elem_name(e), l.kind)),
+                _ => return fail(format!("{}: load type {} is not supported in *HEAT TRANSFER", model.elem_name(e), l.kind)),
             }
         }
         Ok(mats)
@@ -619,7 +619,7 @@ impl NonlinearSystem for HeatSystem<'_, '_> {
         let nn = model.nodes.len();
         let dt = (self.t1 - self.t0) * self.period;
         if self.transient && dt <= 0.0 {
-            return fail("intern: transient värmeledning med tidsinkrement 0");
+            return fail("internal: transient heat conduction with time increment 0");
         }
         let mut fint = vec![[0.0; SLOTS]; nn];
         let mut fext = vec![[0.0; SLOTS]; nn];
@@ -632,7 +632,7 @@ impl NonlinearSystem for HeatSystem<'_, '_> {
             let t = self.temps(e, &self.u);
             let pr = &self.props[h.props];
             let wrap = |err: FemError| FemError(format!("{}: {err}", model.elem_name(e)));
-            // användarrutiner: UMATHT ersätter ledning och kapacitet, HETVAL ger värmegenerering
+            // user routines: UMATHT replaces conduction and capacity, HETVAL gives heat generation
             let def = model.materials.iter().find(|m| m.name == pr.name);
             let (umatht, hetval) = def.map_or((false, false), crate::user::loads::heat_user);
             let time_start = self.time0 + self.t0 * self.period;
@@ -686,7 +686,7 @@ impl NonlinearSystem for HeatSystem<'_, '_> {
         }
         if let Some(c) = &self.cavities {
             c.contribute(&self.u, &self.dm, &mut fint, if tangent { Some(&mut *self.mat) } else { None });
-            // MXDEM: för stor emissivitetsändring i inkrementet ger ett kortare inkrement
+            // MXDEM: too large an emissivity change in the increment gives a shorter increment
             c.check_mxdem(&self.u);
         }
         if let Some(cv) = &self.convection {
@@ -746,28 +746,28 @@ impl NonlinearSystem for HeatSystem<'_, '_> {
     }
 }
 
-/// Filmkoefficienter från *FILM PROPERTY, NAME= (h, temperatur per rad).
+/// Film coefficients from *FILM PROPERTY, NAME= (h, temperature per line).
 pub fn film_properties(model: &FeModel) -> Result<BTreeMap<String, crate::materials::heat::Table>> {
     let mut m = BTreeMap::new();
     for kw in model.extra.iter().filter(|k| k.name == "FILM PROPERTY") {
-        let Some(name) = kw.param_upper("NAME") else { return kw.err("NAME= saknas") };
+        let Some(name) = kw.param_upper("NAME") else { return kw.err("NAME= is missing") };
         m.insert(name, crate::materials::heat::read_table(kw, 1)?);
     }
     Ok(m)
 }
 
-/// Inställningar från *HEAT TRANSFER-raden.
+/// Settings from the *HEAT TRANSFER line.
 pub struct HeatControls {
     pub ctrl: Controls,
     pub steady: bool,
-    /// Största tillåtna temperaturändring per inkrement (DELTMX), 0 = fasta inkrement.
+    /// Largest allowed temperature change per increment (DELTMX), 0 = fixed increments.
     pub deltmx: f64,
 }
 
 pub fn heat_controls(step: &StepDef) -> Result<HeatControls> {
     let kw = step.procedure.as_ref();
     let mut ctrl = Controls::from_procedure(kw, step.max_increments)?;
-    // *CONTROLS, PARAMETERS=FIELD (R_n, C_n) som i NLGEOM-stegen
+    // *CONTROLS, PARAMETERS=FIELD (R_n, C_n) as in the NLGEOM steps
     super::nlgeom::apply_controls(&mut ctrl, &step.extra)?;
     let steady = kw.is_some_and(|k| k.has("STEADY STATE"));
     let v = match kw {
@@ -775,17 +775,17 @@ pub fn heat_controls(step: &StepDef) -> Result<HeatControls> {
         None => Vec::new(),
     };
     let deltmx = match kw.and_then(|k| k.param("DELTMX")) {
-        Some(d) => crate::fem::model::parse_f64(d).ok_or_else(|| FemError(format!("DELTMX={d} är inget tal")))?.max(0.0),
+        Some(d) => crate::fem::model::parse_f64(d).ok_or_else(|| FemError(format!("DELTMX={d} is not a number")))?.max(0.0),
         None => 0.0,
     };
     if let Some(k) = kw {
         if k.has("END") {
-            return k.err("END=SS stöds inte ännu");
+            return k.err("END=SS is not supported yet");
         }
     }
     if !steady {
         if v.first().is_none_or(|&x| x <= 0.0) {
-            // transient analys kräver ett initialt inkrement; utan det ett enda inkrement
+            // transient analysis requires an initial increment; without it a single increment
             ctrl.initial = 1.0;
         }
         if deltmx == 0.0 {
@@ -795,7 +795,7 @@ pub fn heat_controls(step: &StepDef) -> Result<HeatControls> {
     Ok(HeatControls { ctrl, steady, deltmx })
 }
 
-/// Stegets laster med standardamplituden för värmeledning.
+/// The step's loads with the default amplitude for heat conduction.
 pub fn heat_loads(step: &StepDef, loads: &StepLoads, steady: bool) -> StepLoads {
     let mut l = loads.clone();
     let explicit = step.header.param_upper("AMPLITUDE");
@@ -824,14 +824,14 @@ impl StepType for HeatTransfer {
         let prep = ctx.prep;
         let model = prep.model;
         if ctx.step.perturbation {
-            return fail("*HEAT TRANSFER kan inte vara ett perturbationssteg");
+            return fail("*HEAT TRANSFER cannot be a perturbation step");
         }
         let hc = heat_controls(ctx.step)?;
         let had_init = ctx.state.vectors.contains_key(INIT_KEY);
         ensure_initial(model, ctx.state)?;
         let mut loads = heat_loads(ctx.step, ctx.loads, hc.steady);
         if !had_init {
-            // randvillkor som rampas i det första steget utgår från begynnelsetemperaturen
+            // boundary conditions ramped in the first step start from the initial temperature
             for ((n, s), v) in loads.bc.iter_mut() {
                 if *s == TS && !ctx.state.bcs.contains_key(&(*n, *s)) {
                     v.0 = ctx.state.u[*n][TS];
@@ -839,15 +839,15 @@ impl StepType for HeatTransfer {
             }
         }
         let period = hc.ctrl.period;
-        // kavitetsstrålning: osymmetrisk Jacobian, lösaren unsymmetric
+        // cavity radiation: unsymmetric Jacobian, unsymmetric solver
         let cavity = super::heat_cavity::for_step(model, ctx.index)?;
-        // påtvingad konvektion (DCC-element): osymmetriska elementmatriser
+        // forced convection (DCC elements): unsymmetric element matrices
         let convection = super::heat_convection::for_step(prep, ctx.index, &loads, !hc.steady)?;
         let solver = if (cavity.is_some() || convection.is_some()) && ctx.solver.name() != "unsymmetric" { crate::solver::select(Some("unsymmetric"))? } else { ctx.solver };
         let mut sys = HeatSystem::new(prep, loads, ctx.state, !hc.steady, solver, period)?;
         sys.convection = convection;
         sys.cavities = cavity.map(|mut c| {
-            // MXDEM gäller automatisk inkrementering (inte fasta inkrement eller DELTMX)
+            // MXDEM applies to automatic incrementation (not fixed increments or DELTMX)
             c.mxdem = if hc.ctrl.fixed || hc.deltmx > 0.0 { None } else { super::heat_cavity::mxdem(ctx.step) };
             c
         });
@@ -857,7 +857,7 @@ impl StepType for HeatTransfer {
             sys.begin_increment(0.0, 0.0)?;
             sys.u.clone_from(&sys.u_committed);
             if !hc.steady {
-                // frame 0: inget kapacitetsbidrag (Δt = 0)
+                // frame 0: no capacity contribution (Δt = 0)
                 sys.transient = false;
                 sys.evaluate(false)?;
                 sys.transient = true;
@@ -865,9 +865,9 @@ impl StepType for HeatTransfer {
                 sys.evaluate(false)?;
             }
             let mut f0 = sys.frame(0.0, "Increment 0: Step Time = 0.0".into())?;
-            // frame 0 i det första steget är begynnelsetillståndet: inga
-            // reaktionsflöden; i senare steg visas
-            // reaktionsflödena från föregående stegs slut
+            // frame 0 in the first step is the initial state: no
+            // reaction fluxes; in later steps the
+            // reaction fluxes from the end of the previous step are shown
             if !had_init {
                 for r in f0.rf.iter_mut() {
                     *r = [0.0; SLOTS];
@@ -881,7 +881,7 @@ impl StepType for HeatTransfer {
             run_deltmx(&mut sys, &hc, &mut |s: &mut HeatSystem, t| {
                 inc += 1;
                 if verbose {
-                    eprintln!("  inkrement {inc}: stegtid {:.6}", t * period);
+                    eprintln!("  increment {inc}: step time {:.6}", t * period);
                 }
                 if all || t >= 1.0 - 1e-12 {
                     frames.push(s.frame(t * period, format!("Increment {inc}: Step Time = {:.4}", t * period))?);
@@ -892,7 +892,7 @@ impl StepType for HeatTransfer {
             newton::run(&mut sys, &hc.ctrl, &mut |s: &mut HeatSystem, t| {
                 inc += 1;
                 if verbose {
-                    eprintln!("  inkrement {inc}: stegtid {:.6}", t * period);
+                    eprintln!("  increment {inc}: step time {:.6}", t * period);
                 }
                 if all || t >= 1.0 - 1e-12 {
                     frames.push(s.frame(t * period, format!("Increment {inc}: Step Time = {:.4}", t * period))?);
@@ -910,37 +910,37 @@ impl StepType for HeatTransfer {
     }
 }
 
-/// Transient med automatisk inkrementering efter DELTMX (största
-/// temperaturändring i en fri nod per inkrement). Regeln:
-/// - faktorn f = 0,8·DELTMX/ΔT_max;
-/// - ΔT_max > DELTMX: inkrementet görs om med Δt·f;
-/// - linjärt: nästa Δt ökas med min(f, 2) bara om f ≥ 1,9 (annars behålls Δt);
-/// - olinjärt: ökning tillåts först efter två godkända inkrement i följd
-///   (stegets första inkrement och inkrementet direkt efter en DELTMX-begränsad
-///   ändring eller en halvering räknas inte). Ökningen är min(f, g) med g = 2 om
-///   inkrementet konvergerade redan efter första lösningen (residualen under
-///   R_tol·q̃) och annars g = 1,5. Begränsades ökningen av DELTMX (f < g) börjar
-///   räkningen om;
-/// - högst Δt_max; sista inkrementet kortas till stegets slut.
+/// Transient with automatic incrementation by DELTMX (largest
+/// temperature change in a free node per increment). The rule:
+/// - factor f = 0.8·DELTMX/ΔT_max;
+/// - ΔT_max > DELTMX: the increment is redone with Δt·f;
+/// - linear: the next Δt is increased by min(f, 2) only if f ≥ 1.9 (otherwise Δt is kept);
+/// - nonlinear: an increase is allowed only after two consecutive accepted increments
+///   (the step's first increment and the increment directly after a DELTMX-limited
+///   change or a halving do not count). The increase is min(f, g) with g = 2 if
+///   the increment already converged after the first solve (residual below
+///   R_tol·q̃) and otherwise g = 1.5. If the increase was limited by DELTMX (f < g) the
+///   count restarts;
+/// - at most Δt_max; the last increment is shortened to the end of the step.
 pub fn run_deltmx(sys: &mut HeatSystem, hc: &HeatControls, on_increment: &mut dyn FnMut(&mut HeatSystem, f64) -> Result<()>) -> Result<newton::Report> {
     let ctrl = &hc.ctrl;
     let mut rep = newton::Report::default();
     let mut t = 0.0f64;
     let mut dt = ctrl.initial.min(1.0);
-    // godkända inkrement i följd som får räknas för en ökning (−1 = nästa räknas inte)
+    // consecutive accepted increments that may count towards an increase (−1 = the next does not count)
     let mut count: i64 = -1;
-    // summa av typiska flöden i godkända inkrement (för q̃ som i newton.rs)
+    // sum of typical fluxes in accepted increments (for q̃ as in newton.rs)
     let mut flux_sum = 0.0f64;
     let mut n_flux = 0usize;
     while t < 1.0 - 1e-12 {
         if rep.increments >= ctrl.max_increments {
-            return fail(format!("steget nådde största antal inkrement ({}) – öka INC= på *STEP", ctrl.max_increments));
+            return fail(format!("the step reached the maximum number of increments ({}) – increase INC= on *STEP", ctrl.max_increments));
         }
         dt = dt.min(1.0 - t);
         let mut tries = 0;
         let (dtmax_change, first) = loop {
             let sub = Controls { initial: 1.0, fixed: true, ..ctrl.clone() };
-            // ett inkrement från t till t+dt med Newton (fast inkrement)
+            // one increment from t to t+dt with Newton (fixed increment)
             let mut one = OneIncrement { sys, t0: t, t1: t + dt, evals: 0, first: None };
             let r = newton::run(&mut one, &sub, &mut |_, _| Ok(()));
             let first = one.first;
@@ -957,7 +957,7 @@ pub fn run_deltmx(sys: &mut HeatSystem, hc: &HeatControls, on_increment: &mut dy
                         tries += 1;
                         if tries > ctrl.max_cutbacks || dt * 0.8 * hc.deltmx / dmax < ctrl.min {
                             return fail(format!(
-                                "DELTMX={} kan inte uppfyllas vid stegtid {:.4} utan att inkrementet blir mindre än minimum",
+                                "DELTMX={} cannot be satisfied at step time {:.4} without the increment becoming smaller than the minimum",
                                 hc.deltmx,
                                 t * ctrl.period
                             ));
@@ -990,7 +990,7 @@ pub fn run_deltmx(sys: &mut HeatSystem, hc: &HeatControls, on_increment: &mut dy
                 dt *= f.min(2.0);
             }
         } else {
-            // konvergens efter första lösningen: residualen efter den under R_tol·q̃
+            // convergence after the first solve: the residual after it is below R_tol·q̃
             let one_iter = first.is_some_and(|(r, q)| r <= ctrl.r_tol * (flux_sum + q) / (n_flux + 1) as f64);
             if let Some((_, q)) = first {
                 flux_sum += q;
@@ -1009,8 +1009,8 @@ pub fn run_deltmx(sys: &mut HeatSystem, hc: &HeatControls, on_increment: &mut dy
     Ok(rep)
 }
 
-/// Ett inkrement med fast Δt för `run_deltmx`. Sparar största residual och
-/// typiskt flöde efter den första lösningen (andra residualberäkningen).
+/// An increment with fixed Δt for `run_deltmx`. Stores the largest residual and
+/// typical flux after the first solve (second residual evaluation).
 struct OneIncrement<'a, 'p, 'm> {
     sys: &'a mut HeatSystem<'p, 'm>,
     t0: f64,

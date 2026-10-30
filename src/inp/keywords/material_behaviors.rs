@@ -1,9 +1,9 @@
-//! Materialbeteenden för olinjära och anisotropa material samt *ORIENTATION.
+//! Material behaviors for nonlinear and anisotropic materials plus *ORIENTATION.
 //!
-//! Beteendena sparas i materialet och tolkas av materialfabrikerna i
+//! The behaviors are stored in the material and parsed by the material factories in
 //! `materials/plasticity.rs`, `materials/hyperelastic.rs`,
-//! `materials/thermal.rs` och `materials/plasticity_dp.rs`.
-//! *ORIENTATION sparas i modellen och kopplas till element via tvärsnittets
+//! `materials/thermal.rs` and `materials/plasticity_dp.rs`.
+//! *ORIENTATION is stored in the model and assigned to elements via the section's
 //! ORIENTATION= (`materials/anisotropic.rs`).
 
 use crate::inp::keywords::material::behavior;

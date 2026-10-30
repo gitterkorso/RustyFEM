@@ -1,4 +1,4 @@
-// Ramen runt modellfönstret: toppraden, kommandopaletten och startvyn.
+// The frame around the viewport: the top bar, the command palette and the start view.
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { blankModel, exportScript, newModel, openDialog, openPath, redo, save, solve, undo, cancel } from "../actions";
@@ -19,32 +19,32 @@ export function TopBar() {
   return (
     <header className="topbar">
       <div className="tb-left">
-        <IconButton icon="sidebar" title="Modellträd" active={left} onClick={() => set((s) => ({ left: !s.left }))} />
+        <IconButton icon="sidebar" title="Model tree" active={left} onClick={() => set((s) => ({ left: !s.left }))} />
         <span className="brand" aria-label="RustyFEM">
           <img className="brand-icon" src="/brand/rustyfem-icon.png" alt="" width="28" height="28" draggable={false} />
           <b><span className="brand-rust">rusty</span>FEM</b>
         </span>
         <span className="sep" />
-        <IconButton icon="new" title="Ny modell (tom 2D)" kbd="Ctrl+N" onClick={() => newModel(blankModel[2])} />
-        <IconButton icon="open" title="Öppna" kbd="Ctrl+O" onClick={openDialog} />
-        <IconButton icon="save" title="Spara projekt" kbd="Ctrl+S" onClick={() => save()} disabled={!session} />
+        <IconButton icon="new" title="New model (empty 2D)" kbd="Ctrl+N" onClick={() => newModel(blankModel[2])} />
+        <IconButton icon="open" title="Open" kbd="Ctrl+O" onClick={openDialog} />
+        <IconButton icon="save" title="Save project" kbd="Ctrl+S" onClick={() => save()} disabled={!session} />
         <span className="sep" />
-        <IconButton icon="undo" title={session?.undo ? `Ångra ${session.undo}` : "Ångra"} kbd="Ctrl+Z" onClick={undo} disabled={!session?.undo} />
-        <IconButton icon="redo" title={session?.redo ? `Gör om ${session.redo}` : "Gör om"} kbd="Ctrl+Y" onClick={redo} disabled={!session?.redo} />
+        <IconButton icon="undo" title={session?.undo ? `Undo ${session.undo}` : "Undo"} kbd="Ctrl+Z" onClick={undo} disabled={!session?.undo} />
+        <IconButton icon="redo" title={session?.redo ? `Redo ${session.redo}` : "Redo"} kbd="Ctrl+Y" onClick={redo} disabled={!session?.redo} />
       </div>
       <div className="tb-center">
         {session && (
           <>
             <span className="docname" title={session.path ?? ""}>
               {session.name}
-              {session.dirty && <span className="dot" title="Osparade ändringar" />}
+              {session.dirty && <span className="dot" title="Unsaved changes" />}
             </span>
             <Segmented
               value={mode}
               onChange={(v) => set({ mode: v, pick: null })}
               options={[
-                { value: "model", label: "Modell", icon: "layers" },
-                { value: "results", label: "Resultat", icon: "chart" },
+                { value: "model", label: "Model", icon: "layers" },
+                { value: "results", label: "Results", icon: "chart" },
               ]}
             />
           </>
@@ -53,36 +53,36 @@ export function TopBar() {
       <div className="tb-right">
         {session &&
           (running ? (
-            <button type="button" className="btn danger run" onClick={cancel} title="Avbryt (Esc)">
+            <button type="button" className="btn danger run" onClick={cancel} title="Cancel (Esc)">
               <span className="ring" style={{ ["--p" as string]: `${progress * 360}deg` }} />
-              Avbryt
+              Cancel
             </button>
           ) : (
-            <button type="button" className="btn primary run" onClick={solve} title="Lös (F5)">
+            <button type="button" className="btn primary run" onClick={solve} title="Solve (F5)">
               <Icon name="play" size={14} />
-              Lös
+              Solve
             </button>
           ))}
         {hasResults && mode === "model" && (
           <button type="button" className="btn ghost hide-narrow" onClick={() => set({ mode: "results" })}>
-            Visa resultat
+            Show results
           </button>
         )}
         <span className="mcp-btn">
-          <IconButton icon="plug" title={mcpOn ? "AI-assistent (MCP-servern körs)" : "Anslut AI-assistent (MCP)"} active={mcpOn} onClick={() => set({ mcpPanel: true })} />
+          <IconButton icon="plug" title={mcpOn ? "AI assistant (MCP server running)" : "Connect an AI assistant (MCP)"} active={mcpOn} onClick={() => set({ mcpPanel: true })} />
           {mcpOn && <span className="led on" />}
         </span>
-        <IconButton icon="search" title="Kommandon" kbd="Ctrl+K" onClick={() => set({ palette: true })} />
+        <IconButton icon="search" title="Commands" kbd="Ctrl+K" onClick={() => set({ palette: true })} />
         <IconButton
           icon={dark ? "sun" : "moon"}
-          title={dark ? "Ljust tema" : "Mörkt tema"}
+          title={dark ? "Light theme" : "Dark theme"}
           onClick={() => {
             set({ dark: !dark });
             persist("dark", !dark);
           }}
         />
-        <IconButton icon="dock" title="Körpanel" active={dock} onClick={() => set((s) => (persist("dock", !s.dock), { dock: !s.dock }))} />
-        <IconButton icon="sidebarR" title="Egenskaper" active={right} onClick={() => set((s) => ({ right: !s.right }))} />
+        <IconButton icon="dock" title="Run panel" active={dock} onClick={() => set((s) => (persist("dock", !s.dock), { dock: !s.dock }))} />
+        <IconButton icon="sidebarR" title="Properties" active={right} onClick={() => set((s) => ({ right: !s.right }))} />
       </div>
     </header>
   );
@@ -99,32 +99,33 @@ interface Cmd {
 function commands(): Cmd[] {
   const has = () => get().session !== null;
   return [
-    { label: "Ny tom 2D-modell", kbd: "Ctrl+N", run: () => newModel(blankModel[2]) },
-    { label: "Ny tom 3D-modell", run: () => newModel(blankModel[3]) },
-    { label: "Ny modell från mall (konsolplatta)", run: () => newModel() },
-    { label: "Öppna …", kbd: "Ctrl+O", run: openDialog },
-    { label: "Spara projekt", kbd: "Ctrl+S", run: () => save(), when: has },
-    { label: "Spara projekt som …", kbd: "Ctrl+Shift+S", run: () => save(true), when: has },
-    { label: "Exportera .rusty-skript …", run: exportScript, when: () => get().session?.kind === "rusty" },
-    { label: "Lös modellen", kbd: "F5", run: solve, when: has },
-    { label: "Avbryt körningen", kbd: "Esc", run: cancel, when: () => get().run.running },
-    { label: "Ångra", kbd: "Ctrl+Z", run: undo, when: () => !!get().session?.undo },
-    { label: "Gör om", kbd: "Ctrl+Y", run: redo, when: () => !!get().session?.redo },
-    { label: "Visa modell", run: () => set({ mode: "model" }), when: has },
-    { label: "Visa resultat", run: () => set({ mode: "results" }), when: () => get().results.length > 0 },
-    { label: "Bygg modell (skript och verktyg)", run: () => set({ sel: { type: "script" }, right: true }), when: () => get().session?.kind === "rusty" },
-    { label: "Modellöversikt", run: () => set({ sel: { type: "model" }, right: true }), when: has },
-    { label: "Anslut AI-assistent (MCP) …", run: () => set({ mcpPanel: true }) },
-    { label: "Växla tema", run: () => set((s) => (persist("dark", !s.dark), { dark: !s.dark })) },
-    { label: "Visa/dölj modellträd", run: () => set((s) => ({ left: !s.left })) },
-    { label: "Visa/dölj egenskaper", run: () => set((s) => ({ right: !s.right })) },
-    { label: "Visa/dölj körpanel", run: () => set((s) => ({ dock: !s.dock })) },
-    { label: "Ytor av/på", run: () => set((s) => ({ surfaces: !s.surfaces })) },
-    { label: "Elementkanter av/på", run: () => set((s) => ({ edges: !s.edges })) },
-    { label: "Randvillkor och laster av/på", run: () => set((s) => ({ symbols: !s.symbols })) },
-    { label: "Välj element", run: () => set({ pickMode: "element" }) },
-    { label: "Välj nod", run: () => set({ pickMode: "node" }) },
-    ...get().recent.map((p) => ({ label: `Öppna ${p.split(/[\\/]/).pop()}`, hint: p, run: () => openPath(p) })),
+    { label: "New empty 2D model", kbd: "Ctrl+N", run: () => newModel(blankModel[2]) },
+    { label: "New empty 3D model", run: () => newModel(blankModel[3]) },
+    { label: "New model from template (cantilever plate)", run: () => newModel() },
+    { label: "Open …", kbd: "Ctrl+O", run: openDialog },
+    { label: "Save project", kbd: "Ctrl+S", run: () => save(), when: has },
+    { label: "Save project as …", kbd: "Ctrl+Shift+S", run: () => save(true), when: has },
+    { label: "Export .rusty script …", run: exportScript, when: () => get().session?.kind === "rusty" },
+    { label: "Solve the model", kbd: "F5", run: solve, when: has },
+    { label: "Cancel the run", kbd: "Esc", run: cancel, when: () => get().run.running },
+    { label: "Undo", kbd: "Ctrl+Z", run: undo, when: () => !!get().session?.undo },
+    { label: "Redo", kbd: "Ctrl+Y", run: redo, when: () => !!get().session?.redo },
+    { label: "Show model", run: () => set({ mode: "model" }), when: has },
+    { label: "Show results", run: () => set({ mode: "results" }), when: () => get().results.length > 0 },
+    { label: "Build model (script and tools)", run: () => set({ sel: { type: "script" }, right: true }), when: () => get().session?.kind === "rusty" },
+    { label: "Model overview", run: () => set({ sel: { type: "model" }, right: true }), when: has },
+    { label: "Connect an AI assistant (MCP) …", run: () => set({ mcpPanel: true }) },
+    { label: "Disclaimer – not for real-world design", run: () => set({ disclaimer: true }) },
+    { label: "Toggle theme", run: () => set((s) => (persist("dark", !s.dark), { dark: !s.dark })) },
+    { label: "Show/hide model tree", run: () => set((s) => ({ left: !s.left })) },
+    { label: "Show/hide properties", run: () => set((s) => ({ right: !s.right })) },
+    { label: "Show/hide run panel", run: () => set((s) => ({ dock: !s.dock })) },
+    { label: "Surfaces on/off", run: () => set((s) => ({ surfaces: !s.surfaces })) },
+    { label: "Element edges on/off", run: () => set((s) => ({ edges: !s.edges })) },
+    { label: "Boundary conditions and loads on/off", run: () => set((s) => ({ symbols: !s.symbols })) },
+    { label: "Pick elements", run: () => set({ pickMode: "element" }) },
+    { label: "Pick nodes", run: () => set({ pickMode: "node" }) },
+    ...get().recent.map((p) => ({ label: `Open ${p.split(/[\\/]/).pop()}`, hint: p, run: () => openPath(p) })),
   ];
 }
 
@@ -154,13 +155,13 @@ export function Palette() {
   };
   return (
     <div className="overlay" onMouseDown={close}>
-      <div className="palette" onMouseDown={(e) => e.stopPropagation()} role="dialog" aria-label="Kommandon">
+      <div className="palette" onMouseDown={(e) => e.stopPropagation()} role="dialog" aria-label="Commands">
         <div className="pal-input">
           <Icon name="search" />
           <input
             ref={input}
             value={q}
-            placeholder="Skriv ett kommando …"
+            placeholder="Type a command …"
             onChange={(e) => {
               setQ(e.target.value);
               setI(0);
@@ -185,7 +186,7 @@ export function Palette() {
               {c.kbd && <kbd>{c.kbd}</kbd>}
             </button>
           ))}
-          {!list.length && <div className="muted pad">Inga träffar</div>}
+          {!list.length && <div className="muted pad">No matches</div>}
         </div>
       </div>
     </div>
@@ -194,20 +195,20 @@ export function Palette() {
 
 const examples: { name: string; script: string }[] = [
   {
-    name: "Konsolplatta (2D)",
+    name: "Cantilever plate (2D)",
     script: "model 2d\nmaterial steel E=210e9 nu=0.3\nplate x=0..2 y=0..0.2 t=0.01 size=0.025\nfix x=0\nload x=2 fy=-1000\n",
   },
   {
-    name: "Kloss med tryck (3D)",
+    name: "Loaded block (3D)",
     script: "model 3d\nmaterial steel\nbox x=0..1 y=0..0.2 z=0..0.2 size=0.05\nfix x=0\nload x=1 fy=-5000\n",
   },
   {
-    name: "Ram av balkar (3D)",
+    name: "Beam frame (3D)",
     script:
       "model 3d\nmaterial steel\nbeam (0,0,0) (0,3,0) (4,3,0) (4,0,0) section=ibeam(0.2,0.1,0.01,0.006) n=12\nbeam (0,3,0) (0,3,3) (4,3,3) (4,3,0) section=rect(0.1,0.1) n=10\nbeam (0,3,3) (0,0,3) section=rect(0.1,0.1) n=8\nbeam (4,3,3) (4,0,3) section=rect(0.1,0.1) n=8\nfix y=0\nload at=(2,3,0) fy=-20000\n",
   },
   {
-    name: "Fackverk (2D)",
+    name: "Truss (2D)",
     script:
       "model 2d\nmaterial steel\ntruss (0,0) (1,0) (2,0) (3,0) (4,0) area=4e-4\ntruss (0,0) (0.5,0.8) (1,0) (1.5,0.8) (2,0) (2.5,0.8) (3,0) (3.5,0.8) (4,0) area=4e-4\ntruss (0.5,0.8) (1.5,0.8) (2.5,0.8) (3.5,0.8) area=4e-4\npin at=(0,0)\nsupport at=(4,0) uy\nload at=(2,0) fy=-50000\n",
   },
@@ -221,21 +222,21 @@ export function Welcome() {
         <h1>
           <img className="welcome-logo" src="/brand/rustyfem-logo.png" alt="rustyFEM" width="2048" height="768" draggable={false} />
         </h1>
-        <p className="muted">Bygg en modell från grunden, öppna en indatafil (.inp) eller ett projekt, lös och granska resultaten.</p>
+        <p className="muted">Build a model from scratch, open an input file (.inp) or a project, solve and review the results.</p>
         <div className="welcome-actions">
           <button type="button" className="btn primary big" onClick={() => newModel(blankModel[2])}>
-            <Icon name="new" /> Ny 2D-modell
+            <Icon name="new" /> New 2D model
           </button>
           <button type="button" className="btn big" onClick={() => newModel(blankModel[3])}>
-            <Icon name="cube" /> Ny 3D-modell
+            <Icon name="cube" /> New 3D model
           </button>
           <button type="button" className="btn big" onClick={openDialog}>
-            <Icon name="open" /> Öppna …
+            <Icon name="open" /> Open …
           </button>
         </div>
         <div className="welcome-cols">
           <div>
-            <h4>Exempel</h4>
+            <h4>Examples</h4>
             {examples.map((e) => (
               <button key={e.name} type="button" className="listbtn" onClick={() => newModel(e.script)}>
                 {e.name}
@@ -243,8 +244,8 @@ export function Welcome() {
             ))}
           </div>
           <div>
-            <h4>Senaste</h4>
-            {recent.length === 0 && <p className="muted">Inga filer än.</p>}
+            <h4>Recent</h4>
+            {recent.length === 0 && <p className="muted">No files yet.</p>}
             {recent.map((p) => (
               <button key={p} type="button" className="listbtn" title={p} onClick={() => openPath(p)}>
                 <span>{p.split(/[\\/]/).pop()}</span>
@@ -254,7 +255,13 @@ export function Welcome() {
           </div>
         </div>
         <p className="muted small">
-          <kbd>Ctrl</kbd>+<kbd>K</kbd> kommandon · <kbd>F5</kbd> lös · <kbd>F</kbd> anpassa vyn · <kbd>0</kbd>–<kbd>6</kbd> vyer
+          <kbd>Ctrl</kbd>+<kbd>K</kbd> commands · <kbd>F5</kbd> solve · <kbd>F</kbd> fit view · <kbd>0</kbd>–<kbd>6</kbd> views
+        </p>
+        <p className="muted small welcome-disclaimer">
+          Not for real-world design – results come with no warranty.{" "}
+          <button type="button" className="linkbtn" onClick={() => set({ disclaimer: true })}>
+            Read the disclaimer
+          </button>
         </p>
       </div>
     </div>

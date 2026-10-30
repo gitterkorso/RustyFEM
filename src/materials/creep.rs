@@ -1,53 +1,53 @@
-//! Krypning (*CREEP) med isotrop elasticitet och (valfritt) von Mises-
-//! plasticitet med isotropt hårdnande (*PLASTIC).
+//! Creep (*CREEP) with isotropic elasticity and (optionally) von Mises
+//! plasticity with isotropic hardening (*PLASTIC).
 //!
-//! Kryplagar (ε̄̇cr ekvivalent kryptöjningshastighet, q̃ von Mises-spänning):
-//! - LAW=TIME (tidshårdnande): ε̄̇cr = A q̃ⁿ tᵐ, t = total tid (TIME=TOTAL,
-//!   standard) eller kryptid (TIME=CREEP, summan av tiden i *VISCO-steg),
-//! - LAW=STRAIN (töjningshårdnande, standard): ε̄̇cr = (A q̃ⁿ [(m+1) ε̄cr]ᵐ)^(1/(m+1)),
-//! - LAW=TIME POWER LAW och LAW=POWER LAW: samma lagar med q0, n, m, ε̇0,
-//!   omräknade till A = ε̇0^(m+1)/q0ⁿ (POWER LAW har ett tomt fält före ε̇0),
-//! - LAW=HYPERB (Garofalo): ε̄̇cr = A (sinh B q̃)ⁿ exp(−ΔH/(R(θ − θZ))) med
-//!   θZ från *PHYSICAL CONSTANTS, ABSOLUTE ZERO=.
-//! A, n, m (TIME, STRAIN, POWER LAW-formerna) kan bero på temperaturen
-//! (sista fältet); de interpoleras linjärt, konstant utanför tabellen. *ELASTIC
-//! kan bero på temperaturen som i `thermal_elastic.rs`.
+//! Creep laws (ε̄̇cr equivalent creep strain rate, q̃ von Mises stress):
+//! - LAW=TIME (time hardening): ε̄̇cr = A q̃ⁿ tᵐ, t = total time (TIME=TOTAL,
+//!   default) or creep time (TIME=CREEP, the sum of the time in *VISCO steps),
+//! - LAW=STRAIN (strain hardening, default): ε̄̇cr = (A q̃ⁿ [(m+1) ε̄cr]ᵐ)^(1/(m+1)),
+//! - LAW=TIME POWER LAW and LAW=POWER LAW: the same laws with q0, n, m, ε̇0,
+//!   converted to A = ε̇0^(m+1)/q0ⁿ (POWER LAW has an empty field before ε̇0),
+//! - LAW=HYPERB (Garofalo): ε̄̇cr = A (sinh B q̃)ⁿ exp(−ΔH/(R(θ − θZ))) with
+//!   θZ from *PHYSICAL CONSTANTS, ABSOLUTE ZERO=.
+//! A, n, m (the TIME, STRAIN, POWER LAW forms) may depend on the temperature
+//! (last field); they are interpolated linearly, constant outside the table. *ELASTIC
+//! may depend on the temperature as in `thermal_elastic.rs`.
 //!
-//! Kryptöjningsinkrementet under ett inkrement (kontrollerat med
-//! enelementsprov, fasta inkrement):
-//! - tidshårdnande: Δε̄ = A q̃ⁿ [(t+Δt)^(m+1) − t^(m+1)]/(m+1), dvs. exakt
-//!   tidsintegral med spänningen hållen fast,
-//! - töjningshårdnande: samma uttryck med den ekvivalenta tiden
-//!   t̃ = ((m+1) ε̄cr/(A q̃ⁿ))^(1/(m+1)) i stället för t (t̃ = total tid när ε̄cr = 0,
-//!   som i första krypinkrementet),
+//! The creep strain increment during an increment (verified with
+//! single-element tests, fixed increments):
+//! - time hardening: Δε̄ = A q̃ⁿ [(t+Δt)^(m+1) − t^(m+1)]/(m+1), i.e. the exact
+//!   time integral with the stress held fixed,
+//! - strain hardening: the same expression with the equivalent time
+//!   t̃ = ((m+1) ε̄cr/(A q̃ⁿ))^(1/(m+1)) instead of t (t̃ = total time when ε̄cr = 0,
+//!   as in the first creep increment),
 //! - HYPERB: Δε̄ = ε̄̇cr Δt.
-//! Explicit integration (framåt Euler, standard i geometriskt linjära *VISCO)
-//! tar q̃, ε̄cr, flödesriktning n = 3/2 s/q̃ och de temperaturberoende
-//! tabellkonstanterna (A, n, m) från inkrementets början, men temperaturen i
-//! HYPERB-lagens Arrhenius-faktor vid slutet (båda kontrollerade med
-//! temperatursteg och rampad temperatur); tangenten är elastisk. Implicit integration (bakåt Euler; NLGEOM,
-//! eller när plasticitet är aktiv i punkten) använder q̃ och temperatur vid
-//! slutet med radiell återföring: q̃ + 3G Δε̄(q̃) = q̃_tr, och med plasticitet
-//! dessutom q̃ = σ0(ε̄pl + Δε̄pl). Den konsistenta tangenten är sluten:
+//! Explicit integration (forward Euler, default in geometrically linear *VISCO)
+//! takes q̃, ε̄cr, the flow direction n = 3/2 s/q̃ and the temperature-dependent
+//! table constants (A, n, m) from the start of the increment, but the temperature in
+//! the HYPERB law's Arrhenius factor at the end (both verified with
+//! temperature steps and ramped temperature); the tangent is elastic. Implicit integration (backward Euler; NLGEOM,
+//! or when plasticity is active at the point) uses q̃ and temperature at
+//! the end with radial return: q̃ + 3G Δε̄(q̃) = q̃_tr, and with plasticity
+//! also q̃ = σ0(ε̄pl + Δε̄pl). The consistent tangent is in closed form:
 //!
 //!   D = K I⊗I + 2G θ P_dev + 2G (β − θ) N̂⊗N̂,  θ = q̃/q̃_tr, β = dq̃/dq̃_tr,
 //!
-//! med β = 1/(1 + 3G Δε̄′) för krypning, β = H/(3G + H + 3G Δε̄′ H) för
-//! krypning och plasticitet (H = dσ0/dε̄pl).
+//! with β = 1/(1 + 3G Δε̄′) for creep, β = H/(3G + H + 3G Δε̄′ H) for
+//! creep and plasticity (H = dσ0/dε̄pl).
 //!
-//! Felmåttet för CETOL (*VISCO) är skillnaden mellan kryptöjningsinkrementet
-//! från villkoren vid inkrementets början och vid slutet,
-//! |Δε̄(q̃_slut) − Δε̄(q̃_början)| med samma hårdnandetillstånd – med det måttet
-//! och reglerna för tidsinkrementering (`steps/visco.rs`) bestäms
-//! inkrementföljden. Stabilitetsgränsen för
-//! explicit integration är Cormeaus (1975) Δt_s = 4(1+ν)/(3E ∂ε̄̇cr/∂q̃), för
-//! potenslagen 4(1+ν) q̃/(3nE ε̄̇cr) (kontrollerat med ett tjockväggigt rör).
+//! The error measure for CETOL (*VISCO) is the difference between the creep strain increment
+//! from the conditions at the start of the increment and at the end,
+//! |Δε̄(q̃_end) − Δε̄(q̃_start)| with the same hardening state – this measure
+//! and the time incrementation rules (`steps/visco.rs`) determine
+//! the increment sequence. The stability limit for
+//! explicit integration is Cormeau's (1975) Δt_s = 4(1+ν)/(3E ∂ε̄̇cr/∂q̃), for
+//! the power law 4(1+ν) q̃/(3nE ε̄̇cr) (verified with a thick-walled pipe).
 //!
-//! Krypningen är aktiv bara i *VISCO (`time_dependence.rs`); i *STATIC beter
-//! sig materialet elastiskt(-plastiskt).
+//! Creep is active only in *VISCO (`time_dependence.rs`); in *STATIC the
+//! material behaves elastically(-plastically).
 //!
-//! Utdata: CEEQ, CE (kryptöjning, ingenjörsskjuvtöjning som E) och med
-//! *PLASTIC även PEEQ och PE.
+//! Output: CEEQ, CE (creep strain, engineering shear strain like E) and with
+//! *PLASTIC also PEEQ and PE.
 
 use super::anisotropic::reduce_6x6;
 use super::plasticity::{ddot, dev, iso_d6, mises, mv6, pe_labels, rotate_v6, update_reduced, Hardening, M6, V6};
@@ -59,7 +59,7 @@ use std::cell::Cell;
 use std::sync::Arc;
 
 pub static FACTORIES: &[MaterialFactory] = &[MaterialFactory {
-    name: "krypning (*CREEP) med elasticitet och von Mises-plasticitet",
+    name: "creep (*CREEP) with elasticity and von Mises plasticity",
     consumes: &["CREEP", "ELASTIC", "PLASTIC"],
     priority: 20,
     build: Some(build),
@@ -70,28 +70,28 @@ pub(crate) enum Law {
     Time,
     Strain,
     Hyperb,
-    /// LAW=USER: CREEP (`user::routines::Creep`, väljs med materialnamnet).
+    /// LAW=USER: CREEP (`user::routines::Creep`, selected by the material name).
     User,
 }
 
-/// Kryplagen med sina konstanter.
+/// The creep law with its constants.
 #[derive(Debug, Clone)]
 pub(crate) struct CreepLaw {
     pub(crate) law: Law,
-    /// (A, n, m, −, T) eller för POWER LAW-formerna (q0, n, m, ε̇0, T), i stigande
-    /// temperatur (TIME/STRAIN).
+    /// (A, n, m, −, T) or for the POWER LAW forms (q0, n, m, ε̇0, T), in ascending
+    /// temperature (TIME/STRAIN).
     table: Vec<[f64; 5]>,
-    /// Tabellen har POWER LAW-formens konstanter (interpoleras före omräkningen till A).
+    /// The table holds the POWER LAW form's constants (interpolated before the conversion to A).
     power: bool,
     /// HYPERB: A, B, n, ΔH, R.
     pub(crate) hyp: [f64; 5],
-    /// TIME=CREEP: kryptid i stället för total tid.
+    /// TIME=CREEP: creep time instead of total time.
     pub(crate) creep_time: bool,
-    /// LAW=USER: rutinen och materialnamnet.
+    /// LAW=USER: the routine and the material name.
     pub(crate) user: Option<crate::user::routines::CreepRef>,
 }
 
-/// Tillståndslayout: [ε̄cr, εcr (6), ε̄pl, εpl (6), ε 3D (6), kryptid].
+/// State layout: [ε̄cr, εcr (6), ε̄pl, εpl (6), ε 3D (6), creep time].
 const CBAR: usize = 0;
 const ECR: usize = 1;
 const P: usize = 7;
@@ -103,44 +103,44 @@ const NST: usize = 21;
 pub(crate) fn parse_law(kw: &RawKeyword) -> Result<CreepLaw> {
     for p in ["DEPENDENCIES", "POTENTIAL"] {
         if kw.has(p) {
-            return kw.err(format!("parametern {p} stöds inte ännu"));
+            return kw.err(format!("parameter {p} is not supported yet"));
         }
     }
     let name = kw.param_upper("LAW").unwrap_or_else(|| "STRAIN".into());
     let creep_time = match kw.param_upper("TIME").as_deref() {
         None | Some("TOTAL") => false,
         Some("CREEP") => true,
-        Some(o) => return kw.err(format!("TIME={o} ska vara TOTAL eller CREEP")),
+        Some(o) => return kw.err(format!("TIME={o} must be TOTAL or CREEP")),
     };
     if name == "USER" {
-        // CREEP väljs med materialnamnet (sätts av `build`)
+        // CREEP is selected by the material name (set by `build`)
         return Ok(CreepLaw { law: Law::User, table: Vec::new(), power: false, hyp: [0.0; 5], creep_time, user: None });
     }
     let rows: Vec<(usize, Vec<f64>)> = kw.records().iter().map(|d| Ok((d.line, kw.floats(d)?))).collect::<Result<_>>()?;
     if rows.is_empty() {
-        return kw.err("kryplagens konstanter saknas");
+        return kw.err("the creep law's constants are missing");
     }
     let (law, cols): (Law, usize) = match name.as_str() {
         "TIME" | "TIME POWER LAW" => (Law::Time, if name == "TIME" { 3 } else { 4 }),
         "STRAIN" | "POWER LAW" => (Law::Strain, if name == "STRAIN" { 3 } else { 5 }),
         "HYPERB" => (Law::Hyperb, 5),
-        o => return kw.err(format!("LAW={o} stöds inte ännu (TIME, STRAIN, TIME POWER LAW, POWER LAW, HYPERB)")),
+        o => return kw.err(format!("LAW={o} is not supported yet (TIME, STRAIN, TIME POWER LAW, POWER LAW, HYPERB)")),
     };
     if law == Law::Hyperb {
         if rows.len() > 1 {
-            return kw.err("LAW=HYPERB har en datarad (konstanterna kan inte bero på temperaturen)");
+            return kw.err("LAW=HYPERB has one data line (the constants cannot depend on the temperature)");
         }
         let v = &rows[0].1;
         let g = |i: usize| v.get(i).copied().unwrap_or(0.0);
         let hyp = [g(0), g(1), g(2), g(3), g(4)];
         if v.len() > 5 && v[5..].iter().any(|&x| x != 0.0) {
-            return kw.err_at(rows[0].0, "fältberoende kryplag stöds inte ännu");
+            return kw.err_at(rows[0].0, "field-dependent creep law is not supported yet");
         }
         if !(hyp[0] > 0.0 && hyp[1] > 0.0 && hyp[2] > 0.0) {
-            return kw.err_at(rows[0].0, "A, B och n ska vara positiva");
+            return kw.err_at(rows[0].0, "A, B and n must be positive");
         }
         if hyp[3] != 0.0 && !(hyp[4] > 0.0) {
-            return kw.err_at(rows[0].0, "R (allmänna gaskonstanten) ska vara positiv när ΔH ≠ 0");
+            return kw.err_at(rows[0].0, "R (the universal gas constant) must be positive when ΔH ≠ 0");
         }
         return Ok(CreepLaw { law, table: Vec::new(), power: false, hyp, creep_time, user: None });
     }
@@ -151,32 +151,32 @@ pub(crate) fn parse_law(kw: &RawKeyword) -> Result<CreepLaw> {
         let (row, a, n, m, temp) = match name.as_str() {
             "TIME" | "STRAIN" => ([g(0), g(1), g(2), 0.0], g(0), g(1), g(2), g(3)),
             _ => {
-                // q0, n, m, [a,] ε̇0 (standard 1), T
+                // q0, n, m, [a,] ε̇0 (default 1), T
                 let (q0, n, m) = (g(0), g(1), g(2));
                 let (e0, temp) = if name == "POWER LAW" {
                     if g(3) != 0.0 {
-                        return kw.err_at(*line, "POWER LAW med a ≠ 0 stöds inte ännu");
+                        return kw.err_at(*line, "POWER LAW with a ≠ 0 is not supported yet");
                     }
                     (v.get(4).copied().filter(|&x| x != 0.0).unwrap_or(1.0), g(5))
                 } else {
                     (v.get(3).copied().filter(|&x| x != 0.0).unwrap_or(1.0), g(4))
                 };
                 if !(q0 > 0.0) {
-                    return kw.err_at(*line, "q0 ska vara positivt");
+                    return kw.err_at(*line, "q0 must be positive");
                 }
                 ([q0, n, m, e0], e0.powf(m + 1.0) / q0.powf(n), n, m, temp)
             }
         };
         let extra = cols + 1;
         if v.len() > extra && v[extra..].iter().any(|&x| x != 0.0) {
-            return kw.err_at(*line, "fältberoende kryplag stöds inte ännu");
+            return kw.err_at(*line, "field-dependent creep law is not supported yet");
         }
         if !(a > 0.0 && n > 0.0) || !(m > -1.0 && m <= 0.0) {
-            return kw.err_at(*line, "kryplagen kräver A > 0, n > 0 och −1 < m ≤ 0");
+            return kw.err_at(*line, "the creep law requires A > 0, n > 0 and −1 < m ≤ 0");
         }
         if let Some(l) = table.last() {
             if !(temp > l[4]) {
-                return kw.err_at(*line, "temperaturerna i *CREEP ska öka");
+                return kw.err_at(*line, "the temperatures in *CREEP must increase");
             }
         }
         table.push([row[0], row[1], row[2], row[3], temp]);
@@ -185,9 +185,9 @@ pub(crate) fn parse_law(kw: &RawKeyword) -> Result<CreepLaw> {
 }
 
 impl CreepLaw {
-    /// (A, n, m) vid temperaturen `t`. Användarens konstanter interpoleras
-    /// linjärt (för POWER LAW-formerna q0, n, m och ε̇0) och räknas
-    /// sedan om till A.
+    /// (A, n, m) at temperature `t`. The user's constants are interpolated
+    /// linearly (for the POWER LAW forms q0, n, m and ε̇0) and then
+    /// converted to A.
     fn params(&self, t: f64) -> [f64; 3] {
         let tab = &self.table;
         let r: [f64; 4] = if tab.len() == 1 || t <= tab[0][4] {
@@ -214,10 +214,10 @@ impl CreepLaw {
         }
     }
 
-    /// Ekvivalent kryptöjningsinkrement och dess derivata med avseende på q̃
-    /// för spänningen `q`, kryptöjningen `ecr` och tiden `t` vid inkrementets början.
-    /// Tabellkonstanterna (A, n, m) tas vid temperaturen `temp`, Arrhenius-
-    /// faktorn i HYPERB vid `theta`.
+    /// Equivalent creep strain increment and its derivative with respect to q̃
+    /// for the stress `q`, the creep strain `ecr` and the time `t` at the start of the increment.
+    /// The table constants (A, n, m) are taken at temperature `temp`, the Arrhenius
+    /// factor in HYPERB at `theta`.
     pub(crate) fn increment(&self, q: f64, ecr: f64, t: f64, dt: f64, temp: f64, theta: f64, tz: f64) -> (f64, f64) {
         if !(q > 0.0) || !(dt > 0.0) {
             return (0.0, 0.0);
@@ -247,15 +247,15 @@ impl CreepLaw {
     }
 }
 
-/// Krypning med elasticitet och valfri plasticitet.
+/// Creep with elasticity and optional plasticity.
 #[derive(Debug)]
 pub struct Creep {
     e: f64,
     nu: f64,
-    /// Temperaturberoende elasticitet (E, ν, T); tom om konstant.
+    /// Temperature-dependent elasticity (E, ν, T); empty if constant.
     etab: Vec<(f64, f64, f64)>,
     law: CreepLaw,
-    /// Isotropt hårdnande (*PLASTIC), ev. per temperatur.
+    /// Isotropic hardening (*PLASTIC), possibly per temperature.
     plastic: Option<(Hardening, Vec<(f64, Vec<(f64, f64)>)>)>,
     td: TimeDependence,
 }
@@ -266,11 +266,11 @@ fn build(def: &MaterialDef) -> Result<Option<Arc<dyn MaterialModel>>> {
         return Ok(None);
     }
     let Some(ekw) = def.behavior("ELASTIC") else {
-        return kw.err("*CREEP kräver *ELASTIC");
+        return kw.err("*CREEP requires *ELASTIC");
     };
     let ty = ekw.param_upper("TYPE").unwrap_or_else(|| "ISOTROPIC".into());
     if ty != "ISOTROPIC" {
-        return ekw.err("*CREEP stöds bara med isotrop elasticitet (TYPE=ISOTROPIC)");
+        return ekw.err("*CREEP is only supported with isotropic elasticity (TYPE=ISOTROPIC)");
     }
     let etab = super::thermal_elastic::iso_table(ekw)?;
     let (e, nu) = (etab[0].0, etab[0].1);
@@ -284,11 +284,11 @@ fn build(def: &MaterialDef) -> Result<Option<Arc<dyn MaterialModel>>> {
         Some(pk) => {
             let hard = pk.param_upper("HARDENING").unwrap_or_else(|| "ISOTROPIC".into());
             if hard != "ISOTROPIC" {
-                return pk.err("*CREEP med *PLASTIC stöds bara med HARDENING=ISOTROPIC");
+                return pk.err("*CREEP with *PLASTIC is only supported with HARDENING=ISOTROPIC");
             }
             for p in ["RATE", "DEPENDENCIES"] {
                 if pk.has(p) {
-                    return pk.err(format!("parametern {p} stöds inte ännu"));
+                    return pk.err(format!("parameter {p} is not supported yet"));
                 }
             }
             let tabs = super::thermal_elastic::yield_tables(pk)?;
@@ -299,7 +299,7 @@ fn build(def: &MaterialDef) -> Result<Option<Arc<dyn MaterialModel>>> {
     Ok(Some(Arc::new(Creep { e, nu, etab, law, plastic, td: TimeDependence::default() })))
 }
 
-/// Villkoren för en uppdatering.
+/// The conditions for an update.
 struct Ctx {
     mode: u8,
     t: f64,
@@ -307,12 +307,12 @@ struct Ctx {
     temp: f64,
     temp_old: f64,
     tz: f64,
-    /// Temperaturen i Arrhenius-faktorn vid explicit integration (slutet,
-    /// eller början i *COUPLED TEMPERATURE-DISPLACEMENT).
+    /// The temperature in the Arrhenius factor for explicit integration (the end,
+    /// or the start in *COUPLED TEMPERATURE-DISPLACEMENT).
     theta: f64,
 }
 
-/// Felmått och stabilitetsgräns från senaste 3D-uppdateringen.
+/// Error measure and stability limit from the latest 3D update.
 #[derive(Default, Clone, Copy)]
 struct Monitor {
     err: f64,
@@ -332,7 +332,7 @@ impl Creep {
         self.plastic.as_ref().map(|(h, tabs)| if tabs.is_empty() { h.clone() } else { Hardening::Table(super::thermal_elastic::yield_at(tabs, temp)) })
     }
 
-    /// Spänning och konsistent tangent i 3D för total töjning `eps`.
+    /// Stress and consistent tangent in 3D for the total strain `eps`.
     fn update3d(&self, eps: &V6, st: &[f64], stn: &mut [f64], c: &Ctx, mon: &Cell<Monitor>) -> Result<(V6, M6)> {
         stn[..NST].copy_from_slice(&st[..NST]);
         let (e1, nu1) = self.moduli(c.temp);
@@ -350,7 +350,7 @@ impl Creep {
             stn[TCR] = st[TCR] + c.dt;
         }
         let tlaw = if law.creep_time { st[TCR] } else { c.t };
-        // spänningen vid inkrementets början (för explicit integration och felmåttet)
+        // the stress at the start of the increment (for explicit integration and the error measure)
         let start = || -> (V6, f64) {
             let (e0, nu0) = self.moduli(c.temp_old);
             let eps0: V6 = std::array::from_fn(|i| st[EPS3 + i] - ecr[i] - epl[i]);
@@ -374,8 +374,8 @@ impl Creep {
             let yields = hard.as_ref().is_some_and(|h| q1 - h.eval(p_n).0 > 1e-12 * h.eval(p_n).0);
             if !yields {
                 let (de, _) = law.increment(q1, ecbar, tlaw, c.dt, c.temp_old, c.theta, c.tz);
-                // stabilitetsgränsen (Cormeau 1975): Δt_s = 4(1+ν)/(3E ∂ε̄̇/∂q̃) med
-                // inkrementets medelderivata ∂Δε̄/∂q̃ / Δt
+                // the stability limit (Cormeau 1975): Δt_s = 4(1+ν)/(3E ∂ε̄̇/∂q̃) with
+                // the increment's mean derivative ∂Δε̄/∂q̃ / Δt
                 let (e0, nu0) = self.moduli(c.temp_old);
                 let dts = if dcq > 0.0 && dcq.is_finite() { 4.0 * (1.0 + nu0) * c.dt / (3.0 * e0 * dcq) } else { f64::INFINITY };
                 mon.set(Monitor { err: (de - dc).abs(), dts });
@@ -383,9 +383,9 @@ impl Creep {
                 stn[ECR..ECR + 6].copy_from_slice(&ecr1);
                 return Ok((sig, d1));
             }
-            // plasticitet aktiv: implicit integration i punkten
+            // plasticity active: implicit integration at the point
         }
-        // implicit (bakåt Euler) eller bara plasticitet
+        // implicit (backward Euler) or plasticity only
         let ee: V6 = std::array::from_fn(|i| eps[i] - ecr[i] - epl[i]);
         let sig_tr = mv6(&d1, &ee);
         let s_tr = dev(&sig_tr);
@@ -395,7 +395,7 @@ impl Creep {
             mon.set(Monitor { err: 0.0, dts: f64::INFINITY });
             return Ok((sig_tr, d1));
         }
-        // krypning: q + 3G Δε̄(q) = q_tr
+        // creep: q + 3G Δε̄(q) = q_tr
         let mut q = q_tr;
         let (mut dc, mut dcp) = cr(q);
         if dc > 0.0 {
@@ -429,7 +429,7 @@ impl Creep {
         if let Some(h) = &hard {
             let (sy, _) = h.eval(p_n);
             if q - sy > 1e-12 * sy {
-                // plasticitet: q = σ0(ε̄pl + Δε̄pl), q_tr − 3G(Δε̄cr(q) + Δε̄pl) = q
+                // plasticity: q = σ0(ε̄pl + Δε̄pl), q_tr − 3G(Δε̄cr(q) + Δε̄pl) = q
                 let r = |x: f64| -> (f64, f64, f64, f64) {
                     let (s, hh) = h.eval(p_n + x);
                     let (f, fp) = cr(s);
@@ -461,7 +461,7 @@ impl Creep {
                     x = next;
                 }
                 if !conv {
-                    return fail("returalgoritmen för krypning med plasticitet konvergerade inte");
+                    return fail("the return algorithm for creep with plasticity did not converge");
                 }
                 let (_, _, s, hh) = r(x);
                 dp = x;
@@ -482,7 +482,7 @@ impl Creep {
         }
         stn[CBAR] = ecbar + dc;
         stn[P] = p_n + dp;
-        // felmått: inkrementet från villkoren vid början jämfört med slutet
+        // error measure: the increment from the conditions at the start compared with the end
         let mut m = Monitor { err: 0.0, dts: f64::INFINITY };
         if creep_on {
             let (_, q0) = start();
@@ -490,7 +490,7 @@ impl Creep {
             m.err = (dc - d0).abs();
         }
         mon.set(m);
-        // konsistent tangent
+        // consistent tangent
         let theta = q / q_tr;
         let nrm = ddot(&s_tr, &s_tr).sqrt();
         let nn: V6 = std::array::from_fn(|i| s_tr[i] / nrm);
@@ -533,7 +533,7 @@ impl MaterialModel for Creep {
         }
         let tz = self.td.absolute_zero();
         if mode != CREEP_OFF && self.law.law == Law::Hyperb && self.law.hyp[3] != 0.0 && !tz.is_finite() {
-            return fail("*CREEP, LAW=HYPERB med ΔH ≠ 0 kräver *PHYSICAL CONSTANTS, ABSOLUTE ZERO=");
+            return fail("*CREEP, LAW=HYPERB with ΔH ≠ 0 requires *PHYSICAL CONSTANTS, ABSOLUTE ZERO=");
         }
         let c = Ctx { mode, t: input.time - input.dt, dt: input.dt, temp: input.temperature, temp_old: input.temperature - input.dtemp, tz, theta: if mode == CREEP_EXPLICIT && self.td.explicit_temp_at_start() { input.temperature - input.dtemp } else { input.temperature } };
         let (e1, nu1) = self.moduli(c.temp);
@@ -594,7 +594,7 @@ impl MaterialModel for Creep {
             v.extend(idx.iter().map(|&i| state[EPL + i]));
         }
         if mode == StressMode::PlaneStress {
-            // CE33 = 0 och PE33 = 0 redovisas för plan spänning (som E33)
+            // CE33 = 0 and PE33 = 0 are reported for plane stress (like E33)
             v[3] = 0.0;
             if self.plastic.is_some() {
                 v[8] = 0.0;

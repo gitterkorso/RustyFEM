@@ -1,5 +1,5 @@
-// `Engine` ovanpå Tauri: JSON-kommandon via de genererade bindningarna,
-// stora data som råa bytes (ArrayBuffer) direkt in i typade arrayer.
+// `Engine` on top of Tauri: JSON commands via the generated bindings,
+// large data as raw bytes (ArrayBuffer) directly into typed arrays.
 
 import { Channel, invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
@@ -129,10 +129,10 @@ export class TauriEngine implements Engine {
     const r = await open({
       multiple: false,
       filters: [
-        { name: "Modeller", extensions: ["rustyproj", "inp", "rusty"] },
-        { name: "RustyFEM-projekt", extensions: ["rustyproj"] },
-        { name: "Indatafil (.inp)", extensions: ["inp"] },
-        { name: "RustyFEM-skript", extensions: ["rusty"] },
+        { name: "Models", extensions: ["rustyproj", "inp", "rusty"] },
+        { name: "RustyFEM project", extensions: ["rustyproj"] },
+        { name: "Input file (.inp)", extensions: ["inp"] },
+        { name: "RustyFEM script", extensions: ["rusty"] },
       ],
     });
     return typeof r === "string" ? r : null;
@@ -141,7 +141,7 @@ export class TauriEngine implements Engine {
   async saveDialog(defaultName: string, kind: "project" | "script") {
     const r = await save({
       defaultPath: defaultName,
-      filters: kind === "project" ? [{ name: "RustyFEM-projekt", extensions: ["rustyproj"] }] : [{ name: "RustyFEM-skript", extensions: ["rusty"] }],
+      filters: kind === "project" ? [{ name: "RustyFEM project", extensions: ["rustyproj"] }] : [{ name: "RustyFEM script", extensions: ["rusty"] }],
     });
     return r ?? null;
   }

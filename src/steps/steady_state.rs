@@ -1,30 +1,30 @@
-//! *STEADY STATE DYNAMICS: harmoniskt svar u e^{iΩt} vid ett antal frekvenser.
+//! *STEADY STATE DYNAMICS: harmonic response u e^{iΩt} at a number of frequencies.
 //!
-//! - Modalt (standard): qᵢ = (φᵢᵀF − Γᵢ ü_g) / (ωᵢ² − Ω² + i(2ζᵢωᵢΩ + sᵢωᵢ²))
-//!   med moderna från det föregående *FREQUENCY-steget (`modal_basis.rs`),
-//!   viskös/Rayleigh-dämpning ζ och strukturell dämpning s från *MODAL DAMPING.
-//! - `DIRECT`: (K − Ω²M + iΩC + iS) u = F löses direkt i alla frihetsgrader
-//!   som *FREQUENCY använder (även B23/B33:s inre), med samma massmatris.
-//!   C = αR M + βR K och S = s K per material (*DAMPING, ALPHA, BETA,
-//!   STRUCTURAL). Det komplexa systemet skrivs som det reella, symmetriska och
-//!   indefinita systemet [[A, B], [B, −A]] [x; −y] = [f_r; f_i] (A = K − Ω²M,
-//!   B = ΩC + S, u = x + iy) och löses med den glesa indefinita LDLᵀ-lösaren.
+//! - Modal (default): qᵢ = (φᵢᵀF − Γᵢ ü_g) / (ωᵢ² − Ω² + i(2ζᵢωᵢΩ + sᵢωᵢ²))
+//!   with the modes from the preceding *FREQUENCY step (`modal_basis.rs`),
+//!   viscous/Rayleigh damping ζ and structural damping s from *MODAL DAMPING.
+//! - `DIRECT`: (K − Ω²M + iΩC + iS) u = F is solved directly in all degrees of freedom
+//!   that *FREQUENCY uses (including the internal ones of B23/B33), with the same mass matrix.
+//!   C = αR M + βR K and S = s K per material (*DAMPING, ALPHA, BETA,
+//!   STRUCTURAL). The complex system is written as the real, symmetric and
+//!   indefinite system [[A, B], [B, −A]] [x; −y] = [f_r; f_i] (A = K − Ω²M,
+//!   B = ΩC + S, u = x + iy) and solved with the sparse indefinite LDLᵀ solver.
 //!
-//! Frekvenspunkter: `INTERVAL=EIGENFREQUENCY` (standard för
-//! modalt, delintervall mellan egenfrekvenserna i området) eller `RANGE`
-//! (standard för DIRECT), `FREQUENCY SCALE=LOGARITHMIC` (standard) eller
-//! `LINEAR`, och bias p: ξ = ½ + ½ sign(y)|y|^{1/p}, y = −1 + 2(k−1)/(n−1)
-//! (standard p = 3 för EIGENFREQUENCY, 1 för RANGE).
-//! Laster med AMPLITUDE= får amplitudens värde vid frekvensen (Hz).
+//! Frequency points: `INTERVAL=EIGENFREQUENCY` (default for
+//! modal, subintervals between the eigenfrequencies in the range) or `RANGE`
+//! (default for DIRECT), `FREQUENCY SCALE=LOGARITHMIC` (default) or
+//! `LINEAR`, and bias p: ξ = ½ + ½ sign(y)|y|^{1/p}, y = −1 + 2(k−1)/(n−1)
+//! (default p = 3 for EIGENFREQUENCY, 1 for RANGE).
+//! Loads with AMPLITUDE= get the amplitude's value at the frequency (Hz).
 //!
-//! *BASE MOTION (bara modalt): ü_g = skala · amplitud(f) (ACCELERATION), iΩ · ... (VELOCITY)
-//! eller −Ω² · ... (DISPLACEMENT); U, V, A relativt basen och TU, TV, TA totalt.
+//! *BASE MOTION (modal only): ü_g = scale · amplitude(f) (ACCELERATION), iΩ · ... (VELOCITY)
+//! or −Ω² · ... (DISPLACEMENT); U, V, A relative to the base and TU, TV, TA total.
 //!
-//! Utdata: frame 0 med nollor ("Frequency = 0.000"), sedan
-//! en frame per frekvens med `value` = frekvensen. Realdelen skrivs i de
-//! vanliga fälten (U, UR, V, A, S, ...), imaginärdelen i
-//! fälten med ändelsen `_IM` (U_IM, UR3_IM/UR_IM, V_IM, A_IM, S_IM, ...).
-//! V = iΩU och A = −Ω²U.
+//! Output: frame 0 with zeros ("Frequency = 0.000"), then
+//! one frame per frequency with `value` = the frequency. The real part is written to the
+//! regular fields (U, UR, V, A, S, ...), the imaginary part to
+//! the fields with the suffix `_IM` (U_IM, UR3_IM/UR_IM, V_IM, A_IM, S_IM, ...).
+//! V = iΩU and A = −Ω²U.
 
 use super::basis::{base_motions, modal_damping, BaseKind, BaseMotion, ModalBasis};
 use super::{add_node_field, amp_value, has_rotations, plain_frame};
@@ -41,33 +41,33 @@ use crate::steps::frequency::{self, AllDofs};
 
 pub struct SteadyState;
 
-/// Frekvenspunkter (Hz).
+/// Frequency points (Hz).
 pub fn frequency_points(kw: &RawKeyword, eig_hz: &[f64]) -> Result<Vec<f64>> {
-    // DIRECT har inga egenfrekvenser: där är RANGE standard
+    // DIRECT has no eigenfrequencies: there RANGE is the default
     let default = if kw.has("DIRECT") { "RANGE" } else { "EIGENFREQUENCY" };
     let interval = kw.param_upper("INTERVAL").unwrap_or_else(|| default.into());
     let log = match kw.param_upper("FREQUENCY SCALE") {
         None => true,
         Some(s) if s == "LOGARITHMIC" => true,
         Some(s) if s == "LINEAR" => false,
-        Some(s) => return kw.err(format!("FREQUENCY SCALE={s} ska vara LOGARITHMIC eller LINEAR")),
+        Some(s) => return kw.err(format!("FREQUENCY SCALE={s} must be LOGARITHMIC or LINEAR")),
     };
     let eigen = match interval.as_str() {
         "EIGENFREQUENCY" => true,
         "RANGE" => false,
-        other => return kw.err(format!("INTERVAL={other} stöds inte (EIGENFREQUENCY eller RANGE)")),
+        other => return kw.err(format!("INTERVAL={other} is not supported (EIGENFREQUENCY or RANGE)")),
     };
     let mut pts: Vec<f64> = Vec::new();
     for d in &kw.data {
         let v = kw.floats(d)?;
         if v.len() < 2 {
-            return kw.err_at(d.line, "skriv 'lägsta frekvens, högsta frekvens[, antal punkter[, bias]]'");
+            return kw.err_at(d.line, "write 'lowest frequency, highest frequency[, number of points[, bias]]'");
         }
         let (f1, f2) = (v[0], v[1]);
         let n = v.get(2).copied().filter(|&x| x >= 1.0).map(|x| x.round() as usize).unwrap_or(20);
         let bias = v.get(3).copied().filter(|&x| x > 0.0).unwrap_or(if eigen { 3.0 } else { 1.0 });
         if log && f1 <= 0.0 {
-            return kw.err_at(d.line, "logaritmisk skala kräver positiv lägsta frekvens");
+            return kw.err_at(d.line, "logarithmic scale requires a positive lowest frequency");
         }
         let mut edges = vec![f1];
         if eigen {
@@ -95,7 +95,7 @@ pub fn frequency_points(kw: &RawKeyword, eig_hz: &[f64]) -> Result<Vec<f64>> {
     Ok(pts)
 }
 
-/// Komplext tal (re, im).
+/// Complex number (re, im).
 #[derive(Debug, Clone, Copy, Default)]
 struct C(f64, f64);
 
@@ -110,7 +110,7 @@ impl C {
     }
 }
 
-/// Basaccelerationen ü_g (komplex) per riktning vid frekvensen f (Hz).
+/// The base acceleration ü_g (complex) per direction at frequency f (Hz).
 fn base_accel(model: &FeModel, bms: &[BaseMotion], f: f64, time0: f64) -> Result<[C; 3]> {
     let amps = amplitudes(model)?;
     let w = 2.0 * std::f64::consts::PI * f;
@@ -128,7 +128,7 @@ fn base_accel(model: &FeModel, bms: &[BaseMotion], f: f64, time0: f64) -> Result
     Ok(a)
 }
 
-/// Frame för ett komplext svar u = re + i·im vid frekvensen f.
+/// Frame for a complex response u = re + i·im at frequency f.
 #[allow(clippy::too_many_arguments)]
 fn complex_frame(ctx: &StepCtx, dm: &DofMap, re: &[NodeVec], im: &[NodeVec], f: f64, k: usize, ag: Option<&[C; 3]>) -> Result<FrameData> {
     let dim = ctx.prep.model.dim();
@@ -136,7 +136,7 @@ fn complex_frame(ctx: &StepCtx, dm: &DofMap, re: &[NodeVec], im: &[NodeVec], f: 
     let desc = if k == 0 { "Increment 0: Frequency = 0.000".to_string() } else { format!("Increment {k}: Frequency = {f:.4}") };
     let mut fr = plain_frame(ctx, dm, re, f, -1, desc)?;
     let fi = plain_frame(ctx, dm, im, f, -1, String::new())?;
-    // imaginärdelen: förskjutning och elementutdata
+    // the imaginary part: displacement and element output
     let mut tmp = FrameData::default();
     add_node_field(&mut tmp, dim, rot, "U", "UR", im);
     for (name, labels, vals) in tmp.node_extra {
@@ -169,7 +169,7 @@ fn complex_frame(ctx: &StepCtx, dm: &DofMap, re: &[NodeVec], im: &[NodeVec], f: 
     push("V", "VR", &v_re, &v_im);
     push("A", "AR", &a_re, &a_im);
     if let Some(ag) = ag {
-        // totala värden: u_g = ü_g/(−Ω²), u̇_g = ü_g/(iΩ)
+        // total values: u_g = ü_g/(−Ω²), u̇_g = ü_g/(iΩ)
         let mut tot = |name: &str, r: &[NodeVec], i: &[NodeVec], g: &dyn Fn(C) -> C| {
             let (mut tr, mut ti) = (r.to_vec(), i.to_vec());
             for d in 0..dim {
@@ -195,23 +195,23 @@ fn complex_frame(ctx: &StepCtx, dm: &DofMap, re: &[NodeVec], im: &[NodeVec], f: 
     Ok(fr)
 }
 
-/// Rayleigh- och strukturell dämpning (αR, βR, s) för materialet `mi` (*DAMPING).
+/// Rayleigh and structural damping (αR, βR, s) for the material `mi` (*DAMPING).
 fn material_damping(model: &FeModel, mi: Option<usize>) -> Result<(f64, f64, f64)> {
     let Some(m) = mi.map(|i| &model.materials[i]) else { return Ok((0.0, 0.0, 0.0)) };
     let Some(kw) = m.behavior("DAMPING") else { return Ok((0.0, 0.0, 0.0)) };
     if kw.has("COMPOSITE") {
-        return kw.err("COMPOSITE dämpning stöds inte");
+        return kw.err("COMPOSITE damping is not supported");
     }
     let num = |k: &str| -> Result<f64> {
         match kw.param(k) {
-            Some(v) => parse_f64(v).ok_or_else(|| FemError(format!("{}: {k}={v} är inget tal", kw.location()))),
+            Some(v) => parse_f64(v).ok_or_else(|| FemError(format!("{}: {k}={v} is not a number", kw.location()))),
             None => Ok(0.0),
         }
     };
     Ok((num("ALPHA")?, num("BETA")?, num("STRUCTURAL")?))
 }
 
-/// Elementets frihetsgradsnummer i `all` (med inre frihetsgrader).
+/// The element's degree-of-freedom numbers in `all` (with internal degrees of freedom).
 fn elem_map(p: &Prepared, all: &AllDofs, e: usize) -> Vec<usize> {
     let mut v: Vec<usize> = p.edofs[e].iter().map(|&(n, s)| all.idx[n][s]).collect();
     if all.elem_int[e] != NONE {
@@ -220,8 +220,8 @@ fn elem_map(p: &Prepared, all: &AllDofs, e: usize) -> Vec<usize> {
     v
 }
 
-/// Dämpningsmatriserna C = Σ (αR Mₑ + βR Kₑ) och S = Σ s Kₑ i `all`-numreringen
-/// (bara fria och inre frihetsgrader).
+/// The damping matrices C = Σ (αR Mₑ + βR Kₑ) and S = Σ s Kₑ in the `all` numbering
+/// (only free and internal degrees of freedom).
 pub fn damping_matrices(p: &Prepared, all: &AllDofs) -> Result<(SymCsr, SymCsr, bool)> {
     let m = p.model;
     let ns = all.n_solve();
@@ -244,7 +244,7 @@ pub fn damping_matrices(p: &Prepared, all: &AllDofs) -> Result<(SymCsr, SymCsr, 
         let map = elem_map(p, all, e);
         let nt = map.len();
         if nt > nd {
-            // inre frihetsgrader (B23/B33): utöka och lägg till deras bidrag
+            // internal degrees of freedom (B23/B33): extend and add their contribution
             let grow = |a: &[f64]| {
                 let mut b = vec![0.0; nt * nt];
                 for i in 0..nd {
@@ -279,7 +279,7 @@ pub fn damping_matrices(p: &Prepared, all: &AllDofs) -> Result<(SymCsr, SymCsr, 
     Ok((tc.build(), ts.build(), any))
 }
 
-/// Laster och basrörelse vid frekvensen f.
+/// Loads and base motion at frequency f.
 struct Excitation<'a> {
     lev: LoadEval<'a>,
     bms: Vec<BaseMotion>,
@@ -309,10 +309,10 @@ impl StepType for SteadyState {
     fn run(&self, ctx: &mut StepCtx) -> Result<()> {
         let kw = ctx.step.procedure.as_ref().unwrap();
         if !ctx.step.bcs.is_empty() {
-            return fail("*BOUNDARY i *STEADY STATE DYNAMICS stöds inte – använd *BASE MOTION");
+            return fail("*BOUNDARY in *STEADY STATE DYNAMICS is not supported – use *BASE MOTION");
         }
         if kw.has("SUBSPACE PROJECTION") || kw.has("REAL ONLY") {
-            return kw.err("SUBSPACE PROJECTION/REAL ONLY stöds inte");
+            return kw.err("SUBSPACE PROJECTION/REAL ONLY is not supported");
         }
         let prep = ctx.prep;
         let model = prep.model;
@@ -356,8 +356,8 @@ impl StepType for SteadyState {
             }
         } else {
             if with_base {
-                // basrörelse bara i modala steg
-                return fail("*BASE MOTION kan inte användas i *STEADY STATE DYNAMICS, DIRECT");
+                // base motion only in modal steps
+                return fail("*BASE MOTION cannot be used in *STEADY STATE DYNAMICS, DIRECT");
             }
             let (dm, _) = assembly::dofmap(prep, &ctx.loads.constrained(), ctx.solver)?;
             let all = AllDofs::new(prep, &dm);
@@ -373,7 +373,7 @@ impl StepType for SteadyState {
             frames.push(complex_frame(ctx, &dm, &z, &z, 0.0, 0, None)?);
             for (k, &f) in pts.iter().enumerate() {
                 let w = tp * f;
-                // [[A, B], [B, −A]], A = K − Ω²M, B = ΩC + S, i ordningen (x_q, z_q) per frihetsgrad
+                // [[A, B], [B, −A]], A = K − Ω²M, B = ΩC + S, in the order (x_q, z_q) per degree of freedom
                 let mut t = Triplets::new(2 * ns);
                 let mut put = |a: &SymCsr, ca: f64, cb: f64| {
                     for r in 0..ns {
@@ -400,7 +400,7 @@ impl StepType for SteadyState {
                 put(&mmat, -w * w, 0.0);
                 put(&cmat, 0.0, w);
                 put(&smat, 0.0, 1.0);
-                // viskoelasticitet i frekvensplanet (*VISCOELASTIC, FREQUENCY=...)
+                // viscoelasticity in the frequency domain (*VISCOELASTIC, FREQUENCY=...)
                 if let Some((da, db)) = crate::materials::viscoelastic_freq::frequency_matrices(prep, &all, w, ctx.state.time)? {
                     put(&da, 1.0, 0.0);
                     put(&db, 0.0, 1.0);
@@ -408,7 +408,7 @@ impl StepType for SteadyState {
                 let sys = t.build();
                 let fac = match factor_sym(&sys, &blocks, indef)? {
                     Ok(f) => f,
-                    Err(_) => return fail(format!("*STEADY STATE DYNAMICS, DIRECT: dynamiska styvhetsmatrisen är singulär vid {f} Hz (resonans utan dämpning?)")),
+                    Err(_) => return fail(format!("*STEADY STATE DYNAMICS, DIRECT: the dynamic stiffness matrix is singular at {f} Hz (resonance without damping?)")),
                 };
                 let fext = ex.force(ctx, f)?;
                 let mut rhs = vec![0.0; 2 * ns];

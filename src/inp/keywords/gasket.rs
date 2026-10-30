@@ -1,8 +1,8 @@
-//! Packningar: *GASKET SECTION, *GASKET BEHAVIOR, *GASKET THICKNESS BEHAVIOR
-//! och *GASKET ELASTICITY (`elements/gasket.rs`, `materials/gasket.rs`).
+//! Gaskets: *GASKET SECTION, *GASKET BEHAVIOR, *GASKET THICKNESS BEHAVIOR
+//! and *GASKET ELASTICITY (`elements/gasket.rs`, `materials/gasket.rs`).
 //!
-//! *GASKET BEHAVIOR, NAME= skapar ett material (som *MATERIAL) som
-//! beteendena läggs i; *GASKET SECTION, BEHAVIOR= kopplar det till elementen.
+//! *GASKET BEHAVIOR, NAME= creates a material (like *MATERIAL) that
+//! the behaviors are added to; *GASKET SECTION, BEHAVIOR= assigns it to the elements.
 
 use crate::fem::model::{MaterialDef, RawKeyword, SectionDef, SectionKind};
 use crate::inp::{required, InpCtx, Keyword, Kind};
@@ -19,7 +19,7 @@ pub static KEYWORDS: &[Keyword] = &[
 fn gasket_behavior(ctx: &mut InpCtx, kw: &RawKeyword) -> Result<()> {
     let name = required(kw, "NAME")?.to_uppercase();
     if ctx.model.material_index(&name).is_some() {
-        return kw.err(format!("materialet eller packningsbeteendet {name} är definierat två gånger"));
+        return kw.err(format!("the material or gasket behavior {name} is defined twice"));
     }
     let marker = RawKeyword { name: MARKER.into(), ..kw.clone() };
     ctx.model.materials.push(MaterialDef { name, behaviors: vec![marker], density: 0.0 });
@@ -30,10 +30,10 @@ fn gasket_behavior(ctx: &mut InpCtx, kw: &RawKeyword) -> Result<()> {
 fn push(ctx: &mut InpCtx, kw: &RawKeyword, name: &str) -> Result<()> {
     let m = ctx.material_mut(kw)?;
     if m.behavior(MARKER).is_none() {
-        return kw.err("ska stå efter *GASKET BEHAVIOR (packningsbeteende i *MATERIAL stöds inte ännu)");
+        return kw.err("must appear after *GASKET BEHAVIOR (gasket behavior in *MATERIAL is not supported yet)");
     }
     if m.behavior(name).is_some() {
-        return kw.err(format!("packningsbeteendet {} har redan *{}", m.name, kw.name));
+        return kw.err(format!("gasket behavior {} already has *{}", m.name, kw.name));
     }
     m.behaviors.push(RawKeyword { name: name.into(), ..kw.clone() });
     Ok(())
@@ -43,10 +43,10 @@ fn thickness(ctx: &mut InpCtx, kw: &RawKeyword) -> Result<()> {
     let name = match kw.param_upper("DIRECTION").as_deref() {
         None | Some("LOADING") => THICKNESS,
         Some("UNLOADING") => THICKNESS_UNLOADING,
-        Some(d) => return kw.err(format!("DIRECTION={d} är okänt (LOADING, UNLOADING)")),
+        Some(d) => return kw.err(format!("DIRECTION={d} is unknown (LOADING, UNLOADING)")),
     };
     if kw.param_upper("VARIABLE").is_some_and(|v| v != "STRESS" && v != "FORCE") {
-        return kw.err("VARIABLE= ska vara STRESS eller FORCE");
+        return kw.err("VARIABLE= must be STRESS or FORCE");
     }
     push(ctx, kw, name)
 }
@@ -55,8 +55,8 @@ fn elasticity(ctx: &mut InpCtx, kw: &RawKeyword) -> Result<()> {
     let name = match kw.param_upper("COMPONENT").as_deref() {
         Some("MEMBRANE") => MEMBRANE,
         Some("TRANSVERSE SHEAR") => SHEAR,
-        Some(c) => return kw.err(format!("COMPONENT={c} stöds inte (MEMBRANE, TRANSVERSE SHEAR)")),
-        None => return kw.err("COMPONENT= saknas (MEMBRANE eller TRANSVERSE SHEAR)"),
+        Some(c) => return kw.err(format!("COMPONENT={c} is not supported (MEMBRANE, TRANSVERSE SHEAR)")),
+        None => return kw.err("COMPONENT= is missing (MEMBRANE or TRANSVERSE SHEAR)"),
     };
     push(ctx, kw, name)
 }
@@ -64,15 +64,15 @@ fn elasticity(ctx: &mut InpCtx, kw: &RawKeyword) -> Result<()> {
 fn section(ctx: &mut InpCtx, kw: &RawKeyword) -> Result<()> {
     let elset = required(kw, "ELSET")?.to_uppercase();
     let Some(beh) = kw.param("BEHAVIOR") else {
-        return kw.err("BEHAVIOR= saknas (packningar med MATERIAL= stöds inte ännu)");
+        return kw.err("BEHAVIOR= is missing (gaskets with MATERIAL= are not supported yet)");
     };
     if kw.has("ORIENTATION") {
-        return kw.err("ORIENTATION= stöds inte ännu för packningar");
+        return kw.err("ORIENTATION= is not supported yet for gaskets");
     }
     let v = kw.first_floats()?;
     for (i, x) in v.iter().enumerate().skip(1) {
         if *x != 0.0 {
-            return kw.err(format!("fält {} på dataraden stöds inte ännu (bara initial tjocklek)", i + 1));
+            return kw.err(format!("field {} on the data line is not supported yet (only initial thickness)", i + 1));
         }
     }
     let material = beh.trim().to_uppercase();

@@ -1,5 +1,5 @@
-//! Minnesuppskattning före lösning och val av lösare (se PLAN.md, "Minnestak
-//! och lösarval").
+//! Memory estimate before solving and choice of solver (see PLAN.md, "Memory cap
+//! and solver choice").
 
 use rustyfem::fem::dof;
 use rustyfem::fem::model::FeModel;
@@ -9,28 +9,28 @@ use std::collections::BTreeSet;
 
 #[derive(Debug, Clone, Serialize, Type)]
 pub struct MemoryEstimate {
-    /// Antal obekanta (utan randvillkor).
+    /// Number of unknowns (without boundary conditions).
     pub unknowns: f64,
-    /// Lagrade tal i faktorn (direktlösaren).
+    /// Stored entries in the factor (direct solver).
     pub factor_entries: f64,
-    /// Uppskattat behov med direktlösaren (byte).
+    /// Estimated requirement with the direct solver (bytes).
     pub direct_bytes: f64,
-    /// Uppskattat behov med PCG och AMG (byte).
+    /// Estimated requirement with PCG and AMG (bytes).
     pub iterative_bytes: f64,
     pub budget_bytes: f64,
-    /// Budgeten gäller alltid (iOS); annars kan användaren välja att köra ändå.
+    /// The budget always applies (iOS); otherwise the user can choose to run anyway.
     pub hard: bool,
-    /// Plattformen ("windows", "macos", "linux", "ios").
+    /// The platform ("windows", "macos", "linux", "ios").
     pub platform: String,
-    /// Lösare som föreslås ("direct", "iterative" eller den som användaren låst).
+    /// Suggested solver ("direct", "iterative" or the one the user has locked).
     pub solver: String,
-    /// Körningen ryms i budgeten med den föreslagna lösaren.
+    /// The run fits in the budget with the suggested solver.
     pub fits: bool,
-    /// Förklaring till användaren.
+    /// Explanation for the user.
     pub note: String,
 }
 
-/// Procedurer där PCG fungerar (symmetriskt och positivt definit).
+/// Procedures where PCG works (symmetric and positive definite).
 fn spd_only(m: &FeModel) -> bool {
     m.steps.iter().all(|s| {
         let unsymm = s.header.param_upper("UNSYMM").is_some_and(|v| v == "YES");
@@ -39,7 +39,7 @@ fn spd_only(m: &FeModel) -> bool {
     }) && !m.materials.iter().any(|mt| mt.behaviors.iter().any(|b| b.name.starts_with("CONCRETE")))
 }
 
-/// Uppskattar minnesbehovet och väljer lösare. `threads` = antal trådar i faktoriseringen.
+/// Estimates the memory requirement and chooses a solver. `threads` = number of threads in the factorization.
 pub fn estimate(m: &FeModel, budget: f64, locked: Option<&str>, threads: usize) -> MemoryEstimate {
     let nn = m.nodes.len();
     let mut slots = vec![0u16; nn];
@@ -76,21 +76,21 @@ pub fn estimate(m: &FeModel, budget: f64, locked: Option<&str>, threads: usize) 
     let (solver, fits, note) = match locked {
         Some(s) => {
             let need = if s.starts_with("iterative") { iterative } else { direct };
-            (s.to_string(), need <= budget, format!("lösaren är låst till {s}"))
+            (s.to_string(), need <= budget, format!("the solver is locked to {s}"))
         }
-        None if direct <= budget => ("direct".to_string(), true, "direktlösaren ryms i minnesbudgeten".to_string()),
+        None if direct <= budget => ("direct".to_string(), true, "the direct solver fits in the memory budget".to_string()),
         None if spd && iterative <= budget => (
             "iterative".to_string(),
             true,
-            "direktlösaren ryms inte i budgeten – byter till PCG med AMG (symmetriskt, positivt definit system)".to_string(),
+            "the direct solver does not fit in the budget – switching to PCG with AMG (symmetric, positive definite system)".to_string(),
         ),
         None => (
             "direct".to_string(),
             false,
             if spd {
-                "modellen är för stor även för den iterativa lösaren – gör nätet grövre".to_string()
+                "the model is too large even for the iterative solver – use a coarser mesh".to_string()
             } else {
-                "direktlösaren ryms inte i budgeten och steget kräver direktlösare (indefinit/osymmetriskt eller egenvärden) – gör nätet grövre".to_string()
+                "the direct solver does not fit in the budget and the step requires a direct solver (indefinite/unsymmetric or eigenvalues) – use a coarser mesh".to_string()
             },
         ),
     };

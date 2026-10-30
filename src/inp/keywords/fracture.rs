@@ -1,4 +1,4 @@
-//! Brottmekanik: *CONTOUR INTEGRAL (sparas i steget, räknas av `steps/fracture.rs`).
+//! Fracture mechanics: *CONTOUR INTEGRAL (stored in the step, computed by `steps/fracture.rs`).
 
 use crate::inp::{store_step, Keyword, Kind};
 

@@ -1,54 +1,54 @@
-//! Gemensam implicit returalgoritm (bakåt Euler) för plasticitet som skrivs
-//! med invarianterna p, q och t (utökade Drucker–Prager-modeller och
-//! Drucker–Prager Cap, `plasticity_dp2.rs` och `cap.rs`).
+//! Shared implicit return algorithm (backward Euler) for plasticity written
+//! in terms of the invariants p, q and t (extended Drucker–Prager models and
+//! Drucker–Prager Cap, `plasticity_dp2.rs` and `cap.rs`).
 //!
-//! Invarianter:
+//! Invariants:
 //!
 //!   p = −tr σ/3,  q = √(3/2 S:S),  r³ = 9/2 S:(S·S),
-//!   t = q/2 [1 + 1/K − (1 − 1/K)(r/q)³]   (t = q när K = 1).
+//!   t = q/2 [1 + 1/K − (1 − 1/K)(r/q)³]   (t = q when K = 1).
 //!
-//! Gradienterna med avseende på σ (tensorkomponenter) är ∂p/∂σ = −I/3,
-//! ∂q/∂σ = 3/2 S/q och ∂(r³)/∂σ = 27/2 dev(S·S).
+//! The gradients with respect to σ (tensor components) are ∂p/∂σ = −I/3,
+//! ∂q/∂σ = 3/2 S/q and ∂(r³)/∂σ = 27/2 dev(S·S).
 //!
-//! Med isotrop elasticitet (G, K) löses för okända (σ, Δλ, h):
+//! With isotropic elasticity (G, K) the unknowns (σ, Δλ, h) are solved from:
 //!
 //!   σ − σ_tr + Δλ C:N(σ, h) = 0,  F(σ, h) = 0,  h − hₙ − Δλ ḣ(σ, N, h) = 0,
 //!
-//! där N = ∂G/∂σ är flödesriktningen och h modellens hårdnandevariabel
-//! (ekvivalent plastisk töjning eller volymetrisk plastisk töjning). Systemet
-//! (8 obekanta) löses med Newton och Jacobian med centraldifferenser av
-//! residualen; residualen själv är analytisk, så den konvergerade lösningen är
-//! den exakta bakåt Euler-lösningen. Den plastiska töjningen blir Δεᵖ = Δλ N
-//! (ingenjörsskjuvtöjning i utdata).
+//! where N = ∂G/∂σ is the flow direction and h the model's hardening variable
+//! (equivalent plastic strain or volumetric plastic strain). The system
+//! (8 unknowns) is solved with Newton and a Jacobian from central differences of the
+//! residual; the residual itself is analytical, so the converged solution is
+//! the exact backward Euler solution. The plastic strain becomes Δεᵖ = Δλ N
+//! (engineering shear strain in the output).
 
 use super::plasticity::{ddot, dev, V6};
 use super::MaterialFactory;
 use crate::model::{fail, Result};
 
-/// Inga fabriker: modulen är en byggsten för andra materialmodeller.
+/// No factories: the module is a building block for other material models.
 pub static FACTORIES: &[MaterialFactory] = &[];
 
-/// Invarianter och deras gradienter för spänningen σ.
+/// Invariants and their gradients for the stress σ.
 #[derive(Debug, Clone, Copy)]
 pub struct Inv {
     pub p: f64,
     pub q: f64,
     pub t: f64,
-    /// ∂t/∂σ (tensorkomponenter).
+    /// ∂t/∂σ (tensor components).
     pub dt: V6,
 }
 
 /// ∂p/∂σ.
 pub const DP: V6 = [-1.0 / 3.0, -1.0 / 3.0, -1.0 / 3.0, 0.0, 0.0, 0.0];
 
-/// S·S för en deviator i Voigt-form (tensorskjuvkomponenter).
+/// S·S for a deviator in Voigt form (tensor shear components).
 fn square(s: &V6) -> V6 {
     let a = [[s[0], s[3], s[4]], [s[3], s[1], s[5]], [s[4], s[5], s[2]]];
     let m = |i: usize, j: usize| (0..3).map(|k| a[i][k] * a[k][j]).sum::<f64>();
     [m(0, 0), m(1, 1), m(2, 2), m(0, 1), m(0, 2), m(1, 2)]
 }
 
-/// Invarianterna med K (förhållandet mellan flytspänningarna i triaxiellt drag och tryck).
+/// The invariants with K (the ratio of the yield stresses in triaxial tension and compression).
 pub fn invariants(sig: &V6, k: f64) -> Inv {
     let s = dev(sig);
     let p = -(sig[0] + sig[1] + sig[2]) / 3.0;
@@ -72,31 +72,31 @@ pub fn invariants(sig: &V6, k: f64) -> Inv {
     Inv { p, q, t, dt }
 }
 
-/// Flytyta, flödespotential och hårdnande för returalgoritmen.
+/// Yield surface, flow potential and hardening for the return algorithm.
 pub trait Surface {
-    /// K i t (1 = von Mises-cirkel i deviatorplanet).
+    /// K in t (1 = von Mises circle in the deviatoric plane).
     fn k(&self) -> f64;
-    /// (F, ∂F/∂p, ∂F/∂t) vid hårdnandet h.
+    /// (F, ∂F/∂p, ∂F/∂t) at hardening h.
     fn yield_fn(&self, p: f64, t: f64, h: f64) -> (f64, f64, f64);
-    /// (∂G/∂p, ∂G/∂t) vid hårdnandet h.
+    /// (∂G/∂p, ∂G/∂t) at hardening h.
     fn potential(&self, p: f64, t: f64, h: f64) -> (f64, f64);
-    /// ḣ/λ̇ för spänningen σ med flödesriktningen N.
+    /// ḣ/λ̇ for the stress σ with flow direction N.
     fn hardening_rate(&self, sig: &V6, inv: &Inv, n: &V6, h: f64, h_n: f64) -> f64;
-    /// Spänningsskala för toleranser (t.ex. flytspänningen).
+    /// Stress scale for tolerances (e.g. the yield stress).
     fn stress_scale(&self, h: f64) -> f64;
 }
 
-/// Flödesriktningen N = ∂G/∂σ (tensorkomponenter).
+/// The flow direction N = ∂G/∂σ (tensor components).
 pub fn flow(s: &dyn Surface, inv: &Inv, h: f64) -> V6 {
     let (gp, gt) = s.potential(inv.p, inv.t, h);
     std::array::from_fn(|i| gp * DP[i] + gt * inv.dt[i])
 }
 
-/// Resultat av en plastisk retur.
+/// Result of a plastic return.
 #[derive(Debug, Clone, Copy)]
 pub struct Return {
     pub sig: V6,
-    /// Plastiskt töjningsinkrement (ingenjörsskjuvtöjning).
+    /// Plastic strain increment (engineering shear strain).
     pub dep: V6,
     pub h: f64,
     pub dl: f64,
@@ -127,9 +127,9 @@ fn solve8(a: &mut [[f64; 8]; 8], b: &mut [f64; 8]) -> bool {
     true
 }
 
-/// Dämpad Newton med Jacobian från centraldifferenser för ett litet system
-/// r(x) = 0 (skalade obekanta av storleksordningen 1). `typ` är typisk storlek
-/// per obekant (steglängd för differenserna). Returnerar slutresidualens maxnorm.
+/// Damped Newton with a Jacobian from central differences for a small system
+/// r(x) = 0 (scaled unknowns of order 1). `typ` is the typical size
+/// per unknown (step length for the differences). Returns the max norm of the final residual.
 pub fn newton_fd(x: &mut [f64], typ: &[f64], r: &dyn Fn(&[f64]) -> Vec<f64>, tol: f64) -> f64 {
     let n = x.len();
     let norm = |v: &[f64]| v.iter().fold(0.0f64, |m, a| m.max(a.abs()));
@@ -173,8 +173,8 @@ pub fn newton_fd(x: &mut [f64], typ: &[f64], r: &dyn Fn(&[f64]) -> Vec<f64>, tol
     norm(&rv)
 }
 
-/// Bakåt Euler-retur från prövospänningen `sig_tr` med hårdnandet `h_n` och
-/// elasticiteten (G, K). `None` om prövotillståndet är elastiskt.
+/// Backward Euler return from the trial stress `sig_tr` with hardening `h_n` and
+/// elasticity (G, K). `None` if the trial state is elastic.
 pub fn return_map(s: &dyn Surface, g: f64, kb: f64, sig_tr: &V6, h_n: f64) -> Result<Option<Return>> {
     let inv_tr = invariants(sig_tr, s.k());
     let sc0 = s.stress_scale(h_n);
@@ -183,9 +183,9 @@ pub fn return_map(s: &dyn Surface, g: f64, kb: f64, sig_tr: &V6, h_n: f64) -> Re
         return Ok(None);
     }
     let sc = sc0.max(sig_tr.iter().fold(0.0f64, |m, x| m.max(x.abs())));
-    // typisk storlek för Δλ och h (töjningar)
+    // typical size of Δλ and h (strains)
     let e_typ = sc / (2.0 * g);
-    // obekanta: x = [σ/sc (6), Δλ/e_typ, h]
+    // unknowns: x = [σ/sc (6), Δλ/e_typ, h]
     let resid = |x: &[f64; 8]| -> [f64; 8] {
         let sig: V6 = std::array::from_fn(|i| x[i] * sc);
         let dl = x[6] * e_typ;
@@ -233,7 +233,7 @@ pub fn return_map(s: &dyn Surface, g: f64, kb: f64, sig_tr: &V6, h_n: f64) -> Re
         if !solve8(&mut jac, &mut d) {
             break;
         }
-        // dämpad Newton: halvera steget tills residualen minskar
+        // damped Newton: halve the step until the residual decreases
         let r0 = norm(&r);
         let mut lam = 1.0;
         let mut accepted = false;
@@ -259,7 +259,7 @@ pub fn return_map(s: &dyn Surface, g: f64, kb: f64, sig_tr: &V6, h_n: f64) -> Re
         }
     }
     if !conv && norm(&r) > 1e-9 {
-        return fail(format!("returalgoritmen konvergerade inte (residual {:e})", norm(&r)));
+        return fail(format!("the return algorithm did not converge (residual {:e})", norm(&r)));
     }
     let sig: V6 = std::array::from_fn(|i| x[i] * sc);
     let dl = x[6] * e_typ;

@@ -1,11 +1,11 @@
-//! Plana kontinuumelement: CPS3, CPS4 (plan spänning) och CPE3, CPE4 (plan töjning).
+//! Plane continuum elements: CPS3, CPS4 (plane stress) and CPE3, CPE4 (plane strain).
 //!
-//! - CPS4: bilinjär fyrhörning, full 2×2-integrering.
-//! - CPE4: full integrering med B-bar där den plana volymtöjningen ε11+ε22
-//!   medelvärdesbildas och ε33 = 0 behålls (selektivt reducerad integrering).
-//! - CPS3/CPE3: konstant töjning.
+//! - CPS4: bilinear quadrilateral, full 2×2 integration.
+//! - CPE4: full integration with B-bar where the planar volumetric strain ε11+ε22
+//!   is averaged and ε33 = 0 is kept (selectively reduced integration).
+//! - CPS3/CPE3: constant strain.
 //!
-//! Integrationspunkterna numreras med ξ snabbast.
+//! The integration points are numbered with ξ fastest.
 
 use super::api::{ElemCtx, ElemResponse, ElementType, Family, IpField, MassKind};
 use super::common::{self, Bbar, Ip, DISTORTED, G2};
@@ -31,7 +31,7 @@ pub static TYPES: &[&dyn ElementType] = &[&CPE3, &CPE4, &CPS3, &CPS4];
 const TRI_FACES: &[&[usize]] = &[&[0, 1], &[1, 2], &[2, 0]];
 const QUAD_FACES: &[&[usize]] = &[&[0, 1], &[1, 2], &[2, 3], &[3, 0]];
 
-/// Integrationspunkter för linjär triangel eller bilinjär fyrhörning.
+/// Integration points for a linear triangle or bilinear quadrilateral.
 pub fn ips_2d(x: &[[f64; 3]], thickness: f64) -> Result<Vec<Ip>> {
     match x.len() {
         3 => {
@@ -77,7 +77,7 @@ pub fn ips_2d(x: &[[f64; 3]], thickness: f64) -> Result<Vec<Ip>> {
             }
             Ok(ips)
         }
-        n => fail(format!("intern: ips_2d med {n} noder")),
+        n => fail(format!("internal: ips_2d with {n} nodes")),
     }
 }
 
@@ -126,7 +126,7 @@ impl ElementType for Continuum2D {
 
     fn internal_force(&self, ctx: &ElemCtx, u: &[f64], du: &[f64], so: &[f64], sn: &mut Vec<f64>, tangent: bool) -> Result<ElemResponse> {
         if ctx.nlgeom {
-            // område nlgeom: ersätt raden nedan med ett anrop till den olinjära kinematiken
+            // area nlgeom: replace the line below with a call to the nonlinear kinematics
             return crate::kinematics::continuum::response(ctx, self.mode, &self.ips(ctx)?, self.bbar, ctx.material(self.name)?, u, du, so, sn, tangent);
         }
         let ips = self.ips(ctx)?;
@@ -146,7 +146,7 @@ impl ElementType for Continuum2D {
         if let Some(b) = common::body_load_vector(&load.kind, load.magnitude, &load.extra, ctx.density, self.name)? {
             return Ok(common::body_force(&self.ips(ctx)?, b, 2));
         }
-        super::api::not_implemented(&format!("lasttypen {}", load.kind), self.name)
+        super::api::not_implemented(&format!("load type {}", load.kind), self.name)
     }
 
     fn geometric_stiffness(&self, ctx: &ElemCtx, _u: &[f64], state: &[f64]) -> Result<Vec<f64>> {

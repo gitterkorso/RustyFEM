@@ -1,5 +1,5 @@
-//! Nyckelord för den automatiska tidsinkrementeringen i implicit dynamik:
-//! *TIME POINTS (utdatatidpunkter för *OUTPUT, TIME POINTS=namn), läses av
+//! Keywords for automatic time incrementation in implicit dynamics:
+//! *TIME POINTS (output time points for *OUTPUT, TIME POINTS=name), read by
 //! `steps/dynamic_incr.rs`.
 
 use crate::inp::{store_model, Keyword, Kind};

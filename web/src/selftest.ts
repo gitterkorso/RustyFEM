@@ -1,6 +1,6 @@
-// Självtest i det riktiga appfönstret (`rustyfem-app --selftest KATALOG`):
-// öppnar modeller, löser dem med motorn, växlar resultat och mäter bildtiden.
-// Skärmbild och tider skrivs till katalogen, sedan avslutas appen.
+// Self-test in the real app window (`rustyfem-app --selftest DIR`):
+// opens models, solves them with the engine, switches results and measures the frame time.
+// The screenshot and timings are written to the directory, then the app exits.
 
 import { engine, newModel, selectResult, solve } from "./actions";
 import { get, set } from "./store";
@@ -13,7 +13,7 @@ async function until(what: string, ok: () => boolean, ms = 90_000) {
   while (!ok()) {
     if (performance.now() - t0 > ms) {
       const st = get();
-      throw new Error(`självtest: väntade för länge på ${what} (busy=${st.busy}, running=${st.run.running}, mode=${st.mode}, results=${st.results.length}, logg: ${st.log.slice(-3).map((l) => l.text).join(" / ")})`);
+      throw new Error(`self-test: waited too long for ${what} (busy=${st.busy}, running=${st.run.running}, mode=${st.mode}, results=${st.results.length}, log: ${st.log.slice(-3).map((l) => l.text).join(" / ")})`);
     }
     await new Promise((r) => setTimeout(r, 15));
   }
@@ -21,16 +21,16 @@ async function until(what: string, ok: () => boolean, ms = 90_000) {
 
 const frame = () => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
 
-/** Mål för ett responsivt gränssnitt (ms). */
+/** Targets for a responsive UI (ms). */
 const TARGETS: Record<string, number> = {
-  bild_modell_ms: 16.7,
-  bild_resultat_ms: 16.7,
-  forsta_resultatbild_ms: 100,
-  faltbyte_ms: 100,
-  oppna_ms: 2000,
-  // gränssnittet under lösningen: längsta och 95:e percentilen av bildintervallen
-  under_losning_max_ms: 50,
-  under_losning_p95_ms: 25,
+  frame_model_ms: 16.7,
+  frame_results_ms: 16.7,
+  first_results_frame_ms: 100,
+  field_switch_ms: 100,
+  open_ms: 2000,
+  // the UI during the solution: longest and 95th percentile of the frame intervals
+  during_solve_max_ms: 50,
+  during_solve_p95_ms: 25,
 };
 
 function checkTargets(r: Record<string, number | string>) {
@@ -39,24 +39,24 @@ function checkTargets(r: Record<string, number | string>) {
     const v = r[k];
     if (typeof v === "number" && v > lim) miss.push(`${k} ${v} > ${lim}`);
   }
-  r.mal = miss.length ? `missade: ${miss.join(", ")}` : "alla mål nådda";
+  r.targets = miss.length ? `missed: ${miss.join(", ")}` : "all targets met";
   return miss.length === 0;
 }
 
 async function measureCase(name: string, script: string) {
-  const r: Record<string, number | string> = { modell: name };
+  const r: Record<string, number | string> = { model: name };
   let t = performance.now();
   await newModel(script);
-  await until("modellen", () => get().mesh !== null && get().busy === null);
+  await until("the model", () => get().mesh !== null && get().busy === null);
   await frame();
-  r.oppna_ms = Math.round(performance.now() - t);
+  r.open_ms = Math.round(performance.now() - t);
   const m = get().model!;
-  r.noder = m.nodes;
-  r.element = m.elements;
+  r.nodes = m.nodes;
+  r.elements = m.elements;
   Object.assign(r, viewer().stats);
-  r.bild_modell_ms = Number(viewer().benchmark(60).toFixed(2));
+  r.frame_model_ms = Number(viewer().benchmark(60).toFixed(2));
   t = performance.now();
-  // bildintervall medan lösningen pågår (modellen ritas om i varje bild)
+  // frame intervals while the solution runs (the model is redrawn every frame)
   const gaps: number[] = [];
   let last = performance.now();
   let live = true;
@@ -69,59 +69,59 @@ async function measureCase(name: string, script: string) {
   };
   requestAnimationFrame(tick);
   await solve();
-  await until("lösningen", () => !get().run.running && get().results.length > 0 && get().mode === "results");
+  await until("the solution", () => !get().run.running && get().results.length > 0 && get().mode === "results");
   live = false;
-  r.losning_ms = Math.round(performance.now() - t);
+  r.solve_ms = Math.round(performance.now() - t);
   const g = gaps.slice(2).sort((a, b) => a - b);
   if (g.length) {
-    r.under_losning_bilder = g.length;
-    r.under_losning_max_ms = Number(g[g.length - 1].toFixed(1));
-    r.under_losning_p95_ms = Number(g[Math.floor(g.length * 0.95)].toFixed(1));
+    r.during_solve_frames = g.length;
+    r.during_solve_max_ms = Number(g[g.length - 1].toFixed(1));
+    r.during_solve_p95_ms = Number(g[Math.floor(g.length * 0.95)].toFixed(1));
   }
   t = performance.now();
-  await until("resultatbilden", () => document.querySelector(".legend") !== null);
+  await until("the results view", () => document.querySelector(".legend") !== null);
   await frame();
-  r.forsta_resultatbild_ms = Math.round(performance.now() - t);
+  r.first_results_frame_ms = Math.round(performance.now() - t);
   t = performance.now();
   set({ mode: "results" });
   selectResult({ field: "U", component: "Magnitude" });
-  await until("fältbytet", () => document.querySelector(".legend-title strong")?.textContent === "U");
+  await until("the field switch", () => document.querySelector(".legend-title strong")?.textContent === "U");
   await frame();
-  r.faltbyte_ms = Math.round(performance.now() - t);
-  // ett elementfält som finns (S för kontinuum, SF/SM för balkar)
+  r.field_switch_ms = Math.round(performance.now() - t);
+  // an element field that exists (S for continuum, SF/SM for beams)
   const st = get().results[get().rsel!.step];
   const ef = st.fields.find((f) => f.name === "S") ?? st.fields.find((f) => f.position === "element") ?? st.fields[0];
-  r.elementfalt = ef.name;
+  r.element_field = ef.name;
   set({ mode: "results" });
   selectResult({ field: ef.name, component: ef.components[0] });
   await until(ef.name, () => document.querySelector(".legend-title strong")?.textContent === ef.name);
   await frame();
-  r.bild_resultat_ms = Number(viewer().benchmark(60).toFixed(2));
+  r.frame_results_ms = Number(viewer().benchmark(60).toFixed(2));
   const log = get().log.filter((l) => l.kind === "error");
-  if (log.length) r.fel = log.map((l) => l.text).join(" | ");
-  if (!checkTargets(r)) r.fel = String(r.mal);
+  if (log.length) r.error = log.map((l) => l.text).join(" | ");
+  if (!checkTargets(r)) r.error = String(r.targets);
   return r;
 }
 
 export async function runSelftest() {
   if (!(await engine.selftest().catch(() => false))) return;
   const report: Record<string, unknown> = {
-    mal_ms: TARGETS, tid: new Date().toISOString(), fonster: `${window.innerWidth}x${window.innerHeight}`, dpr: window.devicePixelRatio };
+    targets_ms: TARGETS, time: new Date().toISOString(), window: `${window.innerWidth}x${window.innerHeight}`, dpr: window.devicePixelRatio };
   const cases: Record<string, unknown>[] = [];
   try {
     window.confirm = () => true;
     set({ left: true, right: true, dock: true });
-    cases.push(await measureCase("ram av balkar", "model 3d\nmaterial steel\nbeam (0,0,0) (0,3,0) (4,3,0) (4,0,0) section=ibeam(0.2,0.1,0.01,0.006) n=40\nbeam (0,3,0) (0,3,3) (4,3,3) (4,3,0) section=rect(0.1,0.1) n=40\nfix y=0\nload at=(2,3,0) fy=-20000\n"));
-    cases.push(await measureCase("kloss 20 480 C3D8", "model 3d\nmaterial steel\nbox x=0..1 y=0..0.2 z=0..0.2 size=0.0125\nfix x=0\nload x=1 fy=-5000\n"));
-    cases.push(await measureCase("kloss 78 125 C3D8", "model 3d\nmaterial steel\nbox x=0..1 y=0..0.2 z=0..0.2 size=0.008\nfix x=0\nload x=1 fy=-5000\n"));
-    // sista bilden: den stora modellen med Mises och panelerna öppna
+    cases.push(await measureCase("beam frame", "model 3d\nmaterial steel\nbeam (0,0,0) (0,3,0) (4,3,0) (4,0,0) section=ibeam(0.2,0.1,0.01,0.006) n=40\nbeam (0,3,0) (0,3,3) (4,3,3) (4,3,0) section=rect(0.1,0.1) n=40\nfix y=0\nload at=(2,3,0) fy=-20000\n"));
+    cases.push(await measureCase("block 20,480 C3D8", "model 3d\nmaterial steel\nbox x=0..1 y=0..0.2 z=0..0.2 size=0.0125\nfix x=0\nload x=1 fy=-5000\n"));
+    cases.push(await measureCase("block 78,125 C3D8", "model 3d\nmaterial steel\nbox x=0..1 y=0..0.2 z=0..0.2 size=0.008\nfix x=0\nload x=1 fy=-5000\n"));
+    // last frame: the large model with Mises and the panels open
     await frame();
-    report.ok = !cases.some((c) => "fel" in c);
+    report.ok = !cases.some((c) => "error" in c);
   } catch (e) {
     report.ok = false;
-    report.fel = String(e instanceof Error ? e.message : e);
+    report.error = String(e instanceof Error ? e.message : e);
   }
-  report.fall = cases;
+  report.cases = cases;
   await frame();
   const png = viewer().screenshot();
   await engine.selftestDone(png, JSON.stringify(report, null, 2));

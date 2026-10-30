@@ -1,19 +1,19 @@
-//! CGAX3, CGAX4, CGAX6, CGAX8, CGAX8R: generaliserade axisymmetriska
-//! element med vridning (område elements3).
+//! CGAX3, CGAX4, CGAX6, CGAX8, CGAX8R: generalized axisymmetric
+//! elements with twist (area elements3).
 //!
-//! Frihetsgrader per nod: u_r (1), u_z (2) och vridningsvinkeln φ kring
-//! symmetriaxeln (5, i radianer). θ-axeln är e_r × e_z (högersystemet
-//! r, z, θ), så u_θ = −r φ. Töjningarnas ordning är
-//! [εrr, εzz, εθθ, γrz, γrθ, γzθ] med εθθ = u_r/r, γrθ = −r ∂φ/∂r och
-//! γzθ = −r ∂φ/∂z; materialet används i sin
-//! tredimensionella form (S11 = σrr, S22 = σzz, S33 = σθθ, S12 = σrz,
+//! Degrees of freedom per node: u_r (1), u_z (2) and the twist angle φ about
+//! the symmetry axis (5, in radians). The θ axis is e_r × e_z (the right-handed system
+//! r, z, θ), so u_θ = −r φ. The strain order is
+//! [εrr, εzz, εθθ, γrz, γrθ, γzθ] with εθθ = u_r/r, γrθ = −r ∂φ/∂r and
+//! γzθ = −r ∂φ/∂z; the material is used in its
+//! three-dimensional form (S11 = σrr, S22 = σzz, S33 = σθθ, S12 = σrz,
 //! S13 = σrθ, S23 = σzθ).
 //!
-//! I planet är elementen som CAX-elementen i `axisym.rs` (samma formfunktioner,
-//! integrationsregler och B-bar för CGAX4); allt integreras över hela varvet
-//! (vikten 2πr). CGAX3 (en punkt) tar radien i vridningstermerna i volymens
-//! tyngdpunkt ∫r² dA/∫r dA. Massan har rotationströgheten ρ r² för φ
-//! och är radsummerad för CGAX3/CGAX4 (se `tests/elements3.rs`).
+//! In the plane the elements are like the CAX elements in `axisym.rs` (same shape functions,
+//! integration rules and B-bar for CGAX4); everything is integrated over the full revolution
+//! (weight 2πr). CGAX3 (one point) takes the radius in the twist terms at the volume
+//! centroid ∫r² dA/∫r dA. The mass has the rotary inertia ρ r² for φ
+//! and is row-summed for CGAX3/CGAX4 (see `tests/elements3.rs`).
 
 use super::super::api::{not_implemented, ElemCtx, ElemResponse, ElementType, Family, IpField, MassKind};
 use super::super::common::{self, Ip};
@@ -52,7 +52,7 @@ impl Cgax {
         ips_for(self.shape, StressMode::Axisymmetric, &ctx.x, &rule.points(2), 1.0)
     }
 
-    /// Massans regel (som CAX-elementen, `solid_higher_tech.rs::mass_rule`).
+    /// The mass rule (like the CAX elements, `solid_higher_tech.rs::mass_rule`).
     fn ips_mass(&self, ctx: &ElemCtx) -> Result<Vec<Ip>> {
         let rule = match self.shape {
             Shape::Quad8 => RuleKind::Gauss(3),
@@ -63,7 +63,7 @@ impl Cgax {
         ips_for(self.shape, StressMode::Axisymmetric, &ctx.x, &rule.points(2), 1.0)
     }
 
-    /// B-matriser (6 × 3n) per integrationspunkt.
+    /// B matrices (6 × 3n) per integration point.
     pub fn bmats(&self, x: &[[f64; 3]], ips: &[Ip]) -> Vec<Vec<f64>> {
         let mut b4: Vec<Vec<f64>> = ips.iter().map(|ip| super::super::axisym::bmat_axi(&ip.n, &ip.dndx, radius(ip, x))).collect();
         if self.bbar {
@@ -71,8 +71,8 @@ impl Cgax {
         }
         let nn = x.len();
         let (n2, n3) = (2 * nn, 3 * nn);
-        // CGAX3 (en punkt): vridningens radie är volymens tyngdpunkt
-        // ∫r² dA / ∫r dA, inte areans
+        // CGAX3 (one point): the twist radius is the volume centroid
+        // ∫r² dA / ∫r dA, not the area centroid
         let r_twist = (self.shape == Shape::Tri3 && ips.len() == 1).then(|| {
             let r = [x[0][0], x[1][0], x[2][0]];
             let m2 = (r[0] * r[0] + r[1] * r[1] + r[2] * r[2] + r[0] * r[1] + r[1] * r[2] + r[2] * r[0]) / 6.0;
@@ -90,7 +90,7 @@ impl Cgax {
                         }
                     }
                 }
-                // θ-riktningen är e_r × e_z (högersystemet r, z, θ), dvs. u_θ = −r φ
+                // the θ direction is e_r × e_z (the right-handed system r, z, θ), i.e. u_θ = −r φ
                 for i in 0..nn {
                     out[4 * n3 + 3 * i + 2] = -r * ip.dndx[i][0];
                     out[5 * n3 + 3 * i + 2] = -r * ip.dndx[i][1];
@@ -140,7 +140,7 @@ impl ElementType for Cgax {
 
     fn internal_force(&self, ctx: &ElemCtx, u: &[f64], du: &[f64], so: &[f64], sn: &mut Vec<f64>, tangent: bool) -> Result<ElemResponse> {
         if ctx.nlgeom {
-            return not_implemented("geometrisk olinjäritet (NLGEOM)", self.name);
+            return not_implemented("geometric nonlinearity (NLGEOM)", self.name);
         }
         let mat = ctx.material(self.name)?;
         let ips = self.ips(ctx)?;
@@ -168,7 +168,7 @@ impl ElementType for Cgax {
         if kind == MassKind::Lumped {
             let quadratic = matches!(self.shape, Shape::Tri6 | Shape::Quad8);
             for d in 0..3 {
-                // första ordningen: radsumma; andra ordningen: diagonalskalning (HRZ)
+                // first order: row sum; second order: diagonal scaling (HRZ)
                 let rows: Vec<usize> = (0..nn).map(|a| 3 * a + d).collect();
                 let total: f64 = rows.iter().map(|&i| rows.iter().map(|&j| m[i * nd + j]).sum::<f64>()).sum();
                 let ds: f64 = rows.iter().map(|&i| m[i * nd + i]).sum();
@@ -200,7 +200,7 @@ impl ElementType for Cgax {
         if let Some(num) = load.kind.strip_prefix('P').and_then(|s| s.parse::<usize>().ok()) {
             let nf = self.shape.faces().len();
             if num == 0 || num > nf {
-                return fail(format!("{} har bara ytorna P1–P{nf}, inte {}", self.name, load.kind));
+                return fail(format!("{} has only the faces P1–P{nf}, not {}", self.name, load.kind));
             }
             return Ok(spread(face_pressure(self.shape, StressMode::Axisymmetric, &ctx.x, num - 1, load.magnitude, 1.0)));
         }
@@ -211,7 +211,7 @@ impl ElementType for Cgax {
         };
         match b {
             Some(b) => Ok(spread(common::body_force(&self.ips_exact(ctx)?, b, 2))),
-            None => not_implemented(&format!("lasttypen {}", load.kind), self.name),
+            None => not_implemented(&format!("load type {}", load.kind), self.name),
         }
     }
 

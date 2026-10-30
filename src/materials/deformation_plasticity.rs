@@ -1,22 +1,22 @@
-//! Deformationsplasticitet (*DEFORMATION PLASTICITY): Ramberg–Osgood som
-//! ickelinjärt elastiskt material (totalformulering), för implicit analys.
+//! Deformation plasticity (*DEFORMATION PLASTICITY): Ramberg–Osgood as a
+//! nonlinear elastic material (total formulation), for implicit analysis.
 //!
-//! Data: E, ν, σ0, n, α. Sambandet mellan total töjning och spänning är
+//! Data: E, ν, σ0, n, α. The relation between total strain and stress is
 //!
 //!   E ε = (1 + ν) S − (1 − 2ν) p I + (3/2) α (q/σ0)^(n−1) S,
 //!
-//! med deviatorn S, trycket p = −tr σ/3 och von Mises-spänningen q. Volymdelen
-//! är linjärt elastisk, p = −K tr ε. Deviatordelen ger en skalär ekvation för q
-//! ur den ekvivalenta deviatoriska töjningen ē = √(⅔ e:e):
+//! with the deviator S, the pressure p = −tr σ/3 and the von Mises stress q. The volumetric part
+//! is linear elastic, p = −K tr ε. The deviatoric part gives a scalar equation for q
+//! from the equivalent deviatoric strain ē = √(⅔ e:e):
 //!
 //!   ē = q/(3G) + (α/E) q (q/σ0)^(n−1),
 //!
-//! som löses med Newton (konvex och växande, startvärdet 3Gē ligger över
-//! roten), varefter S = (2q/(3ē)) e. Avlastning följer samma kurva
-//! (ingen plastisk historia). Tangenten är analytisk.
+//! which is solved with Newton (convex and increasing, the initial value 3Gē lies above
+//! the root), after which S = (2q/(3ē)) e. Unloading follows the same curve
+//! (no plastic history). The tangent is analytical.
 //!
-//! Utdata: PE = (3/2)(α/E)(q/σ0)^(n−1) S (ingenjörsskjuvning) och
-//! PEEQ = (α/E) q (q/σ0)^(n−1). Plan spänning och stänger via
+//! Output: PE = (3/2)(α/E)(q/σ0)^(n−1) S (engineering shear) and
+//! PEEQ = (α/E) q (q/σ0)^(n−1). Plane stress and beams/trusses via
 //! `plasticity::update_reduced`.
 
 use super::plasticity::{iso_d6, pe_labels, update_reduced, M6, V6};
@@ -26,9 +26,9 @@ use crate::model::{fail, Result};
 use std::sync::Arc;
 
 pub static FACTORIES: &[MaterialFactory] =
-    &[MaterialFactory { name: "deformationsplasticitet (Ramberg–Osgood)", consumes: &["DEFORMATION PLASTICITY"], priority: 10, build: Some(build) }];
+    &[MaterialFactory { name: "deformation plasticity (Ramberg–Osgood)", consumes: &["DEFORMATION PLASTICITY"], priority: 10, build: Some(build) }];
 
-/// Tillstånd: [3D-töjning (6), PEEQ, PE (6)].
+/// State: [3D strain (6), PEEQ, PE (6)].
 const EPS3: usize = 0;
 const PEEQ: usize = 6;
 const PE: usize = 7;
@@ -48,16 +48,16 @@ pub struct RambergOsgood {
 fn build(def: &MaterialDef) -> Result<Option<Arc<dyn MaterialModel>>> {
     let Some(kw) = def.behavior("DEFORMATION PLASTICITY") else { return Ok(None) };
     if kw.data.len() > 1 || kw.has("DEPENDENCIES") {
-        return kw.err("temperatur- eller fältberoende deformationsplasticitet stöds inte ännu");
+        return kw.err("temperature- or field-dependent deformation plasticity is not supported yet");
     }
     if def.behavior("ELASTIC").is_some() || def.behavior("PLASTIC").is_some() {
-        return kw.err("*DEFORMATION PLASTICITY ska inte kombineras med *ELASTIC eller *PLASTIC (elasticiteten ingår)");
+        return kw.err("*DEFORMATION PLASTICITY must not be combined with *ELASTIC or *PLASTIC (the elasticity is included)");
     }
     let v = kw.first_floats()?;
     let g = |i: usize| v.get(i).copied().unwrap_or(0.0);
     let (e, nu, s0, n, alpha) = (g(0), g(1), g(2), g(3), g(4));
     if !(e > 0.0) || !(nu > -1.0 && nu < 0.5) || !(s0 > 0.0) || !(n >= 1.0) || !(alpha >= 0.0) {
-        return kw.err("data ska vara E > 0, −1 < ν < 0,5, σ0 > 0, n ≥ 1 och α ≥ 0");
+        return kw.err("the data must be E > 0, −1 < ν < 0.5, σ0 > 0, n ≥ 1 and α ≥ 0");
     }
     let gm = e / (2.0 * (1.0 + nu));
     let k = e / (3.0 * (1.0 - 2.0 * nu));
@@ -65,7 +65,7 @@ fn build(def: &MaterialDef) -> Result<Option<Arc<dyn MaterialModel>>> {
 }
 
 impl RambergOsgood {
-    /// q ur ē och dq/dē.
+    /// q from ē and dq/dē.
     fn solve_q(&self, eb: f64) -> Result<(f64, f64)> {
         let f = |q: f64| q / (3.0 * self.g) + self.alpha / self.e * q * (q / self.s0).powf(self.n - 1.0) - eb;
         let df = |q: f64| 1.0 / (3.0 * self.g) + self.alpha / self.e * self.n * (q / self.s0).powf(self.n - 1.0);
@@ -81,18 +81,18 @@ impl RambergOsgood {
                 return Ok((q, 1.0 / df(q)));
             }
         }
-        fail(format!("*DEFORMATION PLASTICITY: ekvationen för q konvergerade inte (ē = {eb:e})"))
+        fail(format!("*DEFORMATION PLASTICITY: the equation for q did not converge (ē = {eb:e})"))
     }
 
-    /// 3D: spänning, tangent och plastisk töjning (PEEQ, PE) ur total töjning.
+    /// 3D: stress, tangent and plastic strain (PEEQ, PE) from total strain.
     fn update3d(&self, eps: &V6) -> Result<(V6, M6, f64, V6)> {
         let ev = eps[0] + eps[1] + eps[2];
-        // deviatorisk töjning med tensorskjuvning
+        // deviatoric strain with tensor shear
         let e: V6 = [eps[0] - ev / 3.0, eps[1] - ev / 3.0, eps[2] - ev / 3.0, 0.5 * eps[3], 0.5 * eps[4], 0.5 * eps[5]];
         let ee = e[0] * e[0] + e[1] * e[1] + e[2] * e[2] + 2.0 * (e[3] * e[3] + e[4] * e[4] + e[5] * e[5]);
         let eb = (2.0 / 3.0 * ee).max(0.0).sqrt();
         let (q, dq) = self.solve_q(eb)?;
-        // sekantmodul μs = q/(3ē) och dess derivata
+        // secant modulus μs = q/(3ē) and its derivative
         let (mu, dmu) = if eb > 1e-300 { (q / (3.0 * eb), (dq * eb - q) / (3.0 * eb * eb)) } else { (self.g, 0.0) };
         let p = -self.k * ev;
         let mut sig = [0.0; 6];
@@ -184,8 +184,8 @@ impl MaterialModel for RambergOsgood {
         let mut v = vec![state[PEEQ]];
         v.extend(pe_labels(mode).1.iter().map(|&i| state[PE + i]));
         if mode == StressMode::PlaneStress {
-            // i plan spänning redovisas PE33 = 0 och PEEQ = √(⅔ PE:PE)
-            // av komponenterna i planet (√(5/6) ε̄ vid enaxligt drag)
+            // in plane stress PE33 = 0 is reported and PEEQ = √(⅔ PE:PE)
+            // from the in-plane components (√(5/6) ε̄ in uniaxial tension)
             v[3] = 0.0;
             let (a, b, c) = (state[PE], state[PE + 1], state[PE + 3]);
             v[0] = (2.0 / 3.0 * (a * a + b * b + 0.5 * c * c)).sqrt();

@@ -1,8 +1,8 @@
-//! Gränssnitt för steg-typer (procedurer).
+//! Interface for step types (procedures).
 //!
-//! En steg-typ gör anspråk på ett `StepDef` (via `claim`) och kör det med
-//! `run`. Bland typer som gör anspråk väljs den med högst prioritet, så att en
-//! specialiserad typ (t.ex. NLGEOM) kan ta över från en allmän.
+//! A step type claims a `StepDef` (via `claim`) and runs it with
+//! `run`. Among the types making a claim, the one with the highest priority is chosen, so that a
+//! specialized type (e.g. NLGEOM) can take over from a general one.
 
 use crate::fem::assembly::Prepared;
 use crate::fem::model::StepDef;
@@ -11,31 +11,31 @@ use crate::fem::state::{SolutionState, StepLoads};
 use crate::model::Result;
 use crate::solver::LinearSolver;
 
-/// Inställningar för en hel analys.
+/// Settings for a whole analysis.
 #[derive(Debug, Clone, Default)]
 pub struct RunOptions {
-    /// Spara en frame för varje inkrement (annars bara stegets sista).
+    /// Save a frame for each increment (otherwise only the step's last).
     pub all_frames: bool,
-    /// Skriv förlopp till stderr.
+    /// Write progress to stderr.
     pub verbose: bool,
-    /// Linjär lösare (standard: `Settings::solver` eller "direct").
+    /// Linear solver (default: `Settings::solver` or "direct").
     pub solver: Option<String>,
-    /// Inställningar för processen (annars miljövariablerna i CLI:t, se `crate::settings`).
+    /// Settings for the process (otherwise the environment variables in the CLI, see `crate::settings`).
     pub settings: Option<crate::settings::Settings>,
 }
 
-/// Allt en steg-typ behöver för att köra ett step.
+/// Everything a step type needs to run a step.
 pub struct StepCtx<'a, 'm> {
     pub prep: &'a Prepared<'m>,
     pub step: &'a StepDef,
-    /// Stegets nummer (0-baserat).
+    /// The step number (0-based).
     pub index: usize,
-    /// Randvillkor och laster under steget (ärvda + stegets egna).
+    /// Boundary conditions and loads during the step (inherited + the step's own).
     pub loads: &'a StepLoads,
-    /// Tillståndet före steget; steg-typen skriver tillståndet efter steget.
-    /// Vid perturbationssteg återställs det automatiskt efteråt.
+    /// The state before the step; the step type writes the state after the step.
+    /// For perturbation steps it is restored automatically afterwards.
     pub state: &'a mut SolutionState,
-    /// NLGEOM gäller i steget (ärvt eller angivet).
+    /// NLGEOM applies in the step (inherited or specified).
     pub nlgeom: bool,
     pub out: &'a mut StepOutput,
     pub opts: &'a RunOptions,
@@ -43,18 +43,18 @@ pub struct StepCtx<'a, 'm> {
 }
 
 pub trait StepType: Send + Sync {
-    /// Namn för meddelanden, t.ex. "STATIC".
+    /// Name for messages, e.g. "STATIC".
     fn name(&self) -> &'static str;
-    /// Prioritet om typen kan köra steget, annars `None`.
+    /// Priority if the type can run the step, otherwise `None`.
     fn claim(&self, step: &StepDef, nlgeom: bool) -> Option<i32>;
-    /// Som `claim` men med modellen (t.ex. för typer som bara gäller modeller
-    /// med vissa element). Standard: `claim`.
+    /// Like `claim` but with the model (e.g. for types that only apply to models
+    /// with certain elements). Default: `claim`.
     fn claim_model(&self, step: &StepDef, nlgeom: bool, _model: &crate::fem::model::FeModel) -> Option<i32> {
         self.claim(step, nlgeom)
     }
     fn run(&self, ctx: &mut StepCtx) -> Result<()>;
-    /// Typen utvärderar själv AMPLITUDE= på randvillkor och laster
-    /// (`StepLoads::amp_bc` m.fl.). Annars ger AMPLITUDE= ett fel.
+    /// The type itself evaluates AMPLITUDE= on boundary conditions and loads
+    /// (`StepLoads::amp_bc` etc.). Otherwise AMPLITUDE= gives an error.
     fn uses_amplitudes(&self) -> bool {
         false
     }

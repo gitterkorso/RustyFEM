@@ -1,43 +1,43 @@
-//! Område explicit_adv: Euler-element (EC3D8R, `*EULERIAN SECTION`) i
-//! explicit analys, med operatordelning i ett Lagrangesteg och en advektion
-//! tillbaka till det fasta nätet varje inkrement (Benson 1992, "Computational
+//! Area explicit_adv: Eulerian elements (EC3D8R, `*EULERIAN SECTION`) in
+//! explicit analysis, with operator splitting into a Lagrangian step and an advection
+//! back to the fixed mesh each increment (Benson 1992, "Computational
 //! methods in Lagrangian and Eulerian hydrocodes").
 //!
-//! Elementet har flera material (tvärsnittets materialinstanser) och tomrum.
-//! Varje material i elementet har volymandel φₘ, massa Mₘ, spänning σₘ och
-//! materialtillstånd (för *EOS den specifika energin).
+//! The element has several materials (the section's material instances) and void.
+//! Each material in the element has volume fraction φₘ, mass Mₘ, stress σₘ and
+//! material state (for *EOS the specific energy).
 //!
-//! Lagrangesteget: noderna rör sig med halvstegshastigheten (den allmänna
-//! lösaren), hastighetsgradienten L = (1/V) Σ vᵢ ⊗ bᵢ (en punkt, som C3D8R)
-//! ger samma töjningsinkrement Δε = sym(L)Δt för alla material i elementet;
-//! varje material uppdaterar sin spänning (Jaumann-rotation, *EOS med
-//! J = ρ₀/ρ), och materialvolymerna ändras med (1 + tr Δε).
+//! The Lagrangian step: the nodes move with the half-step velocity (the general
+//! solver), the velocity gradient L = (1/V) Σ vᵢ ⊗ bᵢ (one point, like C3D8R)
+//! gives the same strain increment Δε = sym(L)Δt for all materials in the element;
+//! each material updates its stress (Jaumann rotation, *EOS with
+//! J = ρ₀/ρ), and the material volumes change by (1 + tr Δε).
 //!
-//! Advektionen: för varje elementyta ger den svepta volymen s (ytans fyra
-//! fasta och flyttade noder) flödet från uppströmselementet. Materialets
-//! volymflöde är s·φₘ på ytan: första ordningen φₘ i uppströmselementet,
-//! andra ordningen (standard, `ADVECTION=SECOND ORDER`) med en begränsad
-//! lutning (minmod mellan uppströms-, givar- och mottagarelementen över
-//! motstående ytor, van Leer-korrektion med Courant-talet). Flödet begränsas
-//! så att inget material blir negativt. Massa, spänning·volym och
-//! tillstånd·massa följer volymflödet. Rörelsemängden advekteras med
-//! elementmittprojektion (standard ELEMENT CENTER PROJECTION):
-//! elementets medelhastighet gånger massflödet, och nodernas hastigheter
-//! ändras med den massviktade ändringen av elementens medelhastigheter.
+//! The advection: for each element face the swept volume s (the face's four
+//! fixed and moved nodes) gives the flux from the upstream element. The material's
+//! volume flux is s·φₘ on the face: first order φₘ in the upstream element,
+//! second order (default, `ADVECTION=SECOND ORDER`) with a limited
+//! slope (minmod between the upstream, donor and acceptor elements across
+//! opposite faces, van Leer correction with the Courant number). The flux is limited
+//! so that no material becomes negative. Mass, stress·volume and
+//! state·mass follow the volume flux. The momentum is advected with
+//! element center projection (default ELEMENT CENTER PROJECTION):
+//! the element's mean velocity times the mass flux, and the nodal velocities
+//! change by the mass-weighted change of the elements' mean velocities.
 //!
-//! Krafter på det fasta nätet: fᵢ = bᵢ·σ, σ = Σ φₘ σₘ, och volymviskositet
-//! σ_v = ρ Lₑ (b₁ c ε̇ᵥ − b₂² Lₑ ε̇ᵥ² [ε̇ᵥ < 0]) I (ALLVD); nodmassan är
-//! elementens massa genom åtta. Tyngdkraft (`*DLOAD`, GRAV) verkar på
-//! materialets massa. Stabilitetsgränsen är Lₑ/(c + |v|) med det styvaste
-//! materialet i elementet.
+//! Forces on the fixed mesh: fᵢ = bᵢ·σ, σ = Σ φₘ σₘ, and bulk viscosity
+//! σ_v = ρ Lₑ (b₁ c ε̇ᵥ − b₂² Lₑ ε̇ᵥ² [ε̇ᵥ < 0]) I (ALLVD); the nodal mass is
+//! the elements' mass divided by eight. Gravity (`*DLOAD`, GRAV) acts on the
+//! material's mass. The stability limit is Lₑ/(c + |v|) with the stiffest
+//! material in the element.
 //!
-//! Utdata: EVF_<instans>, EVF_VOID, SVAVG (volymmedelvärde
-//! över materialen), PEEQVAVG och DENSITYVAVG.
+//! Output: EVF_<instance>, EVF_VOID, SVAVG (volume average
+//! over the materials), PEEQVAVG and DENSITYVAVG.
 //!
-//! Begränsningar: ingen hourglass-kontroll (stela nät och endimensionella
-//! förlopp påverkas inte), inga Euler-ränder (*EULERIAN BOUNDARY), material
-//! som rör sig ut genom en fri rand försvinner, nodernas hastigheter
-//! advekteras med första ordningen.
+//! Limitations: no hourglass control (rigid meshes and one-dimensional
+//! processes are not affected), no Eulerian boundaries (*EULERIAN BOUNDARY), material
+//! moving out through a free boundary disappears, the nodal velocities
+//! are advected with first order.
 
 use super::{Eval, Sink};
 use crate::fem::assembly::Prepared;
@@ -50,17 +50,17 @@ use crate::model::{fail, FemError, Result};
 use std::collections::HashMap;
 use std::sync::Arc;
 
-/// Volymandel under vilken ett material räknas som frånvarande.
+/// Volume fraction below which a material counts as absent.
 pub const VF_TINY: f64 = 1e-6;
 
-/// Platser per material i elementets tillstånd.
+/// Slots per material in the element state.
 const VF: usize = 0;
 const MASS: usize = 1;
 const S: usize = 2;
 const MS: usize = 8;
 
 pub struct EulerMat {
-    /// Materialinstansens namn (versaler).
+    /// Name of the material instance (upper case).
     pub name: String,
     pub model: Arc<dyn MaterialModel>,
     pub rho0: f64,
@@ -70,28 +70,28 @@ pub struct EulerMat {
 pub struct Elem {
     pub e: usize,
     pub nodes: [usize; 8],
-    /// Materialen (index i `Euler::mats`) i tvärsnittets ordning.
+    /// The materials (index into `Euler::mats`) in the section's order.
     pub mats: Vec<usize>,
     pub vol0: f64,
     pub le0: f64,
     pub b0: Vec<[f64; 3]>,
-    /// Grannen över varje yta (Euler-elementindex, grannens yta).
+    /// The neighbor across each face (Eulerian element index, the neighbor's face).
     pub nbr: [Option<(usize, usize)>; 6],
     pub second_order: bool,
-    /// Tyngdkraft per massenhet.
+    /// Gravity per unit mass.
     pub gravity: [f64; 3],
 }
 
 pub struct Euler {
     pub mats: Vec<EulerMat>,
     pub elems: Vec<Elem>,
-    /// Euler-nodernas index.
+    /// Indices of the Eulerian nodes.
     pub nodes: Vec<usize>,
     b1: f64,
     b2: f64,
-    /// Nya nodhastigheter efter advektionen (nod, hastighet).
+    /// New nodal velocities after the advection (node, velocity).
     pending: Vec<(usize, [f64; 3])>,
-    /// Elementens töjningshastighet tr L i senaste Lagrangesteget.
+    /// The elements' strain rate tr L in the latest Lagrangian step.
     rates: Vec<f64>,
     pub initial_energy: f64,
     pub dt_est: Option<(f64, usize)>,
@@ -103,9 +103,9 @@ fn stride(m: &EulerMat) -> usize {
     MS + m.ns
 }
 
-/// Volymen av hexaedern med noderna `x` (.inp-formatets nodordning).
+/// Volume of the hexahedron with the nodes `x` (the .inp format node order).
 fn hex_volume(x: &[[f64; 3]; 8]) -> f64 {
-    // summa av tetraedrar från tyngdpunkten mot ytornas trianglar
+    // sum of tetrahedra from the centroid to the faces' triangles
     let c: [f64; 3] = std::array::from_fn(|k| x.iter().map(|p| p[k]).sum::<f64>() / 8.0);
     let mut v = 0.0;
     for f in crate::elements::continuum3d::HEX8_FACES {
@@ -126,11 +126,11 @@ fn tet(a: [f64; 3], b: [f64; 3], c: [f64; 3], d: [f64; 3]) -> f64 {
     (u[0] * (v[1] * w[2] - v[2] * w[1]) - u[1] * (v[0] * w[2] - v[2] * w[0]) + u[2] * (v[0] * w[1] - v[1] * w[0])) / 6.0
 }
 
-/// Volymen som ytan (fyra noder, utåtriktad nodordning) sveper när noderna går
-/// från `a` till `b` (positiv utåt).
+/// The volume that the face (four nodes, outward node order) sweeps when the nodes move
+/// from `a` to `b` (positive outward).
 fn swept(a: &[[f64; 3]; 4], b: &[[f64; 3]; 4]) -> f64 {
-    // hexaedern (a-ytan, b-ytan) med a som "botten": nodordningen ger
-    // positiv volym när b ligger utanför a-ytans utåtriktade normal
+    // the hexahedron (a-face, b-face) with a as "bottom": the node order gives
+    // positive volume when b lies outside the outward normal of the a-face
     let x = [a[0], a[3], a[2], a[1], b[0], b[3], b[2], b[1]];
     hex_volume(&x)
 }
@@ -156,16 +156,16 @@ impl Euler {
             if el.etype.name() != "EC3D8R" {
                 continue;
             }
-            let Some(si) = el.section else { return fail(format!("{} saknar tvärsnitt (*EULERIAN SECTION)", m.elem_name(e))) };
+            let Some(si) = el.section else { return fail(format!("{} has no section (*EULERIAN SECTION)", m.elem_name(e))) };
             let sec = &m.sections[si];
             if sec.raw.name != "EULERIAN SECTION" {
-                return sec.raw.err("EC3D8R kräver *EULERIAN SECTION");
+                return sec.raw.err("EC3D8R requires *EULERIAN SECTION");
             }
             if !sec_mats.contains_key(&si) {
                 let second = match sec.raw.param_upper("ADVECTION").as_deref() {
                     None | Some("SECOND ORDER") => true,
                     Some("FIRST ORDER") => false,
-                    Some(o) => return sec.raw.err(format!("ADVECTION={o} stöds inte (FIRST ORDER, SECOND ORDER)")),
+                    Some(o) => return sec.raw.err(format!("ADVECTION={o} is not supported (FIRST ORDER, SECOND ORDER)")),
                 };
                 let mut ids = Vec::new();
                 for d in &sec.raw.data {
@@ -175,12 +175,12 @@ impl Euler {
                         Some(i) => i,
                         None => {
                             let Some(def) = m.materials.iter().find(|x| x.name == mname) else {
-                                return sec.raw.err_at(d.line, format!("materialet '{mname}' är inte definierat"));
+                                return sec.raw.err_at(d.line, format!("the material '{mname}' is not defined"));
                             };
                             let model = crate::materials::build(def)?;
                             let rho0 = def.behavior("DENSITY").map(|k| k.first_floats()).transpose()?.and_then(|v| v.first().copied()).unwrap_or(0.0);
                             if !(rho0 > 0.0) {
-                                return sec.raw.err_at(d.line, format!("Euler-materialet '{mname}' saknar *DENSITY"));
+                                return sec.raw.err_at(d.line, format!("the Eulerian material '{mname}' has no *DENSITY"));
                             }
                             let ns = model.n_state();
                             mats.push(EulerMat { name: inst, model, rho0, ns });
@@ -194,7 +194,7 @@ impl Euler {
             let (ids, second) = sec_mats[&si].clone();
             let x: Vec<[f64; 3]> = el.nodes.iter().map(|&n| m.nodes[n]).collect();
             let Some(g) = super::super::dt::geometry(crate::elements::Family::Continuum3D, "C3D8R", &x) else {
-                return fail(format!("{}: elementet är inverterat eller degenererat", m.elem_name(e)));
+                return fail(format!("{}: the element is inverted or degenerate", m.elem_name(e)));
             };
             of_elem.insert(e, elems.len());
             elems.push(Elem {
@@ -212,7 +212,7 @@ impl Euler {
         if elems.is_empty() {
             return Ok(None);
         }
-        // grannar över ytorna
+        // neighbors across the faces
         let mut faces: HashMap<Vec<usize>, (usize, usize)> = HashMap::new();
         for k in 0..elems.len() {
             for (f, fnodes) in crate::elements::continuum3d::HEX8_FACES.iter().enumerate() {
@@ -226,7 +226,7 @@ impl Euler {
                 }
             }
         }
-        // tyngdkraft (*DLOAD, GRAV) på Euler-elementen
+        // gravity (*DLOAD, GRAV) on the Eulerian elements
         for blk in &step.dloads {
             for dl in &blk.items {
                 if let Some(&k) = of_elem.get(&dl.elem) {
@@ -239,7 +239,7 @@ impl Euler {
                             }
                         }
                     } else if matches!(dl.kind.as_str(), "BX" | "BY" | "BZ") {
-                        return fail(format!("{}: *DLOAD {} på Euler-element stöds inte ännu (bara GRAV)", m.elem_name(dl.elem), dl.kind));
+                        return fail(format!("{}: *DLOAD {} on Eulerian elements is not supported yet (only GRAV)", m.elem_name(dl.elem), dl.kind));
                     }
                 }
             }
@@ -251,8 +251,8 @@ impl Euler {
         Ok(Some(Euler { mats, elems, nodes, b1, b2, pending: Vec::new(), rates: vec![0.0; ne], initial_energy: 0.0, dt_est: None }))
     }
 
-    /// Elementets tillstånd i analysens början ur *INITIAL CONDITIONS,
-    /// TYPE=VOLUME FRACTION (raderna fylls nedifrån och upp, resten tomrum).
+    /// The element state at the start of the analysis from *INITIAL CONDITIONS,
+    /// TYPE=VOLUME FRACTION (the rows are filled from the bottom up, the rest void).
     fn init_states(&self, p: &Prepared) -> Result<Vec<Vec<f64>>> {
         let m = p.model;
         let mut fill: HashMap<usize, Vec<(String, f64)>> = HashMap::new();
@@ -280,7 +280,7 @@ impl Euler {
             if let Some(list) = fill.get(&el.e) {
                 for (name, v) in list {
                     let Some(pos) = el.mats.iter().position(|&i| &self.mats[i].name == name) else {
-                        return fail(format!("{}: materialinstansen '{name}' finns inte i elementets *EULERIAN SECTION", m.elem_name(el.e)));
+                        return fail(format!("{}: the material instance '{name}' does not exist in the element's *EULERIAN SECTION", m.elem_name(el.e)));
                     };
                     let add = v.min(1.0 - total).max(0.0);
                     total += add;
@@ -314,7 +314,7 @@ impl Euler {
         v
     }
 
-    /// Elementets (index `k`) sammanlagda materialvolymandel i tillståndet `st`.
+    /// The total material volume fraction of the element (index `k`) in the state `st`.
     pub fn material_fraction(&self, k: usize, st: &[f64]) -> f64 {
         let el = &self.elems[k];
         let offs = self.offsets(el);
@@ -325,7 +325,7 @@ impl Euler {
     }
 
     pub fn patch_mass(&self, _mass: &mut super::LumpedMass) {
-        // massan sätts i varje kraftberäkning (den ändras med advektionen)
+        // the mass is set in each force computation (it changes with the advection)
     }
 
     pub fn forces(&mut self, p: &Prepared, ev: &Eval, out: &mut Sink) -> Result<()> {
@@ -350,7 +350,7 @@ impl Euler {
         if ev.dt > 0.0 {
             self.lagrange_and_advect(p, ev, &mut st)?;
         }
-        // krafter, massa och stabilitetsgräns på det fasta nätet
+        // forces, mass and stability limit on the fixed mesh
         let mut nmass: HashMap<usize, f64> = HashMap::new();
         self.dt_est = None;
         for (k, el) in self.elems.iter().enumerate() {
@@ -378,12 +378,12 @@ impl Euler {
                 for a in 0..3 {
                     let f: f64 = (0..3).map(|b| s[a][b] * el.b0[i][b]).sum();
                     out.fint[n][a] += f;
-                    // tyngdkraften på materialets massa (yttre last, ALLWK)
+                    // gravity on the material's mass (external load, ALLWK)
                     out.fext[n][a] += mtot * el.gravity[a] / 8.0;
                 }
                 *nmass.entry(n).or_insert(0.0) += mtot / 8.0;
             }
-            // volymviskositet
+            // bulk viscosity
             let rate = self.rates[k];
             if vfm > VF_TINY && (self.b1 != 0.0 || self.b2 != 0.0) && ev.dt > 0.0 {
                 let rho = mtot / el.vol0;
@@ -416,12 +416,12 @@ impl Euler {
         Ok(())
     }
 
-    /// Lagrangesteget och advektionen tillbaka till det fasta nätet.
+    /// The Lagrangian step and the advection back to the fixed mesh.
     fn lagrange_and_advect(&mut self, p: &Prepared, ev: &Eval, st: &mut [Vec<f64>]) -> Result<()> {
         let m = p.model;
         let ne = self.elems.len();
         let dt = ev.dt;
-        // Lagrangesteget per element
+        // the Lagrangian step per element
         let mut vlag = vec![0.0; ne];
         let mut vbar = vec![[0.0f64; 3]; ne];
         let mut mass_e = vec![0.0; ne];
@@ -432,7 +432,7 @@ impl Euler {
             vlag[k] = hex_volume(&xl);
             vbar[k] = std::array::from_fn(|c| el.nodes.iter().map(|&n| ev.v[n][c]).sum::<f64>() / 8.0);
             let Some(g) = super::super::dt::geometry(crate::elements::Family::Continuum3D, "C3D8R", &xm) else {
-                return fail(format!("{}: Euler-elementet inverteras i Lagrangesteget (för långt tidsinkrement?)", m.elem_name(el.e)));
+                return fail(format!("{}: the Eulerian element inverts in the Lagrangian step (time increment too long?)", m.elem_name(el.e)));
             };
             let mut l = [[0.0f64; 3]; 3];
             for i in 0..8 {
@@ -472,7 +472,7 @@ impl Euler {
                 st[k][o + MS..o + MS + mt.ns].copy_from_slice(&ms_new);
             }
         }
-        // materialvolymer i den Lagrangeska cellen (samma töjning för alla material)
+        // material volumes in the Lagrangian cell (the same strain for all materials)
         let nm = self.mats.len();
         let mut vol = vec![vec![0.0f64; nm]; ne];
         let mut mas = vec![vec![0.0f64; nm]; ne];
@@ -495,12 +495,12 @@ impl Euler {
                 sm[k][mi] = st[k][o + MS..o + MS + mt.ns].iter().map(|x| x * mas[k][mi]).collect();
             }
         }
-        // ytornas svepta volymer och materialflöden
+        // the faces' swept volumes and material fluxes
         struct Flux {
             from: usize,
             to: Option<usize>,
             dv: Vec<f64>,
-            /// Givarens yta (för uppströmselementet över motstående yta).
+            /// The donor's face (for the upstream element across the opposite face).
             face: usize,
         }
         let mut fluxes: Vec<Flux> = Vec::new();
@@ -515,7 +515,7 @@ impl Euler {
                 }
                 let a: [[f64; 3]; 4] = std::array::from_fn(|i| m.nodes[el.nodes[fnodes[i]]]);
                 let b: [[f64; 3]; 4] = std::array::from_fn(|i| std::array::from_fn(|c| a[i][c] + ev.u[el.nodes[fnodes[i]]][c]));
-                // utåt från k: positivt när ytan flyttats utåt (k ger material till grannen)
+                // outward from k: positive when the face has moved outward (k gives material to the neighbor)
                 let s = swept(&a, &b);
                 if s.abs() <= 1e-14 * el.vol0 {
                     continue;
@@ -525,7 +525,7 @@ impl Euler {
                 } else {
                     match nb {
                         Some((k2, f2)) => (k2, Some(k), f2),
-                        // inflöde genom en fri rand: tomrum
+                        // inflow through a free boundary: void
                         None => continue,
                     }
                 };
@@ -536,10 +536,10 @@ impl Euler {
                 for &mi in &de.mats {
                     let ph = phi[donor][mi];
                     let vm = vol[donor][mi];
-                    // gränsytan i ett blandat element (givare–mottagare, Hirt & Nichols):
-                    // materialet ligger mot ytan när mottagaren är fylligare än
-                    // uppströmselementet (motstående yta) och flödar då först,
-                    // annars flödar först det övriga innehållet
+                    // the interface in a mixed element (donor–acceptor, Hirt & Nichols):
+                    // the material lies against the face when the acceptor is fuller than
+                    // the upstream element (opposite face) and then flows first,
+                    // otherwise the remaining content flows first
                     let x = if ph > VF_TINY && ph < 1.0 - VF_TINY {
                         let up = de.nbr[OPPOSITE[dface]].map_or(0.0, |x| phi[x.0][mi]);
                         let dn = acceptor.map_or(0.0, |a| phi[a][mi]);
@@ -562,7 +562,7 @@ impl Euler {
                 fluxes.push(Flux { from: donor, to: acceptor, dv, face: dface });
             }
         }
-        // inget material får bli negativt: skala givarens flöden
+        // no material may become negative: scale the donor's fluxes
         let mut out_req = vec![vec![0.0f64; nm]; ne];
         for fl in &fluxes {
             for mi in 0..nm {
@@ -570,14 +570,14 @@ impl Euler {
             }
         }
         let scale: Vec<Vec<f64>> = (0..ne).map(|k| (0..nm).map(|mi| if out_req[k][mi] > vol[k][mi] && out_req[k][mi] > 0.0 { vol[k][mi] / out_req[k][mi] } else { 1.0 }).collect()).collect();
-        // transport (värden i givaren före advektionen)
+        // transport (values in the donor before the advection)
         let mut nvol = vol.clone();
         let mut nmas = mas.clone();
         let mut nsv = sv.clone();
         let mut nsm = sm.clone();
         let mut mom: Vec<[f64; 3]> = (0..ne).map(|k| std::array::from_fn(|c| mass_e[k] * vbar[k][c])).collect();
-        // andra ordningen: begränsad lutning (minmod) mellan uppströms-, givar- och
-        // mottagarelementet för täthet, spänning, tillstånd och hastighet
+        // second order: limited slope (minmod) between the upstream, donor and
+        // acceptor element for density, stress, state and velocity
         let lim = |qd: f64, qa: f64, qu: f64, courant: f64| qd + 0.5 * (1.0 - courant) * minmod(qa - qd, qd - qu);
         for fl in &fluxes {
             let d = fl.from;
@@ -589,7 +589,7 @@ impl Euler {
                     continue;
                 }
                 let frac = x / vol[d][mi];
-                // värden på ytan: givarens (första ordningen) eller begränsade
+                // values on the face: the donor's (first order) or limited
                 let three = match (second, fl.to, up) {
                     (true, Some(a), Some(u)) if vol[a][mi] > 0.0 && vol[u][mi] > 0.0 && mas[a][mi] > 0.0 && mas[u][mi] > 0.0 => Some((a, u)),
                     _ => None,
@@ -643,14 +643,14 @@ impl Euler {
                 }
             }
         }
-        // nytt tillstånd på det fasta nätet
+        // new state on the fixed mesh
         let mut dvel = vec![[0.0f64; 3]; ne];
         let mut mnew = vec![0.0f64; ne];
         for k in 0..ne {
             let el = &self.elems[k];
             let offs = self.offsets(el);
             let tot: f64 = el.mats.iter().map(|&mi| nvol[k][mi].max(0.0)).sum::<f64>() / el.vol0;
-            // överfyllt element (kompressibilitet): volymandelarna skalas till 1
+            // overfilled element (compressibility): the volume fractions are scaled to 1
             let fac = if tot > 1.0 { 1.0 / tot } else { 1.0 };
             for (pos, &mi) in el.mats.iter().enumerate() {
                 let o = offs[pos];
@@ -687,7 +687,7 @@ impl Euler {
                 }
             }
         }
-        // nodernas hastigheter (elementmittprojektion)
+        // the nodal velocities (element center projection)
         let mut num: HashMap<usize, [f64; 4]> = HashMap::new();
         for k in 0..ne {
             for &n in &self.elems[k].nodes {
@@ -706,8 +706,8 @@ impl Euler {
         Ok(())
     }
 
-    /// Euler-noderna tillbaka till sina lägen, hastigheterna efter advektionen
-    /// (utom låsta frihetsgrader).
+    /// The Eulerian nodes back to their positions, the velocities after the advection
+    /// (except locked degrees of freedom).
     pub fn after_forces(&mut self, u: &mut [NodeVec], vh: &mut [NodeVec], fixed: &[u16]) {
         for &n in &self.nodes {
             for c in 0..3 {

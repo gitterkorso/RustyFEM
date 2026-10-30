@@ -1,46 +1,46 @@
-//! Betong med skadeplasticitet (*CONCRETE DAMAGED PLASTICITY) enligt
-//! Lee–Fenves, med *CONCRETE COMPRESSION HARDENING,
-//! *CONCRETE TENSION STIFFENING (TYPE=STRAIN, DISPLACEMENT eller GFI: linjär
-//! mjukning från σt0 till σt0/100 vid u0 = 2Gf/σt0),
-//! *CONCRETE COMPRESSION DAMAGE och *CONCRETE TENSION DAMAGE.
+//! Concrete damaged plasticity (*CONCRETE DAMAGED PLASTICITY) according to
+//! Lee–Fenves, with *CONCRETE COMPRESSION HARDENING,
+//! *CONCRETE TENSION STIFFENING (TYPE=STRAIN, DISPLACEMENT or GFI: linear
+//! softening from σt0 to σt0/100 at u0 = 2Gf/σt0),
+//! *CONCRETE COMPRESSION DAMAGE and *CONCRETE TENSION DAMAGE.
 //!
-//! Spänning σ = (1 − d) D₀(ε − εp), effektiv spänning σ̄ = D₀(ε − εp).
-//! Flytvillkor i effektiv spänning (p̄, q̄, σ̂max = största huvudspänning):
+//! Stress σ = (1 − d) D₀(ε − εp), effective stress σ̄ = D₀(ε − εp).
+//! Yield criterion in effective stress (p̄, q̄, σ̂max = maximum principal stress):
 //!
 //!   F = [q̄ − 3α p̄ + β ⟨σ̂max⟩ − γ ⟨−σ̂max⟩]/(1 − α) − σ̄c(ε̃c),
 //!   α = (σb0/σc0 − 1)/(2σb0/σc0 − 1),  γ = 3(1 − Kc)/(2Kc − 1),
 //!   β = σ̄c(ε̃c)/σ̄t(ε̃t) · (1 − α) − (1 + α),
 //!
-//! med effektiva kohesionsspänningar σ̄c = σc/(1 − dc), σ̄t = σt/(1 − dt).
-//! Flödespotentialen är hyperbolisk Drucker–Prager
-//! G = √((ε σt0 tan ψ)² + q̄²) − p̄ tan ψ. Hårdnandevariablerna växer med
-//! de plastiska huvudtöjningshastigheterna:
-//! ε̃̇t = r(σ̄) ε̂̇p_max och ε̃̇c = −(1 − r(σ̄)) ε̂̇p_min med
-//! r(σ̄) = Σ⟨σ̂ᵢ⟩/Σ|σ̂ᵢ|. Styvhetsdegraderingen är
+//! with effective cohesion stresses σ̄c = σc/(1 − dc), σ̄t = σt/(1 − dt).
+//! The flow potential is hyperbolic Drucker–Prager
+//! G = √((ε σt0 tan ψ)² + q̄²) − p̄ tan ψ. The hardening variables grow with
+//! the plastic principal strain rates:
+//! ε̃̇t = r(σ̄) ε̂̇p_max and ε̃̇c = −(1 − r(σ̄)) ε̂̇p_min with
+//! r(σ̄) = Σ⟨σ̂ᵢ⟩/Σ|σ̂ᵢ|. The stiffness degradation is
 //! 1 − d = (1 − s_t dc)(1 − s_c dt), s_t = 1 − w_t r, s_c = 1 − w_c (1 − r)
-//! (TENSION RECOVERY = w_t, standard 0; COMPRESSION RECOVERY = w_c, standard 1).
+//! (TENSION RECOVERY = w_t, default 0; COMPRESSION RECOVERY = w_c, default 1).
 //!
-//! Tabellerna anges mot oelastisk töjning ε̃in (tryck),
-//! sprickbildningstöjning ε̃ck eller sprickvidd u_ck (drag) och räknas om till
-//! plastiska värden ε̃p = ε̃in − d/(1 − d) · σ/E₀ (för sprickvidd med l₀ = 1).
-//! Skadan interpoleras i hårdnandetabellens punkter; spänning och skada
-//! interpoleras sedan linjärt i den plastiska variabeln. För
-//! TYPE=DISPLACEMENT och GFI är dragvariabeln sprickvidden u = ε̃t · L med
-//! elementets karakteristiska längd L (Hillerborg, `update_with_length`).
+//! The tables are given versus inelastic strain ε̃in (compression),
+//! cracking strain ε̃ck or crack opening u_ck (tension) and are converted to
+//! plastic values ε̃p = ε̃in − d/(1 − d) · σ/E₀ (for crack opening with l₀ = 1).
+//! The damage is interpolated at the points of the hardening table; stress and damage
+//! are then interpolated linearly in the plastic variable. For
+//! TYPE=DISPLACEMENT and GFI the tension variable is the crack opening u = ε̃t · L with
+//! the element's characteristic length L (Hillerborg, `update_with_length`).
 //!
-//! Viskös regularisering (μ > 0): ε̇p_v = (εp − εp_v)/μ, ḋ_v = (d − d_v)/μ,
-//! diskretiserat implicit, och spänningen σ = (1 − d_v) D₀ (ε − εp_v).
+//! Viscous regularization (μ > 0): ε̇p_v = (εp − εp_v)/μ, ḋ_v = (d − d_v)/μ,
+//! discretized implicitly, and the stress σ = (1 − d_v) D₀ (ε − εp_v).
 //!
-//! Returalgoritmen är implicit Euler i huvudspänningsrummet: för givet Δλ
-//! ger flödesregeln q̄ (skalär ekvation), p̄, de plastiska huvudtöjningarna och
-//! hårdnandevariablerna explicit, så F(Δλ) = 0 är en skalär ekvation som löses
-//! med innesluten sekantmetod. Tangenten är numerisk (centraldifferens av hela
-//! uppdateringen inklusive skada och viskositet, se `fd_tangent_central`) och
-//! osymmetrisk; den osymmetriska lösaren väljs automatiskt.
+//! The return algorithm is implicit Euler in principal stress space: for a given Δλ
+//! the flow rule gives q̄ (scalar equation), p̄, the plastic principal strains and
+//! the hardening variables explicitly, so F(Δλ) = 0 is a scalar equation solved
+//! with a bracketed secant method. The tangent is numerical (central difference of the whole
+//! update including damage and viscosity, see `fd_tangent_central`) and
+//! unsymmetric; the unsymmetric solver is selected automatically.
 //!
-//! Utdata: PEEQ (ε̃c), PEEQT (ε̃t), PE (plastisk töjning, regulariserad vid
-//! μ > 0), DAMAGEC och DAMAGET (dc, dt utan regularisering) och SDEG (d,
-//! regulariserad).
+//! Output: PEEQ (ε̃c), PEEQT (ε̃t), PE (plastic strain, regularized for
+//! μ > 0), DAMAGEC and DAMAGET (dc, dt without regularization) and SDEG (d,
+//! regularized).
 
 use super::mohr_coulomb::iso_elastic;
 use super::plasticity::{iso_d6, mv6, update_reduced, M6, V6};
@@ -51,7 +51,7 @@ use crate::model::{fail, Result};
 use std::sync::Arc;
 
 pub static FACTORIES: &[MaterialFactory] = &[MaterialFactory {
-    name: "betong med skadeplasticitet",
+    name: "concrete damaged plasticity",
     consumes: &[
         "ELASTIC",
         "CONCRETE DAMAGED PLASTICITY",
@@ -64,12 +64,12 @@ pub static FACTORIES: &[MaterialFactory] = &[MaterialFactory {
     build: Some(build),
 }];
 
-/// Uniaxiell kurva i den plastiska variabeln: (x_p, σ, d).
+/// Uniaxial curve in the plastic variable: (x_p, σ, d).
 #[derive(Debug, Clone)]
 pub struct Curve(pub Vec<(f64, f64, f64)>);
 
 impl Curve {
-    /// (σ, d) vid x (linjär interpolation, konstant utanför tabellen).
+    /// (σ, d) at x (linear interpolation, constant outside the table).
     pub fn eval(&self, x: f64) -> (f64, f64) {
         let t = &self.0;
         if t.len() == 1 || x <= t[0].0 {
@@ -99,17 +99,17 @@ pub struct Concrete {
     pub a: f64,
     pub alpha: f64,
     pub gamma: f64,
-    /// Viskositet μ.
+    /// Viscosity μ.
     pub mu: f64,
     pub comp: Curve,
     pub tens: Curve,
-    /// Dragkurvan är given mot sprickvidd (TYPE=DISPLACEMENT/GFI).
+    /// The tension curve is given versus crack opening (TYPE=DISPLACEMENT/GFI).
     pub tens_disp: bool,
     pub wt: f64,
     pub wc: f64,
 }
 
-/// Tillståndslayout.
+/// State layout.
 const EC: usize = 0;
 const ET: usize = 1;
 const EP: usize = 2;
@@ -120,33 +120,33 @@ const DV: usize = 16;
 const EPS3: usize = 17;
 const NST: usize = 23;
 
-/// Läser (värde, x)-rader; tomma fält efter de två första ignoreras om de är 0.
+/// Reads (value, x) lines; empty fields after the first two are ignored if they are 0.
 fn pairs(kw: &RawKeyword) -> Result<Vec<(f64, f64, usize)>> {
     let mut t = Vec::new();
     for d in &kw.data {
         let v = kw.floats(d)?;
         if v.len() > 2 && v[2..].iter().any(|&x| x != 0.0) {
-            return kw.err_at(d.line, "hastighets-, temperatur- eller fältberoende data stöds inte ännu");
+            return kw.err_at(d.line, "rate-, temperature- or field-dependent data is not supported yet");
         }
         t.push((v.first().copied().unwrap_or(0.0), v.get(1).copied().unwrap_or(0.0), d.line));
     }
     if t.is_empty() {
-        return kw.err("data saknas");
+        return kw.err("data missing");
     }
     Ok(t)
 }
 
-/// Bygger kurvan (x_p, σ, d) från hårdnandetabellen (σ, x_in) och en valfri
-/// skadetabell (d, x_in): x_p = x_in − d/(1 − d) σ/E₀.
+/// Builds the curve (x_p, σ, d) from the hardening table (σ, x_in) and an optional
+/// damage table (d, x_in): x_p = x_in − d/(1 − d) σ/E₀.
 fn curve(hk: &RawKeyword, hard: &[(f64, f64, usize)], dam: Option<(&RawKeyword, Vec<(f64, f64, usize)>)>, e0: f64, what: &str) -> Result<Curve> {
     let mut dtab: Vec<(f64, f64)> = Vec::new();
     if let Some((dk, rows)) = &dam {
         for &(d, x, line) in rows {
             if !(0.0..1.0).contains(&d) {
-                return dk.err_at(line, "skadan ska ligga i [0, 1)");
+                return dk.err_at(line, "the damage must lie in [0, 1)");
             }
             if dtab.last().is_some_and(|&(xl, _)| !(x > xl)) {
-                return dk.err_at(line, format!("{what} ska öka i skadetabellen"));
+                return dk.err_at(line, format!("{what} must increase in the damage table"));
             }
             dtab.push((x, d));
         }
@@ -154,23 +154,23 @@ fn curve(hk: &RawKeyword, hard: &[(f64, f64, usize)], dam: Option<(&RawKeyword, 
     let mut out: Vec<(f64, f64, f64)> = Vec::new();
     for (i, &(s, x, line)) in hard.iter().enumerate() {
         if s < 0.0 {
-            return hk.err_at(line, "spänningen ska vara icke-negativ");
+            return hk.err_at(line, "the stress must be non-negative");
         }
         if i == 0 && x != 0.0 {
-            return hk.err_at(line, format!("första punkten ska ha {what} 0"));
+            return hk.err_at(line, format!("the first point must have {what} 0"));
         }
         if i > 0 && !(x > hard[i - 1].1) {
-            return hk.err_at(line, format!("{what} ska öka"));
+            return hk.err_at(line, format!("{what} must increase"));
         }
         let d = if dtab.is_empty() { 0.0 } else { interp(&dtab, x).0 };
         let xp = x - d / (1.0 - d) * s / e0;
         if out.last().is_some_and(|&(xl, _, _)| xp < xl) || xp < 0.0 {
-            return hk.err_at(line, format!("negativ eller avtagande plastisk {what} (ε̃p = ε̃in − d/(1−d)·σ/E₀) – kontrollera skadetabellen"));
+            return hk.err_at(line, format!("negative or decreasing plastic {what} (ε̃p = ε̃in − d/(1−d)·σ/E₀) – check the damage table"));
         }
         out.push((xp, s, d));
     }
     if out[0].1 <= 0.0 {
-        return hk.err("första flytspänningen ska vara positiv");
+        return hk.err("the first yield stress must be positive");
     }
     Ok(Curve(out))
 }
@@ -179,15 +179,15 @@ fn field(kw: &RawKeyword, i: usize, default: f64) -> Result<f64> {
     let Some(d) = kw.data.first() else { return Ok(default) };
     match d.fields.get(i).map(|s| s.trim()) {
         None | Some("") => Ok(default),
-        Some(s) => crate::fem::model::parse_f64(s).ok_or_else(|| crate::model::FemError(format!("{}: '{s}' är inget tal", kw.location()))),
+        Some(s) => crate::fem::model::parse_f64(s).ok_or_else(|| crate::model::FemError(format!("{}: '{s}' is not a number", kw.location()))),
     }
 }
 
 fn build(def: &MaterialDef) -> Result<Option<Arc<dyn MaterialModel>>> {
     let Some(kw) = def.behavior("CONCRETE DAMAGED PLASTICITY") else { return Ok(None) };
-    let (e, nu) = iso_elastic(def, kw, "betong med skadeplasticitet")?;
+    let (e, nu) = iso_elastic(def, kw, "concrete damaged plasticity")?;
     if kw.data.len() > 1 || kw.has("DEPENDENCIES") {
-        return kw.err("temperaturberoende parametrar stöds inte ännu");
+        return kw.err("temperature-dependent parameters are not supported yet");
     }
     let psi = field(kw, 0, 0.0)?;
     let ecc = field(kw, 1, 0.1)?;
@@ -195,70 +195,70 @@ fn build(def: &MaterialDef) -> Result<Option<Arc<dyn MaterialModel>>> {
     let kc = field(kw, 3, 2.0 / 3.0)?;
     let mu = field(kw, 4, 0.0)?;
     if !(0.0..90.0).contains(&psi) || ecc < 0.0 || !(fb > 1.0) || !(kc > 0.5 && kc <= 1.0) || mu < 0.0 {
-        return kw.err("ogiltiga parametrar (0 ≤ ψ < 90, ε ≥ 0, σb0/σc0 > 1, 0,5 < Kc ≤ 1, μ ≥ 0)");
+        return kw.err("invalid parameters (0 ≤ ψ < 90, ε ≥ 0, σb0/σc0 > 1, 0.5 < Kc ≤ 1, μ ≥ 0)");
     }
     let Some(ck) = def.behavior("CONCRETE COMPRESSION HARDENING") else {
-        return kw.err("*CONCRETE DAMAGED PLASTICITY kräver *CONCRETE COMPRESSION HARDENING");
+        return kw.err("*CONCRETE DAMAGED PLASTICITY requires *CONCRETE COMPRESSION HARDENING");
     };
     let Some(tk) = def.behavior("CONCRETE TENSION STIFFENING") else {
-        return kw.err("*CONCRETE DAMAGED PLASTICITY kräver *CONCRETE TENSION STIFFENING");
+        return kw.err("*CONCRETE DAMAGED PLASTICITY requires *CONCRETE TENSION STIFFENING");
     };
     for k in [ck, tk] {
         if k.has("RATE") || k.has("DEPENDENCIES") {
-            return k.err("hastighets- eller temperaturberoende data stöds inte ännu");
+            return k.err("rate- or temperature-dependent data is not supported yet");
         }
     }
     let cdk = def.behavior("CONCRETE COMPRESSION DAMAGE");
     let tdk = def.behavior("CONCRETE TENSION DAMAGE");
     let wt = match cdk {
         Some(k) => match k.param("TENSION RECOVERY") {
-            Some(s) => crate::fem::model::parse_f64(s).ok_or_else(|| crate::model::FemError(format!("{}: ogiltig TENSION RECOVERY", k.location())))?,
+            Some(s) => crate::fem::model::parse_f64(s).ok_or_else(|| crate::model::FemError(format!("{}: invalid TENSION RECOVERY", k.location())))?,
             None => 0.0,
         },
         None => 0.0,
     };
     let wc = match tdk {
         Some(k) => match k.param("COMPRESSION RECOVERY") {
-            Some(s) => crate::fem::model::parse_f64(s).ok_or_else(|| crate::model::FemError(format!("{}: ogiltig COMPRESSION RECOVERY", k.location())))?,
+            Some(s) => crate::fem::model::parse_f64(s).ok_or_else(|| crate::model::FemError(format!("{}: invalid COMPRESSION RECOVERY", k.location())))?,
             None => 1.0,
         },
         None => 1.0,
     };
     if !(0.0..=1.0).contains(&wt) || !(0.0..=1.0).contains(&wc) {
-        return kw.err("TENSION RECOVERY och COMPRESSION RECOVERY ska ligga i [0, 1]");
+        return kw.err("TENSION RECOVERY and COMPRESSION RECOVERY must lie in [0, 1]");
     }
     let cdam = match cdk {
         Some(k) => Some((k, pairs(k)?)),
         None => None,
     };
-    let comp = curve(ck, &pairs(ck)?, cdam, e, "oelastisk töjning")?;
+    let comp = curve(ck, &pairs(ck)?, cdam, e, "inelastic strain")?;
     let ttype = tk.param_upper("TYPE").unwrap_or_else(|| "STRAIN".into());
     let tdam = match tdk {
         Some(k) => {
             let dt = k.param_upper("TYPE").unwrap_or_else(|| "STRAIN".into());
             let want = if ttype == "STRAIN" { "STRAIN" } else { "DISPLACEMENT" };
             if dt != want {
-                return k.err(format!("TYPE={dt} passar inte *CONCRETE TENSION STIFFENING, TYPE={ttype} (ska vara {want})"));
+                return k.err(format!("TYPE={dt} does not match *CONCRETE TENSION STIFFENING, TYPE={ttype} (should be {want})"));
             }
             Some((k, pairs(k)?))
         }
         None => None,
     };
     let (tens, tens_disp) = match ttype.as_str() {
-        "STRAIN" => (curve(tk, &pairs(tk)?, tdam, e, "sprickbildningstöjning")?, false),
-        "DISPLACEMENT" => (curve(tk, &pairs(tk)?, tdam, e, "sprickvidd")?, true),
+        "STRAIN" => (curve(tk, &pairs(tk)?, tdam, e, "cracking strain")?, false),
+        "DISPLACEMENT" => (curve(tk, &pairs(tk)?, tdam, e, "crack opening")?, true),
         "GFI" => {
-            // linjär mjukning från σt0 vid u = 0 till σt0/100 vid u0 = 2 Gf/σt0
-            // (restspänning; lutning (σt0 − σt0/100)/u0)
+            // linear softening from σt0 at u = 0 to σt0/100 at u0 = 2 Gf/σt0
+            // (residual stress; slope (σt0 − σt0/100)/u0)
             let v = pairs(tk)?;
             let (st0, gf, line) = v[0];
             if v.len() > 1 || !(st0 > 0.0 && gf > 0.0) {
-                return tk.err_at(line, "TYPE=GFI kräver en rad med σt0 > 0 och Gf > 0");
+                return tk.err_at(line, "TYPE=GFI requires one line with σt0 > 0 and Gf > 0");
             }
             let u0 = 2.0 * gf / st0;
             let sres = 0.01 * st0;
             let mut pts = vec![(st0, 0.0, line), (sres, u0, line)];
-            // skadetabellens punkter läggs in i den linjära mjukningskurvan
+            // the damage table points are inserted into the linear softening curve
             if let Some((_, rows)) = &tdam {
                 for &(_, x, _) in rows {
                     if x > 0.0 && x < u0 && pts.iter().all(|p| (p.1 - x).abs() > 1e-14 * u0) {
@@ -267,9 +267,9 @@ fn build(def: &MaterialDef) -> Result<Option<Arc<dyn MaterialModel>>> {
                 }
                 pts.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap());
             }
-            (curve(tk, &pts, tdam, e, "sprickvidd")?, true)
+            (curve(tk, &pts, tdam, e, "crack opening")?, true)
         }
-        o => return tk.err(format!("TYPE={o} stöds inte (STRAIN, DISPLACEMENT, GFI)")),
+        o => return tk.err(format!("TYPE={o} is not supported (STRAIN, DISPLACEMENT, GFI)")),
     };
     let st0 = tens.0[0].1;
     let alpha = (fb - 1.0) / (2.0 * fb - 1.0);
@@ -296,7 +296,7 @@ fn build(def: &MaterialDef) -> Result<Option<Arc<dyn MaterialModel>>> {
     })))
 }
 
-/// r(σ̂) = Σ⟨σ̂ᵢ⟩/Σ|σ̂ᵢ| (0 för σ = 0).
+/// r(σ̂) = Σ⟨σ̂ᵢ⟩/Σ|σ̂ᵢ| (0 for σ = 0).
 fn weight(s: &[f64; 3]) -> f64 {
     let a: f64 = s.iter().map(|x| x.abs()).sum();
     if a > 0.0 {
@@ -306,7 +306,7 @@ fn weight(s: &[f64; 3]) -> f64 {
     }
 }
 
-/// Resultat av en inviskös retur.
+/// Result of an inviscid return.
 struct Ret {
     sig_bar: [f64; 3],
     dep: [f64; 3],
@@ -315,7 +315,7 @@ struct Ret {
 }
 
 impl Concrete {
-    /// (σ̄c, dc, σ̄t, dt, σc, σt) vid hårdnandevariablerna.
+    /// (σ̄c, dc, σ̄t, dt, σc, σt) at the hardening variables.
     fn hard(&self, et: f64, ec: f64, len: f64) -> (f64, f64, f64, f64) {
         let (sc, dc) = self.comp.eval(ec);
         let xt = if self.tens_disp { et * len } else { et };
@@ -336,7 +336,7 @@ impl Concrete {
         (q - 3.0 * al * p + beta * smax.max(0.0) - self.gamma * (-smax).max(0.0)) / (1.0 - al) - scb
     }
 
-    /// Inviskös retur för givet Δλ.
+    /// Inviscid return for a given Δλ.
     fn at(&self, ltr: &[f64; 3], dl: f64, etn: f64, ecn: f64) -> Ret {
         let ptr = -(ltr[0] + ltr[1] + ltr[2]) / 3.0;
         let str_ = [ltr[0] + ptr, ltr[1] + ptr, ltr[2] + ptr];
@@ -372,7 +372,7 @@ impl Concrete {
         Ret { sig_bar, dep, et: etn + (r * dmax).max(0.0), ec: ecn + (-(1.0 - r) * dmin).max(0.0) }
     }
 
-    /// Hela uppdateringen i 3D: spänning; nytt tillstånd i `stn`.
+    /// The whole update in 3D: stress; new state in `stn`.
     fn ret(&self, eps: &V6, st: &[f64], stn: &mut [f64], dt: f64, len: f64) -> Result<V6> {
         let ee: V6 = std::array::from_fn(|i| eps[i] - st[EP + i]);
         let sig_tr = mv6(&self.ce, &ee);
@@ -389,7 +389,7 @@ impl Concrete {
                 Ok(self.yield_f(&r.sig_bar, r.et, r.ec, len))
             };
             let x0 = f_tr / (3.0 * self.g + 3.0 * self.k * self.tan_psi);
-            let dl = root_from_zero(f, x0, 1e-13 * scale, "betong med skadeplasticitet")?;
+            let dl = root_from_zero(f, x0, 1e-13 * scale, "concrete damaged plasticity")?;
             self.at(&ltr, dl, etn, ecn)
         };
         stn[ET] = res.et;
@@ -398,18 +398,18 @@ impl Concrete {
         for i in 0..6 {
             stn[EP + i] = st[EP + i] + dep[i];
         }
-        // styvhetsdegradering med återhämtning vid lastomkastning
+        // stiffness degradation with recovery on load reversal
         let (_, dc, _, dtt) = self.hard(res.et, res.ec, len);
         let r = weight(&res.sig_bar);
         let s_t = 1.0 - self.wt * r;
         let s_c = 1.0 - self.wc * (1.0 - r);
         let d = 1.0 - (1.0 - s_t * dc) * (1.0 - s_c * dtt);
-        // viskös regularisering
+        // viscous regularization
         let th = if self.mu > 0.0 { if dt > 0.0 { dt / (self.mu + dt) } else { 0.0 } } else { 1.0 };
         for i in 0..6 {
             stn[EVP + i] = th * stn[EP + i] + (1.0 - th) * st[EVP + i];
         }
-        // DAMAGEC/DAMAGET redovisas utan regularisering, SDEG regulariserad
+        // DAMAGEC/DAMAGET are reported without regularization, SDEG regularized
         stn[DCV] = dc;
         stn[DTV] = dtt;
         stn[DV] = th * d + (1.0 - th) * st[DV];
@@ -445,7 +445,7 @@ impl MaterialModel for Concrete {
     }
 
     fn requires_unsymmetric(&self) -> bool {
-        // betongmodellen använder alltid den osymmetriska lösaren
+        // the concrete model always uses the unsymmetric solver
         true
     }
 
@@ -456,14 +456,14 @@ impl MaterialModel for Concrete {
     }
 
     fn update(&self, input: &MatInput, state_old: &[f64], state_new: &mut [f64]) -> Result<MatOutput> {
-        // elementet anger ingen karakteristisk längd (fel för TYPE=DISPLACEMENT/GFI)
+        // the element provides no characteristic length (error for TYPE=DISPLACEMENT/GFI)
         let len = if self.tens_disp { 0.0 } else { 1.0 };
         self.update_with_length(input, len, state_old, state_new)
     }
 
     fn update_with_length(&self, input: &MatInput, length: f64, state_old: &[f64], state_new: &mut [f64]) -> Result<MatOutput> {
         if self.tens_disp && !(length > 0.0) {
-            return fail("betong med skadeplasticitet: elementets karakteristiska längd saknas för TYPE=DISPLACEMENT/GFI");
+            return fail("concrete damaged plasticity: the element's characteristic length is missing for TYPE=DISPLACEMENT/GFI");
         }
         let eps_old: V6 = std::array::from_fn(|i| state_old[EPS3 + i]);
         let dt = input.dt;

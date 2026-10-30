@@ -1,10 +1,10 @@
-//! Nyckelord för område coupled2:
+//! Keywords for Area coupled2:
 //!
-//! - *INELASTIC HEAT FRACTION: materialbeteende (`materials/inelastic_heat.rs`).
-//! - *COUPLED THERMAL-ELECTRICAL-STRUCTURAL: procedur
+//! - *INELASTIC HEAT FRACTION: material behavior (`materials/inelastic_heat.rs`).
+//! - *COUPLED THERMAL-ELECTRICAL-STRUCTURAL: procedure
 //!   (`steps/thermal_electric_structural.rs`).
 //!
-//! ADIABATIC på *STATIC och *DYNAMIC läses av `steps/adiabatic.rs`.
+//! ADIABATIC on *STATIC and *DYNAMIC is read by `steps/adiabatic.rs`.
 
 use crate::inp::keywords::material::behavior;
 use crate::inp::{procedure, Keyword, Kind};

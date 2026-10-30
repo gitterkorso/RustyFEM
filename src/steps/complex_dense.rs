@@ -1,15 +1,15 @@
-//! Täta komplexa matriser för de projicerade (modala) problemen i
-//! *COMPLEX FREQUENCY, *RANDOM RESPONSE och SUBSPACE-projektionerna.
+//! Dense complex matrices for the projected (modal) problems in
+//! *COMPLEX FREQUENCY, *RANDOM RESPONSE and the SUBSPACE projections.
 //!
-//! - `eigenvalues`: alla egenvärden till en allmän komplex matris
-//!   (Hessenbergreduktion med stabiliserad elimination som EISPACK `comhes`,
-//!   därefter QR-iteration med enkelt Wilkinsonskift och Givensrotationer).
-//! - `eigenvector`: egenvektor till ett känt egenvärde med inversiteration.
-//! - `solve`: LU med partiell pivotering.
+//! - `eigenvalues`: all eigenvalues of a general complex matrix
+//!   (Hessenberg reduction with stabilized elimination as in EISPACK `comhes`,
+//!   followed by QR iteration with a single Wilkinson shift and Givens rotations).
+//! - `eigenvector`: eigenvector for a known eigenvalue by inverse iteration.
+//! - `solve`: LU with partial pivoting.
 //!
-//! Matriserna är radvisa `n × n`.
+//! The matrices are row-major `n × n`.
 
-/// Komplext tal.
+/// Complex number.
 #[derive(Debug, Clone, Copy, Default, PartialEq)]
 pub struct Cx {
     pub re: f64,
@@ -69,7 +69,7 @@ impl std::ops::Mul for Cx {
 impl std::ops::Div for Cx {
     type Output = Cx;
     fn div(self, o: Cx) -> Cx {
-        // Smiths algoritm
+        // Smith's algorithm
         if o.re.abs() >= o.im.abs() {
             let r = o.im / o.re;
             let d = o.re + o.im * r;
@@ -100,8 +100,8 @@ impl std::ops::SubAssign for Cx {
     }
 }
 
-/// Löser A x = b (A radvis n × n) med LU och partiell pivotering. Pivoter
-/// som är exakt noll ersätts med ett litet tal (för inversiteration).
+/// Solves A x = b (A row-major n × n) with LU and partial pivoting. Pivots
+/// that are exactly zero are replaced by a small number (for inverse iteration).
 pub fn solve(a: &[Cx], n: usize, b: &[Cx]) -> Vec<Cx> {
     let mut m = a.to_vec();
     let mut x = b.to_vec();
@@ -142,11 +142,11 @@ pub fn solve(a: &[Cx], n: usize, b: &[Cx]) -> Vec<Cx> {
     x
 }
 
-/// Alla egenvärden till den allmänna komplexa matrisen `a` (radvis n × n).
+/// All eigenvalues of the general complex matrix `a` (row-major n × n).
 pub fn eigenvalues(a: &[Cx], n: usize) -> Vec<Cx> {
     let mut h = a.to_vec();
     let at = |i: usize, j: usize| i * n + j;
-    // Hessenbergform med stabiliserad elimination (likformighetstransformationer)
+    // Hessenberg form with stabilized elimination (similarity transformations)
     for m in 1..n.saturating_sub(1) {
         let p = (m..n).max_by(|&i, &j| h[at(i, m - 1)].abs().total_cmp(&h[at(j, m - 1)].abs())).unwrap();
         if h[at(p, m - 1)].abs() == 0.0 {
@@ -181,7 +181,7 @@ pub fn eigenvalues(a: &[Cx], n: usize) -> Vec<Cx> {
             h[at(i, j)] = Cx::ZERO;
         }
     }
-    // QR-iteration med Wilkinsonskift
+    // QR iteration with Wilkinson shift
     let mut ev = vec![Cx::ZERO; n];
     if n == 0 {
         return ev;
@@ -193,7 +193,7 @@ pub fn eigenvalues(a: &[Cx], n: usize) -> Vec<Cx> {
             ev[0] = h[at(0, 0)];
             break;
         }
-        // sök en försumbar underdiagonal
+        // search for a negligible subdiagonal
         let mut l = hi;
         while l > 0 {
             let s = h[at(l - 1, l - 1)].abs() + h[at(l, l)].abs();
@@ -211,7 +211,7 @@ pub fn eigenvalues(a: &[Cx], n: usize) -> Vec<Cx> {
         }
         its += 1;
         if its > 300 {
-            // ger upp: diagonalen som approximation
+            // give up: the diagonal as an approximation
             for i in 0..=hi {
                 ev[i] = h[at(i, i)];
             }
@@ -257,7 +257,7 @@ pub fn eigenvalues(a: &[Cx], n: usize) -> Vec<Cx> {
     ev
 }
 
-/// Egenvektor till egenvärdet `mu` med inversiteration (normerad till |x| = 1).
+/// Eigenvector for the eigenvalue `mu` by inverse iteration (normalized to |x| = 1).
 pub fn eigenvector(a: &[Cx], n: usize, mu: Cx) -> Vec<Cx> {
     let scale = a.iter().map(|v| v.abs()).fold(0.0, f64::max).max(1.0);
     let shift = mu + Cx::new(scale * 1e-13, scale * 1e-13);
@@ -283,7 +283,7 @@ mod tests {
 
     #[test]
     fn eigenvalues_of_damped_oscillators() {
-        // två frikopplade dämpade svängare i första ordningens form
+        // two decoupled damped oscillators in first-order form
         let (w, z) = ([3.0f64, 7.0], [0.05f64, 0.2]);
         let n = 4;
         let mut a = vec![Cx::ZERO; n * n];

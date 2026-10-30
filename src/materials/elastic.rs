@@ -1,4 +1,4 @@
-//! Linjär isotrop elasticitet (*ELASTIC, TYPE=ISOTROPIC).
+//! Linear isotropic elasticity (*ELASTIC, TYPE=ISOTROPIC).
 
 use super::{MatInput, MatOutput, MaterialFactory, MaterialModel, StressMode};
 use crate::fem::model::MaterialDef;
@@ -6,7 +6,7 @@ use crate::model::Result;
 use std::sync::Arc;
 
 pub static FACTORIES: &[MaterialFactory] =
-    &[MaterialFactory { name: "ELASTIC (isotrop)", consumes: &["ELASTIC"], priority: 0, build: Some(build) }];
+    &[MaterialFactory { name: "ELASTIC (isotropic)", consumes: &["ELASTIC"], priority: 0, build: Some(build) }];
 
 #[derive(Debug, Clone)]
 pub struct IsotropicElastic {
@@ -21,19 +21,19 @@ fn build(def: &MaterialDef) -> Result<Option<Arc<dyn MaterialModel>>> {
         return Ok(None);
     }
     if kw.data.len() > 1 && !kw.has("DEPENDENCIES") {
-        // temperaturberoende (E, ν, T): hanteras av thermal_elastic.rs
+        // temperature-dependent (E, ν, T): handled by thermal_elastic.rs
         return Ok(None);
     }
     if kw.has("DEPENDENCIES") || kw.has("TEMPERATURE") || kw.data.len() > 1 {
-        return kw.err("temperaturberoende elasticitet stöds inte ännu");
+        return kw.err("temperature-dependent elasticity is not supported yet");
     }
     let v = kw.first_floats()?;
     if v.is_empty() || !(v[0] > 0.0) {
-        return kw.err("E saknas eller är inte positivt");
+        return kw.err("E is missing or not positive");
     }
     let nu = v.get(1).copied().unwrap_or(0.0);
     if !(nu > -1.0 && nu < 0.5) {
-        return kw.err(format!("ν = {nu} ska ligga mellan −1 och 0,5"));
+        return kw.err(format!("ν = {nu} must lie between −1 and 0.5"));
     }
     Ok(Some(Arc::new(IsotropicElastic { e: v[0], nu })))
 }
@@ -43,7 +43,7 @@ impl IsotropicElastic {
         self.e / (2.0 * (1.0 + self.nu))
     }
 
-    /// Elasticitetsmatrisen i komponentordningen för `mode`.
+    /// The elasticity matrix in the component order for `mode`.
     pub fn dmat(&self, mode: StressMode) -> Vec<f64> {
         let (e, nu) = (self.e, self.nu);
         match mode {

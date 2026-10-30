@@ -1,53 +1,53 @@
-//! Kopplingstypernas kinematik (inkluderas med `#[path]` från `connector.rs`).
+//! Kinematics of the connection types (included with `#[path]` from `connector.rs`).
 //!
-//! Varje kopplingselement har sex komponenter (1–3 förskjutning, 4–6
-//! rotation). En komponent är tillgänglig (fri, kan ha
-//! beteenden), låst (villkor) eller saknas. Kinematiken är linjäriserad (små
-//! förskjutningar och rotationer, som implicit analys ger utan NLGEOM för små
-//! laster) och varje komponent är en rad c med 12 koefficienter mot
-//! (u_a, θ_a, u_b, θ_b) i globala axlar: komponentens värde (CU/CUR) är c·u.
+//! Each connector element has six components (1–3 displacement, 4–6
+//! rotation). A component is available (free, may have behaviors),
+//! constrained (locked) or absent. The kinematics are linearized (small
+//! displacements and rotations, as implicit analysis without NLGEOM gives for
+//! small loads) and each component is a row c with 12 coefficients against
+//! (u_a, θ_a, u_b, θ_b) in global axes: the component value (CU/CUR) is c·u.
 //!
-//! Beteckningar: e_i^a, e_i^b lokala axlar i nod a och b (*ORIENTATION, b får
-//! a:s om den andra saknas), d = X_b − X_a, Δu = u_b − u_a, Δθ = θ_b − θ_a,
-//! w = Δu + d × θ_a (b:s läge i a:s medroterande system).
+//! Notation: e_i^a, e_i^b local axes at node a and b (*ORIENTATION, b gets
+//! a's if the other one is missing), d = X_b − X_a, Δu = u_b − u_a, Δθ = θ_b − θ_a,
+//! w = Δu + d × θ_a (b's position in a's corotating system).
 //!
-//! Translation (komponent 1–3):
-//! - CARTESIAN: e_i^a · w, alla tillgängliga.
+//! Translation (components 1–3):
+//! - CARTESIAN: e_i^a · w, all available.
 //! - PROJECTION CARTESIAN: e_i^a · (Δu + d × ½(θ_a + θ_b)).
-//! - JOIN: e_i^a · w låsta (b följer a:s rotation). LINK: n · Δu låst (n = d/|d|).
-//! - AXIAL: komponent 1 = n · Δu, läget |d|.
-//! - SLOT: 1 tillgänglig, 2–3 låsta (e_i^a · w). SLIDE-PLANE: 1 låst, 2–3 tillgängliga.
-//! - RADIAL-THRUST: 1 = e_r · w (radiell riktning i a:s 1–2-plan), 3 = e_3^a · w.
+//! - JOIN: e_i^a · w constrained (b follows a's rotation). LINK: n · Δu constrained (n = d/|d|).
+//! - AXIAL: component 1 = n · Δu, position |d|.
+//! - SLOT: 1 available, 2–3 constrained (e_i^a · w). SLIDE-PLANE: 1 constrained, 2–3 available.
+//! - RADIAL-THRUST: 1 = e_r · w (radial direction in a's 1–2 plane), 3 = e_3^a · w.
 //!
-//! Rotation (komponent 4–6):
-//! - ALIGN: e_i^b · Δθ låsta. REVOLUTE: 4 = e_1^a · Δθ, 5–6 = e_2^b, e_3^b · Δθ låsta.
-//! - UNIVERSAL: 4 = e_1^a · Δθ, 6 = e_3^b · Δθ, 5 = e_2^b · Δθ låst.
-//! - CONSTANT VELOCITY: 5 = −ê · Δθ låst, ê = (e_3^a + e_3^b)/|…| (bisektrisen);
-//!   4 och 6 skrivs ut som 0.
+//! Rotation (components 4–6):
+//! - ALIGN: e_i^b · Δθ constrained. REVOLUTE: 4 = e_1^a · Δθ, 5–6 = e_2^b, e_3^b · Δθ constrained.
+//! - UNIVERSAL: 4 = e_1^a · Δθ, 6 = e_3^b · Δθ, 5 = e_2^b · Δθ constrained.
+//! - CONSTANT VELOCITY: 5 = −ê · Δθ constrained, ê = (e_3^a + e_3^b)/|…| (the bisector);
+//!   4 and 6 are output as 0.
 //! - ROTATION, PROJECTION FLEXION-TORSION: e_i^a · Δθ. FLEXION-TORSION:
-//!   (e_2^a, e_3^a, e_1^a) · Δθ. Kräver samma axlar i a och b.
-//! - CARDAN (X-Y-Z) och EULER (Z-X-Z): ändringen av vinklarna för den
-//!   relativa rotationen R₀ = E_a E_bᵀ, dφ = J⁻¹ E_a Δθ. EULER med
-//!   nutationsvinkeln β = 0 (samma axlar) är singulär; då skrivs 0.
+//!   (e_2^a, e_3^a, e_1^a) · Δθ. Requires the same axes at a and b.
+//! - CARDAN (X-Y-Z) and EULER (Z-X-Z): the change of the angles of the
+//!   relative rotation R₀ = E_a E_bᵀ, dφ = J⁻¹ E_a Δθ. EULER with the
+//!   nutation angle β = 0 (same axes) is singular; then 0 is written.
 //!
-//! Sammansatta typer: BEAM (w och ALIGN låsta), WELD = JOIN + ALIGN,
+//! Assembled types: BEAM (w and ALIGN constrained), WELD = JOIN + ALIGN,
 //! HINGE = JOIN + REVOLUTE, UJOINT = JOIN + UNIVERSAL, CVJOINT = JOIN +
 //! CONSTANT VELOCITY, CYLINDRICAL = SLOT + REVOLUTE, PLANAR = SLIDE-PLANE +
 //! REVOLUTE, TRANSLATOR = SLOT + ALIGN, BUSHING = PROJECTION CARTESIAN +
 //! PROJECTION FLEXION-TORSION.
 
-/// Komponentens status.
+/// Component status.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Status {
-    /// Saknas (skrivs ut som 0, inga beteenden).
+    /// Absent (output as 0, no behaviors).
     None,
-    /// Tillgänglig: fri rörelse, kan ha beteenden.
+    /// Available: free motion, may have behaviors.
     Available,
-    /// Låst av kopplingstypen (villkor).
+    /// Constrained by the connection type (locked).
     Constrained,
 }
 
-/// En komponent: status, rad mot (u_a, θ_a, u_b, θ_b) och läget i referensläget.
+/// A component: status, row against (u_a, θ_a, u_b, θ_b) and the position in the reference configuration.
 #[derive(Debug, Clone, Copy)]
 pub struct CompDef {
     pub status: Status,
@@ -100,13 +100,13 @@ fn comp(status: Status, row: [f64; 12], p0: f64) -> CompDef {
     CompDef { status, row, p0 }
 }
 
-/// 3×3-matrisen med kolumnerna c0, c1, c2 löst för höger led w.
+/// The 3×3 matrix with columns c0, c1, c2 solved for the right-hand side w.
 fn solve3(c: [V3; 3], w: V3) -> Option<V3> {
     let det = dot(c[0], cross(c[1], c[2]));
     if det.abs() < 1e-10 {
         return None;
     }
-    // Cramers regel
+    // Cramer's rule
     let x0 = dot(w, cross(c[1], c[2])) / det;
     let x1 = dot(c[0], cross(w, c[2])) / det;
     let x2 = dot(c[0], cross(c[1], w)) / det;
@@ -126,11 +126,11 @@ fn rz(t: f64, v: V3) -> V3 {
     [c * v[0] - s * v[1], s * v[0] + c * v[1], v[2]]
 }
 
-/// Rader för vinkelförändringar dφ = J⁻¹ E_a Δθ (J:s kolumner i a:s lokala
-/// system) och vinklarna i referensläget. `None` om J är singulär.
+/// Rows for the angle changes dφ = J⁻¹ E_a Δθ (J's columns in a's local
+/// system) and the angles in the reference configuration. `None` if J is singular.
 fn angle_rows(ea: &[V3; 3], j: [V3; 3], angles: V3) -> Option<[CompDef; 3]> {
     let mut out = [CompDef::default(); 3];
-    // kolumnvis: dφ_k = Σ_i (J⁻¹)_{k i} (e_i^a · Δθ)
+    // column-wise: dφ_k = Σ_i (J⁻¹)_{k i} (e_i^a · Δθ)
     let mut inv = [[0.0; 3]; 3];
     for i in 0..3 {
         let mut w = [0.0; 3];
@@ -152,7 +152,7 @@ fn angle_rows(ea: &[V3; 3], j: [V3; 3], angles: V3) -> Option<[CompDef; 3]> {
     Some(out)
 }
 
-/// Relativ rotation R₀ = E_a E_bᵀ i a:s lokala system (kolumn j = e_j^b).
+/// Relative rotation R₀ = E_a E_bᵀ in a's local system (column j = e_j^b).
 fn relative(ea: &[V3; 3], eb: &[V3; 3]) -> [[f64; 3]; 3] {
     let mut r = [[0.0; 3]; 3];
     for i in 0..3 {
@@ -167,7 +167,7 @@ fn same_axes(ea: &[V3; 3], eb: &[V3; 3]) -> bool {
     (0..3).all(|i| (dot(ea[i], eb[i]) - 1.0).abs() < 1e-9)
 }
 
-/// Komponenterna för kopplingstyperna `types` (versaler). Fel som klartext.
+/// The components for the connection types `types` (upper case). Errors as plain text.
 pub fn components(types: &[String], d: V3, ea: &[V3; 3], eb: &[V3; 3]) -> std::result::Result<[CompDef; 6], String> {
     use Status::*;
     let mut c = [CompDef::default(); 6];
@@ -180,12 +180,12 @@ pub fn components(types: &[String], d: V3, ea: &[V3; 3], eb: &[V3; 3]) -> std::r
         if same_axes(ea, eb) {
             Ok(())
         } else {
-            Err(format!("{name} med olika lokala axlar i nod a och b stöds inte ännu"))
+            Err(format!("{name} with different local axes at node a and b is not supported yet"))
         }
     };
     let mut set_trans = |c: &mut [CompDef; 6], name: &str| -> std::result::Result<(), String> {
         if trans_set {
-            return Err(format!("två translationstyper ({name})"));
+            return Err(format!("two translation types ({name})"));
         }
         trans_set = true;
         match name {
@@ -207,13 +207,13 @@ pub fn components(types: &[String], d: V3, ea: &[V3; 3], eb: &[V3; 3]) -> std::r
             }
             "LINK" => {
                 if n_link == 0.0 {
-                    return Err("LINK kräver att noderna inte sammanfaller".into());
+                    return Err("LINK requires the nodes not to coincide".into());
                 }
                 c[0] = comp(Constrained, trans(nd, d, 0.0, 0.0), n_link);
             }
             "AXIAL" => {
                 if n_link == 0.0 {
-                    return Err("AXIAL kräver att noderna inte sammanfaller".into());
+                    return Err("AXIAL requires the nodes not to coincide".into());
                 }
                 c[0] = comp(Available, trans(nd, d, 0.0, 0.0), n_link);
             }
@@ -232,7 +232,7 @@ pub fn components(types: &[String], d: V3, ea: &[V3; 3], eb: &[V3; 3]) -> std::r
             "RADIAL-THRUST" => {
                 let r = (dl[0] * dl[0] + dl[1] * dl[1]).sqrt();
                 if r == 0.0 {
-                    return Err("RADIAL-THRUST kräver ett radiellt avstånd mellan noderna".into());
+                    return Err("RADIAL-THRUST requires a radial distance between the nodes".into());
                 }
                 let er = [0, 1, 2].map(|q| (dl[0] * ea[0][q] + dl[1] * ea[1][q]) / r);
                 c[0] = comp(Available, trans(er, d, 1.0, 0.0), r);
@@ -244,7 +244,7 @@ pub fn components(types: &[String], d: V3, ea: &[V3; 3], eb: &[V3; 3]) -> std::r
     };
     let mut set_rot = |c: &mut [CompDef; 6], name: &str| -> std::result::Result<(), String> {
         if rot_set {
-            return Err(format!("två rotationstyper ({name})"));
+            return Err(format!("two rotation types ({name})"));
         }
         rot_set = true;
         let r0 = relative(ea, eb);
@@ -268,7 +268,7 @@ pub fn components(types: &[String], d: V3, ea: &[V3; 3], eb: &[V3; 3]) -> std::r
                 let s = [0, 1, 2].map(|q| ea[2][q] + eb[2][q]);
                 let n = norm(s);
                 if n < 1e-9 {
-                    return Err("CONSTANT VELOCITY med motriktade axlar e3".into());
+                    return Err("CONSTANT VELOCITY with opposite e3 axes".into());
                 }
                 c[4] = comp(Constrained, rot([-s[0] / n, -s[1] / n, -s[2] / n]), 0.0);
             }
@@ -290,14 +290,14 @@ pub fn components(types: &[String], d: V3, ea: &[V3; 3], eb: &[V3; 3]) -> std::r
                 let p1 = (-r0[1][2]).atan2(r0[2][2]);
                 let p3 = (-r0[0][1]).atan2(r0[0][0]);
                 let j = [[1.0, 0.0, 0.0], rx(p1, [0.0, 1.0, 0.0]), rx(p1, ry(p2, [0.0, 0.0, 1.0]))];
-                let rows = angle_rows(ea, j, [p1, p2, p3]).ok_or("CARDAN är singulär (φ2 = ±90°) i referensläget")?;
+                let rows = angle_rows(ea, j, [p1, p2, p3]).ok_or("CARDAN is singular (φ2 = ±90°) in the reference configuration")?;
                 c[3..6].copy_from_slice(&rows);
             }
             "EULER" => {
                 // R₀ = Rz(α) Rx(β) Rz(γ)
                 let b = r0[2][2].clamp(-1.0, 1.0).acos();
                 if b.sin().abs() < 1e-9 {
-                    // singulär (samma axel e3): vinklarna skrivs som 0
+                    // singular (same e3 axis): the angles are written as 0
                     for i in 0..3 {
                         c[3 + i] = comp(Available, [0.0; 12], 0.0);
                     }
@@ -305,7 +305,7 @@ pub fn components(types: &[String], d: V3, ea: &[V3; 3], eb: &[V3; 3]) -> std::r
                     let a = r0[0][2].atan2(-r0[1][2]);
                     let g = r0[2][0].atan2(r0[2][1]);
                     let j = [[0.0, 0.0, 1.0], rz(a, [1.0, 0.0, 0.0]), rz(a, rx(b, [0.0, 0.0, 1.0]))];
-                    let rows = angle_rows(ea, j, [a, b, g]).ok_or("EULER är singulär i referensläget")?;
+                    let rows = angle_rows(ea, j, [a, b, g]).ok_or("EULER is singular in the reference configuration")?;
                     c[3..6].copy_from_slice(&rows);
                 }
             }
@@ -355,7 +355,7 @@ pub fn components(types: &[String], d: V3, ea: &[V3; 3], eb: &[V3; 3]) -> std::r
             }
             other => {
                 return Err(format!(
-                    "kopplingstypen {other} stöds inte ännu (AXIAL, CARTESIAN, JOIN, LINK, PROJECTION CARTESIAN, RADIAL-THRUST, SLIDE-PLANE, SLOT, ALIGN, CARDAN, CONSTANT VELOCITY, EULER, FLEXION-TORSION, PROJECTION FLEXION-TORSION, REVOLUTE, ROTATION, UNIVERSAL, BEAM, BUSHING, CVJOINT, CYLINDRICAL, HINGE, PLANAR, TRANSLATOR, UJOINT, WELD)"
+                    "connection type {other} is not supported yet (AXIAL, CARTESIAN, JOIN, LINK, PROJECTION CARTESIAN, RADIAL-THRUST, SLIDE-PLANE, SLOT, ALIGN, CARDAN, CONSTANT VELOCITY, EULER, FLEXION-TORSION, PROJECTION FLEXION-TORSION, REVOLUTE, ROTATION, UNIVERSAL, BEAM, BUSHING, CVJOINT, CYLINDRICAL, HINGE, PLANAR, TRANSLATOR, UJOINT, WELD)"
                 ))
             }
         }

@@ -1,27 +1,27 @@
-//! Område gaps1: *SIMPEDANCE/*IMPEDANCE, NONREFLECTING=IMPROVED i akustisk
-//! *DYNAMIC (inkluderas från `acoustic.rs`).
+//! Area gaps1: *SIMPEDANCE/*IMPEDANCE, NONREFLECTING=IMPROVED in acoustic
+//! *DYNAMIC (included from `acoustic.rs`).
 //!
-//! Planvågsvillkoret med godtycklig infallsvinkel (Sandler 1998):
+//! The plane wave condition with arbitrary angle of incidence (Sandler 1998):
 //!
 //! ```text
 //!   n⁻·∇p / ρ_f = cos θ/√(ρ_f K_f) (ṗ + γ/(2ρ_f) p),   cos θ = |∂p/∂n| / |∇p|
 //! ```
 //!
-//! cos θ räknas i varje ytintegrationspunkt ur elementets tryckgradient med
-//! de förutsagda nodtrycken p + Δt ṗ + ½Δt² p̈ (trycken uppdateras med
-//! explicit centraldifferens) och är 1 där gradienten är noll. Randens
-//! dämpning ∫ cos θ N N/√(ρK) dS och styvhet ∫ cos θ N N γ/(2ρ√(ρK)) dS byggs
-//! därför om i varje inkrement (`matrices`).
+//! cos θ is computed at each face integration point from the element pressure gradient with
+//! the predicted nodal pressures p + Δt ṗ + ½Δt² p̈ (the pressures are updated with
+//! explicit central differences) and is 1 where the gradient is zero. The boundary
+//! damping ∫ cos θ N N/√(ρK) dS and stiffness ∫ cos θ N N γ/(2ρ√(ρK)) dS are therefore
+//! rebuilt in each increment (`matrices`).
 
 use super::*;
 
-/// En IMPROVED-rand: (element, ytindex).
+/// An IMPROVED boundary: (element, face index).
 pub(super) struct Improved {
     pub faces: Vec<(usize, usize)>,
 }
 
-/// Naturliga koordinater för punkten `xp` i elementet (Newton med
-/// differenskvoter för avbildningens Jacobian).
+/// Natural coordinates for the point `xp` in the element (Newton with
+/// difference quotients for the Jacobian of the mapping).
 fn natural(a: &AcousticElem, x: &[[f64; 3]], xp: [f64; 3]) -> Result<[f64; 3]> {
     let dim = a.geom.dim();
     let shape = a.geom.shape;
@@ -61,7 +61,7 @@ fn natural(a: &AcousticElem, x: &[[f64; 3]], xp: [f64; 3]) -> Result<[f64; 3]> {
     Ok(xi)
 }
 
-/// Ytans normal (enhetsvektor) ur hörnnoderna.
+/// The face normal (unit vector) from the corner nodes.
 fn face_normal(a: &AcousticElem, x: &[[f64; 3]], fi: usize) -> [f64; 3] {
     let fl = a.geom.faces()[fi];
     let n = if a.geom.dim() == 2 {
@@ -84,8 +84,8 @@ fn sub3(a: [f64; 3], b: [f64; 3]) -> [f64; 3] {
 }
 
 impl Improved {
-    /// Randens dämpnings- och styvhetsmatriser (alla frihetsgrader) för
-    /// nodtrycken `p` (per nod).
+    /// The boundary damping and stiffness matrices (all degrees of freedom) for
+    /// the nodal pressures `p` (per node).
     pub(super) fn matrices(&self, sys: &Sys, p: &[f64]) -> Result<(Gen, Gen)> {
         let m = sys.p.model;
         let na = sys.n_all();

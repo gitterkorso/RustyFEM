@@ -1,27 +1,27 @@
-//! Euler–Bernoulli-balkar (B23, B33) vid NLGEOM=YES, formulerade för implicit
-//! analys:
+//! Euler–Bernoulli beams (B23, B33) with NLGEOM=YES, formulated for implicit
+//! analysis:
 //!
-//! - Balkaxelns läge interpoleras med kubiska Hermitepolynom i nodlägena och
-//!   nodtangenterna dx/dS = (dl/dS) · C(φ) · T, där T är elementets riktning i
-//!   referensläget och C(φ) nodens rotation. Sträckningen dl/dS i varje nod är
-//!   en inre variabel i elementet (inte delad med grannelementen, så att
-//!   axiell töjning inte låses i knutpunkter) och elimineras statiskt.
-//! - Generaliserade töjningar (rak balk, X″ = 0): Greens töjning
-//!   ε = ½(x′·x′ − 1), krökningsändringarna K₂ = n₁·x″, K₁ = −n₂·x″ och
-//!   vridningen e₁ = n₂ · dñ₁/dS, där ñ₁ = C(ψ) N₁ med rotationsvektorn ψ
-//!   linjärt interpolerad mellan noderna, n₁ = ñ₁:s del vinkelrät mot
-//!   tangenten (normerad) och n₂ = t × n₁.
-//! - Linjärelastiskt tvärsnitt: Φ = ∫ ½(EA ε² + EI₁₁ K₁² + EI₂₂ K₂² + GJ e₁²) dS
-//!   med tre gausspunkter längs balken.
+//! - The position of the beam axis is interpolated with cubic Hermite polynomials in the nodal positions and
+//!   nodal tangents dx/dS = (dl/dS) · C(φ) · T, where T is the element direction in
+//!   the reference configuration and C(φ) the nodal rotation. The stretch dl/dS at each node is
+//!   an internal variable of the element (not shared with neighboring elements, so that
+//!   axial strain is not locked at joints) and is eliminated statically.
+//! - Generalized strains (straight beam, X″ = 0): Green strain
+//!   ε = ½(x′·x′ − 1), curvature changes K₂ = n₁·x″, K₁ = −n₂·x″ and
+//!   twist e₁ = n₂ · dñ₁/dS, where ñ₁ = C(ψ) N₁ with the rotation vector ψ
+//!   linearly interpolated between the nodes, n₁ = the part of ñ₁ normal to
+//!   the tangent (normalized) and n₂ = t × n₁.
+//! - Linear elastic cross-section: Φ = ∫ ½(EA ε² + EI₁₁ K₁² + EI₂₂ K₂² + GJ e₁²) dS
+//!   with three Gauss points along the beam.
 //!
-//! Inre kraft och tangent är derivator av Φ med hyperduala tal
-//! (`hyperdual.rs`) med avseende på nodförskjutningar och rumsliga spinn
-//! (C ← exp([δw]) C, samma uppdatering som NLGEOM-steget gör). Kraften är
-//! exakt; i B33 är tangenten approximativ i vridningstermerna (rotations-
-//! vektorns andra derivata mot spinnet tas inte med), vilket bara påverkar
-//! konvergenshastigheten.
+//! Internal force and tangent are derivatives of Φ using hyperdual numbers
+//! (`hyperdual.rs`) with respect to nodal displacements and spatial spins
+//! (C ← exp([δw]) C, the same update as the NLGEOM step does). The force is
+//! exact; in B33 the tangent is approximate in the twist terms (the second
+//! derivative of the rotation vector with respect to the spin is omitted), which only affects
+//! the convergence rate.
 //!
-//! Rotationerna i `u` är totala rotationsvektorer (som UR i utdata).
+//! The rotations in `u` are total rotation vectors (like UR in the output).
 
 use super::hyperdual::{self as hd, Hd};
 use super::tensor as t;
@@ -37,10 +37,10 @@ pub fn response(b: &EulerBeam, ctx: &ElemCtx, u: &[f64], state_old: &[f64], stat
     }
 }
 
-/// Gausspunkter och vikter på [0, 1] (3 punkter längs balken).
+/// Gauss points and weights on [0, 1] (3 points along the beam).
 const GP3: [(f64, f64); 3] = [(0.112_701_665_379_258_31, 5.0 / 18.0), (0.5, 8.0 / 18.0), (0.887_298_334_620_741_7, 5.0 / 18.0)];
 
-/// Hermitefunktionernas första och andra derivata mot ξ i [x₁, T₁, x₂, T₂]-ordning.
+/// First and second derivatives of the Hermite functions w.r.t. ξ in [x₁, T₁, x₂, T₂] order.
 fn hermite(xi: f64) -> ([f64; 4], [f64; 4]) {
     (
         [6.0 * xi * xi - 6.0 * xi, 3.0 * xi * xi - 4.0 * xi + 1.0, -6.0 * xi * xi + 6.0 * xi, 3.0 * xi * xi - 2.0 * xi],
@@ -48,12 +48,12 @@ fn hermite(xi: f64) -> ([f64; 4], [f64; 4]) {
     )
 }
 
-/// Inre kraft, tangent och nya inre variabler.
+/// Internal force, tangent and new internal variables.
 type Condensed = (Vec<f64>, Option<Vec<f64>>, [f64; 2]);
 
-/// Löser ∂Φ/∂m = 0 för de två inre variablerna (de sista två i q) med Newton
-/// och returnerar den statiskt kondenserade kraften och tangenten för de
-/// övriga `np` variablerna samt m.
+/// Solves ∂Φ/∂m = 0 for the two internal variables (the last two in q) with Newton
+/// and returns the statically condensed force and tangent for the
+/// remaining `np` variables, plus m.
 fn condense<const N: usize>(ctx: &ElemCtx, name: &str, np: usize, m0: [f64; 2], tangent: bool, eval: &dyn Fn(&[f64; 2]) -> Hd<N>) -> Result<Condensed> {
     let (i1, i2) = (np, np + 1);
     let mut m = m0;
@@ -62,7 +62,7 @@ fn condense<const N: usize>(ctx: &ElemCtx, name: &str, np: usize, m0: [f64; 2], 
         let (a, bb, c) = (e.h[i1][i1], e.h[i1][i2], e.h[i2][i2]);
         let det = a * c - bb * bb;
         if !(det > 0.0) {
-            return fail(format!("element {} ({name}): sträckningen kunde inte bestämmas", ctx.label));
+            return fail(format!("element {} ({name}): the stretch could not be determined", ctx.label));
         }
         let dm = [(c * e.g[i1] - bb * e.g[i2]) / det, (a * e.g[i2] - bb * e.g[i1]) / det];
         m[0] -= dm[0];
@@ -74,7 +74,7 @@ fn condense<const N: usize>(ctx: &ElemCtx, name: &str, np: usize, m0: [f64; 2], 
     }
     let fint = e.g[..np].to_vec();
     let k = tangent.then(|| {
-        // K = Φ_pp − Φ_pm Φ_mm⁻¹ Φ_mp, symmetriserad
+        // K = Φ_pp − Φ_pm Φ_mm⁻¹ Φ_mp, symmetrized
         let (a, bb, c) = (e.h[i1][i1], e.h[i1][i2], e.h[i2][i2]);
         let det = a * c - bb * bb;
         let inv = [[c / det, -bb / det], [-bb / det, a / det]];
@@ -98,10 +98,10 @@ fn condense<const N: usize>(ctx: &ElemCtx, name: &str, np: usize, m0: [f64; 2], 
 type Hd8 = Hd<8>;
 type Hd14 = Hd<14>;
 
-/// Töjningsenergin för B23 med variablerna q = [u1, v1, φ1, u2, v2, φ2, m1, m2]
-/// (m = nodens sträckning dl/dS − 1).
+/// Strain energy for B23 with variables q = [u1, v1, φ1, u2, v2, φ2, m1, m2]
+/// (m = nodal stretch dl/dS − 1).
 fn plane_energy(x0: [[f64; 3]; 2], l0: f64, beta0: f64, ea: f64, ei: f64, q: &[Hd8; 8]) -> Hd8 {
-    // lägen relativt nod 1 (q är störningar kring u, x0 = [0, x₂ − x₁])
+    // positions relative to node 1 (q are perturbations around u, x0 = [0, x₂ − x₁])
     let x1 = [q[0] + x0[0][0], q[1] + x0[0][1]];
     let x2 = [q[3] + x0[1][0], q[4] + x0[1][1]];
     let tan = |phi: Hd8, m: Hd8| {
@@ -119,14 +119,14 @@ fn plane_energy(x0: [[f64; 3]; 2], l0: f64, beta0: f64, ea: f64, ei: f64, q: &[H
         let xdd = [comb(&d2, 0, 1.0 / (l0 * l0)), comb(&d2, 1, 1.0 / (l0 * l0))];
         let g = xd[0] * xd[0] + xd[1] * xd[1];
         let eps = (g - 1.0) * 0.5;
-        // K = n · x″ med n = t roterad +90°
+        // K = n · x″ with n = t rotated +90°
         let k = (xd[0] * xdd[1] - xd[1] * xdd[0]) / g.sqrt();
         w = w + (eps * eps * ea + k * k * ei) * (0.5 * wt * l0);
     }
     w
 }
 
-/// B23: [u1, v1, φ1, u2, v2, φ2]; tillståndet är de två nodsträckningarna.
+/// B23: [u1, v1, φ1, u2, v2, φ2]; the state is the two nodal stretches.
 fn plane(b: &EulerBeam, ctx: &ElemCtx, u: &[f64], state_old: &[f64], state_new: &mut Vec<f64>, tangent: bool) -> Result<ElemResponse> {
     let d = b.data(ctx)?;
     let l0 = d.l;
@@ -151,30 +151,30 @@ fn plane(b: &EulerBeam, ctx: &ElemCtx, u: &[f64], state_old: &[f64], state_new: 
     Ok(ElemResponse { fint, k })
 }
 
-/// Styvheter och referensgeometri för B33.
+/// Stiffnesses and reference geometry for B33.
 struct Spatial {
     ea: f64,
     ei11: f64,
     ei22: f64,
     gj: f64,
     l0: f64,
-    /// Elementets riktning T och tvärsnittets n1-riktning N₁ i referensläget.
+    /// Element direction T and the cross-section n1 direction N₁ in the reference configuration.
     tv: [f64; 3],
     n1: [f64; 3],
 }
 
-/// Aktuellt läge kring vilket B33-energin deriveras.
+/// Current configuration about which the B33 energy is differentiated.
 struct Current {
-    /// Nodlägen relativt nod 1: [0, x₂ − x₁].
+    /// Nodal positions relative to node 1: [0, x₂ − x₁].
     dx: [[f64; 3]; 2],
     c0: [t::M3; 2],
     phi0: [[f64; 3]; 2],
-    /// T(φ₀)⁻¹: ändringen av rotationsvektorn per spinn.
+    /// T(φ₀)⁻¹: the change of the rotation vector per spin.
     tinv: [t::M3; 2],
 }
 
-/// Töjningsenergin för B33. Variablerna: [δx₁, δw₁, δx₂, δw₂, m₁, m₂], där
-/// δx och δw (spinn) är störningar kring det aktuella läget.
+/// Strain energy for B33. Variables: [δx₁, δw₁, δx₂, δw₂, m₁, m₂], where
+/// δx and δw (spin) are perturbations around the current configuration.
 fn spatial_energy(s: &Spatial, cur: &Current, q: &[Hd14; 14]) -> Hd14 {
     let cst = Hd14::cst;
     let l0 = s.l0;
@@ -183,16 +183,16 @@ fn spatial_energy(s: &Spatial, cur: &Current, q: &[Hd14; 14]) -> Hd14 {
     let mut phis = [[cst(0.0); 3]; 2];
     for a in 0..2 {
         let o = 6 * a;
-        // lägen relativt nod 1 (bara skillnader ingår; minskar avrundningsfelet i ε)
+        // positions relative to node 1 (only differences enter; reduces round-off error in ε)
         xs[a] = std::array::from_fn(|i| q[o + i] + cur.dx[a][i]);
         let w: hd::V3<14> = [q[o + 3], q[o + 4], q[o + 5]];
         let e = hd::exp_so3(&w);
-        // nodens rotation C = exp([w]) C₀ och tangent (1 + m) L C T
+        // nodal rotation C = exp([w]) C₀ and tangent (1 + m) L C T
         let ct: hd::V3<14> = std::array::from_fn(|i| cst((0..3).map(|j| cur.c0[a][i][j] * s.tv[j]).sum()));
         let rt = hd::matvec3(&e, &ct);
         let sc = (q[12 + a] + 1.0) * l0;
         tans[a] = std::array::from_fn(|i| rt[i] * sc);
-        // rotationsvektorn till första ordningen i spinnet: φ = φ₀ + T(φ₀)⁻¹ w
+        // rotation vector to first order in the spin: φ = φ₀ + T(φ₀)⁻¹ w
         phis[a] = std::array::from_fn(|i| (0..3).fold(cst(cur.phi0[a][i]), |acc, j| acc + w[j] * cur.tinv[a][i][j]));
     }
     let dphi: hd::V3<14> = std::array::from_fn(|i| phis[1][i] - phis[0][i]);
@@ -228,7 +228,7 @@ fn spatial_energy(s: &Spatial, cur: &Current, q: &[Hd14; 14]) -> Hd14 {
     wsum
 }
 
-/// B33: [u1, u2, u3, φ1, φ2, φ3] per nod; tillståndet är nodsträckningarna.
+/// B33: [u1, u2, u3, φ1, φ2, φ3] per node; the state is the nodal stretches.
 fn spatial(b: &EulerBeam, ctx: &ElemCtx, u: &[f64], state_old: &[f64], state_new: &mut Vec<f64>, tangent: bool) -> Result<ElemResponse> {
     let d = b.data(ctx)?;
     let l0 = d.l;
@@ -250,13 +250,13 @@ fn spatial(b: &EulerBeam, ctx: &ElemCtx, u: &[f64], state_old: &[f64], state_new
     };
     let (fint, k, m) = condense(ctx, b.name(), 12, m0, tangent, &eval)?;
     if fint.iter().any(|v| !v.is_finite()) {
-        return fail(format!("element {} ({}): ogiltig deformerad geometri", ctx.label, b.name()));
+        return fail(format!("element {} ({}): invalid deformed geometry", ctx.label, b.name()));
     }
     *state_new = m.to_vec();
     Ok(ElemResponse { fint, k })
 }
 
-/// T(φ) i f64 (dC = [T dφ]× C).
+/// T(φ) in f64 (dC = [T dφ]× C).
 fn so3_tangent(p: [f64; 3]) -> t::M3 {
     let q: hd::V3<1> = p.map(Hd::<1>::cst);
     let m = hd::tangent_so3(&q);
@@ -267,7 +267,7 @@ fn so3_tangent(p: [f64; 3]) -> t::M3 {
 mod tests {
     use super::*;
 
-    /// T(φ) stämmer med differenser av exp: dC/dφ_k Cᵀ = [T e_k]×.
+    /// T(φ) agrees with differences of exp: dC/dφ_k Cᵀ = [T e_k]×.
     #[test]
     fn so3_tangent_matches_exp() {
         let p = [0.4, -1.1, 0.7];

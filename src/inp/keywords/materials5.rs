@@ -1,10 +1,10 @@
-//! Materialbeteenden för område materials5: krossbart skum, porösa metaller
-//! (Gurson–Tvergaard–Needleman), deformationsplasticitet (Ramberg–Osgood) och
+//! Material behaviors for Area materials5: crushable foam, porous metals
+//! (Gurson–Tvergaard–Needleman), deformation plasticity (Ramberg–Osgood) and
 //! *INITIAL CONDITIONS, TYPE=RELATIVE DENSITY.
 //!
-//! Beteendena tolkas av `materials/crushable_foam.rs`, `porous_metal.rs` och
-//! `deformation_plasticity.rs`. Kompositskada (CRITERION=HASHIN) och
-//! formbarhetskriterierna (FLD, FLSD, MSFLD) använder de befintliga
+//! The behaviors are parsed by `materials/crushable_foam.rs`, `porous_metal.rs` and
+//! `deformation_plasticity.rs`. Composite damage (CRITERION=HASHIN) and
+//! the forming limit criteria (FLD, FLSD, MSFLD) use the existing
 //! *DAMAGE INITIATION/*DAMAGE EVOLUTION/*DAMAGE STABILIZATION
 //! (`materials/hashin.rs`, `materials/forming_limit.rs`).
 
@@ -22,14 +22,14 @@ pub static KEYWORDS: &[Keyword] = &[
     Keyword { name: "VOID NUCLEATION", kind: Kind::Behavior, handler: behavior },
 ];
 
-/// Parameter som markerar ett upplöst *INITIAL CONDITIONS, TYPE=RELATIVE DENSITY.
+/// Parameter that marks a resolved *INITIAL CONDITIONS, TYPE=RELATIVE DENSITY.
 pub const RESOLVED_RD: &str = "RUSTYFEM_RD";
 
-/// *INITIAL CONDITIONS, TYPE=RELATIVE DENSITY: rader "nod eller nodset,
-/// relativ densitet" (nodvärden). Sparas i `FeModel::extra` med
-/// raderna [nodindex, r] och parametern `RESOLVED_RD`; läses av
-/// `materials::porous_metal::apply_relative_density`, som tar elementets
-/// nodmedelvärde i alla integrationspunkter.
+/// *INITIAL CONDITIONS, TYPE=RELATIVE DENSITY: lines "node or node set,
+/// relative density" (nodal values). Stored in `FeModel::extra` with
+/// the lines [node index, r] and the parameter `RESOLVED_RD`; read by
+/// `materials::porous_metal::apply_relative_density`, which takes the element's
+/// nodal mean value at all integration points.
 pub fn initial_relative_density(ctx: &mut InpCtx, kw: &RawKeyword) -> Result<()> {
     let mut out = kw.clone();
     out.params.push((RESOLVED_RD.to_string(), String::new()));
@@ -43,9 +43,9 @@ pub fn initial_relative_density(ctx: &mut InpCtx, kw: &RawKeyword) -> Result<()>
             .fields
             .get(1)
             .and_then(|f| crate::fem::model::parse_f64(f))
-            .ok_or_else(|| FemError(format!("{} rad {}: relativ densitet saknas", kw.file, d.line)))?;
+            .ok_or_else(|| FemError(format!("{} line {}: relative density is missing", kw.file, d.line)))?;
         if !(r > 0.0 && r <= 1.0) {
-            return kw.err_at(d.line, format!("relativ densitet {r} ska ligga i (0, 1]"));
+            return kw.err_at(d.line, format!("relative density {r} must lie in (0, 1]"));
         }
         for n in ctx.node_ref(kw, d.line, tok, None)? {
             out.data.push(DataLine { fields: vec![n.to_string(), format!("{r:e}")], line: d.line, continued: false });

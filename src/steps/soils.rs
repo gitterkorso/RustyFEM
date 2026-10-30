@@ -1,51 +1,51 @@
-//! Kopplad porvattentryck–förskjutning (geoteknik): *SOILS (stationär eller
-//! CONSOLIDATION) och *GEOSTATIC med elementen i `elements/soils.rs`.
+//! Coupled pore pressure–displacement (geotechnics): *SOILS (steady-state or
+//! CONSOLIDATION) and *GEOSTATIC with the elements in `elements/soils.rs`.
 //!
-//! Hela systemet (förskjutningar och porvattentryck) löses samtidigt med
-//! Newton–Raphson. Kontinuitetsekvationens rader multipliceras med −Δt
-//! (transient) så att den linjära konsolideringen blir symmetrisk,
+//! The whole system (displacements and pore pressures) is solved simultaneously with
+//! Newton–Raphson. The rows of the continuity equation are multiplied by −Δt
+//! (transient) so that the linear consolidation becomes symmetric,
 //!
 //! ```text
 //! [ K    −Q   ] [Δu  ]   [R_u]
 //! [ −Qᵀ  −Δt H] [Δu_w] = [R_w]
 //! ```
 //!
-//! och löses med den indefinita lösaren (tryckfrihetsgraderna skalas med
-//! elasticitetsmodulen så att pivoterna vid korta inkrement inte blir för
-//! små); stationär strömning, k(e), GRAV, *FLOW och olinjära material
-//! använder den osymmetriska lösaren. *CONTROLS, PARAMETERS=FIELD/TIME
-//! INCREMENTATION gäller som i NLGEOM-steget.
+//! and solved with the indefinite solver (the pressure degrees of freedom are scaled by
+//! the elastic modulus so that the pivots for short increments do not become too
+//! small); steady-state flow, k(e), GRAV, *FLOW and nonlinear materials
+//! use the unsymmetric solver. *CONTROLS, PARAMETERS=FIELD/TIME
+//! INCREMENTATION apply as in the NLGEOM step.
 //!
-//! Inkrementering:
-//! - *SOILS, CONSOLIDATION utan UTOL: fasta inkrement Δt0 (datarad `Δt0,
-//!   tidsperiod, Δtmin, Δtmax, ss-hastighet`);
-//! - UTOL=: automatiskt så att största porvattentrycksändringen per inkrement
-//!   håller sig under UTOL: omtag med Δt·0,85·UTOL/Δu_max, ökning som DELTMX
-//!   i `steps/heat.rs` (linjärt: ×min(f, 2) när f = 0,8·UTOL/Δu_max ≥ 1,9);
-//! - END=SS: steget avslutas när alla porvattentryck ändras långsammare än
-//!   datarads femte värde;
-//! - stationärt: Newton-drivarens inkrementering;
-//! - *GEOSTATIC utan GRAV: ett transient inkrement med Δt = stegets tid, där
-//!   en obalans mellan begynnelsespänning och laster bärs av porvattentrycket
-//!   (RVF redovisas utan volymtermen); med GRAV på porvattentryckselementen
-//!   stationär strömning (dränerat).
+//! Incrementation:
+//! - *SOILS, CONSOLIDATION without UTOL: fixed increments Δt0 (data line `Δt0,
+//!   time period, Δtmin, Δtmax, ss rate`);
+//! - UTOL=: automatic so that the largest pore pressure change per increment
+//!   stays below UTOL: cutback with Δt·0.85·UTOL/Δu_max, increase as DELTMX
+//!   in `steps/heat.rs` (linear: ×min(f, 2) when f = 0.8·UTOL/Δu_max ≥ 1.9);
+//! - END=SS: the step ends when all pore pressures change more slowly than
+//!   the fifth value of the data line;
+//! - steady-state: the Newton driver's incrementation;
+//! - *GEOSTATIC without GRAV: one transient increment with Δt = the step time, where
+//!   an imbalance between initial stress and loads is carried by the pore pressure
+//!   (RVF is reported without the volume term); with GRAV on the pore pressure elements
+//!   steady-state flow (drained).
 //!
-//! Standardamplitud: STEP för CONSOLIDATION, RAMP för stationär analys och
+//! Default amplitude: STEP for CONSOLIDATION, RAMP for steady-state analysis and
 //! *GEOSTATIC.
 //!
-//! GRAV på porvattentryckselement ger totalt porvattentryck: tyngden är
-//! (ρ_torr + n·ρw)·g med aktuell porositet och ρw = γw/g, och Darcys lag får
-//! termen −ρw g. BX/BY/BZ och P verkar bara på skelettet (överskottstryck).
+//! GRAV on pore pressure elements gives total pore pressure: the weight is
+//! (ρ_dry + n·ρw)·g with the current porosity and ρw = γw/g, and Darcy's law gets
+//! the term −ρw g. BX/BY/BZ and P act only on the skeleton (excess pressure).
 //!
-//! Begynnelsevillkor (`inp/keywords/soils.rs`): *INITIAL CONDITIONS,
-//! TYPE=PORE PRESSURE, RATIO och STRESS (även GEOSTATIC) läggs in i
-//! tillståndet före det första steget som använder dem.
+//! Initial conditions (`inp/keywords/soils.rs`): *INITIAL CONDITIONS,
+//! TYPE=PORE PRESSURE, RATIO and STRESS (also GEOSTATIC) are inserted into
+//! the state before the first step that uses them.
 //!
-//! Laster: mekaniska laster och randvillkor, *BOUNDARY på frihetsgrad 8,
-//! *CFLOW (punktflöde), *DFLOW/*DSFLOW (föreskrivet utflöde per ytenhet) och
-//! *FLOW/*SFLOW (utflöde c·(u_w − u_w∞)).
-//! Utdata: U, RF, POR, RVF (reaktionsflöde), RVT (summerad reaktionsvolym),
-//! S (effektiv spänning), E, FLVEL (volymflöde per ytenhet), VOIDR.
+//! Loads: mechanical loads and boundary conditions, *BOUNDARY on degree of freedom 8,
+//! *CFLOW (point flow), *DFLOW/*DSFLOW (prescribed outflow per unit area) and
+//! *FLOW/*SFLOW (outflow c·(u_w − u_w∞)).
+//! Output: U, RF, POR, RVF (reaction flow), RVT (summed reaction volume),
+//! S (effective stress), E, FLVEL (volume flux per unit area), VOIDR.
 
 use super::api::{StepCtx, StepType};
 use super::newton::{self, Controls, NonlinearSystem, Residual};
@@ -65,23 +65,23 @@ pub struct Soils;
 
 pub static STEP_TYPES: &[&dyn StepType] = &[&Soils];
 
-/// Slot för porvattentrycket (frihetsgrad 8).
+/// Slot for the pore pressure (degree of freedom 8).
 pub const PS: usize = 7;
 
-/// Nyckel i `SolutionState::vectors`: begynnelsevillkoren är inlagda.
+/// Key in `SolutionState::vectors`: the initial conditions have been inserted.
 const INIT_KEY: &str = "POR INITIAL";
-/// Nyckel i `SolutionState::vectors`: summerad reaktionsvolym RVT (slot 7).
+/// Key in `SolutionState::vectors`: summed reaction volume RVT (slot 7).
 const RVT_KEY: &str = "RVT";
 
-/// Markör för upplösta *INITIAL CONDITIONS (nod- eller elementindex).
+/// Marker for resolved *INITIAL CONDITIONS (node or element index).
 pub const RESOLVED: &str = "__SOILS_RESOLVED";
 
-/// Fördelade laster som hör till porvätskan (inte till mekaniken).
+/// Distributed loads that belong to the pore fluid (not to the mechanics).
 fn is_flow(kind: &str) -> bool {
     kind.starts_with("DFLOW:") || kind.starts_with("FLOW:")
 }
 
-/// Vertikal koordinat (y i 2D, z i 3D).
+/// Vertical coordinate (y in 2D, z in 3D).
 fn elevation(model: &FeModel, x: [f64; 3]) -> f64 {
     if model.dim() == 3 {
         x[2]
@@ -90,7 +90,7 @@ fn elevation(model: &FeModel, x: [f64; 3]) -> f64 {
     }
 }
 
-/// Linjär variation med höjden: värde1, höjd1, värde2, höjd2.
+/// Linear variation with height: value1, height1, value2, height2.
 fn linear_in(v: &[f64], y: f64) -> f64 {
     let v1 = v.first().copied().unwrap_or(0.0);
     if v.len() < 4 {
@@ -103,7 +103,7 @@ fn linear_in(v: &[f64], y: f64) -> f64 {
     v1 + (v2 - v1) * (y - y1) / (y2 - y1)
 }
 
-/// Element i modellen: porvattentryckselement med egenskaper, eller annat.
+/// Element in the model: pore pressure element with properties, or other.
 struct Elems {
     soil: Vec<Option<(&'static SoilElem, usize)>>,
     props: Vec<PoroProps>,
@@ -120,10 +120,10 @@ fn classify(p: &Prepared) -> Result<Elems> {
             continue;
         };
         let Some(si) = el.section else {
-            return fail(format!("{}: saknar *SOLID SECTION", model.elem_name(e)));
+            return fail(format!("{}: *SOLID SECTION is missing", model.elem_name(e)));
         };
         let Some(mi) = model.sections[si].material_index else {
-            return fail(format!("{}: tvärsnittet saknar material", model.elem_name(e)));
+            return fail(format!("{}: the section has no material", model.elem_name(e)));
         };
         let pi = match idx.get(&mi) {
             Some(&i) => i,
@@ -136,13 +136,13 @@ fn classify(p: &Prepared) -> Result<Elems> {
         soil.push(Some((se, pi)));
     }
     if soil.iter().all(|s| s.is_none()) {
-        return fail("*SOILS/*GEOSTATIC kräver porvattentryckselement (CPE4P, CPE8P, CAX4P, C3D8P, C3D20P, ...)");
+        return fail("*SOILS/*GEOSTATIC requires pore pressure elements (CPE4P, CPE8P, CAX4P, C3D8P, C3D20P, ...)");
     }
     Ok(Elems { soil, props })
 }
 
-/// Lägger in *INITIAL CONDITIONS (PORE PRESSURE, RATIO, STRESS) i tillståndet
-/// första gången ett *SOILS-/*GEOSTATIC-steg körs.
+/// Inserts *INITIAL CONDITIONS (PORE PRESSURE, RATIO, STRESS) into the state
+/// the first time a *SOILS/*GEOSTATIC step runs.
 fn ensure_initial(p: &Prepared, els: &Elems, state: &mut SolutionState) -> Result<()> {
     if state.vectors.contains_key(INIT_KEY) {
         return Ok(());
@@ -176,7 +176,7 @@ fn ensure_initial(p: &Prepared, els: &Elems, state: &mut SolutionState) -> Resul
     }
     for (e, s) in els.soil.iter().enumerate() {
         let Some((se, _)) = s else {
-            // andra element får sin begynnelsespänning i materials/initial_state.rs
+            // other elements get their initial stress in materials/initial_state.rs
             continue;
         };
         let ctx = p.ctx(e, false, 0.0, 0.0);
@@ -191,18 +191,18 @@ fn ensure_initial(p: &Prepared, els: &Elems, state: &mut SolutionState) -> Resul
             *st = se.fresh_state(mat, gs.len());
         }
         let ns = lay.ns;
-        // GEOSTATIC-spänningen utvärderas i elementets mittpunkt
-        // (samma värde i alla integrationspunkter)
+        // the GEOSTATIC stress is evaluated at the element midpoint
+        // (the same value at all integration points)
         let center = se.center(&x);
         for (q, g) in gs.iter().enumerate() {
             let base = q * stride;
-            // portal i integrationspunkten: nodvärdena interpolerade
+            // void ratio at the integration point: the nodal values interpolated
             let e0: f64 = g.ip.n.iter().zip(nodes).map(|(ni, &n)| ni * ratio[n].unwrap_or(0.0)).sum();
             st[base + lay.e0()] = e0;
             if let Some((geo, vals)) = &stress[e] {
                 let sig = initial_stress(model, se, *geo, vals, if *geo { center } else { g.x }, ns);
                 let Some((ee, nu)) = mat.elastic_moduli() else {
-                    return fail(format!("{}: begynnelsespänning kräver ett material med isotrop elasticitet", model.elem_name(e)));
+                    return fail(format!("{}: initial stress requires a material with isotropic elasticity", model.elem_name(e)));
                 };
                 let eps0 = compliance(&sig, ee, nu, ns);
                 st[base..base + ns].copy_from_slice(&sig);
@@ -214,12 +214,12 @@ fn ensure_initial(p: &Prepared, els: &Elems, state: &mut SolutionState) -> Resul
     Ok(())
 }
 
-/// Begynnelsespänning (komponentordning 11, 22, 33, 12, ...) i punkten `x`.
+/// Initial stress (component order 11, 22, 33, 12, ...) at the point `x`.
 fn initial_stress(model: &FeModel, se: &SoilElem, geo: bool, v: &[f64], x: [f64; 3], ns: usize) -> Vec<f64> {
     let mut s = vec![0.0; ns];
     let g = |i: usize| v.get(i).copied().unwrap_or(0.0);
     if geo {
-        // σv1, höjd1, σv2, höjd2, K0x, K0y
+        // σv1, height1, σv2, height2, K0x, K0y
         let sv = linear_in(&v[..4.min(v.len())], elevation(model, x));
         let kx = g(4);
         let ky = if v.len() > 5 { g(5) } else { kx };
@@ -241,7 +241,7 @@ fn initial_stress(model: &FeModel, se: &SoilElem, geo: bool, v: &[f64], x: [f64;
     s
 }
 
-/// Elastisk töjning C⁻¹σ (ingenjörsskjuvtöjning) för isotrop elasticitet.
+/// Elastic strain C⁻¹σ (engineering shear strain) for isotropic elasticity.
 fn compliance(s: &[f64], e: f64, nu: f64, ns: usize) -> Vec<f64> {
     let mut eps = vec![0.0; ns];
     for i in 0..3 {
@@ -255,28 +255,28 @@ fn compliance(s: &[f64], e: f64, nu: f64, ns: usize) -> Vec<f64> {
     eps
 }
 
-/// Inställningar från procedurraden.
+/// Settings from the procedure line.
 struct SoilControls {
     ctrl: Controls,
     transient: bool,
     geostatic: bool,
-    /// Största tillåtna porvattentrycksändring per inkrement (UTOL), 0 = fasta inkrement.
+    /// Largest allowed pore pressure change per increment (UTOL), 0 = fixed increments.
     utol: f64,
-    /// END=SS: hastighetsgräns för stationärt tillstånd (0 = av).
+    /// END=SS: rate limit for steady state (0 = off).
     ss_rate: f64,
 }
 
 fn controls(step: &StepDef) -> Result<SoilControls> {
-    let Some(kw) = step.procedure.as_ref() else { return fail("intern: *SOILS saknar procedur") };
+    let Some(kw) = step.procedure.as_ref() else { return fail("internal: *SOILS has no procedure") };
     let geostatic = kw.name == "GEOSTATIC";
     let mut ctrl = Controls::from_procedure(Some(kw), step.max_increments)?;
-    // *CONTROLS, PARAMETERS=FIELD / TIME INCREMENTATION som i NLGEOM-steget
+    // *CONTROLS, PARAMETERS=FIELD / TIME INCREMENTATION as in the NLGEOM step
     crate::steps::nlgeom::apply_controls(&mut ctrl, &step.extra)?;
     let transient = !geostatic && kw.has("CONSOLIDATION");
     let v = kw.first_floats()?;
     let num = |key: &str| -> Result<f64> {
         match kw.param(key) {
-            Some(s) => crate::fem::model::parse_f64(s).ok_or_else(|| FemError(format!("{}: {key}={s} är inget tal", kw.location()))),
+            Some(s) => crate::fem::model::parse_f64(s).ok_or_else(|| FemError(format!("{}: {key}={s} is not a number", kw.location()))),
             None => Ok(0.0),
         }
     };
@@ -284,21 +284,21 @@ fn controls(step: &StepDef) -> Result<SoilControls> {
     let mut ss_rate = 0.0;
     if let Some(end) = kw.param_upper("END") {
         if end != "SS" && end != "PERIOD" {
-            return kw.err(format!("END={end} stöds inte (SS eller PERIOD)"));
+            return kw.err(format!("END={end} is not supported (SS or PERIOD)"));
         }
         if end == "SS" {
             if !transient {
-                return kw.err("END=SS gäller bara *SOILS, CONSOLIDATION");
+                return kw.err("END=SS applies only to *SOILS, CONSOLIDATION");
             }
             ss_rate = v.get(4).copied().unwrap_or(0.0);
             if !(ss_rate > 0.0) {
-                return kw.err("END=SS kräver hastighetsgränsen för stationärt tillstånd (femte värdet på dataraden)");
+                return kw.err("END=SS requires the rate limit for steady state (the fifth value on the data line)");
             }
         }
     }
     for p in ["CREEP", "STABILIZE", "ALLSDTOL"] {
         if kw.has(p) {
-            return kw.err(format!("{p} stöds inte ännu för *{}", kw.name));
+            return kw.err(format!("{p} is not supported yet for *{}", kw.name));
         }
     }
     if transient {
@@ -312,8 +312,8 @@ fn controls(step: &StepDef) -> Result<SoilControls> {
     Ok(SoilControls { ctrl, transient, geostatic, utol, ss_rate })
 }
 
-/// Den indefinita lösaren utan varning om negativa egenvärden (sadelpunktssystemet
-/// för konsolidering har alltid lika många negativa egenvärden som tryckfrihetsgrader).
+/// The indefinite solver without a warning about negative eigenvalues (the saddle point system
+/// for consolidation always has as many negative eigenvalues as pressure degrees of freedom).
 struct QuietIndefinite;
 
 static QUIET_INDEFINITE: QuietIndefinite = QuietIndefinite;
@@ -327,7 +327,7 @@ impl LinearSolver for QuietIndefinite {
     }
 }
 
-/// Hela systemet för ett steg.
+/// The whole system for a step.
 struct SoilSystem<'p, 'm> {
     p: &'p Prepared<'m>,
     loads: StepLoads,
@@ -346,18 +346,18 @@ struct SoilSystem<'p, 'm> {
     t1: f64,
     transient: bool,
     linear: bool,
-    /// Porvätskans tyngd per volym ρw·g per element (från GRAV, annars 0).
+    /// Weight of the pore fluid per volume ρw·g per element (from GRAV, otherwise 0).
     grav: Vec<[f64; 3]>,
-    /// Skalning av tryckfrihetsgraderna i ekvationssystemet (största
-    /// elasticitetsmodulen): kopplingstermerna blir jämförbara med styvheten,
-    /// så att pivottesterna inte tar de små tryckpivoterna vid korta
-    /// tidsinkrement (odränerad last) för noll.
+    /// Scaling of the pressure degrees of freedom in the equation system (the largest
+    /// elastic modulus): the coupling terms become comparable to the stiffness,
+    /// so that the pivot tests do not take the small pressure pivots for short
+    /// time increments (undrained load) as zero.
     pscale: f64,
 }
 
 impl<'p, 'm> SoilSystem<'p, 'm> {
     fn new(p: &'p Prepared<'m>, loads: StepLoads, els: Elems, state: &SolutionState, transient: bool, period: f64) -> Result<Self> {
-        // GRAV på porvattentryckselement: vätskans tyngd beror på portalet (olinjärt)
+        // GRAV on pore pressure elements: the fluid weight depends on the void ratio (nonlinear)
         let grav = loads.dload.iter().any(|(l, _)| l.kind == "GRAV" && els.soil[l.elem].is_some());
         let linear = p.is_linear() && els.props.iter().all(|pp| !pp.perm.varies()) && !loads.dload.iter().any(|(l, _)| l.kind.starts_with("FLOW:")) && !grav;
         let sym = transient && linear;
@@ -387,9 +387,9 @@ impl<'p, 'm> SoilSystem<'p, 'm> {
         })
     }
 
-    /// ρw·g per element vid stegtiden `t1`: GRAV på ett porvattentryckselement
-    /// ger totalt porvattentryck (Darcy med −ρw g och vätskans tyngd n·ρw·g),
-    /// ρw = γw/g med g = GRAV-lastens storlek vid stegets slut.
+    /// ρw·g per element at the step time `t1`: GRAV on a pore pressure element
+    /// gives total pore pressure (Darcy with −ρw g and the fluid weight n·ρw·g),
+    /// ρw = γw/g with g = the magnitude of the GRAV load at the end of the step.
     fn fluid_gravity(&self) -> Result<Vec<[f64; 3]>> {
         let mut g = vec![[0.0; 3]; self.p.model.elements.len()];
         for ((end, _), now) in self.loads.dload.iter().zip(self.loads.dloads_at(self.t1)) {
@@ -400,7 +400,7 @@ impl<'p, 'm> SoilSystem<'p, 'm> {
             let d = [0, 1, 2].map(|i| now.extra.get(i).copied().unwrap_or(0.0));
             let l = crate::elements::common::norm(d);
             if l == 0.0 {
-                return fail(format!("{}: GRAV-lasten saknar riktning", self.p.model.elem_name(now.elem)));
+                return fail(format!("{}: the GRAV load has no direction", self.p.model.elem_name(now.elem)));
             }
             let gref = if end.magnitude != 0.0 { end.magnitude } else { now.magnitude };
             if gref == 0.0 {
@@ -415,7 +415,7 @@ impl<'p, 'm> SoilSystem<'p, 'm> {
         Ok(g)
     }
 
-    /// Tyngden (ρ_torr + n·ρw)·g för GRAV-laster på porvattentryckselement.
+    /// The weight (ρ_dry + n·ρw)·g for GRAV loads on pore pressure elements.
     fn gravity_load(&self, fext: &mut [NodeVec]) -> Result<()> {
         let model = self.p.model;
         for l in self.loads.dloads_at(self.t1) {
@@ -428,7 +428,7 @@ impl<'p, 'm> SoilSystem<'p, 'm> {
             let d = [0, 1, 2].map(|i| l.extra.get(i).copied().unwrap_or(0.0));
             let len = crate::elements::common::norm(d);
             if len == 0.0 {
-                return fail(format!("{}: GRAV-lasten saknar riktning", model.elem_name(e)));
+                return fail(format!("{}: the GRAV load has no direction", model.elem_name(e)));
             }
             let dry = d.map(|x| x * l.magnitude * ctx.density / len);
             let v = self.p.gather(e, &self.u);
@@ -444,7 +444,7 @@ impl<'p, 'm> SoilSystem<'p, 'm> {
         (self.t1 - self.t0) * self.period
     }
 
-    /// Radskalning: kontinuitetsekvationen multipliceras med −Δt (transient) eller −1.
+    /// Row scaling: the continuity equation is multiplied by −Δt (transient) or −1.
     fn row_scale(&self, s: usize) -> f64 {
         if s != PS {
             1.0
@@ -467,8 +467,8 @@ impl<'p, 'm> SoilSystem<'p, 'm> {
         r
     }
 
-    /// Porvätskans ytlaster: föreskrivet utflöde (DFLOW) och utflöde
-    /// c·(u_w − u_w∞) (FLOW). Returnerar elementmatriser för FLOW.
+    /// Surface loads of the pore fluid: prescribed outflow (DFLOW) and outflow
+    /// c·(u_w − u_w∞) (FLOW). Returns element matrices for FLOW.
     fn flow_terms(&self, fint: &mut [NodeVec], fext: &mut [NodeVec], tangent: bool) -> Result<Vec<(Vec<(usize, usize)>, Vec<f64>)>> {
         let model = self.p.model;
         let mut mats = Vec::new();
@@ -478,11 +478,11 @@ impl<'p, 'm> SoilSystem<'p, 'm> {
             }
             let e = l.elem;
             let Some((se, _)) = self.els.soil[e] else {
-                return fail(format!("{}: {} kräver ett porvattentryckselement", model.elem_name(e), l.kind));
+                return fail(format!("{}: {} requires a pore pressure element", model.elem_name(e), l.kind));
             };
             let (kind, label) = l.kind.split_once(':').unwrap_or((l.kind.as_str(), ""));
             let face = label[1..].parse::<usize>().ok().filter(|&f| f >= 1 && f <= se.shape.faces().len()).ok_or_else(|| {
-                FemError(format!("{}: ytan {label} finns inte för {}", model.elem_name(e), se.name))
+                FemError(format!("{}: face {label} does not exist for {}", model.elem_name(e), se.name))
             })?;
             let ctx = self.p.ctx(e, false, 0.0, 0.0);
             let t = se.thickness(&ctx)?;
@@ -490,7 +490,7 @@ impl<'p, 'm> SoilSystem<'p, 'm> {
             let pts = face_points(se, &ctx.x, face - 1, t)?;
             match kind {
                 "DFLOW" => {
-                    // föreskrivet utflöde per ytenhet: yttre "inflöde" −q
+                    // prescribed outflow per unit area: external "inflow" −q
                     for (np, w) in &pts {
                         for (i, &k) in se.shape.faces()[face - 1].iter().enumerate().filter(|(_, &k)| k < se.n_corner()) {
                             fext[nodes[k]][PS] -= np[i] * l.magnitude * w;
@@ -526,8 +526,8 @@ impl<'p, 'm> SoilSystem<'p, 'm> {
         let nd = dl.len();
         let sym = self.mat.is_symmetric();
         let map: Vec<usize> = dl.iter().map(|&(n, s)| self.dm.eq[n][s]).collect();
-        // radskalning (−Δt för kontinuiteten) och symmetrisk skalning D K D av
-        // tryckfrihetsgraderna (se `pscale`)
+        // row scaling (−Δt for the continuity) and symmetric scaling D K D of
+        // the pressure degrees of freedom (see `pscale`)
         let d: Vec<f64> = dl.iter().map(|&(_, s)| if s == PS { self.pscale } else { 1.0 }).collect();
         let sc: Vec<f64> = dl.iter().zip(&d).map(|(&(_, s), &di)| self.row_scale(s) * di).collect();
         for a in 0..nd {
@@ -557,7 +557,7 @@ impl<'p, 'm> SoilSystem<'p, 'm> {
         }
     }
 
-    /// Elementutdata (S, E, FLVEL, VOIDR, ...).
+    /// Element output (S, E, FLVEL, VOIDR, ...).
     fn element_output(&self, u: &[NodeVec], state: &[Vec<f64>]) -> Result<Vec<Vec<IpField>>> {
         let model = self.p.model;
         let time = self.time0 + self.t1 * self.period;
@@ -585,7 +585,7 @@ impl<'p, 'm> SoilSystem<'p, 'm> {
         let rf = self.reactions();
         let has_p: Vec<bool> = (0..nn).map(|n| self.dm.active[n] & (1 << PS) != 0).collect();
         let mut por: Vec<Vec<f64>> = (0..nn).map(|n| if has_p[n] { vec![self.u_committed[n][PS]] } else { Vec::new() }).collect();
-        // mittnoder i andra ordningens element: trycket interpolerat från hörnen
+        // midside nodes in second-order elements: the pressure interpolated from the corners
         for (e, s) in self.els.soil.iter().enumerate() {
             let Some((se, _)) = s else { continue };
             let nodes = &self.p.model.elements[e].nodes;
@@ -620,8 +620,8 @@ impl<'p, 'm> SoilSystem<'p, 'm> {
     }
 }
 
-/// Integrationspunkter på elementytan `face`: (tryckets formfunktioner för
-/// ytans noder i ytans nodordning, vikt med tjocklek eller 2πr).
+/// Integration points on the element face `face`: (the pressure shape functions for
+/// the face nodes in the face node order, weight with thickness or 2πr).
 fn face_points(se: &SoilElem, x: &[[f64; 3]], face: usize, t: f64) -> Result<Vec<(Vec<f64>, f64)>> {
     use crate::elements::solid_higher::shapes::{self, gauss1d, Shape};
     let fl = se.shape.faces()[face];
@@ -701,7 +701,7 @@ impl NonlinearSystem for SoilSystem<'_, '_> {
         let nn = m.nodes.len();
         let dt = self.dt();
         if self.transient && dt <= 0.0 {
-            return fail("intern: konsolidering med tidsinkrement 0");
+            return fail("internal: consolidation with time increment 0");
         }
         let time = self.time0 + self.t1 * self.period;
         self.grav = self.fluid_gravity()?;
@@ -803,7 +803,7 @@ impl NonlinearSystem for SoilSystem<'_, '_> {
     }
 }
 
-/// Ett inkrement [t0, t1] med fast längd (för den egna tidsstegningen).
+/// An increment [t0, t1] with fixed length (for the own time stepping).
 struct One<'a, 'p, 'm> {
     sys: &'a mut SoilSystem<'p, 'm>,
     t0: f64,
@@ -849,17 +849,17 @@ impl NonlinearSystem for One<'_, '_, '_> {
     }
 }
 
-/// Faktor vid omtag när UTOL överskrids: Δt·0,85·UTOL/Δu_max.
+/// Factor for cutback when UTOL is exceeded: Δt·0.85·UTOL/Δu_max.
 const UTOL_CUT: f64 = 0.85;
 
-/// Transient tidsstegning: fasta inkrement, UTOL och END=SS. Regeln för UTOL
-/// är densamma som för DELTMX i `steps/heat.rs`:
-/// f = 0,8·UTOL/Δu_max; inkrementet görs om med Δt·0,85·UTOL/Δu_max om
+/// Transient time stepping: fixed increments, UTOL and END=SS. The rule for UTOL
+/// is the same as for DELTMX in `steps/heat.rs`:
+/// f = 0.8·UTOL/Δu_max; the increment is redone with Δt·0.85·UTOL/Δu_max if
 /// Δu_max > UTOL;
-/// linjärt ökas nästa Δt med min(f, 2) om f ≥ 1,9; olinjärt efter två
-/// godkända inkrement i följd med min(f, g), g = 2 om första lösningen
-/// konvergerade, annars 1,5. `on_increment(sys, t, dt)` anropas efter varje
-/// godkänt inkrement. Returnerar (rapport, stegtidsandel vid slutet).
+/// linear: the next Δt is increased by min(f, 2) if f ≥ 1.9; nonlinear: after two
+/// consecutive accepted increments by min(f, g), g = 2 if the first solution
+/// converged, otherwise 1.5. `on_increment(sys, t, dt)` is called after each
+/// accepted increment. Returns (report, step time fraction at the end).
 fn run_transient(
     sys: &mut SoilSystem,
     sc: &SoilControls,
@@ -874,7 +874,7 @@ fn run_transient(
     let mut n_flux = 0usize;
     while t < 1.0 - 1e-12 {
         if rep.increments >= ctrl.max_increments {
-            return fail(format!("steget nådde största antal inkrement ({}) – öka INC= på *STEP", ctrl.max_increments));
+            return fail(format!("the step reached the maximum number of increments ({}) – increase INC= on *STEP", ctrl.max_increments));
         }
         dt = dt.min(1.0 - t);
         if 1.0 - (t + dt) < 1e-9 {
@@ -894,7 +894,7 @@ fn run_transient(
                         tries += 1;
                         if tries > ctrl.max_cutbacks || dt * UTOL_CUT * sc.utol / dmax < ctrl.min {
                             return fail(format!(
-                                "UTOL={} kan inte uppfyllas vid stegtid {:.4} utan att inkrementet blir mindre än minimum",
+                                "UTOL={} cannot be satisfied at step time {:.4} without the increment becoming smaller than the minimum",
                                 sc.utol,
                                 t * ctrl.period
                             ));
@@ -967,19 +967,19 @@ impl StepType for Soils {
         let model = prep.model;
         let pname = ctx.step.procedure_name().to_string();
         if ctx.nlgeom {
-            return fail(format!("*{pname} med NLGEOM=YES stöds inte ännu"));
+            return fail(format!("*{pname} with NLGEOM=YES is not supported yet"));
         }
         if ctx.step.perturbation {
-            return fail(format!("*{pname} kan inte vara ett perturbationssteg"));
+            return fail(format!("*{pname} cannot be a perturbation step"));
         }
         if !prep.interactions.is_empty() {
-            return fail(format!("*{pname} tillsammans med kontakt/villkor stöds inte ännu"));
+            return fail(format!("*{pname} together with contact/constraints is not supported yet"));
         }
         let mut sc = controls(ctx.step)?;
         let els = classify(prep)?;
-        // *GEOSTATIC: med GRAV på porvattentryckselementen (totalt porvattentryck)
-        // löses stationär strömning; annars ett transient inkrement med Δt =
-        // stegets tid (det odränerade svaret bär obalansen med porvattentryck).
+        // *GEOSTATIC: with GRAV on the pore pressure elements (total pore pressure)
+        // steady-state flow is solved; otherwise one transient increment with Δt =
+        // the step time (the undrained response carries the imbalance with pore pressure).
         let soil_grav = ctx.loads.dload.iter().any(|(l, _)| l.kind == "GRAV" && els.soil[l.elem].is_some());
         if sc.geostatic && !soil_grav {
             sc.transient = true;
@@ -995,7 +995,7 @@ impl StepType for Soils {
             _ => !sc.transient,
         };
         if !had_init {
-            // nya randvillkor på trycket utgår från begynnelsetrycket
+            // new boundary conditions on the pressure start from the initial pressure
             for ((n, s), v) in loads.bc.iter_mut() {
                 if *s == PS && !ctx.state.bcs.contains_key(&(*n, *s)) {
                     v.0 = ctx.state.u[*n][PS];
@@ -1020,9 +1020,9 @@ impl StepType for Soils {
             sys.evaluate(false)?;
             sys.transient = tr;
             let mut f0 = sys.frame(0.0, "Increment 0: Step Time = 0.0".into(), &rvt)?;
-            // frame 0 redovisar reaktionerna från föregående steg;
-            // i det första steget de inre krafterna från begynnelsetillståndet
-            // och inget reaktionsflöde
+            // frame 0 reports the reactions from the previous step;
+            // in the first step the internal forces from the initial state
+            // and no reaction flow
             if had_init {
                 f0.rf = ctx.state.reaction.clone();
             } else {
@@ -1044,8 +1044,8 @@ impl StepType for Soils {
         let (rep, t_end) = if sc.transient {
             run_transient(&mut sys, &sc, &mut |s: &mut SoilSystem, t, dt| {
                 inc += 1;
-                // det geostatiska steget redovisar reaktionsflödet utan volymtermen
-                // och summerar ingen reaktionsvolym
+                // the geostatic step reports the reaction flow without the volume term
+                // and sums no reaction volume
                 if sc.geostatic {
                     s.transient = false;
                     s.evaluate(false)?;
@@ -1059,7 +1059,7 @@ impl StepType for Soils {
                     }
                 }
                 if verbose {
-                    eprintln!("  inkrement {inc}: stegtid {:.6}", t * period);
+                    eprintln!("  increment {inc}: step time {:.6}", t * period);
                 }
                 if all || t >= 1.0 - 1e-12 || sc.ss_rate > 0.0 {
                     frames.push(s.frame(t * period, format!("Increment {inc}: Step Time = {:.4}", t * period), &rvt)?);
@@ -1067,11 +1067,11 @@ impl StepType for Soils {
                 Ok(())
             })?
         } else {
-            // stationärt: ingen reaktionsvolym summeras (RVT oförändrad)
+            // steady-state: no reaction volume is summed (RVT unchanged)
             let rep = newton::run(&mut sys, &sc.ctrl, &mut |s: &mut SoilSystem, t| {
                 inc += 1;
                 if verbose {
-                    eprintln!("  inkrement {inc}: stegtid {:.6}", t * period);
+                    eprintln!("  increment {inc}: step time {:.6}", t * period);
                 }
                 if all || t >= 1.0 - 1e-12 {
                     frames.push(s.frame(t * period, format!("Increment {inc}: Step Time = {:.4}", t * period), &rvt)?);
@@ -1081,7 +1081,7 @@ impl StepType for Soils {
             (rep, 1.0)
         };
         if !all && sc.ss_rate > 0.0 && frames.len() > 1 {
-            // END=SS: bara sista framen
+            // END=SS: only the last frame
             let last = frames.pop();
             frames.clear();
             frames.extend(last);

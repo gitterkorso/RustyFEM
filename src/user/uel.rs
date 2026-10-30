@@ -1,49 +1,49 @@
-//! UEL: användarelement med det etablerade UEL-gränssnittet.
+//! UEL: user elements with the established UEL interface.
 //!
-//! Elementtypen definieras i .inp-filen med *USER ELEMENT, TYPE=Un, NODES=,
-//! COORDINATES=, PROPERTIES=, I PROPERTIES=, VARIABLES= (och UNSYMM) följt
-//! av de aktiva frihetsgraderna per nod, och egenskaperna med *UEL PROPERTY,
-//! ELSET= (se `elements/user_element.rs`). Själva elementet skrivs i Rust
-//! genom att implementera `Uel` och registrera det för typnumret n med
-//! `register(Some(n), ...)` (eller `None` för alla typer), eller laddas från
-//! ett delat bibliotek (symbolen `uel_`/`UEL`) med `super::load_library`
-//! eller `RUSTYFEM_USER`.
+//! The element type is defined in the .inp file with *USER ELEMENT, TYPE=Un, NODES=,
+//! COORDINATES=, PROPERTIES=, I PROPERTIES=, VARIABLES= (and UNSYMM) followed
+//! by the active degrees of freedom per node, and the properties with *UEL PROPERTY,
+//! ELSET= (see `elements/user_element.rs`). The element itself is written in Rust
+//! by implementing `Uel` and registering it for type number n with
+//! `register(Some(n), ...)` (or `None` for all types), or loaded from
+//! a shared library (symbol `uel_`/`UEL`) with `super::load_library`
+//! or `RUSTYFEM_USER`.
 //!
-//! Argumenten har de etablerade namnen och betydelserna:
+//! The arguments have the established names and meanings:
 //!
-//! | Argument | Innehåll |
+//! | Argument | Content |
 //! |---|---|
-//! | RHS(MLVARX, NRHS) | residualvektorn −F_int (NRHS = 1) |
-//! | AMATRX(NDOFEL, NDOFEL) | Jacobian ∂F_int/∂u (styvhet) eller massmatris, kolumnvis |
-//! | SVARS(NSVARS) | tillståndsvariabler vid början → slut |
-//! | ENERGY(8) | energier (ENERGY(2) = elastisk töjningsenergi, ...) |
-//! | PROPS, JPROPS | reella och heltaliga egenskaper från *UEL PROPERTY |
-//! | COORDS(MCRD, NNODE) | nodernas koordinater i referensläget, kolumnvis |
-//! | U, DU(MLVARX, 1) | total förskjutning och ändring under inkrementet |
-//! | V, A | hastighet och acceleration (0 i statiska steg) |
-//! | JTYPE | n i TYPE=Un |
-//! | TIME(2), DTIME | stegtid och total tid vid början, inkrementets längd |
-//! | JELEM | elementnummer |
-//! | PREDEF(2, NPREDF, NNODE) | temperatur och dess ändring per nod (NPREDF = 1) |
-//! | LFLAGS(5) | (1) procedur: 1 = statisk, 41 = egenfrekvens; (2) NLGEOM 0/1; (3) vad som ska beräknas: 1 = RHS och styvhet, 2 = styvhet, 4 = massa, 5 = bara RHS; (4) perturbation 0/1; (5) 0 = Newton |
-//! | PNEWDT | sätts < 1 för att begära mindre inkrement |
+//! | RHS(MLVARX, NRHS) | the residual vector −F_int (NRHS = 1) |
+//! | AMATRX(NDOFEL, NDOFEL) | Jacobian ∂F_int/∂u (stiffness) or mass matrix, column-wise |
+//! | SVARS(NSVARS) | state variables at start → end |
+//! | ENERGY(8) | energies (ENERGY(2) = elastic strain energy, ...) |
+//! | PROPS, JPROPS | real and integer properties from *UEL PROPERTY |
+//! | COORDS(MCRD, NNODE) | nodal coordinates in the reference configuration, column-wise |
+//! | U, DU(MLVARX, 1) | total displacement and change during the increment |
+//! | V, A | velocity and acceleration (0 in static steps) |
+//! | JTYPE | n in TYPE=Un |
+//! | TIME(2), DTIME | step time and total time at the start, increment size |
+//! | JELEM | element number |
+//! | PREDEF(2, NPREDF, NNODE) | temperature and its change per node (NPREDF = 1) |
+//! | LFLAGS(5) | (1) procedure: 1 = static, 41 = natural frequency; (2) NLGEOM 0/1; (3) what to compute: 1 = RHS and stiffness, 2 = stiffness, 4 = mass, 5 = RHS only; (4) perturbation 0/1; (5) 0 = Newton |
+//! | PNEWDT | set < 1 to request a smaller increment |
 //!
-//! Frihetsgraderna i U, RHS och AMATRX är nodvis: för nod 1
-//! dess aktiva frihetsgrader i stigande nummer, sedan nod 2 osv.
+//! The degrees of freedom in U, RHS and AMATRX are node by node: for node 1
+//! its active degrees of freedom in ascending order, then node 2 etc.
 //!
-//! RustyFEMs elementgränssnitt saknar stegnummer, stegtid och fördelade
-//! laster: KSTEP = KINC = 0, TIME(1) = TIME(2) = total tid vid inkrementets
-//! början, PERIOD = 0, NDLOAD = 0. Laster (*DLOAD) på användarelement stöds inte.
+//! RustyFEM's element interface lacks the step number, step time and distributed
+//! loads: KSTEP = KINC = 0, TIME(1) = TIME(2) = total time at the start of the
+//! increment, PERIOD = 0, NDLOAD = 0. Loads (*DLOAD) on user elements are not supported.
 
 use super::dynlib::DynLib;
 use crate::model::{fail, Result};
 use std::sync::{Arc, Mutex, OnceLock, RwLock};
 
-/// Argumenten till en UEL (Fortran-namnen).
+/// The arguments to a UEL (the Fortran names).
 pub struct UelArgs<'a> {
-    /// RHS(MLVARX, NRHS), här NRHS = 1.
+    /// RHS(MLVARX, NRHS), here NRHS = 1.
     pub rhs: &'a mut [f64],
-    /// AMATRX(NDOFEL, NDOFEL) kolumnvis: element (i, j) = `amatrx[i + j * ndofel]`.
+    /// AMATRX(NDOFEL, NDOFEL) column-wise: entry (i, j) = `amatrx[i + j * ndofel]`.
     pub amatrx: &'a mut [f64],
     pub svars: &'a mut [f64],
     pub energy: &'a mut [f64; 8],
@@ -52,7 +52,7 @@ pub struct UelArgs<'a> {
     pub nsvars: usize,
     pub props: &'a [f64],
     pub jprops: &'a [i32],
-    /// COORDS(MCRD, NNODE) kolumnvis: koordinat i för nod k = `coords[i + k * mcrd]`.
+    /// COORDS(MCRD, NNODE) column-wise: coordinate i of node k = `coords[i + k * mcrd]`.
     pub coords: &'a [f64],
     pub mcrd: usize,
     pub nnode: usize,
@@ -67,7 +67,7 @@ pub struct UelArgs<'a> {
     pub kinc: usize,
     pub jelem: i64,
     pub params: [f64; 3],
-    /// PREDEF(2, NPREDF, NNODE) kolumnvis med NPREDF = 1: (temperatur, ändring) per nod.
+    /// PREDEF(2, NPREDF, NNODE) column-wise with NPREDF = 1: (temperature, change) per node.
     pub predef: &'a [f64],
     pub npredf: usize,
     pub lflags: [i32; 5],
@@ -82,25 +82,25 @@ impl UelArgs<'_> {
         self.amatrx[i + j * self.ndofel]
     }
 
-    /// Lägger `v` till AMATRX(i+1, j+1).
+    /// Adds `v` to AMATRX(i+1, j+1).
     pub fn add_k(&mut self, i: usize, j: usize, v: f64) {
         let n = self.ndofel;
         self.amatrx[i + j * n] += v;
     }
 
-    /// Koordinat i (0-baserad) för nod k (0-baserad).
+    /// Coordinate i (0-based) of node k (0-based).
     pub fn x(&self, k: usize, i: usize) -> f64 {
         self.coords[i + k * self.mcrd]
     }
 }
 
-/// Ett användarelement med UEL:s semantik.
+/// A user element with UEL semantics.
 pub trait Uel: Send + Sync {
     fn name(&self) -> String {
         "UEL".into()
     }
 
-    /// Fyller RHS, AMATRX (beroende på LFLAGS(3)), SVARS och ENERGY.
+    /// Fills RHS, AMATRX (depending on LFLAGS(3)), SVARS and ENERGY.
     fn uel(&self, a: &mut UelArgs) -> Result<()>;
 }
 
@@ -111,16 +111,16 @@ fn registry() -> &'static Registry {
     R.get_or_init(|| RwLock::new(super::samples::uels()))
 }
 
-/// Registrerar en UEL för typen U`jtype` (`None` = alla typer som inte har
-/// en egen registrering). En senare registrering ersätter en tidigare.
+/// Registers a UEL for type U`jtype` (`None` = all types without
+/// their own registration). A later registration replaces an earlier one.
 pub fn register(jtype: Option<u32>, uel: Arc<dyn Uel>) {
     let mut r = registry().write().unwrap_or_else(|e| e.into_inner());
     r.retain(|(t, _)| *t != jtype);
     r.push((jtype, uel));
 }
 
-/// UEL för typen U`jtype`: egen registrering, registrering för alla typer,
-/// annars biblioteket i `RUSTYFEM_USER`.
+/// The UEL for type U`jtype`: own registration, registration for all types,
+/// otherwise the library in `RUSTYFEM_USER`.
 pub fn find(jtype: u32) -> Result<Option<Arc<dyn Uel>>> {
     {
         let r = registry().read().unwrap_or_else(|e| e.into_inner());
@@ -134,7 +134,7 @@ pub fn find(jtype: u32) -> Result<Option<Arc<dyn Uel>>> {
     }
 }
 
-/// UEL i Fortrans anropskonvention (alla argument som pekare).
+/// UEL in the Fortran calling convention (all arguments as pointers).
 pub type UelFn = unsafe extern "C" fn(
     rhs: *mut f64,
     amatrx: *mut f64,
@@ -174,7 +174,7 @@ pub type UelFn = unsafe extern "C" fn(
     period: *const f64,
 );
 
-/// UEL i ett delat bibliotek.
+/// UEL in a shared library.
 pub struct DllUel {
     pub f: UelFn,
     pub lib: Arc<DynLib>,
@@ -190,7 +190,7 @@ impl DllUel {
 
 impl Uel for DllUel {
     fn name(&self) -> String {
-        format!("{} i {}", self.symbol, self.lib.path)
+        format!("{} in {}", self.symbol, self.lib.path)
     }
 
     fn uel(&self, a: &mut UelArgs) -> Result<()> {
@@ -248,7 +248,7 @@ impl Uel for DllUel {
             );
         }
         if a.rhs.iter().chain(a.amatrx.iter()).any(|v| !v.is_finite()) {
-            return fail(format!("UEL {} gav RHS eller AMATRX som inte är ändliga tal", self.symbol));
+            return fail(format!("UEL {} returned RHS or AMATRX values that are not finite numbers", self.symbol));
         }
         Ok(())
     }

@@ -1,28 +1,28 @@
-//! S9R5 och S8R5: tunna dubbelkrökta skal med reducerad integrering och fem
-//! frihetsgrader per nod (område shells3).
+//! S9R5 and S8R5: thin doubly curved shells with reduced integration and five
+//! degrees of freedom per node (area shells3).
 //!
-//! S8R5 är ett S9R5 med en intern mittnod (fem
-//! frihetsgrader). Här skapas den interna noden av
-//! `FeModel::finalize` (`internal_nodes`) och placeras i serendipityytans
-//! mittpunkt x(0, 0) = −¼Σ hörn + ½Σ mittnoder.
+//! S8R5 is an S9R5 with an internal midside node (five
+//! degrees of freedom). Here the internal node is created by
+//! `FeModel::finalize` (`internal_nodes`) and placed at the serendipity surface's
+//! center point x(0, 0) = −¼Σ corners + ½Σ midside nodes.
 //!
-//! Formulering (9-nods Lagrange, kinematik som S8R i `shell2_s8r.rs`):
+//! Formulation (9-node Lagrange, kinematics like S8R in `shell2_s8r.rs`):
 //!
-//! - Membran och böjning i 2×2 gausspunkter (lokala standardaxlar
-//!   i punkten, nodnormaler ur elementets egen geometri).
-//! - Membranets nollenergimod h = (−1 i hörnen, 1 i mittnoderna, 0 i mitten)
-//!   stabiliseras med 0,005·G·t·(e_ξ e_ξᵀ + e_η e_ηᵀ) för förskjutningarna
-//!   (e_ξ, e_η = enhetstangenterna i mitten).
-//! - Tvärskjuvning (Kirchhoffvillkoret som straff): γ_ξ = (n·u,ξ + θ·(n × x,ξ))
-//!   /|x,ξ| i punkterna (±a, η) längs nodlinjerna η = −1, 0, 1 med vikterna
-//!   1/3, 4/3, 1/3; a = 1/√3 på kantlinjerna och 1,01/√3 på mittlinjen.
-//!   Ytelementet är det J i (±1/√3, 0) (γ_ξ) respektive (0, ±1/√3) (γ_η), där
-//!   γ_ξ på linjerna η = 0 och η = 1 tar punkten med motsatt
-//!   tecken. Styvheten 5/6·G·t·f(a) med a = ytelementet·linjevikten.
-//! - Massa: diagonal, ρt∫Nᵢ dA (3×3 punkter) och rotationströghet
-//!   ρt³/12·∫N₁ dA i alla noder.
+//! - Membrane and bending at 2×2 Gauss points (local default axes
+//!   at the point, nodal normals from the element's own geometry).
+//! - The membrane zero-energy mode h = (−1 at the corners, 1 at the midside nodes, 0 at the center)
+//!   is stabilized with 0.005·G·t·(e_ξ e_ξᵀ + e_η e_ηᵀ) for the displacements
+//!   (e_ξ, e_η = the unit tangents at the center).
+//! - Transverse shear (the Kirchhoff condition as a penalty): γ_ξ = (n·u,ξ + θ·(n × x,ξ))
+//!   /|x,ξ| at the points (±a, η) along the node lines η = −1, 0, 1 with the weights
+//!   1/3, 4/3, 1/3; a = 1/√3 on the edge lines and 1.01/√3 on the center line.
+//!   The surface element is det J at (±1/√3, 0) (γ_ξ) and (0, ±1/√3) (γ_η) respectively, where
+//!   γ_ξ on the lines η = 0 and η = 1 takes the point with the opposite
+//!   sign. The stiffness 5/6·G·t·f(a) with a = surface element·line weight.
+//! - Mass: diagonal, ρt∫Nᵢ dA (3×3 points) and rotary inertia
+//!   ρt³/12·∫N₁ dA at all nodes.
 //!
-//! Utdata i 2×2 punkter: S, SF (SF4 = SF5 = 0) och SM.
+//! Output at 2×2 points: S, SF (SF4 = SF5 = 0) and SM.
 
 use super::super::api::{not_implemented, ElemCtx, ElemResponse, ElementType, Family, IpField, MassKind};
 use super::super::common::{self, cross, dot, norm, scale, G2};
@@ -106,7 +106,7 @@ fn put(row: &mut [f64], i: usize, off: usize, v: [f64; 3], f: f64) {
     }
 }
 
-/// Membran- och böjoperatorer (3 × 54 vardera), som S8R.
+/// Membrane and bending operators (3 × 54 each), like S8R.
 fn strain_ops(p: &Pt) -> (Vec<f64>, Vec<f64>) {
     let n = NDOF;
     let [e1, e2, nv] = p.r;
@@ -148,7 +148,7 @@ fn strain_ops(p: &Pt) -> (Vec<f64>, Vec<f64>) {
     (bm, bb)
 }
 
-/// Tvärskjuvningen längs ξ (comp 0) eller η (comp 1) i punkten: (n·u,α + θ·(n × x,α))/|x,α|.
+/// The transverse shear along ξ (comp 0) or η (comp 1) at the point: (n·u,α + θ·(n × x,α))/|x,α|.
 fn shear_vec(p: &Pt, comp: usize) -> Vec<f64> {
     let mut g = vec![0.0; NDOF];
     let nv = p.r[2];
@@ -171,10 +171,10 @@ impl Q9 {
     fn setup(&self, ctx: &ElemCtx) -> Result<Setup> {
         let mut x = ctx.x.clone();
         if x.len() != 9 {
-            return fail(format!("element {} ({}) har {} noder, ska ha 9", ctx.label, self.name, x.len()));
+            return fail(format!("element {} ({}) has {} nodes, should have 9", ctx.label, self.name, x.len()));
         }
         if self.internal {
-            // serendipityytans mittpunkt
+            // the center point of the serendipity surface
             x[8] = [0, 1, 2].map(|c| -0.25 * (0..4).map(|i| x[i][c]).sum::<f64>() + 0.5 * (4..8).map(|i| x[i][c]).sum::<f64>());
         }
         let mut nrm = [[0.0; 3]; 9];
@@ -195,7 +195,7 @@ impl Q9 {
         Ok(Setup { x, nrm, sec: section(ctx, self.name, false)? })
     }
 
-    /// Skjuvprover: (vektor, styvhet·vikt, komponent, punkt (ξ, η)).
+    /// Shear samples: (vector, stiffness·weight, component, point (ξ, η)).
     fn shear_samples(su: &Setup) -> Vec<(Vec<f64>, f64, usize)> {
         let sec = &su.sec;
         let k0 = k_shear(sec);
@@ -330,7 +330,7 @@ impl ElementType for Q9 {
 
     fn internal_force(&self, ctx: &ElemCtx, u: &[f64], _du: &[f64], _so: &[f64], _sn: &mut Vec<f64>, tangent: bool) -> Result<ElemResponse> {
         if ctx.nlgeom {
-            return not_implemented("geometrisk olinjäritet (NLGEOM)", self.name);
+            return not_implemented("geometric nonlinearity (NLGEOM)", self.name);
         }
         let k = self.stiffness(ctx)?;
         Ok(ElemResponse { fint: common::matvec(&k, u), k: tangent.then_some(k) })
@@ -351,7 +351,7 @@ impl ElementType for Q9 {
             for d in 0..3 {
                 m[(ND * i + d) * n + ND * i + d] = su.sec.rho * su.sec.t * w[i];
             }
-            // rotationströghet för rotationerna i nodens tangentplan
+            // rotary inertia for the rotations in the node's tangent plane
             let ni = su.nrm[i];
             for a in 0..3 {
                 for b in 0..3 {
@@ -367,7 +367,7 @@ impl ElementType for Q9 {
         let su = self.setup(ctx)?;
         let body = common::body_load_vector(&load.kind, load.magnitude, &load.extra, su.sec.rho, self.name)?;
         if load.kind != "P" && body.is_none() {
-            return not_implemented(&format!("lasttypen {}", load.kind), self.name);
+            return not_implemented(&format!("load type {}", load.kind), self.name);
         }
         let mut f = vec![0.0; NDOF];
         for (nv, nrm, da) in Self::area_points(&su) {
@@ -394,7 +394,7 @@ impl ElementType for Q9 {
 
     fn output(&self, ctx: &ElemCtx, u: &[f64], _state: &[f64]) -> Result<Vec<IpField>> {
         let su = self.setup(ctx)?;
-        // rotationerna verkar bara genom tangentplanets komponenter
+        // the rotations act only through the tangent plane components
         let mut up = u.to_vec();
         for i in 0..NN {
             let ni = su.nrm[i];
@@ -410,7 +410,7 @@ impl ElementType for Q9 {
                 let p = point(&su.x, &su.nrm, s, t);
                 let (bm, bb) = strain_ops(&p);
                 let mv = |b: &[f64], r: usize| -> f64 { (0..NDOF).map(|q| b[r * NDOF + q] * up[q]).sum() };
-                // ingen tvärkraft redovisas (SF4 = SF5 = 0) för tunna skal
+                // no transverse shear force is reported (SF4 = SF5 = 0) for thin shells
                 Gen { eps: [mv(&bm, 0), mv(&bm, 1), mv(&bm, 2)], kap: [mv(&bb, 0), mv(&bb, 1), mv(&bb, 2)], q: [0.0; 2] }
             })
             .collect();

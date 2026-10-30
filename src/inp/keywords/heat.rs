@@ -1,24 +1,24 @@
-//! Nyckelord för värmeledning och termisk spänning.
+//! Keywords for heat transfer and thermal stress.
 //!
-//! - *HEAT TRANSFER: procedur (stationär eller transient), se `steps/heat.rs`.
-//! - *COUPLED TEMPERATURE-DISPLACEMENT: procedur, se `steps/heat_coupled.rs`.
-//! - *CONDUCTIVITY, *SPECIFIC HEAT: materialbeteenden (`materials/heat.rs`).
-//!   *LATENT HEAT (fasomvandling, entalpiform i kapacitetstermen). *EXPANSION registreras i
+//! - *HEAT TRANSFER: procedure (steady-state or transient), see `steps/heat.rs`.
+//! - *COUPLED TEMPERATURE-DISPLACEMENT: procedure, see `steps/heat_coupled.rs`.
+//! - *CONDUCTIVITY, *SPECIFIC HEAT: material behaviors (`materials/heat.rs`).
+//!   *LATENT HEAT (phase change, enthalpy form in the capacity term). *EXPANSION is registered in
 //!   `material_behaviors.rs` (`materials/thermal.rs`).
-//! - *CFLUX: koncentrerat värmeflöde, lagras som punktlast på frihetsgrad 11
-//!   så att stegens arvsregler (OP=MOD/NEW, ramp) gäller som för *CLOAD.
-//! - *DFLUX, *FILM, *RADIATE (och ytvarianterna *DSFLUX, *SFILM, *SRADIATE):
-//!   lagras som fördelade laster med typerna `DFLUX:BF`, `DFLUX:Sn`,
-//!   `FILM:Fn` (storlek h), `FILMS:Fn` (storlek h·T∞) och `RAD:Rn` (storlek ε,
-//!   T∞ som extra värde). Ytor (`Sn`) och film/strålning (`Fn`, `Rn`) har samma
-//!   nummer som elementets ytor.
-//! - *PHYSICAL CONSTANTS och *FILM PROPERTY (h(T), används med namnet i
-//!   stället för h på *FILM-raden): modelldata, sparas i `FeModel::extra`.
-//! - AMPLITUDE= på *CFLUX, *DFLUX, *DSFLUX, *RADIATE och *FILM (T∞) samt
-//!   FILM AMPLITUDE= (h) utvärderas av `steps/heat.rs`.
-//! - *INITIAL CONDITIONS, TYPE=TEMPERATURE och *TEMPERATURE (även FILE=jobb)
-//!   registreras i `temperature.rs`; värmeledningen läser starttemperaturerna
-//!   därifrån (`steps/heat.rs`).
+//! - *CFLUX: concentrated heat flux, stored as a point load on degree of freedom 11
+//!   so that the steps' inheritance rules (OP=MOD/NEW, ramp) apply as for *CLOAD.
+//! - *DFLUX, *FILM, *RADIATE (and the surface variants *DSFLUX, *SFILM, *SRADIATE):
+//!   stored as distributed loads with the types `DFLUX:BF`, `DFLUX:Sn`,
+//!   `FILM:Fn` (magnitude h), `FILMS:Fn` (magnitude h·T∞) and `RAD:Rn` (magnitude ε,
+//!   T∞ as an extra value). Faces (`Sn`) and film/radiation (`Fn`, `Rn`) have the same
+//!   numbers as the element's faces.
+//! - *PHYSICAL CONSTANTS and *FILM PROPERTY (h(T), used by name
+//!   instead of h on the *FILM line): model data, stored in `FeModel::extra`.
+//! - AMPLITUDE= on *CFLUX, *DFLUX, *DSFLUX, *RADIATE and *FILM (T∞) and
+//!   FILM AMPLITUDE= (h) are evaluated by `steps/heat.rs`.
+//! - *INITIAL CONDITIONS, TYPE=TEMPERATURE and *TEMPERATURE (also FILE=job)
+//!   are registered in `temperature.rs`; heat transfer reads the initial temperatures
+//!   from there (`steps/heat.rs`).
 
 use crate::fem::dof::NT11;
 use crate::fem::model::{parse_f64, CloadBlock, DistLoad, DloadBlock, RawKeyword};
@@ -44,7 +44,7 @@ pub static KEYWORDS: &[Keyword] = &[
 ];
 
 fn num(kw: &RawKeyword, line: usize, s: &str) -> Result<f64> {
-    parse_f64(s).ok_or_else(|| FemError(format!("{} rad {line} (*{}): '{s}' är inget tal", kw.file, kw.name)))
+    parse_f64(s).ok_or_else(|| FemError(format!("{} line {line} (*{}): '{s}' is not a number", kw.file, kw.name)))
 }
 
 fn op_new(kw: &RawKeyword) -> bool {
@@ -54,13 +54,13 @@ fn op_new(kw: &RawKeyword) -> bool {
 fn no_amplitude(kw: &RawKeyword) -> Result<()> {
     for p in ["USER", "FIELD"] {
         if kw.has(p) {
-            return kw.err(format!("{p}= stöds inte ännu"));
+            return kw.err(format!("{p}= is not supported yet"));
         }
     }
     Ok(())
 }
 
-/// AMPLITUDE= (namnet med versaler).
+/// AMPLITUDE= (the name in upper case).
 fn amplitude(kw: &RawKeyword) -> Option<String> {
     kw.param("AMPLITUDE").map(|s| s.to_uppercase())
 }
@@ -70,12 +70,12 @@ fn cflux(ctx: &mut InpCtx, kw: &RawKeyword) -> Result<()> {
     let mut block = CloadBlock { op_new: op_new(kw), amplitude: amplitude(kw), follower: false, items: Vec::new(), source: kw.location() };
     for d in &kw.data {
         if d.fields.len() < 3 {
-            return kw.err_at(d.line, "skriv 'nod/nset, 11, flöde'");
+            return kw.err_at(d.line, "write 'node/nset, 11, flux'");
         }
         let nodes = ctx.node_ref(kw, d.line, &d.fields[0], None)?;
         let k = parse_label(&d.fields[1]).unwrap_or(0);
         if k != 11 {
-            return kw.err_at(d.line, format!("frihetsgrad {} – *CFLUX gäller temperaturen (11)", d.fields[1].trim()));
+            return kw.err_at(d.line, format!("degree of freedom {} – *CFLUX applies to the temperature (11)", d.fields[1].trim()));
         }
         let v = num(kw, d.line, &d.fields[2])?;
         for n in nodes {
@@ -90,7 +90,7 @@ fn dblock(kw: &RawKeyword) -> DloadBlock {
     DloadBlock { op_new: op_new(kw), amplitude: amplitude(kw), items: Vec::new(), source: kw.location() }
 }
 
-/// "S3" → 3, "F12" → None om det inte är `prefix` + nummer.
+/// "S3" → 3, "F12" → None if it is not `prefix` + number.
 fn face_no(label: &str, prefix: char) -> Option<usize> {
     label.strip_prefix(prefix).and_then(|s| s.parse::<usize>().ok()).filter(|&n| n >= 1)
 }
@@ -100,12 +100,12 @@ fn dflux(ctx: &mut InpCtx, kw: &RawKeyword) -> Result<()> {
     let mut block = dblock(kw);
     for d in &kw.data {
         if d.fields.len() < 3 {
-            return kw.err_at(d.line, "skriv 'element/elset, BF eller Sn, flöde'");
+            return kw.err_at(d.line, "write 'element/elset, BF or Sn, flux'");
         }
         let elems = ctx.elem_ref(kw, d.line, &d.fields[0], None)?;
         let label = d.fields[1].trim().to_uppercase();
         if label != "BF" && face_no(&label, 'S').is_none() {
-            return kw.err_at(d.line, format!("flödestypen {label} stöds inte (BF, S1, S2, ...)"));
+            return kw.err_at(d.line, format!("flux type {label} is not supported (BF, S1, S2, ...)"));
         }
         let q = num(kw, d.line, &d.fields[2])?;
         for e in elems {
@@ -121,21 +121,21 @@ fn push_film(block: &mut DloadBlock, e: usize, face: usize, sink: f64, h: f64) {
     block.items.push(DistLoad { elem: e, kind: format!("FILMS:F{face}"), magnitude: h * sink, extra: Vec::new() });
 }
 
-/// Filmlaster: h (FILM) får FILM AMPLITUDE=, h·T∞ (FILMS) AMPLITUDE= eller
-/// FILM AMPLITUDE=. En filmegenskap (*FILM PROPERTY) i stället för h ger
-/// `FILMP:Fn:NAMN` med T∞ som extra värde (AMPLITUDE= stöds då inte).
+/// Film loads: h (FILM) takes FILM AMPLITUDE=, h·T∞ (FILMS) AMPLITUDE= or
+/// FILM AMPLITUDE=. A film property (*FILM PROPERTY) instead of h gives
+/// `FILMP:Fn:NAME` with T∞ as an extra value (AMPLITUDE= is then not supported).
 fn film_blocks(ctx: &mut InpCtx, kw: &RawKeyword, block: DloadBlock) -> Result<()> {
     let a_sink = amplitude(kw);
     let a_h = kw.param("FILM AMPLITUDE").map(|s| s.to_uppercase());
     if a_sink.is_some() && a_h.is_some() {
-        return kw.err("AMPLITUDE= och FILM AMPLITUDE= samtidigt stöds inte ännu");
+        return kw.err("AMPLITUDE= and FILM AMPLITUDE= together are not supported yet");
     }
     if a_sink.is_none() && a_h.is_none() {
         ctx.step_mut(kw)?.dloads.push(block);
         return Ok(());
     }
     if block.items.iter().any(|l| l.kind.starts_with("FILMP:")) {
-        return kw.err("amplitud tillsammans med *FILM PROPERTY stöds inte ännu");
+        return kw.err("an amplitude together with *FILM PROPERTY is not supported yet");
     }
     let mut hb = DloadBlock { op_new: block.op_new, amplitude: a_h.clone(), items: Vec::new(), source: block.source.clone() };
     let mut sb = DloadBlock { op_new: false, amplitude: a_h.or(a_sink), items: Vec::new(), source: block.source.clone() };
@@ -156,7 +156,7 @@ fn film(ctx: &mut InpCtx, kw: &RawKeyword) -> Result<()> {
     no_amplitude(kw)?;
     let mut block = dblock(kw);
     for d in &kw.data {
-        // FnNU: filmkoefficient och omgivningstemperatur från FILM (user/loads.rs)
+        // FnNU: film coefficient and sink temperature from FILM (user/loads.rs)
         if let Some(face) = d.fields.get(1).map(|l| l.trim().to_uppercase()).and_then(|l| l.strip_suffix("NU").and_then(|f| face_no(f, 'F'))) {
             let elems = ctx.elem_ref(kw, d.line, &d.fields[0], None)?;
             let set = if crate::inp::parse_label(&d.fields[0]).is_some() { String::new() } else { d.fields[0].trim().to_uppercase() };
@@ -166,17 +166,17 @@ fn film(ctx: &mut InpCtx, kw: &RawKeyword) -> Result<()> {
             continue;
         }
         if d.fields.len() < 4 {
-            return kw.err_at(d.line, "skriv 'element/elset, Fn, omgivningstemperatur, filmkoefficient'");
+            return kw.err_at(d.line, "write 'element/elset, Fn, sink temperature, film coefficient'");
         }
         let elems = ctx.elem_ref(kw, d.line, &d.fields[0], None)?;
         let label = d.fields[1].trim().to_uppercase();
         let Some(face) = face_no(&label, 'F') else {
-            return kw.err_at(d.line, format!("filmtypen {label} stöds inte (F1, F2, ...)"));
+            return kw.err_at(d.line, format!("film type {label} is not supported (F1, F2, ...)"));
         };
         let sink = num(kw, d.line, &d.fields[2])?;
         let hs = d.fields[3].trim();
         if parse_f64(hs).is_none() && !hs.is_empty() {
-            // filmegenskap (*FILM PROPERTY) i stället för filmkoefficient
+            // film property (*FILM PROPERTY) instead of a film coefficient
             for e in elems {
                 block.items.push(DistLoad { elem: e, kind: format!("FILMP:F{face}:{}", hs.to_uppercase()), magnitude: 1.0, extra: vec![sink] });
             }
@@ -195,12 +195,12 @@ fn radiate(ctx: &mut InpCtx, kw: &RawKeyword) -> Result<()> {
     let mut block = dblock(kw);
     for d in &kw.data {
         if d.fields.len() < 4 {
-            return kw.err_at(d.line, "skriv 'element/elset, Rn, omgivningstemperatur, emissivitet'");
+            return kw.err_at(d.line, "write 'element/elset, Rn, sink temperature, emissivity'");
         }
         let elems = ctx.elem_ref(kw, d.line, &d.fields[0], None)?;
         let label = d.fields[1].trim().to_uppercase();
         let Some(face) = face_no(&label, 'R') else {
-            return kw.err_at(d.line, format!("strålningstypen {label} stöds inte (R1, R2, ...)"));
+            return kw.err_at(d.line, format!("radiation type {label} is not supported (R1, R2, ...)"));
         };
         let sink = num(kw, d.line, &d.fields[2])?;
         let eps = num(kw, d.line, &d.fields[3])?;
@@ -212,21 +212,21 @@ fn radiate(ctx: &mut InpCtx, kw: &RawKeyword) -> Result<()> {
     Ok(())
 }
 
-/// Elementytor (element, ytnummer) för en *SURFACE.
+/// Element faces (element, face number) for a *SURFACE.
 fn surface_faces(ctx: &InpCtx, kw: &RawKeyword, line: usize, name: &str) -> Result<Vec<(usize, usize)>> {
     let up = name.trim().to_uppercase();
     let mesh = ctx.mesh_ref();
     let Some(s) = mesh.surfaces.get(&up) else {
-        return kw.err_at(line, format!("ytan '{}' finns inte", name.trim()));
+        return kw.err_at(line, format!("surface '{}' does not exist", name.trim()));
     };
     if s.kind != "ELEMENT" {
-        return kw.err_at(line, format!("ytan '{}' är inte en elementyta", name.trim()));
+        return kw.err_at(line, format!("surface '{}' is not an element-based surface", name.trim()));
     }
     let mut out = Vec::new();
     for (e, f) in &s.faces {
         match face_no(f, 'S') {
             Some(n) => out.push((*e, n)),
-            None => return kw.err_at(line, format!("ytbeteckningen {f} stöds inte för värmeflöden (S1, S2, ...)")),
+            None => return kw.err_at(line, format!("face identifier {f} is not supported for heat fluxes (S1, S2, ...)")),
         }
     }
     Ok(out)
@@ -237,11 +237,11 @@ fn dsflux(ctx: &mut InpCtx, kw: &RawKeyword) -> Result<()> {
     let mut block = dblock(kw);
     for d in &kw.data {
         if d.fields.len() < 3 {
-            return kw.err_at(d.line, "skriv 'yta, S, flöde'");
+            return kw.err_at(d.line, "write 'surface, S, flux'");
         }
         let label = d.fields[1].trim().to_uppercase();
         if label != "S" {
-            return kw.err_at(d.line, format!("flödestypen {label} stöds inte (S)"));
+            return kw.err_at(d.line, format!("flux type {label} is not supported (S)"));
         }
         let q = num(kw, d.line, &d.fields[2])?;
         for (e, f) in surface_faces(ctx, kw, d.line, &d.fields[0])? {
@@ -257,11 +257,11 @@ fn sfilm(ctx: &mut InpCtx, kw: &RawKeyword) -> Result<()> {
     let mut block = dblock(kw);
     for d in &kw.data {
         if d.fields.len() < 4 {
-            return kw.err_at(d.line, "skriv 'yta, F, omgivningstemperatur, filmkoefficient'");
+            return kw.err_at(d.line, "write 'surface, F, sink temperature, film coefficient'");
         }
         let label = d.fields[1].trim().to_uppercase();
         if label != "F" {
-            return kw.err_at(d.line, format!("filmtypen {label} stöds inte (F)"));
+            return kw.err_at(d.line, format!("film type {label} is not supported (F)"));
         }
         let sink = num(kw, d.line, &d.fields[2])?;
         let hs = d.fields[3].trim();
@@ -284,11 +284,11 @@ fn sradiate(ctx: &mut InpCtx, kw: &RawKeyword) -> Result<()> {
     let mut block = dblock(kw);
     for d in &kw.data {
         if d.fields.len() < 4 {
-            return kw.err_at(d.line, "skriv 'yta, R, omgivningstemperatur, emissivitet'");
+            return kw.err_at(d.line, "write 'surface, R, sink temperature, emissivity'");
         }
         let label = d.fields[1].trim().to_uppercase();
         if label != "R" {
-            return kw.err_at(d.line, format!("strålningstypen {label} stöds inte (R)"));
+            return kw.err_at(d.line, format!("radiation type {label} is not supported (R)"));
         }
         let sink = num(kw, d.line, &d.fields[2])?;
         let eps = num(kw, d.line, &d.fields[3])?;

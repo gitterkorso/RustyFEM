@@ -1,23 +1,23 @@
-//! NLGEOM för elementen med generaliserad plan töjning (CPEG3, CPEG4, CPEG6,
+//! NLGEOM for the generalized plane strain elements (CPEG3, CPEG4, CPEG6,
 //! CPEG8, CPEG8R).
 //!
-//! Formulering: fiberlängden
-//! mellan begränsningsplanen är
+//! Formulation: the fiber length
+//! between the bounding planes is
 //!
 //!   t = t₀ + Δu_z + Δφx (y − Y₀) − Δφy (x − X₀)
 //!
-//! med punktens *aktuella* läge (x, y), och tjockleksriktningens töjning är
-//! logaritmisk, ε_zz = ln(t/t₀), med δε_zz = δt/t och
+//! with the *current* position (x, y) of the point, and the thickness-direction strain is
+//! logarithmic, ε_zz = ln(t/t₀), with δε_zz = δt/t and
 //! δt = δΔu_z + (y − Y₀) δΔφx − (x − X₀) δΔφy + Δφx δy − Δφy δx.
 //!
-//! Deformationsgradienten är blockdiagonal: F i planet ur nodförskjutningarna
-//! och F₃₃ = t/t₀. Uppdateringen är densamma som för CPE-elementen
-//! (Hughes–Winget i mittkonfigurationen, Cauchy-spänning, LE = ln V i
-//! utdata), med ΔF₃₃/F₃₃ i mittkonfigurationen som töjningsinkrement ut ur
-//! planet. Tangenten är numerisk (centrala differenser av den inre kraften,
-//! elementet har högst 19 frihetsgrader). Bara fullt integrerade element
+//! The deformation gradient is block diagonal: F in the plane from the nodal displacements
+//! and F₃₃ = t/t₀. The update is the same as for the CPE elements
+//! (Hughes–Winget in the midpoint configuration, Cauchy stress, LE = ln V in
+//! the output), with ΔF₃₃/F₃₃ in the midpoint configuration as the out-of-plane strain
+//! increment. The tangent is numerical (central differences of the internal force,
+//! the element has at most 19 degrees of freedom). Only fully integrated elements
 //! (CPEG3, CPEG6, CPEG8, CPEG8R); CPEG4 (B-bar)
-//! ingår inte.
+//! is not included.
 
 use super::common::{self, Ip};
 use crate::elements::solid_higher::nlgeom as nl;
@@ -30,14 +30,14 @@ use crate::model::{fail, Result};
 
 const MODE: StressMode = StressMode::PlaneStrain;
 
-/// Kinematik i en punkt för förskjutningen `u` (nodfrihetsgrader i planet och
-/// referensnodens tre sist).
+/// Kinematics at a point for the displacement `u` (in-plane nodal degrees of freedom and
+/// the three of the reference node last).
 struct Kin {
-    /// F i planet (3×3 med F₃₃ = t/t₀).
+    /// F in the plane (3×3 with F₃₃ = t/t₀).
     f: M3,
-    /// ∇ₓN i aktuellt läge.
+    /// ∇ₓN in the current position.
     g: Vec<[f64; 3]>,
-    /// δt per frihetsgrad.
+    /// δt per degree of freedom.
     dt: Vec<f64>,
     /// t/t₀.
     f33: f64,
@@ -66,12 +66,12 @@ fn kin(el: &Gps, ip: &Ip, x: &[[f64; 3]], x0: [f64; 3], t0: f64, u: &[f64]) -> R
     if !(det2 > 0.0) {
         return fail(common::DISTORTED);
     }
-    // ∇ₓN = F⁻ᵀ ∇_X N (i planet)
+    // ∇ₓN = F⁻ᵀ ∇_X N (in the plane)
     let inv = [[f[1][1] / det2, -f[0][1] / det2], [-f[1][0] / det2, f[0][0] / det2]];
     let g: Vec<[f64; 3]> = ip.dndx.iter().map(|d| [inv[0][0] * d[0] + inv[1][0] * d[1], inv[0][1] * d[0] + inv[1][1] * d[1], 0.0]).collect();
-    // kopplingen till förskjutningarna i planet (Δφx δy − Δφy δx) ger
-    // krafter σ₃₃ (Δφx, −Δφy) Nₐ dv utan division med t (momenten i
-    // referensnoden följer δt/t), så termen förs in här multiplicerad med t
+    // the coupling to the in-plane displacements (Δφx δy − Δφy δx) gives
+    // forces σ₃₃ (Δφx, −Δφy) Nₐ dv without division by t (the moments at
+    // the reference node follow δt/t), so the term is entered here multiplied by t
     let mut dt = vec![0.0; nin + 3];
     for a in 0..nn {
         dt[2 * a] = -phy * ip.n[a] * tt;
@@ -112,7 +112,7 @@ fn eval(el: &Gps, ctx: &ElemCtx, sub: &ElemCtx, ips: &[Ip], mat: &dyn MaterialMo
         if !(jm > 0.0) {
             return fail(common::DISTORTED);
         }
-        // ΔL i planet (Hughes–Winget) och ΔF₃₃/F₃₃ i mittkonfigurationen
+        // ΔL in the plane (Hughes–Winget) and ΔF₃₃/F₃₃ in the midpoint configuration
         let mut dl = t::mul(&t::sub(fb, fa), &fmi);
         let (h0, h1) = (k0[q].f33, k1[q].f33);
         dl[2][2] = (h1 - h0) / (0.5 * (h0 + h1));
@@ -139,7 +139,7 @@ fn eval(el: &Gps, ctx: &ElemCtx, sub: &ElemCtx, ips: &[Ip], mat: &dyn MaterialMo
         let inp = MatInput { mode: MODE, strain: &strain, dstrain: &dstrain, stress_old: &stress_old, time: ctx.time, dt: ctx.dt, temperature, dtemp, defgrad: Some(fb) };
         let out = mat.update(&inp, &mold, &mut mnew)?;
         let s = &out.stress;
-        // virtuellt arbete σ : δD̄ dv
+        // virtual work σ : δD̄ dv
         let w = ips[q].w * det2(&fb) * k1[q].f33;
         let g = &k1[q].g;
         for a in 0..nn {
@@ -159,12 +159,12 @@ fn eval(el: &Gps, ctx: &ElemCtx, sub: &ElemCtx, ips: &[Ip], mat: &dyn MaterialMo
     Ok(Eval { fint, std_new, ext_new })
 }
 
-/// Inre kraft och (numerisk) tangent vid NLGEOM.
+/// Internal force and (numerical) tangent with NLGEOM.
 #[allow(clippy::too_many_arguments)]
 pub fn response(el: &Gps, ctx: &ElemCtx, sub: &ElemCtx, mat: &dyn MaterialModel, u: &[f64], du: &[f64], so: &[f64], sn: &mut Vec<f64>, tangent: bool) -> Result<ElemResponse> {
-    // CPEG4 (B-bar), CPEG4R och CPEG4I stöds inte vid NLGEOM
+    // CPEG4 (B-bar), CPEG4R and CPEG4I are not supported with NLGEOM
     if el.base.tech != Tech::Full {
-        return crate::elements::api::not_implemented("geometrisk olinjäritet (NLGEOM)", el.base.name);
+        return crate::elements::api::not_implemented("geometric nonlinearity (NLGEOM)", el.base.name);
     }
     let ips = el.base.ips(sub)?;
     let nips = ips.len();
@@ -209,7 +209,7 @@ pub fn response(el: &Gps, ctx: &ElemCtx, sub: &ElemCtx, mat: &dyn MaterialModel,
     Ok(ElemResponse { fint: ev.fint, k })
 }
 
-/// Utdata vid NLGEOM utan NLGEOM-tillstånd (frame 0): töjningen heter LE.
+/// Output with NLGEOM without NLGEOM state (frame 0): the strain is named LE.
 pub fn rename_strain(out: &mut [crate::elements::api::IpField]) {
     for f in out.iter_mut().filter(|f| f.name == "E") {
         f.name = "LE".into();

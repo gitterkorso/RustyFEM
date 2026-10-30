@@ -1,7 +1,7 @@
-//! Stänger: T2D2 och T3D2 (bara axialkraft, linjär interpolation).
+//! Trusses: T2D2 and T3D2 (axial force only, linear interpolation).
 //!
-//! Arean anges på *SOLID SECTION:s datarad. Spänningen S11 = N/A och
-//! töjningen E11 är konstanta längs elementet (en integrationspunkt).
+//! The area is given on the data line of *SOLID SECTION. The stress S11 = N/A and
+//! the strain E11 are constant along the element (one integration point).
 
 use super::api::{ElemCtx, ElemResponse, ElementType, Family, IpField, MassKind};
 use super::common;
@@ -20,7 +20,7 @@ pub static T3D2: Truss = Truss { name: "T3D2", dim: 3 };
 
 pub static TYPES: &[&dyn ElementType] = &[&T2D2, &T3D2];
 
-/// Enhetsvektor längs stången och längden.
+/// Unit vector along the truss and the length.
 pub fn axis(x: &[[f64; 3]]) -> ([f64; 3], f64) {
     let d = common::sub(x[1], x[0]);
     let l = common::norm(d);
@@ -32,14 +32,14 @@ impl Truss {
         Ok(ctx.section(self.name)?.solid_thickness())
     }
 
-    /// Töjning ε = Δl / l (små förskjutningar).
+    /// Strain ε = Δl / l (small displacements).
     fn strain(&self, x: &[[f64; 3]], u: &[f64]) -> f64 {
         let (t, l) = axis(x);
         let nd = self.dim;
         (0..nd).map(|i| (u[nd + i] - u[i]) * t[i]).sum::<f64>() / l
     }
 
-    /// B-vektorn (dε/du).
+    /// The B vector (dε/du).
     fn bvec(&self, x: &[[f64; 3]]) -> Vec<f64> {
         let (t, l) = axis(x);
         let nd = self.dim;
@@ -90,7 +90,7 @@ impl ElementType for Truss {
 
     fn internal_force(&self, ctx: &ElemCtx, u: &[f64], du: &[f64], so: &[f64], sn: &mut Vec<f64>, tangent: bool) -> Result<ElemResponse> {
         if ctx.nlgeom {
-            // område nlgeom: ersätt raden nedan med ett anrop till den olinjära kinematiken
+            // area nlgeom: replace the line below with a call to the nonlinear kinematics
             return crate::kinematics::truss::response(ctx, self.name, self.dim, self.area(ctx)?, u, du, so, sn, tangent);
         }
         let mat = ctx.material(self.name)?;
@@ -150,7 +150,7 @@ impl ElementType for Truss {
             let nd = self.dim;
             return Ok((0..2 * nd).map(|k| b[k % nd] * w[k / nd]).collect());
         }
-        super::api::not_implemented(&format!("lasttypen {}", load.kind), self.name)
+        super::api::not_implemented(&format!("load type {}", load.kind), self.name)
     }
 
     fn geometric_stiffness(&self, ctx: &ElemCtx, _u: &[f64], state: &[f64]) -> Result<Vec<f64>> {
@@ -168,7 +168,7 @@ impl ElementType for Truss {
         s.points.push((1, 0, vec![state.first().copied().unwrap_or(0.0)]));
         e.points.push((1, 0, vec![self.strain(&ctx.x, u)]));
         let mut out = vec![s, e];
-        // materialets egna fält (PEEQ, PE, ...)
+        // the material's own fields (PEEQ, PE, ...)
         if let Some(mat) = ctx.material {
             let stride = common::ip_stride(StressMode::Uniaxial, mat);
             if state.len() == stride {

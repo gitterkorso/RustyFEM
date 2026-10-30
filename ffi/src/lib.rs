@@ -1,10 +1,10 @@
-//! C-gränssnitt till RustyFEMs glesa lösare (`rustyfem::sparse`).
+//! C interface to the RustyFEM sparse solvers (`rustyfem::sparse`).
 //!
-//! Indata är en symmetrisk matris i CSC-format (båda trianglarna eller bara
-//! den undre) i anroparens numrering, samt för varje frihetsgrad vilken nod
-//! den hör till och nodernas koordinater. Ordningen (nested dissection på
-//! nodnivå) och faktoriseringen görs här; anroparen ser bara sin egen
-//! numrering. Inga externa beroenden, så biblioteket kan laddas med ctypes.
+//! Input is a symmetric matrix in CSC format (both triangles or only
+//! the lower one) in the caller's numbering, plus, for each degree of freedom, the node
+//! it belongs to and the node coordinates. The ordering (nested dissection at
+//! node level) and the factorization are done here; the caller only sees its own
+//! numbering. No external dependencies, so the library can be loaded with ctypes.
 
 use rustyfem::sparse::indef::{self, IndefFactor, Inertia};
 use rustyfem::sparse::lu::{self, Full, LuFactor};
@@ -12,12 +12,12 @@ use rustyfem::sparse::{self, Factor};
 use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::slice;
 
-/// Lövstorlek för FFI-vägen: mätt på openFEM:s skal- och solidmodeller ger
-/// 16 noder per löv ungefär halva fyllnaden jämfört med standardvärdet 48.
+/// Leaf size for the FFI path: measured on openFEM's shell and solid models,
+/// 16 nodes per leaf gives about half the fill-in compared with the default 48.
 const FFI_LEAF: usize = 16;
 const NONE: usize = usize::MAX;
 
-/// Faktortyp: positivt definit LDLᵀ, indefinit LDLᵀ (1×1/2×2) eller osymmetrisk LU.
+/// Factor type: positive definite LDLᵀ, indefinite LDLᵀ (1×1/2×2) or unsymmetric LU.
 enum Fac {
     Pd(Factor),
     Indef(IndefFactor),
@@ -43,24 +43,24 @@ enum Mode {
 
 pub struct Handle {
     fac: Fac,
-    /// Intern ekvation för varje frihetsgrad i anroparens numrering (NONE = okopplad).
+    /// Internal equation for each degree of freedom in the caller's numbering (NONE = uncoupled).
     eq: Vec<usize>,
-    /// Okopplade frihetsgrader och deras diagonal.
+    /// Uncoupled degrees of freedom and their diagonal.
     iso: Vec<(usize, f64)>,
     n_sym: usize,
     work: f64,
     factor_size: usize,
-    /// Tröghet [negativa, noll, positiva]; None för LU.
+    /// Inertia [negative, zero, positive]; None for LU.
     inertia: Option<[i64; 3]>,
 }
 
-/// Faktoriserar matrisen. Returnerar null vid fel: `*err_dof` blir då den
-/// frihetsgrad (anroparens numrering) där en icke-positiv pivot uppstod, eller
-/// −1 vid ogiltig indata. `d_out` (längd n, får vara null) fylls med pivoterna D.
+/// Factorizes the matrix. Returns null on error: `*err_dof` is then the
+/// degree of freedom (caller's numbering) where a non-positive pivot occurred, or
+/// −1 for invalid input. `d_out` (length n, may be null) is filled with the pivots D.
 ///
 /// # Safety
-/// Pekarna ska peka på arrayer av angiven längd: `loc` och `d_out` n,
-/// `coords` 3·nn, `indptr` n+1, `indices` och `data` indptr[n].
+/// The pointers must point to arrays of the given length: `loc` and `d_out` n,
+/// `coords` 3·nn, `indptr` n+1, `indices` and `data` indptr[n].
 #[no_mangle]
 pub unsafe extern "C" fn rustyfem_factor(
     n: usize,
@@ -102,9 +102,9 @@ fn build(n: usize, nn: usize, loc: &[i64], coords: &[f64], indptr: &[i64], indic
     if loc.iter().any(|&l| l >= nn) || indices.iter().any(|&r| r < 0 || r as usize >= n) {
         return Err(-1);
     }
-    // Frihetsgrader utan kopplingar (bara diagonalterm, t.ex. stabiliserade
-    // rotationer i solidnoder) löses direkt. Annars hamnar de i nodens täta
-    // block och fyllnaden blir (6/3)² = 4 gånger för stor.
+    // Degrees of freedom without couplings (diagonal term only, e.g. stabilized
+    // rotations in solid nodes) are solved directly. Otherwise they end up in the node's dense
+    // block and the fill-in becomes (6/3)² = 4 times too large.
     let mut coupled = vec![false; n];
     let mut diag = vec![0.0; n];
     for c in 0..n {
@@ -126,7 +126,7 @@ fn build(n: usize, nn: usize, loc: &[i64], coords: &[f64], indptr: &[i64], indic
         }
         iso.push((i, diag[i]));
     }
-    // noder med minst en kopplad frihetsgrad, i kompakt numrering
+    // nodes with at least one coupled degree of freedom, in compact numbering
     let mut nid = vec![NONE; nn];
     let mut xyz: Vec<[f64; 3]> = Vec::new();
     for i in (0..n).filter(|&i| coupled[i]) {
@@ -137,7 +137,7 @@ fn build(n: usize, nn: usize, loc: &[i64], coords: &[f64], indptr: &[i64], indic
         }
     }
     let nc = xyz.len();
-    // frihetsgradernas plats inom noden i stigande ordning
+    // the position of the degrees of freedom within the node, in ascending order
     let mut ndof = vec![0usize; nc];
     let mut local = vec![0usize; n];
     for i in (0..n).filter(|&i| coupled[i]) {
@@ -173,7 +173,7 @@ fn build(n: usize, nn: usize, loc: &[i64], coords: &[f64], indptr: &[i64], indic
     let mut k = sym.pattern(&adj, &ndof);
     drop(adj);
     if mode == Mode::Lu {
-        // osymmetrisk: alla poster (båda trianglarna krävs)
+        // unsymmetric: all entries (both triangles required)
         let mut full = Full::from_pattern(k);
         for c in (0..n).filter(|&c| coupled[c]) {
             let qc = eq[c];
@@ -189,7 +189,7 @@ fn build(n: usize, nn: usize, loc: &[i64], coords: &[f64], indptr: &[i64], indic
         return Ok((Handle { fac: Fac::Lu(fac), eq, iso, n_sym: sym.n, work: sym.work(), factor_size: size, inertia: None }, Vec::new()));
     }
     if mode == Mode::Indef {
-        // symmetrisk: anroparens undre triangel räcker (båda eller bara den undre får anges)
+        // symmetric: the caller's lower triangle is enough (both or only the lower one may be given)
         for c in (0..n).filter(|&c| coupled[c]) {
             let qc = eq[c];
             for p in indptr[c] as usize..indptr[c + 1] as usize {
@@ -228,7 +228,7 @@ fn build(n: usize, nn: usize, loc: &[i64], coords: &[f64], indptr: &[i64], indic
     Ok((Handle { fac: Fac::Pd(fac), eq, iso, n_sym: sym.n, work: sym.work(), factor_size: sym.factor_size(), inertia: Some([0, 0, n as i64]) }, d))
 }
 
-/// Gemensam ingång för de nya faktoriseringarna (utan d_out).
+/// Common entry point for the new factorizations (without d_out).
 #[allow(clippy::too_many_arguments)]
 unsafe fn factor_mode(
     n: usize,
@@ -258,17 +258,17 @@ unsafe fn factor_mode(
     }
 }
 
-/// Faktoriserar en symmetrisk, **indefinit** matris (P·A·Pᵀ = L·D·Lᵀ med 1×1-
-/// och 2×2-block i D, Bunch–Kaufman-pivotering inom fronterna och fördröjda
-/// pivoter). Samma indata som `rustyfem_factor` (båda trianglarna eller bara den
-/// undre). `inertia_out` (3 element, får vara null) får [antal negativa, noll,
-/// positiva] pivoter, dvs. egenvärden enligt Sylvesters tröghetslag. Null vid
-/// fel: `*err_dof` blir frihetsgraden där matrisen är singulär (anroparens
-/// numrering), −1 vid ogiltig indata. Handtaget används med `rustyfem_solve`,
-/// `rustyfem_info`, `rustyfem_order`, `rustyfem_inertia` och `rustyfem_free`.
+/// Factorizes a symmetric, **indefinite** matrix (P·A·Pᵀ = L·D·Lᵀ with 1×1
+/// and 2×2 blocks in D, Bunch–Kaufman pivoting within the fronts and delayed
+/// pivots). Same input as `rustyfem_factor` (both triangles or only the
+/// lower one). `inertia_out` (3 elements, may be null) receives [number of negative, zero,
+/// positive] pivots, i.e. eigenvalues by Sylvester's law of inertia. Null on
+/// error: `*err_dof` is the degree of freedom where the matrix is singular (caller's
+/// numbering), −1 for invalid input. The handle is used with `rustyfem_solve`,
+/// `rustyfem_info`, `rustyfem_order`, `rustyfem_inertia` and `rustyfem_free`.
 ///
 /// # Safety
-/// Som `rustyfem_factor`; `inertia_out` null eller 3 element.
+/// As `rustyfem_factor`; `inertia_out` null or 3 elements.
 #[no_mangle]
 pub unsafe extern "C" fn rustyfem_factor_indef(
     n: usize,
@@ -289,13 +289,13 @@ pub unsafe extern "C" fn rustyfem_factor_indef(
     h
 }
 
-/// Faktoriserar en **osymmetrisk** matris med multifrontal LU (tröskelpivotering,
-/// fördröjda pivoter, partiell pivotering i roten). CSC med alla poster (båda
-/// trianglarna); mönstret görs symmetriskt internt. Null vid fel som
-/// `rustyfem_factor_indef`. Lös A x = b med `rustyfem_solve`.
+/// Factorizes an **unsymmetric** matrix with multifrontal LU (threshold pivoting,
+/// delayed pivots, partial pivoting at the root). CSC with all entries (both
+/// triangles); the pattern is symmetrized internally. Null on error as
+/// `rustyfem_factor_indef`. Solve A x = b with `rustyfem_solve`.
 ///
 /// # Safety
-/// Som `rustyfem_factor`.
+/// As `rustyfem_factor`.
 #[no_mangle]
 pub unsafe extern "C" fn rustyfem_factor_unsym(
     n: usize,
@@ -310,12 +310,12 @@ pub unsafe extern "C" fn rustyfem_factor_unsym(
     factor_mode(n, nn, loc, coords, indptr, indices, data, err_dof, Mode::Lu)
 }
 
-/// Trögheten [negativa, noll, positiva] för ett handtag från `rustyfem_factor`
-/// (alltid [0, 0, n]) eller `rustyfem_factor_indef`. Returnerar 0, eller −1 om
-/// trögheten inte finns (LU-handtag).
+/// The inertia [negative, zero, positive] for a handle from `rustyfem_factor`
+/// (always [0, 0, n]) or `rustyfem_factor_indef`. Returns 0, or −1 if
+/// the inertia is not available (LU handle).
 ///
 /// # Safety
-/// `h` från en faktorisering, `out` med 3 element.
+/// `h` from a factorization, `out` with 3 elements.
 #[no_mangle]
 pub unsafe extern "C" fn rustyfem_inertia(h: *const Handle, out: *mut i64) -> i32 {
     let h = &*h;
@@ -328,11 +328,11 @@ pub unsafe extern "C" fn rustyfem_inertia(h: *const Handle, out: *mut i64) -> i3
     }
 }
 
-/// Löser K X = B på plats för `nrhs` högerled, vart och ett lagrat
-/// sammanhängande (kolumnvis, längd n). Högerleden löses parallellt.
+/// Solves K X = B in place for `nrhs` right-hand sides, each stored
+/// contiguously (column-wise, length n). The right-hand sides are solved in parallel.
 ///
 /// # Safety
-/// `h` från `rustyfem_factor`, `b` med n·nrhs element.
+/// `h` from `rustyfem_factor`, `b` with n·nrhs elements.
 #[no_mangle]
 pub unsafe extern "C" fn rustyfem_solve(h: *const Handle, nrhs: usize, b: *mut f64) -> i32 {
     let h = &*h;
@@ -370,10 +370,10 @@ pub unsafe extern "C" fn rustyfem_solve(h: *const Handle, nrhs: usize, b: *mut f
     if res.is_ok() { 0 } else { -1 }
 }
 
-/// Uppskattat antal flyttal i faktoriseringen och antal lagrade tal i L.
+/// Estimated number of flops in the factorization and number of stored values in L.
 ///
 /// # Safety
-/// `h` från `rustyfem_factor`, `out` med 2 element.
+/// `h` from `rustyfem_factor`, `out` with 2 elements.
 #[no_mangle]
 pub unsafe extern "C" fn rustyfem_info(h: *const Handle, out: *mut f64) {
     let h = &*h;
@@ -382,11 +382,11 @@ pub unsafe extern "C" fn rustyfem_info(h: *const Handle, out: *mut f64) {
     out[1] = h.factor_size as f64;
 }
 
-/// Intern ekvation för varje frihetsgrad (anroparens numrering), för diagnostik.
-/// Okopplade frihetsgrader numreras sist.
+/// Internal equation for each degree of freedom (caller's numbering), for diagnostics.
+/// Uncoupled degrees of freedom are numbered last.
 ///
 /// # Safety
-/// `h` från `rustyfem_factor`, `out` med n element.
+/// `h` from `rustyfem_factor`, `out` with n elements.
 #[no_mangle]
 pub unsafe extern "C" fn rustyfem_order(h: *const Handle, out: *mut i64) {
     let h = &*h;
@@ -398,7 +398,7 @@ pub unsafe extern "C" fn rustyfem_order(h: *const Handle, out: *mut i64) {
 }
 
 /// # Safety
-/// `h` från `rustyfem_factor` (eller null), högst en gång.
+/// `h` from `rustyfem_factor` (or null), at most once.
 #[no_mangle]
 pub unsafe extern "C" fn rustyfem_free(h: *mut Handle) {
     if !h.is_null() {
@@ -408,10 +408,10 @@ pub unsafe extern "C" fn rustyfem_free(h: *mut Handle) {
 
 #[cfg(test)]
 mod tests {
-    //! De nya FFI-funktionerna mot täta lösningar (handräknade 1D-kedjor).
+    //! The new FFI functions against dense solutions (hand-computed 1D chains).
     use super::*;
 
-    /// Kedja med n frihetsgrader (en per nod), CSC med båda trianglarna.
+    /// Chain with n degrees of freedom (one per node), CSC with both triangles.
     fn chain(n: usize, diag: impl Fn(usize) -> f64, off: impl Fn(usize, usize) -> f64) -> (Vec<i64>, Vec<i64>, Vec<f64>) {
         let mut indptr = vec![0i64];
         let mut indices = Vec::new();
@@ -431,13 +431,13 @@ mod tests {
         let n = 40;
         let loc: Vec<i64> = (0..n as i64).collect();
         let coords: Vec<f64> = (0..n).flat_map(|i| [i as f64, 0.0, 0.0]).collect();
-        // K − σI för K = tridiag(−1, 2, −1): egenvärden 2 − 2cos(kπ/(n+1)) − σ
+        // K − σI for K = tridiag(−1, 2, −1): eigenvalues 2 − 2cos(kπ/(n+1)) − σ
         let sigma = 1.3;
         let (ip, ix, d) = chain(n, |_| 2.0 - sigma, |_, _| -1.0);
         let mut err = 0i64;
         let mut ine = [0i64; 3];
         unsafe {
-            // den positivt definita vägen ska vägra
+            // the positive definite path must refuse
             assert!(rustyfem_factor(n, n, loc.as_ptr(), coords.as_ptr(), ip.as_ptr(), ix.as_ptr(), d.as_ptr(), std::ptr::null_mut(), &mut err).is_null());
             let h = rustyfem_factor_indef(n, n, loc.as_ptr(), coords.as_ptr(), ip.as_ptr(), ix.as_ptr(), d.as_ptr(), ine.as_mut_ptr(), &mut err);
             assert!(!h.is_null());
@@ -448,14 +448,14 @@ mod tests {
             assert_eq!(rustyfem_solve(h, 1, b.as_mut_ptr()), 0);
             for i in 0..n {
                 let ax = (2.0 - sigma) * b[i] - if i > 0 { b[i - 1] } else { 0.0 } - if i + 1 < n { b[i + 1] } else { 0.0 };
-                assert!((ax - b0[i]).abs() < 1e-10, "rad {i}");
+                assert!((ax - b0[i]).abs() < 1e-10, "row {i}");
             }
             let mut out = [0i64; 3];
             assert_eq!(rustyfem_inertia(h, out.as_mut_ptr()), 0);
             assert_eq!(out, ine);
             rustyfem_free(h);
 
-            // osymmetrisk konvektion–diffusion
+            // unsymmetric convection–diffusion
             let (ip, ix, d) = chain(n, |_| 2.0, |r, c| if r > c { -1.3 } else { -0.7 });
             let h = rustyfem_factor_unsym(n, n, loc.as_ptr(), coords.as_ptr(), ip.as_ptr(), ix.as_ptr(), d.as_ptr(), &mut err);
             assert!(!h.is_null());
@@ -464,12 +464,12 @@ mod tests {
             for i in 0..n {
                 // A(i, i−1) = −1.3, A(i, i+1) = −0.7
                 let ax = 2.0 * b[i] - if i > 0 { 1.3 * b[i - 1] } else { 0.0 } - if i + 1 < n { 0.7 * b[i + 1] } else { 0.0 };
-                assert!((ax - b0[i]).abs() < 1e-10, "rad {i}");
+                assert!((ax - b0[i]).abs() < 1e-10, "row {i}");
             }
             assert_eq!(rustyfem_inertia(h, out.as_mut_ptr()), -1);
             rustyfem_free(h);
 
-            // singulär: nollmatris i en frihetsgrad
+            // singular: zero matrix in one degree of freedom
             let (ip, ix, d) = chain(n, |c| if c == 7 { 0.0 } else { 1.0 }, |_, _| 0.0);
             let h = rustyfem_factor_indef(n, n, loc.as_ptr(), coords.as_ptr(), ip.as_ptr(), ix.as_ptr(), d.as_ptr(), std::ptr::null_mut(), &mut err);
             assert!(h.is_null());

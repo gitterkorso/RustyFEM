@@ -1,5 +1,5 @@
-//! Gles direktlösare: nested dissection + multifrontal LDLᵀ (`crate::sparse`).
-//! Kräver positivt definit matris.
+//! Sparse direct solver: nested dissection + multifrontal LDLᵀ (`crate::sparse`).
+//! Requires a positive definite matrix.
 
 use super::api::{Graph, LinearSolver, SystemMatrix};
 use crate::model::Result;
@@ -26,7 +26,7 @@ impl LinearSolver for Direct {
         let k = sym.pattern(&g.adj, &g.ndof);
         if crate::settings::with(|s| s.timing) {
             eprintln!(
-                "analys: {:.3} s  flops: {:.2e}  faktor: {} MB  största front: {:?}",
+                "analysis: {:.3} s  flops: {:.2e}  factor: {} MB  largest front: {:?}",
                 t0.elapsed().as_secs_f64(),
                 sym.work(),
                 sym.factor_size() * 8 >> 20,
@@ -56,11 +56,11 @@ impl SystemMatrix for DirectMatrix {
         let t0 = std::time::Instant::now();
         self.fac = Some(sparse::factor(&self.sym, &self.k)?);
         if crate::settings::with(|s| s.timing) {
-            eprintln!("faktorisering: {:.3} s", t0.elapsed().as_secs_f64());
+            eprintln!("factorization: {:.3} s", t0.elapsed().as_secs_f64());
         }
         Ok(())
     }
     fn solve(&self, b: &mut [f64]) {
-        self.fac.as_ref().expect("intern: solve före factor").solve(b);
+        self.fac.as_ref().expect("internal: solve before factor").solve(b);
     }
 }

@@ -1,23 +1,23 @@
-//! S4R5: tunt fyrnodsskal med reducerad integrering och fem frihetsgrader
-//! per nod (område shells3).
+//! S4R5: thin four-node shell with reduced integration and five degrees of freedom
+//! per node (area shells3).
 //!
-//! Plan formulering i ett lokalt system (normal (x3 − x1) × (x4 − x2), 1-axel
-//! enligt standardaxlarna), för plana element av godtycklig form:
+//! Flat formulation in a local system (normal (x3 − x1) × (x4 − x2), 1-axis
+//! according to the default axes), for flat elements of arbitrary shape:
 //!
-//! - Membran och böjning: enpunktsintegrering (A = 4·det J i mitten) med
-//!   Flanagan–Belytschko-stabilisering γ = (h − (h·x)bx − (h·y)by)/4,
-//!   h = (1, −1, 1, −1), på u, v med 0,08·G·t·A·Σb·b/16 och på θx, θy med
-//!   0,72·G·t³/12·A·Σb·b/16.
-//! - Tvärskjuvning (Kirchhoffvillkoret som straff): skjuvtöjningen längs
-//!   kanten, γ = (w,ξ + β·x,ξ)/|x,ξ|, i varje kants mittpunkt med vikten
-//!   det J(0, 0)·2 och styvheten 5/6·G·t·f(A/2) (βx = θy, βy = −θx).
-//! - Rotationen kring normalen saknar styvhet (fem frihetsgrader per nod),
-//!   se `shell3.rs`.
-//! - Massa: tvärs planet ρtA/36·[4 2 1 2] (cykliskt), i planet ρtA/16 plus
-//!   ρtA·(7, −1, −5, −1)/144000, rotationströghet
-//!   ρt³/12·A·(17/48, 1/16, 1/48, 1/16) (värden för rektanglar).
+//! - Membrane and bending: one-point integration (A = 4·det J at the center) with
+//!   Flanagan–Belytschko stabilization γ = (h − (h·x)bx − (h·y)by)/4,
+//!   h = (1, −1, 1, −1), on u, v with 0.08·G·t·A·Σb·b/16 and on θx, θy with
+//!   0.72·G·t³/12·A·Σb·b/16.
+//! - Transverse shear (the Kirchhoff condition as a penalty): the shear strain along
+//!   the edge, γ = (w,ξ + β·x,ξ)/|x,ξ|, at the midpoint of each edge with the weight
+//!   det J(0, 0)·2 and the stiffness 5/6·G·t·f(A/2) (βx = θy, βy = −θx).
+//! - The rotation about the normal has no stiffness (five degrees of freedom per node),
+//!   see `shell3.rs`.
+//! - Mass: out of plane ρtA/36·[4 2 1 2] (cyclic), in plane ρtA/16 plus
+//!   ρtA·(7, −1, −5, −1)/144000, rotary inertia
+//!   ρt³/12·A·(17/48, 1/16, 1/48, 1/16) (values for rectangles).
 //!
-//! Utdata i en integrationspunkt: S, SF (SF4 = SF5 = 0) och SM.
+//! Output at one integration point: S, SF (SF4 = SF5 = 0) and SM.
 
 use super::super::api::{not_implemented, ElemCtx, ElemResponse, ElementType, Family, IpField, MassKind};
 use super::super::common::{self, cross, dot, norm, scale, sub};
@@ -56,12 +56,12 @@ fn jac(x: &[[f64; 2]; 4], d: &[[f64; 4]; 2]) -> [[f64; 2]; 2] {
     j
 }
 
-/// Lokalt system och plana koordinater relativt mittpunkten.
+/// Local system and in-plane coordinates relative to the center.
 fn frame(ctx: &ElemCtx) -> Result<([[f64; 3]; 3], [[f64; 2]; 4])> {
     let xg = &ctx.x;
     let nv = cross(sub(xg[2], xg[0]), sub(xg[3], xg[1]));
     if !(norm(nv) > 0.0) {
-        return fail(format!("element {} (S4R5) har ingen area", ctx.label));
+        return fail(format!("element {} (S4R5) has zero area", ctx.label));
     }
     let r = default_axes(nv);
     let c = common::centroid(xg);
@@ -77,9 +77,9 @@ struct Ops {
     a: f64,
     bm: Vec<[f64; NDOF]>,
     bb: Vec<[f64; NDOF]>,
-    /// Kanternas skjuvvektorer och vikter (kraft per töjning).
+    /// The shear vectors and weights of the edges (force per strain).
     sh: Vec<([f64; NDOF], f64)>,
-    /// Timglasvektorer med styvheter.
+    /// Hourglass vectors with stiffnesses.
     hg: Vec<([f64; NDOF], f64)>,
 }
 
@@ -213,7 +213,7 @@ impl ElementType for S4r5 {
 
     fn internal_force(&self, ctx: &ElemCtx, u: &[f64], _du: &[f64], _so: &[f64], _sn: &mut Vec<f64>, tangent: bool) -> Result<ElemResponse> {
         if ctx.nlgeom {
-            return not_implemented("geometrisk olinjäritet (NLGEOM)", "S4R5");
+            return not_implemented("geometric nonlinearity (NLGEOM)", "S4R5");
         }
         let k = self.stiffness(ctx)?;
         Ok(ElemResponse { fint: common::matvec(&k, u), k: tangent.then_some(k) })
@@ -256,7 +256,7 @@ impl ElementType for S4r5 {
         let q = match (load.kind.as_str(), body) {
             ("P", _) => scale(r[2], load.magnitude),
             (_, Some(b)) => scale(b, sec.t),
-            _ => return not_implemented(&format!("lasttypen {}", load.kind), "S4R5"),
+            _ => return not_implemented(&format!("load type {}", load.kind), "S4R5"),
         };
         let mut f = vec![0.0; NDOF];
         for &(s, t) in &[(-common::G2, -common::G2), (common::G2, -common::G2), (-common::G2, common::G2), (common::G2, common::G2)] {
@@ -293,7 +293,7 @@ impl ElementType for S4r5 {
         let ul: Vec<f64> = (0..NDOF).map(|p| (0..NDOF).map(|q| t[p * NDOF + q] * u[q]).sum()).collect();
         let eps = [0, 1, 2].map(|i| super::row_dot(&o.bm[i], &ul));
         let kap = [0, 1, 2].map(|i| super::row_dot(&o.bb[i], &ul));
-        // ingen tvärkraft redovisas (SF4 = SF5 = 0) för tunna skal
+        // no transverse shear force is reported (SF4 = SF5 = 0) for thin shells
         Ok(output(&sec, &[Gen { eps, kap, q: [0.0; 2] }]))
     }
 }

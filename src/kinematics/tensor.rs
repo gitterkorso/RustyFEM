@@ -1,6 +1,6 @@
-//! Små 3×3-tensoroperationer för stora deformationer: produkter, invers,
-//! egenvärden för symmetriska matriser (Jacobi), matrislogaritm, polär
-//! uppdelning och rotationer (Rodrigues/exponentialavbildning och dess invers).
+//! Small 3×3 tensor operations for large deformations: products, inverse,
+//! eigenvalues of symmetric matrices (Jacobi), matrix logarithm, polar
+//! decomposition and rotations (Rodrigues/exponential map and its inverse).
 
 pub type M3 = [[f64; 3]; 3];
 
@@ -113,8 +113,8 @@ pub fn skew(a: &M3) -> M3 {
     c
 }
 
-/// Egenvärden och egenvektorer (kolumner i den returnerade matrisen) för en
-/// symmetrisk matris, med Jacobis rotationsmetod.
+/// Eigenvalues and eigenvectors (columns of the returned matrix) of a
+/// symmetric matrix, using Jacobi's rotation method.
 pub fn eig_sym(a: &M3) -> ([f64; 3], M3) {
     let mut a = *a;
     let mut v = I3;
@@ -155,7 +155,7 @@ pub fn eig_sym(a: &M3) -> ([f64; 3], M3) {
     ([a[0][0], a[1][1], a[2][2]], v)
 }
 
-/// f(A) = Σ f(λᵢ) nᵢ⊗nᵢ för en symmetrisk matris.
+/// f(A) = Σ f(λᵢ) nᵢ⊗nᵢ for a symmetric matrix.
 pub fn sym_fn(a: &M3, f: impl Fn(f64) -> f64) -> M3 {
     let (l, v) = eig_sym(a);
     let mut c = zero();
@@ -170,12 +170,12 @@ pub fn sym_fn(a: &M3, f: impl Fn(f64) -> f64) -> M3 {
     c
 }
 
-/// Logaritmisk töjning ln V = ½ ln(F Fᵀ) (rumsliga axlar).
+/// Logarithmic strain ln V = ½ ln(F Fᵀ) (spatial axes).
 pub fn log_strain(f: &M3) -> M3 {
     sym_fn(&mul_bt(f, f), |x| 0.5 * x.max(1e-300).ln())
 }
 
-/// Polär uppdelning F = R U; returnerar (R, U).
+/// Polar decomposition F = R U; returns (R, U).
 pub fn polar(f: &M3) -> (M3, M3) {
     let c = mul_at(f, f);
     let u = sym_fn(&c, |x| x.max(0.0).sqrt());
@@ -183,17 +183,17 @@ pub fn polar(f: &M3) -> (M3, M3) {
     (mul(f, &ui), u)
 }
 
-/// Snedsymmetrisk matris [w]× så att [w]× x = w × x.
+/// Skew-symmetric matrix [w]× such that [w]× x = w × x.
 pub fn spin(w: [f64; 3]) -> M3 {
     [[0.0, -w[2], w[1]], [w[2], 0.0, -w[0]], [-w[1], w[0], 0.0]]
 }
 
-/// Axialvektorn till den snedsymmetriska delen av A.
+/// The axial vector of the skew-symmetric part of A.
 pub fn axial(a: &M3) -> [f64; 3] {
     [0.5 * (a[2][1] - a[1][2]), 0.5 * (a[0][2] - a[2][0]), 0.5 * (a[1][0] - a[0][1])]
 }
 
-/// Rotationsmatris exp([θ]×) (Rodrigues formel).
+/// Rotation matrix exp([θ]×) (Rodrigues' formula).
 pub fn exp_so3(t: [f64; 3]) -> M3 {
     let a2 = t[0] * t[0] + t[1] * t[1] + t[2] * t[2];
     let a = a2.sqrt();
@@ -207,7 +207,7 @@ pub fn exp_so3(t: [f64; 3]) -> M3 {
     add(&add(&I3, &scale(&w, s1)), &scale(&w2, s2))
 }
 
-/// Rotationsvektor θ med exp([θ]×) = R och |θ| ≤ π (via kvaternion, stabil nära π).
+/// Rotation vector θ with exp([θ]×) = R and |θ| ≤ π (via quaternion, stable near π).
 pub fn log_so3(r: &M3) -> [f64; 3] {
     let tr = r[0][0] + r[1][1] + r[2][2];
     let m = [tr, r[0][0], r[1][1], r[2][2]];
@@ -247,8 +247,8 @@ pub fn log_so3(r: &M3) -> [f64; 3] {
     [q[1] * f, q[2] * f, q[3] * f]
 }
 
-/// Rotationsvektor för R som ligger närmast `near` (lägger till 2πk längs
-/// axeln), så att totala rotationer kan växa förbi π utan hopp.
+/// Rotation vector for R closest to `near` (adds 2πk along
+/// the axis), so that total rotations can grow past π without jumps.
 pub fn log_so3_near(r: &M3, near: [f64; 3]) -> [f64; 3] {
     let two_pi = 2.0 * std::f64::consts::PI;
     let t = log_so3(r);
@@ -302,7 +302,7 @@ mod tests {
                 assert!((fr[i][j] - f[i][j]).abs() < 1e-12);
             }
         }
-        // ln V = ½ ln(F Fᵀ) för F ovan (egenvärdesuppdelning med numpy)
+        // ln V = ½ ln(F Fᵀ) for F above (eigenvalue decomposition with numpy)
         let le = log_strain(&f);
         assert!((le[0][0] - 0.439708007951929).abs() < 1e-12, "{le:?}");
         assert!((le[1][1] + 0.03424289984376449).abs() < 1e-12, "{le:?}");

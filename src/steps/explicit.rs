@@ -1,5 +1,5 @@
-//! Explicit dynamik (*DYNAMIC, EXPLICIT) med centraldifferensmetoden och
-//! diagonal massa.
+//! Explicit dynamics (*DYNAMIC, EXPLICIT) with the central difference method and
+//! diagonal mass.
 //!
 //! ```text
 //! ü(i)     = M⁻¹ (P(i) − I(i) − C u̇(i−½) + F_k(i))
@@ -7,62 +7,62 @@
 //! u(i+1)   = u(i) + Δt(i+1) u̇(i+½)
 //! ```
 //!
-//! (Belytschko, Liu & Moran, "Nonlinear Finite Elements", kap. 6.) F_k är
-//! kontaktkrafterna (`explicit_contact`). Utdata för hastighet vid hela
-//! inkrement är u̇(i) = u̇(i−½) + ½Δt(i) ü(i). Rotationsfrihetsgraderna
-//! integreras på samma sätt (linjärt, I θ̈ = M) med den explicita
-//! rotationströgheten (`explicit_mass`).
+//! (Belytschko, Liu & Moran, "Nonlinear Finite Elements", ch. 6.) F_k is
+//! the contact force (`explicit_contact`). Velocity output at whole
+//! increments is u̇(i) = u̇(i−½) + ½Δt(i) ü(i). The rotational degrees of freedom
+//! are integrated the same way (linearly, I θ̈ = M) with the explicit
+//! rotary inertia (`explicit_mass`).
 //!
-//! Delar:
-//! - `explicit_mass.rs`: diagonal massa (skal, balkar, punktmassor), massskalning.
-//! - `explicit_dt.rs`: elementvis stabilitetsgräns.
-//! - `explicit_bulk.rs`: volymviskositet.
-//! - `explicit_energy.rs`: energier och history-utdata.
+//! Parts:
+//! - `explicit_mass.rs`: diagonal mass (shells, beams, point masses), mass scaling.
+//! - `explicit_dt.rs`: element-by-element stability limit.
+//! - `explicit_bulk.rs`: bulk viscosity.
+//! - `explicit_energy.rs`: energies and history output.
 //! - `explicit_scaling.rs`: *FIXED/*VARIABLE MASS SCALING.
-//! - `explicit_contact.rs`: kontakt med straffmetod.
+//! - `explicit_contact.rs`: penalty contact.
 //!
-//! Tidsinkrement:
-//! - `DIRECT USER CONTROL` (eller `FIXED TIME INCREMENTATION` med angivet Δt):
-//!   fast Δt från dataraden (steget delas i ⌈T/Δt⌉ lika inkrement).
-//! - annars elementvis stabilitetsgräns (`explicit_dt`), multiplicerad med
-//!   `SCALE FACTOR` (standard 1), omräknad varje inkrement med aktuell
-//!   geometri och densitet ρ₀V₀/V (NLGEOM), materialets effektiva moduler
-//!   (`explicit_moduli`) och volymviskositetens kvadratiska term (utom med
-//!   *FIXED MASS SCALING, DT=, där Δt = DT hela steget). Skal och
-//!   membran får den förbättrade gränsen (IMPROVED DT METHOD=YES, standard),
-//!   solider den konventionella. En global skattning (standard utan
-//!   ELEMENT BY ELEMENT) används inte: RustyFEM räknar alltid elementvis, vilket
-//!   ger kortare eller lika långa inkrement. 3D-solider får den konventionella
-//!   gränsen även med IMPROVED DT METHOD=YES (den förbättrade formeln för
-//!   solider är inte implementerad).
+//! Time increments:
+//! - `DIRECT USER CONTROL` (or `FIXED TIME INCREMENTATION` with a given Δt):
+//!   fixed Δt from the data line (the step is split into ⌈T/Δt⌉ equal increments).
+//! - otherwise the element-by-element stability limit (`explicit_dt`), multiplied by
+//!   `SCALE FACTOR` (default 1), recomputed every increment with the current
+//!   geometry and density ρ₀V₀/V (NLGEOM), the material's effective moduli
+//!   (`explicit_moduli`) and the quadratic bulk viscosity term (except with
+//!   *FIXED MASS SCALING, DT=, where Δt = DT for the whole step). Shells and
+//!   membranes get the improved limit (IMPROVED DT METHOD=YES, default),
+//!   solids the conventional one. A global estimate (default without
+//!   ELEMENT BY ELEMENT) is not used: RustyFEM always works element by element, which
+//!   gives shorter or equally long increments. 3D solids get the conventional
+//!   limit even with IMPROVED DT METHOD=YES (the improved formula for
+//!   solids is not implemented).
 //!
-//! Elementborttagning vid skada (`steps/model_change.rs`):
-//! elementet tas bort när skadan nått Dmax i alla integrationspunkter; borttagna
-//! element ger ingen kraft, volymviskositet eller stabilitetsgräns. *EOS-material
-//! får begynnelseenergi och begynnelsetryck i analysens början
-//! (`materials::eos::apply_initial`), och ALLIE börjar med Σ m Eₘ₀.
+//! Element deletion on damage (`steps/model_change.rs`):
+//! the element is removed when the damage has reached Dmax at all integration points; removed
+//! elements give no force, bulk viscosity or stability limit. *EOS materials
+//! get initial energy and initial pressure at the start of the analysis
+//! (`materials::eos::apply_initial`), and ALLIE starts at Σ m Eₘ₀.
 //!
-//! Föreskrivna förskjutningar med amplitud: u(i+1) = A(t_{i+1}) exakt och
-//! halvstegshastigheten (u(i+1) − u(i))/Δt; utdata V = u̇(i−½) + ½Δt·A″ och
-//! A = A″ (kontrollerat per inkrement för SMOOTH STEP).
+//! Prescribed displacements with an amplitude: u(i+1) = A(t_{i+1}) exactly and
+//! the half-step velocity (u(i+1) − u(i))/Δt; output V = u̇(i−½) + ½Δt·A″ and
+//! A = A″ (checked per increment for SMOOTH STEP).
 //!
-//! Kontinuumelement med NLGEOM uppdaterar spänningen
+//! Continuum elements with NLGEOM update the stress
 //! (`kinematics::continuum::set_explicit_end_config`): Δε = sym(ΔF F_{n+1}⁻¹),
-//! materialet med σₙ, sedan Jaumann-termen ΔWσₙ − σₙΔW additivt.
-//!   Stänger får en extra faktor 0,99 efter första inkrementet. Δt minskas
-//!   linjärt mot stegets slut (se `run`).
+//! the material with σₙ, then the Jaumann term ΔWσₙ − σₙΔW additively.
+//!   Trusses get an extra factor 0.99 after the first increment. Δt is reduced
+//!   linearly towards the end of the step (see `run`).
 //!
-//! Lasternas standardamplitud är steg. NLGEOM följer
-//! steget (explicit analys har NLGEOM=YES som standard).
+//! The default amplitude for loads is step. NLGEOM follows
+//! the step (explicit analysis has NLGEOM=YES by default).
 //!
-//! Område coupled2: *DYNAMIC TEMPERATURE-DISPLACEMENT, EXPLICIT körs också
-//! här, med temperaturen integrerad framåt Euler (`explicit_coupled_full.rs`):
-//! RT-elementen får explicit hourglass-kontroll (CPE4RT, CPS4RT, C3D8RT),
-//! nodtemperaturerna till elementen (reducerade element: volymviktat
-//! medelvärde) och den termiska stabilitetsgränsen; volymviskositeten använder
-//! c_d·Δtₑ när den termiska gränsen styr elementet.
+//! Area coupled2: *DYNAMIC TEMPERATURE-DISPLACEMENT, EXPLICIT also runs
+//! here, with the temperature integrated by forward Euler (`explicit_coupled_full.rs`):
+//! the RT elements get explicit hourglass control (CPE4RT, CPS4RT, C3D8RT),
+//! the nodal temperatures go to the elements (reduced elements: volume-weighted
+//! mean) and the thermal stability limit applies; the bulk viscosity uses
+//! c_d·Δtₑ when the thermal limit governs the element.
 
-// område explicit_adv: SPH, DEM, Euler och ALE (steps/explicit_adv.rs)
+// area explicit_adv: SPH, DEM, Euler and ALE (steps/explicit_adv.rs)
 #[path = "explicit_adv.rs"]
 pub mod adv;
 #[path = "explicit_bulk.rs"]
@@ -71,7 +71,7 @@ mod bulk;
 mod constraints;
 #[path = "explicit_contact.rs"]
 pub mod contact;
-// område coupled2: *DYNAMIC TEMPERATURE-DISPLACEMENT, EXPLICIT i denna lösare
+// area coupled2: *DYNAMIC TEMPERATURE-DISPLACEMENT, EXPLICIT in this solver
 #[path = "explicit_coupled_full.rs"]
 pub mod coupled_full;
 #[path = "explicit_dt.rs"]
@@ -88,14 +88,14 @@ mod scaling;
 mod shell;
 #[path = "explicit_solid.rs"]
 mod solid;
-// område explicit_adv: explicit hourglass-kontroll för C3D8R, CPE4R, CPS4R med NLGEOM
+// area explicit_adv: explicit hourglass control for C3D8R, CPE4R, CPS4R with NLGEOM
 #[path = "explicit_solid_nlgeom.rs"]
 pub mod solid_nl;
 
-/// Volymviskositetens kvadratiska faktor (för tester).
+/// Quadratic bulk viscosity factor (for tests).
 pub use bulk::quadratic_factor as bulk_quadratic_factor;
 
-/// Hourglass-kontrollens relaxationskärna (för tester).
+/// Relaxation kernel of the hourglass control (for tests).
 pub mod hourglass {
     pub use super::shell::{relax, Hourglass};
 }
@@ -117,45 +117,45 @@ pub struct Explicit;
 
 pub static STEP_TYPES: &[&dyn StepType] = &[&Explicit];
 
-/// Kontaktinteraktioner hanteras av `explicit_contact` (straffmetod) och inte
-/// av implicit-kontakten i `interactions/contact.rs`.
+/// Contact interactions are handled by `explicit_contact` (penalty method) and not
+/// by the implicit contact in `interactions/contact.rs`.
 fn is_contact(name: &str) -> bool {
     name.starts_with("*CONTACT")
 }
 
-/// Krafter vid ett inkrement.
+/// Forces at an increment.
 struct Forces {
-    /// Inre kraft (element, fjädrar, kopplingselement).
+    /// Internal force (elements, springs, connector elements).
     fint: Vec<NodeVec>,
-    /// Yttre last.
+    /// External load.
     fext: Vec<NodeVec>,
-    /// Viskösa krafter (Rayleigh, dämpare, volymviskositet).
+    /// Viscous forces (Rayleigh, dashpots, bulk viscosity).
     fvis: Vec<NodeVec>,
-    /// Kontaktkrafter (på noderna).
+    /// Contact forces (at the nodes).
     fcon: Vec<NodeVec>,
     state: Vec<Vec<f64>>,
-    /// Volymtöjningshastighet per element i volymviskositeten.
+    /// Volumetric strain rate per element in the bulk viscosity.
     rates: Vec<f64>,
-    /// Kontaktens friktionsdissipation och straffarbete i inkrementet.
+    /// Contact frictional dissipation and penalty work in the increment.
     fric: f64,
-    /// Explicit-tillstånd per element (S4R:s hourglass och drill).
+    /// Explicit state per element (S4R hourglass and drill).
     xstate: Vec<Vec<f64>>,
-    /// Ökning av den artificiella energin (ALLAE) i inkrementet.
+    /// Increment of the artificial energy (ALLAE) in the increment.
     dae: f64,
 }
 
-/// Elementets explicit-specifika formulering.
+/// The element's explicit-specific formulation.
 #[derive(Clone)]
 enum Kernel {
-    /// Elementets egen `internal_force`.
+    /// The element's own `internal_force`.
     Element,
-    /// S4R med explicit hourglass och drill och den implicita styvheten.
+    /// S4R with explicit hourglass and drill and the implicit stiffness.
     S4r(shell::Hourglass, Vec<f64>),
-    /// S3R med explicit drill.
+    /// S3R with explicit drill.
     S3r(Vec<f64>),
-    /// C3D8R, CPE4R, CPS4R med explicit hourglass.
+    /// C3D8R, CPE4R, CPS4R with explicit hourglass.
     SolidHg(shell::Hourglass, &'static crate::elements::solid_higher::Solid),
-    /// Område explicit_adv: som `SolidHg` men med NLGEOM (inkrementell hourglass).
+    /// Area explicit_adv: like `SolidHg` but with NLGEOM (incremental hourglass).
     SolidHgNl(shell::Hourglass, &'static crate::elements::solid_higher::Solid),
 }
 
@@ -171,13 +171,13 @@ struct Explicit1<'p, 'm> {
     contact: Option<contact::ExplicitContact>,
     dim: usize,
     kernels: Vec<Kernel>,
-    /// Förbättrad elementvis stabilitetsgräns (IMPROVED DT METHOD=YES).
+    /// Improved element-by-element stability limit (IMPROVED DT METHOD=YES).
     improved_dt: bool,
-    /// Kopplad temperatur–förskjutning: elementen får nodtemperaturerna (område coupled2).
+    /// Coupled temperature–displacement: the elements get the nodal temperatures (area coupled2).
     coupled: bool,
-    /// Vikter för integrationspunktens temperatur per element (tom = medelvärde).
+    /// Weights for the integration point temperature per element (empty = mean).
     tweights: Vec<Vec<f64>>,
-    /// Område explicit_adv: partiklar (SPH, DEM), Euler-element och ALE.
+    /// Area explicit_adv: particles (SPH, DEM), Euler elements and ALE.
     adv: Option<adv::Advanced>,
 }
 
@@ -187,8 +187,8 @@ impl Explicit1<'_, '_> {
         m.elements[e].nodes.iter().map(|&n| std::array::from_fn(|c| m.nodes[n][c] + if self.nlgeom { u[n][c] } else { 0.0 })).collect()
     }
 
-    /// Inre krafter från element och icke-kontaktinteraktioner: (kraft,
-    /// elementtillstånd, explicit-tillstånd, ökning av ALLAE).
+    /// Internal forces from elements and non-contact interactions: (force,
+    /// element state, explicit state, increment of ALLAE).
     #[allow(clippy::type_complexity)]
     fn internal(&self, u: &[NodeVec], du: &[NodeVec], state_old: &[Vec<f64>], xold: &[Vec<f64>], time: f64, dt: f64) -> Result<(Vec<NodeVec>, Vec<Vec<f64>>, Vec<Vec<f64>>, f64)> {
         let p = self.p;
@@ -202,14 +202,14 @@ impl Explicit1<'_, '_> {
                 coupled_full::set_temps(p, &mut ctx, e, u, du, self.tweights.get(e).map(|w| &w[..]).unwrap_or(&[]));
             }
             let ue = p.gather(e, u);
-            // område explicit_adv: utan NLGEOM räknar elementen (töjning och hourglass)
-            // med materialets förskjutning, utan ALE-nätets omflyttningar
+            // area explicit_adv: without NLGEOM the elements compute (strain and hourglass)
+            // with the material displacement, without the ALE mesh relocations
             let ue = match self.adv.as_ref().filter(|_| !self.nlgeom).and_then(|ad| ad.hourglass_u(&m.elements[e].nodes, &ue)) {
                 Some(x) => x,
                 None => ue,
             };
             let wrap = |err: FemError| FemError(format!("{}: {err}", m.elem_name(e)));
-            // borttagna element (*MODEL CHANGE, skada) ger ingen kraft (steps/model_change.rs)
+            // removed elements (*MODEL CHANGE, damage) give no force (steps/model_change.rs)
             if p.activity.is_removed(e) {
                 return Ok((vec![0.0; ue.len()], state_old[e].clone(), xold[e].clone(), 0.0));
             }
@@ -264,7 +264,7 @@ impl Explicit1<'_, '_> {
         Ok((fint, state_new, xnew, dae))
     }
 
-    /// Alla krafter vid stegtiden t med halvstegshastigheten `v`.
+    /// All forces at step time t with the half-step velocity `v`.
     #[allow(clippy::too_many_arguments)]
     fn forces(&mut self, t: f64, dt: f64, u: &[NodeVec], du: &[NodeVec], v: &[NodeVec], state: &[Vec<f64>], xold: &[Vec<f64>], commit: bool) -> Result<Forces> {
         let (fint, state_new, xstate, dae) = self.internal(u, du, state, xold, self.time0 + t, dt)?;
@@ -279,7 +279,7 @@ impl Explicit1<'_, '_> {
             None => vec![[0.0; SLOTS]; u.len()],
         };
         let rates = self.bulk.forces(self.p, &|e| self.coords(e, u), v, &mut fvis);
-        // område acoustics2: volymviskositetens arbete i EOS-energin
+        // area acoustics2: work of the bulk viscosity in the EOS energy
         let mut state_new = state_new;
         if dt > 0.0 {
             let w = self.bulk.work.lock().unwrap();
@@ -290,7 +290,7 @@ impl Explicit1<'_, '_> {
         if let Some(ct) = self.contact.as_mut() {
             fric = ct.forces(self.p.model, u, du, dt, &self.mass, &mut fcon, commit)?;
         }
-        // område explicit_adv: partiklarnas, Euler-elementens och ALE-nätets krafter
+        // area explicit_adv: forces from particles, Euler elements and the ALE mesh
         let mut fint = fint;
         let mut fext = fext;
         if let Some(ad) = self.adv.as_mut() {
@@ -311,7 +311,7 @@ impl Explicit1<'_, '_> {
             .collect()
     }
 
-    /// Reaktion i låsta frihetsgrader: I + C u̇ + M ü − P − F_k.
+    /// Reaction in constrained degrees of freedom: I + C u̇ + M ü − P − F_k.
     fn reactions(&self, f: &Forces, a: &[NodeVec]) -> Vec<NodeVec> {
         let nn = a.len();
         let mut rf = vec![[0.0; SLOTS]; nn];
@@ -328,8 +328,8 @@ impl Explicit1<'_, '_> {
 
     #[allow(clippy::too_many_arguments)]
     fn frame(&self, u: &[NodeVec], v: &[NodeVec], a: &[NodeVec], f: &Forces, state: &[Vec<f64>], t: f64, inc: usize) -> Result<FrameData> {
-        // RF = I + C u̇ + M ü − P − F_k i låsta frihetsgrader; assembly::frame
-        // räknar fint − fext, så den dynamiska delen läggs i fint
+        // RF = I + C u̇ + M ü − P − F_k in constrained degrees of freedom; assembly::frame
+        // computes fint − fext, so the dynamic part is added to fint
         let nn = u.len();
         let fdyn: Vec<NodeVec> = (0..nn)
             .map(|n| {
@@ -339,7 +339,7 @@ impl Explicit1<'_, '_> {
             .collect();
         let mut fr = assembly::frame(self.p, &self.dm, u, &fdyn, &f.fext, state, self.nlgeom, self.time0 + t, t, format!("Increment {inc}: Step Time = {t:.4}"))?;
         add_motion(&mut fr, self.dim, &self.p.active, v, a);
-        // område explicit_adv: partiklarnas och Euler-elementens utdata
+        // area explicit_adv: output from particles and Euler elements
         if let Some(ad) = &self.adv {
             ad.output(self.p, &mut fr, u, state)?;
         }
@@ -349,15 +349,15 @@ impl Explicit1<'_, '_> {
         Ok(fr)
     }
 
-    /// Odämpad elementvis gräns per element (oändlig utan massa), med
-    /// massskalningsfaktorerna `f`.
+    /// Undamped element-by-element limit per element (infinite without mass), with
+    /// the mass scaling factors `f`.
     fn element_limits(&self, u: &[NodeVec], cache: &mut [Option<(f64, f64, f64)>], f: &[f64]) -> Result<Vec<(f64, f64, f64)>> {
         let p = self.p;
         let m = p.model;
         let mut out = Vec::with_capacity(m.elements.len());
         for (e, el) in m.elements.iter().enumerate() {
             let ctx = p.ctx(e, false, 0.0, 0.0);
-            // borttagna element styr inte stabilitetsgränsen
+            // removed elements do not govern the stability limit
             if ctx.density <= 0.0 || el.etype.family() == Family::Connector || p.activity.is_removed(e) {
                 out.push((f64::INFINITY, 0.0, 0.0));
                 continue;
@@ -370,7 +370,7 @@ impl Explicit1<'_, '_> {
                 let me = el.etype.mass(&ctx, MassKind::Lumped).map_err(wrap)?;
                 let nd = p.edofs[e].len();
                 let mut diag: Vec<f64> = (0..nd).map(|i| me.get(i * nd + i).copied().unwrap_or(0.0)).collect();
-                // skalens och balkarnas rotationströghet som i explicit_mass
+                // rotary inertia of shells and beams as in explicit_mass
                 if fam == Family::Shell {
                     let r = mass::shell_rotary_factor(&ctx.x);
                     let mut mt = 0.0;
@@ -384,7 +384,7 @@ impl Explicit1<'_, '_> {
                     }
                 }
                 let mut l = dt::element_limit(p, e, &ctx, &x, &diag).map_err(wrap)?;
-                // standard IMPROVED DT METHOD=YES (skal och membran)
+                // default IMPROVED DT METHOD=YES (shells and membranes)
                 if self.improved_dt {
                     if let (Some((dte, lchar, c)), Some((_, nu))) = (l, ctx.material.and_then(|mm| mm.elastic_moduli())) {
                         if let Some(li) = dt::improved_plane_stress(fam, &x, nu) {
@@ -400,10 +400,10 @@ impl Explicit1<'_, '_> {
                 cache[e].unwrap()
             };
             let s = f.get(e).copied().unwrap_or(1.0).max(0.0).sqrt();
-            // materialets effektiva våghastighet (plasticitet, `explicit_moduli`;
-            // kontrollerat för en plastisk stång)
+            // effective wave speed of the material (plasticity, `explicit_moduli`;
+            // checked for a plastic truss)
             let mut r = self.bulk.cratio.get(e).copied().unwrap_or(1.0).max(1e-6);
-            // aktuell densitet ρ₀V₀/V vid NLGEOM: c_d = √(M/ρ) ökar med volymen
+            // current density ρ₀V₀/V with NLGEOM: c_d = √(M/ρ) increases with the volume
             if self.nlgeom && matches!(fam, Family::Continuum2D | Family::Continuum3D) {
                 if let (Some(g), Some(g0)) = (dt::geometry(fam, el.etype.name(), &x), dt::geometry(fam, el.etype.name(), &ctx.x)) {
                     if g.vol > 0.0 && g0.vol > 0.0 {
@@ -416,8 +416,8 @@ impl Explicit1<'_, '_> {
         Ok(out)
     }
 
-    /// Dämpad elementvis gräns per element givet odämpade gränser och
-    /// volymviskositetens töjningshastigheter.
+    /// Damped element-by-element limit per element given undamped limits and
+    /// the bulk viscosity strain rates.
     fn damped(&self, lims: &[(f64, f64, f64)], rates: &[f64]) -> Result<Vec<f64>> {
         let m = self.p.model;
         let mut out: Vec<f64> = lims.iter().map(|l| l.0).collect();
@@ -442,7 +442,7 @@ impl Explicit1<'_, '_> {
     }
 }
 
-/// Lägger till V, A, VR, AR (2D: VR3, AR3) i en frame.
+/// Adds V, A, VR, AR (2D: VR3, AR3) to a frame.
 fn add_motion(fr: &mut FrameData, dim: usize, active: &[u16], v: &[NodeVec], a: &[NodeVec]) {
     dynamic::add_va(fr, dim, v, a);
     let rot: &[usize] = if dim == 2 { &[5] } else { &[3, 4, 5] };
@@ -455,21 +455,21 @@ fn add_motion(fr: &mut FrameData, dim: usize, active: &[u16], v: &[NodeVec], a: 
     fr.node_extra.push((an.into(), labels("AR"), a.iter().map(|x| rot.iter().map(|&s| x[s]).collect()).collect()));
 }
 
-/// Hourglass-kontroll per tvärsnitt från *SECTION CONTROLS (CONTROLS= på
-/// tvärsnittet; standard RELAX STIFFNESS).
+/// Hourglass control per section from *SECTION CONTROLS (CONTROLS= on
+/// the section; default RELAX STIFFNESS).
 fn hourglass_mode(p: &Prepared, sec: &crate::fem::model::SectionDef) -> Result<shell::Hourglass> {
     let Some(name) = sec.raw.param_upper("CONTROLS") else { return Ok(shell::Hourglass::Relax) };
     let Some(sc) = p.model.extra.iter().find(|k| k.name == "SECTION CONTROLS" && k.param_upper("NAME").as_deref() == Some(name.as_str())) else {
-        return sec.raw.err(format!("*SECTION CONTROLS, NAME={name} saknas"));
+        return sec.raw.err(format!("*SECTION CONTROLS, NAME={name} is missing"));
     };
     match sc.param_upper("HOURGLASS").as_deref() {
         None | Some("RELAX STIFFNESS") => Ok(shell::Hourglass::Relax),
         Some("STIFFNESS") => Ok(shell::Hourglass::Stiffness),
-        Some(o) => sc.err(format!("HOURGLASS={o} stöds inte i explicit dynamik (RELAX STIFFNESS, STIFFNESS)")),
+        Some(o) => sc.err(format!("HOURGLASS={o} is not supported in explicit dynamics (RELAX STIFFNESS, STIFFNESS)")),
     }
 }
 
-/// Explicit-formulering per element.
+/// Explicit formulation per element.
 fn kernels(p: &Prepared, nlgeom: bool) -> Result<Vec<Kernel>> {
     let m = p.model;
     let mut out = Vec::with_capacity(m.elements.len());
@@ -481,7 +481,7 @@ fn kernels(p: &Prepared, nlgeom: bool) -> Result<Vec<Kernel>> {
                 Kernel::S4r(hourglass_mode(p, &m.sections[s])?, ks)
             }
             (name, Some(s)) if !nlgeom && coupled_full::standard(name).is_some() => Kernel::SolidHg(hourglass_mode(p, &m.sections[s])?, coupled_full::standard(name).unwrap()),
-            // område explicit_adv: NLGEOM med inkrementell hourglass
+            // area explicit_adv: NLGEOM with incremental hourglass
             (name, Some(s)) if nlgeom && solid::standard(name).is_some() => Kernel::SolidHgNl(hourglass_mode(p, &m.sections[s])?, solid::standard(name).unwrap()),
             ("S3R" | "S3", Some(_)) if !nlgeom => {
                 let ctx = p.ctx(e, false, 0.0, 0.0);
@@ -494,7 +494,7 @@ fn kernels(p: &Prepared, nlgeom: bool) -> Result<Vec<Kernel>> {
     Ok(out)
 }
 
-/// Volymviskositetens parametrar för steget (standard 0,06 och 1,2).
+/// Bulk viscosity parameters for the step (default 0.06 and 1.2).
 fn bulk_parameters(step: &StepDef) -> Result<(f64, f64)> {
     let mut bulk = (0.06, 1.2);
     for b in step.extra.iter().filter(|k| k.name == "BULK VISCOSITY") {
@@ -504,7 +504,7 @@ fn bulk_parameters(step: &StepDef) -> Result<(f64, f64)> {
     Ok(bulk)
 }
 
-/// Dämpningsmatris: Rayleigh (αM + βK) och dämpare (*DASHPOT). `None` om ingen dämpning finns.
+/// Damping matrix: Rayleigh (αM + βK) and dashpots (*DASHPOT). `None` if there is no damping.
 fn damping(p: &Prepared) -> Result<Option<NodeMatrix>> {
     let m = p.model;
     let mut any = false;
@@ -529,12 +529,12 @@ fn damping(p: &Prepared) -> Result<Option<NodeMatrix>> {
 
 impl StepType for Explicit {
     fn name(&self) -> &'static str {
-        "DYNAMIC, EXPLICIT (centraldifferens)"
+        "DYNAMIC, EXPLICIT (central difference)"
     }
 
     fn claim(&self, step: &StepDef, _nlgeom: bool) -> Option<i32> {
         let p = step.procedure.as_ref()?;
-        // område coupled2: *DYNAMIC TEMPERATURE-DISPLACEMENT, EXPLICIT (före explicit_coupled.rs)
+        // area coupled2: *DYNAMIC TEMPERATURE-DISPLACEMENT, EXPLICIT (before explicit_coupled.rs)
         if p.name == coupled_full::PROC && p.has("EXPLICIT") {
             return Some(1);
         }
@@ -546,14 +546,14 @@ impl StepType for Explicit {
     }
 
     fn run(&self, ctx: &mut StepCtx) -> Result<()> {
-        // område explicit_adv: explicit analys har NLGEOM=YES som standard
-        // (steg utan NLGEOM= och utan ärvd NLGEOM=NO räknas geometriskt olinjärt)
+        // area explicit_adv: explicit analysis has NLGEOM=YES by default
+        // (steps without NLGEOM= and without inherited NLGEOM=NO are geometrically nonlinear)
         if ctx.step.nlgeom.is_none() && !ctx.nlgeom && !crate::steps::explicit::adv::nlgeom_off_inherited(ctx.prep.model, ctx.index) {
             ctx.nlgeom = true;
         }
         let kw = ctx.step.procedure.as_ref().unwrap();
         if ctx.step.perturbation {
-            return fail("*DYNAMIC, EXPLICIT kan inte vara ett perturbationssteg");
+            return fail("*DYNAMIC, EXPLICIT cannot be a perturbation step");
         }
         let vals = kw.first_floats()?;
         let period = vals.get(1).copied().filter(|&x| x > 0.0).unwrap_or(1.0);
@@ -567,7 +567,7 @@ impl StepType for Explicit {
         bulk.nlgeom = ctx.nlgeom;
         if b1 != 0.0 && !bulk.unsupported.is_empty() {
             eprintln!(
-                "varning: steg {}: volymviskositet (b1 = {b1}) finns inte för {} i RustyFEM och ignoreras där",
+                "warning: step {}: bulk viscosity (b1 = {b1}) does not exist for {} in RustyFEM and is ignored there",
                 ctx.step.name,
                 model.elements[bulk.unsupported[0]].etype.name()
             );
@@ -576,7 +576,7 @@ impl StepType for Explicit {
             Some(a) => a == "RAMP",
             None => false,
         };
-        // område coupled2: värmeledningen och mekanikens laster (explicit_coupled_full.rs)
+        // area coupled2: heat conduction and the mechanical loads (explicit_coupled_full.rs)
         let mut thermal = None;
         let mech_loads;
         let loads_m = if kw.name == coupled_full::PROC {
@@ -588,8 +588,8 @@ impl StepType for Explicit {
             ctx.loads
         };
         let mut lev = LoadEval::new(model, loads_m, ramp, period, ctx.state.time)?;
-        // en steglast verkar fullt vid t = 0 (ü₀ = M⁻¹P), medan
-        // amplituder utvärderas exakt vid t = 0
+        // a step load acts fully at t = 0 (ü₀ = M⁻¹P), while
+        // amplitudes are evaluated exactly at t = 0
         lev.step_full_at_start = true;
         let lev = lev;
         let ne = model.elements.len();
@@ -618,7 +618,7 @@ impl StepType for Explicit {
             },
             adv: adv::Advanced::build(prep, ctx.step, ctx.nlgeom)?,
         };
-        // område explicit_adv: partiklarnas och Euler-nodernas massa
+        // area explicit_adv: mass of particles and Euler nodes
         if let Some(ad) = sys.adv.as_ref() {
             ad.patch_mass(&mut sys.mass);
         }
@@ -629,7 +629,7 @@ impl StepType for Explicit {
                 u[n][s] = val;
             }
         }
-        // massskalning i stegets början
+        // mass scaling at the start of the step
         let mut fscale = vec![1.0; ne];
         let mut lim_cache: Vec<Option<(f64, f64, f64)>> = vec![None; ne];
         if !rules.is_empty() {
@@ -643,9 +643,9 @@ impl StepType for Explicit {
             sys.bulk.scale_density(&fscale);
         }
         let mut v = initial_velocity(prep, ctx.state)?;
-        // låsta frihetsgrader har hastigheten 0 vid stegets början (V = 0
-        // skrivs där även med *INITIAL CONDITIONS, TYPE=VELOCITY), utom de
-        // med amplitud nedan
+        // constrained degrees of freedom have velocity 0 at the start of the step (V = 0
+        // is written there even with *INITIAL CONDITIONS, TYPE=VELOCITY), except those
+        // with an amplitude below
         for n in 0..nn {
             for s in 0..SLOTS {
                 if sys.dm.constrained[n] & (1 << s) != 0 {
@@ -659,8 +659,8 @@ impl StepType for Explicit {
             }
         }
         let mut state = ctx.state.elem_state.clone();
-        // *EOS: specifik energi och begynnelsetryck i analysens början (materials/eos.rs)
-        // elementborttagning vid skada med den explicita regeln (steps/model_change.rs)
+        // *EOS: specific energy and initial pressure at the start of the analysis (materials/eos.rs)
+        // element deletion on damage with the explicit rule (steps/model_change.rs)
         prep.activity.set_explicit_rule(true);
         let ie0 = if ctx.state.time == 0.0 { crate::materials::eos::apply_initial(prep, &mut state)? } else { 0.0 };
         let ie0 = ie0 + if ctx.state.time == 0.0 { sys.adv.as_ref().map_or(0.0, |a| a.initial_energy()) } else { 0.0 };
@@ -669,25 +669,25 @@ impl StepType for Explicit {
         sys.bulk.linear_only = true;
         let mut f = sys.forces(0.0, 0.0, &u, &zero, &v, &state, &x0, true)?;
         sys.bulk.linear_only = false;
-        // materialets aktuella kompressionsmodul (*EOS) redan i första inkrementet
+        // current bulk modulus of the material (*EOS) already in the first increment
         {
             let mut ratio = std::mem::take(&mut sys.bulk.cratio);
             moduli::update(prep, &|e| sys.coords(e, &u), &zero, &state, &f.state, &mut ratio);
             sys.bulk.cratio = ratio;
         }
-        // område explicit_adv: ALE-nätets första utjämning (INITIAL MESH SWEEPS) i stegets början
+        // area explicit_adv: first smoothing of the ALE mesh (INITIAL MESH SWEEPS) at the start of the step
         if let Some(ad) = sys.adv.as_mut() {
             ad.after_forces(&mut u, &mut v, &sys.dm.constrained);
         }
         let mut a = sys.accel(&f);
-        // område coupled2: temperaturens randvillkor och θ̇ i stegets början
-        // (mekaniken ovan med begynnelsetemperaturen i frame 0)
+        // area coupled2: temperature boundary conditions and θ̇ at the start of the step
+        // (the mechanics above with the initial temperature in frame 0)
         if let Some(th) = thermal.as_mut() {
             th.start(prep, &|e| sys.coords(e, &u), &u, &f.state)?;
             coupled_full::clear_ts(&mut a);
             coupled_full::clear_ts(&mut v);
         }
-        // stabilitetsgräns
+        // stability limit
         let stable = |sys: &Explicit1, th: Option<&coupled_full::Thermal>, u: &[NodeVec], rates: &[f64], cache: &mut [Option<(f64, f64, f64)>], fs: &[f64]| -> Result<(f64, usize)> {
             let lims = sys.element_limits(u, cache, fs)?;
             let d = sys.damped(&lims, rates)?;
@@ -697,55 +697,55 @@ impl StepType for Explicit {
                     best = (x, e);
                 }
             }
-            // termisk gräns Lₑ²/(2α) (explicit_coupled_full.rs)
+            // thermal limit Lₑ²/(2α) (explicit_coupled_full.rs)
             if let Some(th) = th {
                 let tb = th.stable_in(sys, u, rates);
                 if tb.0 < best.0 {
                     best = tb;
                 }
             }
-            // område explicit_adv: partiklarnas och Euler-elementens gräns
+            // area explicit_adv: limit of particles and Euler elements
             if let Some(tb) = sys.adv.as_ref().and_then(|a| a.stable()) {
                 if tb.0 < best.0 {
                     best = tb;
                 }
             }
             if !best.0.is_finite() {
-                return fail("kan inte skatta stabilt tidsinkrement: inga element med massa (*DENSITY)");
+                return fail("cannot estimate a stable time increment: no elements with mass (*DENSITY)");
             }
             Ok((best.0 * scale, best.1))
         };
         let is_truss = |e: usize| model.elements[e].etype.family() == Family::Truss;
         let (dt_first, mut dt) = match (fixed, user_dt) {
-            // steget delas i ett helt antal lika inkrement
+            // the step is split into a whole number of equal increments
             // (n = ⌈T/Δt⌉, Δt = T/n)
             (true, Some(d)) => {
                 let d = period / (period / d - 1e-9).ceil().max(1.0);
                 (d, d)
             }
-            (true, None) => return fail("DIRECT USER CONTROL kräver ett tidsinkrement på dataraden"),
+            (true, None) => return fail("DIRECT USER CONTROL requires a time increment on the data line"),
             (false, _) => {
                 let (d, e) = stable(&sys, thermal.as_ref(), &u, &f.rates, &mut lim_cache, &fscale)?;
-                // stänger får 0,99 L/c i första inkrementet och
-                // 0,99²·L/c därefter
+                // trusses get 0.99 L/c in the first increment and
+                // 0.99²·L/c thereafter
                 (d, if is_truss(e) { d * dt::TRUSS_LE } else { d })
             }
         };
-        // kopplingselementens låsta komponenter (explicit_constraints.rs)
+        // constrained components of connector elements (explicit_constraints.rs)
         if constraints::project(prep, &sys.dm, &sys.mass, ctx.nlgeom, &u, &v, dt_first, 0.5 * dt_first * dt_first, &[&f.fext, &f.fcon], &mut f.fint, &[&f.fvis])? {
             a = sys.accel(&f);
         }
         constraints::commit(prep);
-        // Δt räknas om varje inkrement med aktuell geometri (NLGEOM) och
-        // volymviskositetens kvadratiska term (töjningshastigheten). Med
-        // *FIXED MASS SCALING, DT= behålls Δt = DT genom hela
-        // steget (inkrementen är exakt DT).
+        // Δt is recomputed every increment with the current geometry (NLGEOM) and
+        // the quadratic bulk viscosity term (the strain rate). With
+        // *FIXED MASS SCALING, DT= Δt = DT is kept throughout the
+        // step (the increments are exactly DT).
         let fixed_dt_scaling = rules.iter().any(|r| !r.variable && r.dt.is_some());
         let recompute = !fixed && !fixed_dt_scaling && (ctx.nlgeom || !prep.is_linear() || b2 != 0.0 && !sys.bulk.elems.is_empty() || thermal.is_some());
         let recompute = recompute || (!fixed && !fixed_dt_scaling && sys.adv.is_some());
-        // NUMBER INTERVAL (standard 20) eller TIME INTERVAL; utdata
-        // skrivs i första inkrementet vid eller efter varje utdatatid. FREQUENCY=
-        // gäller inte i explicit analys (då används 20 intervall).
+        // NUMBER INTERVAL (default 20) or TIME INTERVAL; output
+        // is written in the first increment at or after each output time. FREQUENCY=
+        // does not apply in explicit analysis (20 intervals are used then).
         let sched = match output_schedule(ctx.step, period, Schedule::Interval(period / 20.0))? {
             Schedule::Every(_) => Schedule::Interval(period / 20.0),
             s => s,
@@ -753,7 +753,7 @@ impl StepType for Explicit {
         let se_ok = energy::elastic_energy(prep, &|e| sys.coords(e, &u), &ctx.state.elem_state).is_some();
         let mut history = energy::History::from_step(ctx.step, period, prep.is_linear(), se_ok)?;
         let want_se = !prep.is_linear() && history.as_ref().is_some_and(|h| h.wants_se());
-        // ALLIE börjar med den specifika begynnelseenergin (*EOS)
+        // ALLIE starts with the specific initial energy (*EOS)
         let mut en = energy::Energies { ke: sys.mass.kinetic(&v), ie: ie0, ..Default::default() };
         let eps = 1e-9 * period;
         if let Some(h) = history.as_mut() {
@@ -783,12 +783,12 @@ impl StepType for Explicit {
         let vms_rules: Vec<scaling::Rule> = rules.iter().filter(|r| r.variable).cloned().collect();
         while t < period - eps {
             if inc >= max_inc {
-                return fail("för många inkrement i explicit steg");
+                return fail("too many increments in explicit step");
             }
             if inc % 1000 == 0 {
                 crate::progress::emit(crate::progress::Event::Increment { fraction: t / period, iterations: 0 })?;
             }
-            // variabel massskalning
+            // variable mass scaling
             if !vms_rules.is_empty() && inc > 0 {
                 let due = vms_rules.iter().any(|r| match (r.frequency, r.intervals) {
                     (Some(k), _) => inc % k == 0,
@@ -803,7 +803,7 @@ impl StepType for Explicit {
                     let lims = sys.element_limits(&u, &mut lim_cache, &unscaled)?;
                     let d0 = sys.damped(&lims, &f.rates)?;
                     scaling::apply(&vms_rules, true, &d0, &mut unscaled);
-                    // fasta skalningsfaktorer behålls där den variabla inte skalar mer
+                    // fixed scaling factors are kept where the variable one does not scale more
                     for e in 0..ne {
                         fscale[e] = fscale[e].max(unscaled[e]);
                     }
@@ -823,23 +823,23 @@ impl StepType for Explicit {
             }
             let mut h = if inc == 0 { dt_first } else { dt };
             if !fixed {
-                // stegets slut nås utan ett kort sista inkrement:
-                // när högst 10 inkrement återstår (N = ⌈R/Δt⌉) minskas Δt linjärt,
+                // the end of the step is reached without a short last increment:
+                // when at most 10 increments remain (N = ⌈R/Δt⌉), Δt is reduced linearly,
                 // Δtⱼ = Δt − j·s, j = 1..N, s = (NΔt − R)/(N(N+1)/2)
-                // (kontrollerat för T2D2 och CPE3).
+                // (checked for T2D2 and CPE3).
                 if ramp.is_none() && inc > 0 {
                     let r = period - t;
-                    // utgångsvärdet är högst föregående inkrement (Δt kan växa
-                    // språngvis med de effektiva modulerna)
+                    // the starting value is at most the previous increment (Δt can grow
+                    // stepwise with the effective moduli)
                     let d0 = if dt_prev > 0.0 { dt.min(dt_prev) } else { dt };
                     let n = (r / d0 - 1e-9).ceil().max(1.0);
                     if n <= 10.0 {
                         ramp = Some(((n * d0 - r) / (0.5 * n * (n + 1.0)), 0usize, d0));
                     }
                 }
-                // Δt i minskningen räknas från Δt när den börjar, även när
-                // stabilitetsgränsen ändras under tiden (NLGEOM, plasticitet), så
-                // att steget slutar exakt
+                // Δt in the reduction is computed from Δt when it starts, even when
+                // the stability limit changes meanwhile (NLGEOM, plasticity), so
+                // that the step ends exactly
                 if let Some((sl, j, d0)) = &mut ramp {
                     *j += 1;
                     h = *d0 - *j as f64 * *sl;
@@ -849,7 +849,7 @@ impl StepType for Explicit {
             if period - t - h < eps {
                 h = period - t;
             }
-            // område coupled2: volymviskositetens längd när den termiska gränsen styr
+            // area coupled2: bulk viscosity length when the thermal limit governs
             if let Some(th) = thermal.as_ref() {
                 sys.bulk.le_scale = th.bulk_scale(&sys, &u);
             }
@@ -867,14 +867,14 @@ impl StepType for Explicit {
                     u1[n][s] = val;
                 }
             }
-            // område coupled2: θ(i+1) = θ(i) + Δt θ̇(i)
+            // area coupled2: θ(i+1) = θ(i) + Δt θ̇(i)
             if let Some(th) = thermal.as_ref() {
                 th.advance(&mut u1, h, t1);
                 coupled_full::clear_ts(&mut vh);
             }
             let du: Vec<NodeVec> = (0..nn).map(|n| std::array::from_fn(|s| u1[n][s] - u[n][s])).collect();
             let mut f1 = sys.forces(t1, h, &u1, &du, &vh, &state, &f.xstate, true)?;
-            // område explicit_adv: Euler-nodernas lägen och hastigheter efter advektionen
+            // area explicit_adv: positions and velocities of the Euler nodes after the advection
             if let Some(ad) = sys.adv.as_mut() {
                 ad.after_forces(&mut u1, &mut vh, &sys.dm.constrained);
             }
@@ -883,24 +883,24 @@ impl StepType for Explicit {
                 th.update_rate(prep, &|e| sys.coords(e, &u1), &u1, t1, h, &state, &f1.state)?;
                 coupled_full::clear_ts(&mut a1);
             }
-            // kopplingselementens låsta komponenter: nästa inkrement antas lika långt
+            // constrained components of connector elements: the next increment is assumed equally long
             if constraints::project(prep, &sys.dm, &sys.mass, ctx.nlgeom, &u1, &vh, h, h * h, &[&f1.fext, &f1.fcon], &mut f1.fint, &[&f1.fvis])? {
                 a1 = sys.accel(&f1);
             }
             constraints::commit(prep);
-            // hastighet vid hela inkrementet (utdata)
+            // velocity at the whole increment (output)
             let mut v1: Vec<NodeVec> = (0..nn).map(|n| std::array::from_fn(|s| vh[n][s] + 0.5 * h * a1[n][s])).collect();
-            // föreskrivna frihetsgrader med amplitud: utdata är
-            // amplitudens analytiska acceleration A″ och hastigheten
-            // u̇(i) = u̇(i−½) + ½Δt A″ (halvstegshastigheten från förskjutningarna,
-            // kontrollerat per inkrement för SMOOTH STEP)
+            // prescribed degrees of freedom with an amplitude: the output is
+            // the analytical acceleration A″ of the amplitude and the velocity
+            // u̇(i) = u̇(i−½) + ½Δt A″ (the half-step velocity from the displacements,
+            // checked per increment for SMOOTH STEP)
             for &(n, s, _dv, da) in &lev.bc_rates_at(t1) {
                 if sys.dm.constrained[n] & (1 << s) != 0 {
                     v1[n][s] = vh[n][s] + 0.5 * h * da;
                     a1[n][s] = da;
                 }
             }
-            // energier
+            // energies
             let rf1 = sys.reactions(&f1, &a1);
             en.ie += energy::work(&f.fint, &f1.fint, &du);
             en.ae += f1.dae;
@@ -911,7 +911,7 @@ impl StepType for Explicit {
                 en.fd += fd;
                 en.pw += pw;
             } else if sys.adv.is_some() {
-                // område explicit_adv: partikelkontaktens energier (ALLFD, ALLPW)
+                // area explicit_adv: energies of particle contact (ALLFD, ALLPW)
                 en.fd += f1.fric;
                 en.pw += energy::work(&f.fcon, &f1.fcon, &du) + f1.fric;
             }
@@ -955,7 +955,7 @@ impl StepType for Explicit {
             }
         }
         if ctx.opts.verbose {
-            eprintln!("  explicit: {inc} inkrement, Δt = {dt:.4e}");
+            eprintln!("  explicit: {inc} increments, Δt = {dt:.4e}");
         }
         prep.activity.set_explicit_rule(false);
         ctx.out.frames.extend(frames);

@@ -1,5 +1,5 @@
-// Egenskaper för det som är markerat i modellträdet, med redigering
-// (kommandon mot motorn som går att ångra).
+// Properties of what is selected in the model tree, with editing
+// (commands to the engine that can be undone).
 
 import { useEffect, useState } from "react";
 import { bytes, edit, setUnits } from "../actions";
@@ -10,7 +10,7 @@ import { ScriptPanel } from "./ScriptPanel";
 import { Empty, fmt, NumField, Section, Select, Toggle } from "./ui";
 import { columnUnit, dloadUnit, dofUnit, withUnit } from "./units";
 
-/** Kolumnnamn för kända nyckelord. */
+/** Column names for known keywords. */
 const columns: Record<string, string[]> = {
   ELASTIC: ["E", "ν", "T"],
   PLASTIC: ["σy", "εp", "T"],
@@ -18,13 +18,13 @@ const columns: Record<string, string[]> = {
   EXPANSION: ["α", "T"],
   CONDUCTIVITY: ["k", "T"],
   "SPECIFIC HEAT": ["c", "T"],
-  STATIC: ["Δt start", "Tid", "Δt min", "Δt max"],
-  "HEAT TRANSFER": ["Δt start", "Tid", "Δt min", "Δt max", "ΔT max"],
-  DYNAMIC: ["Δt start", "Tid", "Δt min", "Δt max"],
-  VISCO: ["Δt start", "Tid", "Δt min", "Δt max"],
-  FREQUENCY: ["Antal", "Min", "Max", "Skift"],
-  BUCKLE: ["Antal", "Max", "Vektorer", "Iter."],
-  "COUPLED TEMPERATURE-DISPLACEMENT": ["Δt start", "Tid", "Δt min", "Δt max", "ΔT max"],
+  STATIC: ["Δt start", "Time", "Δt min", "Δt max"],
+  "HEAT TRANSFER": ["Δt start", "Time", "Δt min", "Δt max", "ΔT max"],
+  DYNAMIC: ["Δt start", "Time", "Δt min", "Δt max"],
+  VISCO: ["Δt start", "Time", "Δt min", "Δt max"],
+  FREQUENCY: ["Count", "Min", "Max", "Shift"],
+  BUCKLE: ["Count", "Max", "Vectors", "Iter."],
+  "COUPLED TEMPERATURE-DISPLACEMENT": ["Δt start", "Time", "Δt min", "Δt max", "ΔT max"],
 };
 
 function KeywordTable(p: { kw: KeywordInfo; readOnly: boolean; onLine: (line: number, fields: string[]) => void }) {
@@ -72,7 +72,7 @@ function KeywordTable(p: { kw: KeywordInfo; readOnly: boolean; onLine: (line: nu
           )}
         </div>
       )}
-      {p.kw.lines.length > 60 && <div className="muted">… {p.kw.lines.length - 60} rader till</div>}
+      {p.kw.lines.length > 60 && <div className="muted">… {p.kw.lines.length - 60} more lines</div>}
     </div>
   );
 }
@@ -87,7 +87,7 @@ function Blocks(p: { title: string; blocks: BlockInfo[]; readOnly: boolean; unit
             <span>{b.kind}</span>
             {b.op_new && <span className="param">OP=NEW</span>}
             {b.amplitude && <span className="param">AMPLITUDE={b.amplitude}</span>}
-            <span className="muted">{b.total} rader</span>
+            <span className="muted">{b.total} lines</span>
           </div>
           <div className="rows">
             {b.items.map((it, i) => (
@@ -104,7 +104,7 @@ function Blocks(p: { title: string; blocks: BlockInfo[]; readOnly: boolean; unit
                 )}
               </div>
             ))}
-            {b.total > b.items.length && <div className="muted">… {b.total - b.items.length} rader till</div>}
+            {b.total > b.items.length && <div className="muted">… {b.total - b.items.length} more lines</div>}
           </div>
         </div>
       ))}
@@ -119,9 +119,9 @@ function StepPanel({ st, readOnly }: { st: StepInfo; readOnly: boolean }) {
   const s = st.index;
   return (
     <>
-      <Section title="Steg">
+      <Section title="Step">
         <label className="field">
-          <span className="flabel">Namn</span>
+          <span className="flabel">Name</span>
           <span className="finput">
             <input
               value={name}
@@ -133,32 +133,32 @@ function StepPanel({ st, readOnly }: { st: StepInfo; readOnly: boolean }) {
           </span>
         </label>
         <div className="kv">
-          <span>Procedur</span>
+          <span>Procedure</span>
           <code>*{st.procedure || "–"}</code>
         </div>
         {st.perturbation && (
           <div className="kv">
-            <span>Typ</span>
-            <span>linjär perturbation</span>
+            <span>Type</span>
+            <span>linear perturbation</span>
           </div>
         )}
         <Toggle
           checked={!!st.nlgeom}
-          label="Geometrisk olinjäritet (NLGEOM)"
+          label="Geometric nonlinearity (NLGEOM)"
           onChange={(v) => !readOnly && edit({ kind: "Nlgeom", step: s, value: v })}
         />
-        <NumField label="Största antal inkrement (INC)" value={st.max_increments} min={1} disabled={readOnly} onCommit={(v) => edit({ kind: "MaxIncrements", step: s, value: Math.round(v) })} />
+        <NumField label="Maximum number of increments (INC)" value={st.max_increments} min={1} disabled={readOnly} onCommit={(v) => edit({ kind: "MaxIncrements", step: s, value: Math.round(v) })} />
       </Section>
       {st.procedure_keyword && (
-        <Section title="Procedur">
+        <Section title="Procedure">
           <KeywordTable kw={st.procedure_keyword} readOnly={readOnly} onLine={(line, fields) => edit({ kind: "ProcedureData", step: s, line, fields })} />
         </Section>
       )}
-      <Blocks title="Randvillkor" blocks={st.bcs} readOnly={readOnly} unit={(w) => dofUnit(w, false, u)} onValue={(block, item, value) => edit({ kind: "BcValue", step: s, block, item, value })} />
-      <Blocks title="Punktlaster" blocks={st.cloads} readOnly={readOnly} unit={(w) => dofUnit(w, true, u)} onValue={(block, item, value) => edit({ kind: "CloadValue", step: s, block, item, value })} />
-      <Blocks title="Utbredda laster" blocks={st.dloads} readOnly={readOnly} unit={(w) => dloadUnit(w, u)} onValue={(block, item, value) => edit({ kind: "DloadValue", step: s, block, item, value })} />
+      <Blocks title="Boundary conditions" blocks={st.bcs} readOnly={readOnly} unit={(w) => dofUnit(w, false, u)} onValue={(block, item, value) => edit({ kind: "BcValue", step: s, block, item, value })} />
+      <Blocks title="Point loads" blocks={st.cloads} readOnly={readOnly} unit={(w) => dofUnit(w, true, u)} onValue={(block, item, value) => edit({ kind: "CloadValue", step: s, block, item, value })} />
+      <Blocks title="Distributed loads" blocks={st.dloads} readOnly={readOnly} unit={(w) => dloadUnit(w, u)} onValue={(block, item, value) => edit({ kind: "DloadValue", step: s, block, item, value })} />
       {st.other.length > 0 && (
-        <Section title="Övrigt i steget">
+        <Section title="Other in the step">
           <div className="chips">
             {st.other.map((o, i) => (
               <code key={i}>*{o}</code>
@@ -178,20 +178,20 @@ function ModelSummary({ m }: { m: ModelInfo }) {
   const size = m.bbox_max.map((v, i) => (v ?? 0) - (m.bbox_min[i] ?? 0));
   return (
     <>
-      <Section title="Modell">
+      <Section title="Model">
         {m.heading && <p className="heading">{m.heading}</p>}
         <div className="stats">
           <div>
-            <b>{m.nodes.toLocaleString("sv")}</b>
-            <span>noder</span>
+            <b>{m.nodes.toLocaleString("en-US")}</b>
+            <span>nodes</span>
           </div>
           <div>
-            <b>{m.elements.toLocaleString("sv")}</b>
-            <span>element</span>
+            <b>{m.elements.toLocaleString("en-US")}</b>
+            <span>elements</span>
           </div>
           <div>
             <b>{m.steps.length}</b>
-            <span>steg</span>
+            <span>steps</span>
           </div>
           <div>
             <b>{session?.script_dim ?? m.dim}D</b>
@@ -199,39 +199,39 @@ function ModelSummary({ m }: { m: ModelInfo }) {
           </div>
         </div>
         <div className="kv">
-          <span>Storlek</span>
+          <span>Size</span>
           <span className="mono">
             {size.map((v) => fmt(v, 3)).join(" × ")}
             {session?.unit_symbols.length && <span className="unit"> {session.unit_symbols.length}</span>}
           </span>
         </div>
         <div className="kv">
-          <span>Källa</span>
+          <span>Source</span>
           <span className="mono ellipsis" title={session?.path ?? ""}>
-            {session?.path ?? "ny modell"}
+            {session?.path ?? "new model"}
           </span>
         </div>
         {session && (
           <>
-            <Select label="Enheter" value={session.units} options={unitSystems.map(([value, label]) => ({ value, label }))} onChange={setUnits} />
-            <div className="muted">Bara etiketter: motorn räknar med talen som de står, och inget räknas om när du byter.</div>
+            <Select label="Units" value={session.units} options={unitSystems.map(([value, label]) => ({ value, label }))} onChange={setUnits} />
+            <div className="muted">Labels only: the engine computes with the numbers as written, and nothing is converted when you switch.</div>
           </>
         )}
         <div className="kv">
-          <span>Minne (dator)</span>
+          <span>Memory (computer)</span>
           <span>{bytes(mem)}</span>
         </div>
         {est && (
           <div className="kv">
-            <span>Uppskattat behov</span>
+            <span>Estimated requirement</span>
             <span>
-              {bytes(est.solver.startsWith("iterative") ? est.iterative_bytes : est.direct_bytes)} · {est.unknowns?.toLocaleString("sv")} obekanta
+              {bytes(est.solver.startsWith("iterative") ? est.iterative_bytes : est.direct_bytes)} · {est.unknowns?.toLocaleString("en-US")} unknowns
             </span>
           </div>
         )}
       </Section>
       {m.warnings.length > 0 && (
-        <Section title={`Varningar (${m.warnings.length})`}>
+        <Section title={`Warnings (${m.warnings.length})`}>
           <ul className="warnings">
             {m.warnings.slice(0, 50).map((w, i) => (
               <li key={i}>{w}</li>
@@ -248,20 +248,20 @@ export function Inspector() {
   const m = useStore((s) => s.model);
   const session = useStore((s) => s.session);
   const id = useStore((s) => s.id);
-  if (!m || !session || !sel) return <Empty>Välj något i modellträdet.</Empty>;
+  if (!m || !session || !sel) return <Empty>Select something in the model tree.</Empty>;
   const readOnly = session.kind === "rusty";
-  // material i ordning i skriptet; motorns material heter M1, M2, … i samma ordning
+  // materials in script order; the engine's materials are named M1, M2, … in the same order
   const scriptLine = (): number | null => {
     if (sel.type !== "material") return null;
     const lines = parseScript(session.script ?? "").filter((c) => c.cmd === "material");
-    // geometri före första materialraden får standardstål först; då stämmer inte ordningen
+    // geometry before the first material line gets default steel first; then the order does not match
     return lines.length === m.materials.length ? (lines[sel.index]?.line ?? null) : null;
   };
   const roNote = readOnly && sel.type !== "model" && sel.type !== "script" && (
     <div className="note">
-      .rusty-modeller byggs i panelen Bygg modell.{" "}
+      .rusty models are built in the Build model panel.{" "}
       <button type="button" className="link" onClick={() => set({ sel: { type: "script" }, scriptEdit: scriptLine() })}>
-        {scriptLine() !== null ? "Ändra materialet" : "Öppna Bygg modell"}
+        {scriptLine() !== null ? "Edit the material" : "Open Build model"}
       </button>
     </div>
   );
@@ -269,18 +269,18 @@ export function Inspector() {
     case "model":
       return <ModelSummary m={m} />;
     case "script":
-      // ny panel per modell: radnummer och formulär hör till den modell de öppnades i
+      // new panel per model: line numbers and forms belong to the model they were opened in
       return <ScriptPanel key={id ?? -1} />;
     case "material": {
       const mt = m.materials[sel.index];
-      if (!mt) return <Empty>Materialet finns inte längre.</Empty>;
+      if (!mt) return <Empty>The material no longer exists.</Empty>;
       return (
         <>
           {roNote}
           <Section title={`Material ${mt.name}`}>
-            <NumField label="Densitet ρ" unit={session.unit_symbols.density} value={mt.density} min={0} disabled={readOnly} onCommit={(v) => edit({ kind: "Density", material: mt.index, value: v })} />
+            <NumField label="Density ρ" unit={session.unit_symbols.density} value={mt.density} min={0} disabled={readOnly} onCommit={(v) => edit({ kind: "Density", material: mt.index, value: v })} />
           </Section>
-          <Section title="Beteenden">
+          <Section title="Behaviors">
             {mt.behaviors.map((b, bi) => (
               <KeywordTable key={bi} kw={b} readOnly={readOnly} onLine={(line, fields) => edit({ kind: "MaterialData", material: mt.index, behavior: bi, line, fields })} />
             ))}
@@ -290,17 +290,17 @@ export function Inspector() {
     }
     case "section": {
       const s = m.sections[sel.index];
-      if (!s) return <Empty>Tvärsnittet finns inte längre.</Empty>;
+      if (!s) return <Empty>The section no longer exists.</Empty>;
       return (
         <>
           {roNote}
-          <Section title="Tvärsnitt">
+          <Section title="Section">
             <div className="kv">
-              <span>Elementset</span>
+              <span>Element set</span>
               <code>{s.elset}</code>
             </div>
             <div className="kv">
-              <span>Typ</span>
+              <span>Type</span>
               <span>{s.kind}</span>
             </div>
             <div className="kv">
@@ -317,18 +317,18 @@ export function Inspector() {
               </button>
             </div>
             <div className="kv">
-              <span>Element</span>
+              <span>Elements</span>
               <span>{s.elements}</span>
             </div>
             {s.shape && (
               <div className="kv">
-                <span>Profil</span>
+                <span>Profile</span>
                 <span>{s.shape}</span>
               </div>
             )}
             {s.thickness !== null && (
               <NumField
-                label={s.kind === "SHELL" ? "Tjocklek" : "Tjocklek / area"}
+                label={s.kind === "SHELL" ? "Thickness" : "Thickness / area"}
                 unit={s.kind === "SHELL" ? session.unit_symbols.length : [session.unit_symbols.length, session.unit_symbols.area].filter(Boolean).join(" / ")}
                 value={s.thickness}
                 min={0}
@@ -342,7 +342,7 @@ export function Inspector() {
     }
     case "step": {
       const st = m.steps[sel.index];
-      if (!st) return <Empty>Steget finns inte längre.</Empty>;
+      if (!st) return <Empty>The step no longer exists.</Empty>;
       return (
         <>
           {roNote}
@@ -354,27 +354,27 @@ export function Inspector() {
       return (
         <>
           {roNote}
-          <Blocks title="Randvillkor i modelldata" blocks={m.initial_bcs} readOnly={readOnly} unit={(w) => dofUnit(w, false, session.unit_symbols)} onValue={(block, item, value) => edit({ kind: "BcValue", step: null, block, item, value })} />
+          <Blocks title="Boundary conditions in model data" blocks={m.initial_bcs} readOnly={readOnly} unit={(w) => dofUnit(w, false, session.unit_symbols)} onValue={(block, item, value) => edit({ kind: "BcValue", step: null, block, item, value })} />
         </>
       );
     case "set": {
       const list = sel.kind === "nset" ? m.nsets : sel.kind === "elset" ? m.elsets : m.surfaces;
       const it = list.find((x) => x.name === sel.name);
       return (
-        <Section title={sel.kind === "nset" ? "Nodset" : sel.kind === "elset" ? "Elementset" : "Yta"}>
+        <Section title={sel.kind === "nset" ? "Node set" : sel.kind === "elset" ? "Element set" : "Surface"}>
           <div className="kv">
-            <span>Namn</span>
+            <span>Name</span>
             <code>{sel.name}</code>
           </div>
           <div className="kv">
-            <span>{sel.kind === "nset" ? "Noder" : sel.kind === "elset" ? "Element" : "Ytor/noder"}</span>
+            <span>{sel.kind === "nset" ? "Nodes" : sel.kind === "elset" ? "Elements" : "Faces/nodes"}</span>
             <span>{it?.count ?? 0}</span>
           </div>
           {sel.kind === "elset" && m.sections.some((s) => s.elset === sel.name) && (
             <div className="kv">
-              <span>Tvärsnitt</span>
+              <span>Section</span>
               <button type="button" className="link" onClick={() => set({ sel: { type: "section", index: m.sections.findIndex((s) => s.elset === sel.name) } })}>
-                visa
+                show
               </button>
             </div>
           )}
@@ -384,13 +384,13 @@ export function Inspector() {
     case "etype": {
       const t = m.element_types.find((x) => x.name === sel.name);
       return (
-        <Section title="Elementtyp">
+        <Section title="Element type">
           <div className="kv">
-            <span>Typ</span>
+            <span>Type</span>
             <code>{sel.name}</code>
           </div>
           <div className="kv">
-            <span>Antal</span>
+            <span>Count</span>
             <span>{t?.count ?? 0}</span>
           </div>
         </Section>

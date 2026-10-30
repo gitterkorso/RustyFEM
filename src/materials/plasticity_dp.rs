@@ -1,24 +1,24 @@
-//! Linjär Drucker–Prager-plasticitet (*DRUCKER PRAGER, SHEAR CRITERION=LINEAR,
-//! K = 1) med hårdnande från *DRUCKER PRAGER HARDENING.
+//! Linear Drucker–Prager plasticity (*DRUCKER PRAGER, SHEAR CRITERION=LINEAR,
+//! K = 1) with hardening from *DRUCKER PRAGER HARDENING.
 //!
-//! Flytvillkor och flödespotential (p = −tr σ/3, q = von Mises-spänning):
+//! Yield criterion and flow potential (p = −tr σ/3, q = von Mises stress):
 //!
 //!   F = q − p tan β − d(ε̄p) = 0,   G = q − p tan ψ
 //!
-//! där β är friktionsvinkeln och ψ dilatationsvinkeln (icke-associativt flöde
-//! när ψ ≠ β). Kohesionen d bestäms av hårdnandekurvan:
-//! - TYPE=COMPRESSION (standard): d = (1 − tan β/3) σc(ε̄p),
-//!   ε̄̇p = λ̇ (1 − tan ψ/3) (axiell plastisk töjning vid enaxligt tryck),
+//! where β is the friction angle and ψ the dilation angle (non-associated flow
+//! when ψ ≠ β). The cohesion d is determined by the hardening curve:
+//! - TYPE=COMPRESSION (default): d = (1 − tan β/3) σc(ε̄p),
+//!   ε̄̇p = λ̇ (1 − tan ψ/3) (axial plastic strain in uniaxial compression),
 //! - TYPE=TENSION: d = (1 + tan β/3) σt(ε̄p), ε̄̇p = λ̇ (1 + tan ψ/3),
-//! - TYPE=SHEAR: d = √3 τ(ε̄p)... stöds inte ännu.
+//! - TYPE=SHEAR: d = √3 τ(ε̄p)... not supported yet.
 //!
-//! Implicit Euler: med prövotillståndet (q_tr, p_tr) blir
-//! q = q_tr − 3G Δλ och p = p_tr + K Δλ tan ψ, och den skalära ekvationen
-//! q − p tan β − d(ε̄p_n + c_ψ Δλ) = 0 löses med Newton. Om q skulle bli
-//! negativt görs retur till konens spets (q = 0). Tangenten är numerisk
-//! (framåtdifferens) och osymmetrisk vid icke-associativt flöde. Assembleringen
-//! använder dess symmetriska del med symmetriska lösare (standard utan
-//! UNSYMM) och hela tangenten med *STEP, UNSYMM=YES.
+//! Implicit Euler: with the trial state (q_tr, p_tr),
+//! q = q_tr − 3G Δλ and p = p_tr + K Δλ tan ψ, and the scalar equation
+//! q − p tan β − d(ε̄p_n + c_ψ Δλ) = 0 is solved with Newton. If q would become
+//! negative, the return is made to the cone apex (q = 0). The tangent is numerical
+//! (forward difference) and unsymmetric for non-associated flow. The assembly
+//! uses its symmetric part with symmetric solvers (default without
+//! UNSYMM) and the full tangent with *STEP, UNSYMM=YES.
 
 use super::plasticity::{dev, iso_d6, mises, mv6, update_reduced, Hardening, M6, V6};
 use super::{MatInput, MatOutput, MaterialFactory, MaterialModel, StressMode};
@@ -27,7 +27,7 @@ use crate::model::{fail, Result};
 use std::sync::Arc;
 
 pub static FACTORIES: &[MaterialFactory] = &[MaterialFactory {
-    name: "Drucker–Prager-plasticitet",
+    name: "Drucker–Prager plasticity",
     consumes: &["ELASTIC", "DRUCKER PRAGER", "DRUCKER PRAGER HARDENING"],
     priority: 10,
     build: Some(build),
@@ -42,7 +42,7 @@ pub struct DruckerPrager {
     pub ce: M6,
     pub tan_beta: f64,
     pub tan_psi: f64,
-    /// d = cd · σ_kurva(ε̄p), ε̄̇p = ce_rate · λ̇
+    /// d = cd · σ_curve(ε̄p), ε̄̇p = ce_rate · λ̇
     pub cd: f64,
     pub c_rate: f64,
     pub hard: Hardening,
@@ -58,21 +58,21 @@ fn table(kw: &RawKeyword) -> Result<Vec<(f64, f64)>> {
     for d in &kw.data {
         let v = kw.floats(d)?;
         if v.len() > 3 && v[3..].iter().any(|&x| x != 0.0) || v.get(2).is_some_and(|&x| x != 0.0) {
-            return kw.err_at(d.line, "hastighets- eller temperaturberoende hårdnande stöds inte ännu");
+            return kw.err_at(d.line, "rate- or temperature-dependent hardening is not supported yet");
         }
         let (s, p) = (v.first().copied().unwrap_or(0.0), v.get(1).copied().unwrap_or(0.0));
         if !(s > 0.0) {
-            return kw.err_at(d.line, "flytspänningen ska vara positiv");
+            return kw.err_at(d.line, "the yield stress must be positive");
         }
         match t.last() {
-            Some(&(pl, _)) if !(p > pl) => return kw.err_at(d.line, "den plastiska töjningen ska öka"),
-            None if p != 0.0 => return kw.err_at(d.line, "första punkten ska ha plastisk töjning 0"),
+            Some(&(pl, _)) if !(p > pl) => return kw.err_at(d.line, "the plastic strain must increase"),
+            None if p != 0.0 => return kw.err_at(d.line, "the first point must have plastic strain 0"),
             _ => {}
         }
         t.push((p, s));
     }
     if t.is_empty() {
-        return kw.err("flytspänning saknas");
+        return kw.err("yield stress missing");
     }
     Ok(t)
 }
@@ -82,46 +82,46 @@ fn build(def: &MaterialDef) -> Result<Option<Arc<dyn MaterialModel>>> {
     if super::plasticity_dp2::claims(def) {
         return Ok(None);
     }
-    let Some(el) = def.behavior("ELASTIC") else { return kw.err("*DRUCKER PRAGER kräver *ELASTIC") };
+    let Some(el) = def.behavior("ELASTIC") else { return kw.err("*DRUCKER PRAGER requires *ELASTIC") };
     if el.param_upper("TYPE").is_some_and(|t| t != "ISOTROPIC") || el.data.len() > 1 {
-        return el.err("Drucker–Prager kräver isotrop, temperaturoberoende elasticitet");
+        return el.err("Drucker–Prager requires isotropic, temperature-independent elasticity");
     }
     let ev = el.first_floats()?;
     let (e, nu) = (ev.first().copied().unwrap_or(0.0), ev.get(1).copied().unwrap_or(0.0));
     if !(e > 0.0 && nu > -1.0 && nu < 0.5) {
-        return el.err("E ska vara positivt och ν mellan −1 och 0,5");
+        return el.err("E must be positive and ν between −1 and 0.5");
     }
     match kw.param_upper("SHEAR CRITERION").as_deref() {
         None | Some("LINEAR") => {}
-        Some(o) => return kw.err(format!("SHEAR CRITERION={o} stöds inte ännu (bara LINEAR)")),
+        Some(o) => return kw.err(format!("SHEAR CRITERION={o} is not supported yet (only LINEAR)")),
     }
     if kw.data.len() > 1 || kw.has("DEPENDENCIES") {
-        return kw.err("temperaturberoende parametrar stöds inte ännu");
+        return kw.err("temperature-dependent parameters are not supported yet");
     }
     let v = kw.first_floats()?;
     let beta = v.first().copied().unwrap_or(0.0);
     let kk = v.get(1).copied().filter(|&x| x != 0.0).unwrap_or(1.0);
     let psi = v.get(2).copied().unwrap_or(beta);
     if (kk - 1.0).abs() > 1e-12 {
-        return kw.err("K ≠ 1 (tredje invariantens inverkan) stöds inte ännu");
+        return kw.err("K ≠ 1 (effect of the third invariant) is not supported yet");
     }
     if !(0.0..90.0).contains(&beta) || !(0.0..90.0).contains(&psi) {
-        return kw.err("β och ψ ska ligga mellan 0 och 90 grader");
+        return kw.err("β and ψ must lie between 0 and 90 degrees");
     }
     let Some(hk) = def.behavior("DRUCKER PRAGER HARDENING") else {
-        return kw.err("*DRUCKER PRAGER kräver *DRUCKER PRAGER HARDENING");
+        return kw.err("*DRUCKER PRAGER requires *DRUCKER PRAGER HARDENING");
     };
     if hk.has("RATE") || hk.has("DEPENDENCIES") {
-        return hk.err("hastighets- eller temperaturberoende hårdnande stöds inte ännu");
+        return hk.err("rate- or temperature-dependent hardening is not supported yet");
     }
     let (tb, tp) = (beta.to_radians().tan(), psi.to_radians().tan());
     let (cd, c_rate) = match hk.param_upper("TYPE").as_deref() {
         None | Some("COMPRESSION") => (1.0 - tb / 3.0, 1.0 - tp / 3.0),
         Some("TENSION") => (1.0 + tb / 3.0, 1.0 + tp / 3.0),
-        Some(o) => return hk.err(format!("TYPE={o} stöds inte ännu (COMPRESSION, TENSION)")),
+        Some(o) => return hk.err(format!("TYPE={o} is not supported yet (COMPRESSION, TENSION)")),
     };
     if !(cd > 0.0) {
-        return kw.err("tan β ≥ 3 ger ingen kohesion för hårdnande i tryck");
+        return kw.err("tan β ≥ 3 gives no cohesion for hardening in compression");
     }
     let g = e / (2.0 * (1.0 + nu));
     let k = e / (3.0 * (1.0 - 2.0 * nu));
@@ -146,7 +146,7 @@ impl DruckerPrager {
         if f_tr <= 1e-12 * d(pn).0 {
             return Ok((sig_tr, false));
         }
-        // Newton på Δλ
+        // Newton on Δλ
         let gfun = |dl: f64| -> (f64, f64) {
             let (dv, h) = d(pn + self.c_rate * dl);
             let q = q_tr - 3.0 * g * dl;
@@ -167,7 +167,7 @@ impl DruckerPrager {
             }
         }
         if !conv {
-            return fail("returalgoritmen för Drucker–Prager konvergerade inte");
+            return fail("the return algorithm for Drucker–Prager did not converge");
         }
         let sig;
         let mut dep = [0.0; 6];
@@ -183,7 +183,7 @@ impl DruckerPrager {
                 s[i] -= p;
             }
             sig = s;
-            // Δεp = Δλ (3/2 s_tr/q_tr + tan ψ/3 I), ingenjörsskjuvning
+            // Δεp = Δλ (3/2 s_tr/q_tr + tan ψ/3 I), engineering shear
             for i in 0..6 {
                 let n = if q_tr > 0.0 { 1.5 * s_tr[i] / q_tr } else { 0.0 };
                 dep[i] = dl * n * if i < 3 { 1.0 } else { 2.0 };
@@ -193,9 +193,9 @@ impl DruckerPrager {
             }
             stn[P] = pn + self.c_rate * dl;
         } else {
-            // retur till spetsen: q = 0, p så att F = 0 (kohesion vid ε̄p_n)
+            // return to the apex: q = 0, p such that F = 0 (cohesion at ε̄p_n)
             if self.tan_beta <= 0.0 {
-                return fail("Drucker–Prager: spetsretur kräver β > 0");
+                return fail("Drucker–Prager: apex return requires β > 0");
             }
             let p = -d(pn).0 / self.tan_beta;
             sig = [-p, -p, -p, 0.0, 0.0, 0.0];
@@ -206,7 +206,7 @@ impl DruckerPrager {
             for i in 0..3 {
                 dep[i] += dvol / 3.0;
             }
-            // deviatorisk del som vid q = 0: Δλ = q_tr/(3G)
+            // deviatoric part as for q = 0: Δλ = q_tr/(3G)
             stn[P] = pn + self.c_rate * q_tr / (3.0 * g);
         }
         for i in 0..6 {

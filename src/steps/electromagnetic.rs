@@ -1,22 +1,22 @@
-//! *ELECTROMAGNETIC, LOW FREQUENCY, TIME HARMONIC: virvelströmsanalys med
-//! kantelementen i `elements/electromagnetic.rs` (EMC3D4).
+//! *ELECTROMAGNETIC, LOW FREQUENCY, TIME HARMONIC: eddy current analysis with
+//! the edge elements in `elements/electromagnetic.rs` (EMC3D4).
 //!
-//! Ekvationen för den komplexa vektorpotentialen A (tidsberoende e^{iωt}):
+//! The equation for the complex vector potential A (time dependence e^{iωt}):
 //!
 //!   ∇×(μ⁻¹ ∇×A) + iωσA = J_s,
 //!
-//! med den naturliga randvillkoret n × H = 0 på modellens yta. Det reella
-//! systemet [K, −ωM; ωM, K] (a_r, a_i) = (f, 0) löses med den osymmetriska
-//! lösaren, en block (två ekvationer) per kant. Indata: *MAGNETIC
-//! PERMEABILITY (μ, isotrop), *ELECTRICAL CONDUCTIVITY (σ, isotrop) och
-//! *DECURRENT med typen CJ (strömtäthet: storlek och riktning). En frekvens per
-//! dataraad (frekvensområden ger fel).
+//! with the natural boundary condition n × H = 0 on the model surface. The real
+//! system [K, −ωM; ωM, K] (a_r, a_i) = (f, 0) is solved with the unsymmetric
+//! solver, one block (two equations) per edge. Input: *MAGNETIC
+//! PERMEABILITY (μ, isotropic), *ELECTRICAL CONDUCTIVITY (σ, isotropic) and
+//! *DECURRENT with type CJ (current density: magnitude and direction). One frequency per
+//! data line (frequency ranges give an error).
 //!
-//! Utdata per element (hela elementet; EMC2D3: EMB3, EMH3 och
+//! Output per element (whole element; EMC2D3: EMB3, EMH3 and
 //! EMCD1–2): EMB = ∇×A, EMH = B/μ,
-//! EMCD = −iωσ Ā (virvelströmmen, elementmedel) och EMJH (tidsmedelvärdet av
-//! Joulevärmen per volym ½|J̄|²/σ ur elementmedlet); realdelen som fältet självt och
-//! imaginärdelen som FÄLT_IM.
+//! EMCD = −iωσ Ā (the eddy current, element average) and EMJH (time average of
+//! the Joule heat per volume ½|J̄|²/σ from the element average); the real part as the field itself and
+//! the imaginary part as FIELD_IM.
 
 use super::api::{StepCtx, StepType};
 use crate::elements::electromagnetic as em;
@@ -32,53 +32,53 @@ use std::collections::BTreeMap;
 pub struct Electromagnetic;
 pub static STEP_TYPES: &[&dyn StepType] = &[&Electromagnetic];
 
-/// μ och σ för ett material.
+/// μ and σ for a material.
 fn em_props(model: &FeModel, mi: usize) -> Result<(f64, f64)> {
     let def = &model.materials[mi];
     let first = |name: &str| -> Result<Option<f64>> {
         let Some(kw) = def.behavior(name) else { return Ok(None) };
         let ty = kw.param_upper("TYPE").unwrap_or_else(|| "ISO".into());
         if ty != "ISO" && ty != "ISOTROPIC" {
-            return kw.err(format!("TYPE={ty} stöds inte ännu för elektromagnetism (ISO)"));
+            return kw.err(format!("TYPE={ty} is not yet supported for electromagnetics (ISO)"));
         }
         if kw.has("FREQUENCY") || kw.has("DEPENDENCIES") {
-            return kw.err("frekvens- och fältberoende stöds inte ännu");
+            return kw.err("frequency and field dependence are not yet supported");
         }
         let t: Table = crate::materials::heat::read_table(kw, 1)?;
         if t.varies() {
-            return kw.err("temperaturberoende värden stöds inte ännu");
+            return kw.err("temperature-dependent values are not yet supported");
         }
         Ok(Some(t.value(0.0)))
     };
     let Some(mu) = first("MAGNETIC PERMEABILITY")? else {
-        return fail(format!("material {}: *MAGNETIC PERMEABILITY saknas", def.name));
+        return fail(format!("material {}: *MAGNETIC PERMEABILITY missing", def.name));
     };
     if mu <= 0.0 {
-        return fail(format!("material {}: permeabiliteten ska vara positiv", def.name));
+        return fail(format!("material {}: the permeability must be positive", def.name));
     }
     Ok((mu, first("ELECTRICAL CONDUCTIVITY")?.unwrap_or(0.0)))
 }
 
-/// Frekvenserna från procedurens datarader.
+/// The frequencies from the procedure's data lines.
 fn frequencies(step: &StepDef) -> Result<Vec<f64>> {
-    let Some(kw) = step.procedure.as_ref() else { return fail("proceduren saknas") };
+    let Some(kw) = step.procedure.as_ref() else { return fail("the procedure is missing") };
     if !kw.has("LOW FREQUENCY") {
-        return kw.err("bara LOW FREQUENCY stöds");
+        return kw.err("only LOW FREQUENCY is supported");
     }
     if !kw.has("TIME HARMONIC") {
-        return kw.err("bara TIME HARMONIC stöds ännu (TRANSIENT saknas)");
+        return kw.err("only TIME HARMONIC is supported so far (TRANSIENT is missing)");
     }
     let mut out = Vec::new();
     for d in &kw.data {
         let v = kw.floats(d)?;
         let f0 = v.first().copied().unwrap_or(0.0);
         if v.get(1).copied().unwrap_or(0.0) != 0.0 {
-            return kw.err_at(d.line, "frekvensområden stöds inte ännu (ange en frekvens per rad)");
+            return kw.err_at(d.line, "frequency ranges are not yet supported (specify one frequency per line)");
         }
         out.push(f0);
     }
     if out.is_empty() {
-        return kw.err("frekvens saknas");
+        return kw.err("frequency missing");
     }
     Ok(out)
 }
@@ -105,19 +105,19 @@ impl StepType for Electromagnetic {
     fn run(&self, ctx: &mut StepCtx) -> Result<()> {
         let model = ctx.prep.model;
         if ctx.step.procedure.as_ref().is_some_and(|k| k.has("STABILIZATION")) {
-            return fail("STABILIZATION= stöds inte ännu");
+            return fail("STABILIZATION= is not yet supported");
         }
         let freqs = frequencies(ctx.step)?;
-        // kanter: (min nod, max nod) → index
+        // edges: (min node, max node) → index
         let mut edge_idx: BTreeMap<(usize, usize), usize> = BTreeMap::new();
         let mut els = Vec::new();
         let mut props: BTreeMap<usize, (f64, f64)> = BTreeMap::new();
         for (e, el) in model.elements.iter().enumerate() {
             let Some(eme) = em::lookup(el.etype.name()) else {
-                return fail(format!("{}: *ELECTROMAGNETIC kräver elektromagnetiska element (EMC2D3, EMC3D4)", model.elem_name(e)));
+                return fail(format!("{}: *ELECTROMAGNETIC requires electromagnetic elements (EMC2D3, EMC3D4)", model.elem_name(e)));
             };
-            let Some(si) = el.section else { return fail(format!("{}: saknar *SOLID SECTION", model.elem_name(e))) };
-            let Some(mi) = model.sections[si].material_index else { return fail(format!("{}: tvärsnittet saknar material", model.elem_name(e))) };
+            let Some(si) = el.section else { return fail(format!("{}: has no *SOLID SECTION", model.elem_name(e))) };
+            let Some(mi) = model.sections[si].material_index else { return fail(format!("{}: the section has no material", model.elem_name(e))) };
             let (mu, sigma) = match props.get(&mi) {
                 Some(p) => *p,
                 None => {
@@ -131,7 +131,7 @@ impl StepType for Electromagnetic {
             let mut edges = Vec::new();
             let mut loc = Vec::new();
             for &(a, b) in eme.edges() {
-                // kantfunktionerna i den globala riktningen (lägre → högre nodindex)
+                // the edge functions in the global direction (lower → higher node index)
                 let (na, nb) = (el.nodes[a], el.nodes[b]);
                 loc.push(if na > nb { (b, a) } else { (a, b) });
                 let key = (na.min(nb), na.max(nb));
@@ -142,7 +142,7 @@ impl StepType for Electromagnetic {
             els.push(EmEl { e, edges, f, vol: g.vol, mu, sigma, planar: eme.planar });
         }
         let ne = edge_idx.len();
-        // källor: *DECURRENT CJ
+        // sources: *DECURRENT CJ
         let mut src = vec![[0.0f64; 3]; model.elements.len()];
         for l in ctx.loads.dloads_at(1.0) {
             match l.kind.as_str() {
@@ -150,19 +150,19 @@ impl StepType for Electromagnetic {
                     let d = [0, 1, 2].map(|c| l.extra.get(c).copied().unwrap_or(0.0));
                     let n = (d[0] * d[0] + d[1] * d[1] + d[2] * d[2]).sqrt();
                     if n == 0.0 {
-                        return fail(format!("{}: *DECURRENT CJ saknar riktning", model.elem_name(l.elem)));
+                        return fail(format!("{}: *DECURRENT CJ has no direction", model.elem_name(l.elem)));
                     }
                     for c in 0..3 {
                         src[l.elem][c] += l.magnitude * d[c] / n;
                     }
                 }
-                k => return fail(format!("{}: lasten {k} stöds inte i *ELECTROMAGNETIC", model.elem_name(l.elem))),
+                k => return fail(format!("{}: the load {k} is not supported in *ELECTROMAGNETIC", model.elem_name(l.elem))),
             }
         }
         if !ctx.loads.bc.is_empty() || !ctx.loads.cload.is_empty() {
-            return fail("*BOUNDARY och *CLOAD stöds inte i *ELECTROMAGNETIC (randvillkoret är n × H = 0)");
+            return fail("*BOUNDARY and *CLOAD are not supported in *ELECTROMAGNETIC (the boundary condition is n × H = 0)");
         }
-        // matrisstrukturen: block = kant (två ekvationer), koordinat = kantens mitt
+        // the matrix structure: block = edge (two equations), coordinate = edge midpoint
         let mut coords = vec![[0.0; 3]; ne];
         for (&(a, b), &i) in &edge_idx {
             coords[i] = [0, 1, 2].map(|c| 0.5 * (model.nodes[a][c] + model.nodes[b][c]));
@@ -204,7 +204,7 @@ impl StepType for Electromagnetic {
                 }
             }
             if let Err(q) = mat.factor() {
-                return fail(format!("ekvationssystemet är singulärt (ekvation {q}); icke-ledande områden kräver stabilisering, som inte stöds ännu"));
+                return fail(format!("the equation system is singular (equation {q}); non-conducting regions require stabilization, which is not yet supported"));
             }
             mat.solve(&mut rhs);
             let ar: Vec<f64> = (0..ne).map(|i| rhs[first[i]]).collect();
@@ -238,12 +238,12 @@ impl StepType for Electromagnetic {
                 let jr = am[1].map(|x| w * el.sigma * x);
                 let ji = am[0].map(|x| -w * el.sigma * x);
                 let mut jh = IpField::new("EMJH", &["EMJH"]);
-                // Joulevärmen ur elementets medelström: ½ |J̄|²/σ
+                // the Joule heat from the element's mean current: ½ |J̄|²/σ
                 let _ = aa;
                 let j2: f64 = (0..3).map(|c| jr[c] * jr[c] + ji[c] * ji[c]).sum();
                 jh.points.push((0, 0, vec![if el.sigma > 0.0 { 0.5 * j2 / el.sigma } else { 0.0 }]));
                 elem[el.e] = if el.planar {
-                    // plant: B och H vinkelräta mot planet (EMB3, EMH3), strömmen i planet
+                    // planar: B and H perpendicular to the plane (EMB3, EMH3), the current in the plane
                     let sc = |name: &str, v: f64| {
                         let base = name.trim_end_matches("_IM");
                         let mut f = IpField::new(name, &[base]);

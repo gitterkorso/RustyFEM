@@ -1,63 +1,63 @@
-//! Akustiska och kopplade akustisk–strukturella steg: *FREQUENCY,
-//! *STEADY STATE DYNAMICS, DIRECT och *DYNAMIC (implicit) för modeller med
-//! akustiska element (`elements/acoustic.rs`). Stegtypen tar över de vanliga
-//! stegen (`claim_model`) när modellen har akustiska element.
+//! Acoustic and coupled acoustic–structural steps: *FREQUENCY,
+//! *STEADY STATE DYNAMICS, DIRECT and *DYNAMIC (implicit) for models with
+//! acoustic elements (`elements/acoustic.rs`). The step type takes over the regular
+//! steps (`claim_model`) when the model has acoustic elements.
 //!
-//! Ekvationer (kopplad akustik–struktur, Zienkiewicz–Newton), med S kopplingsmatrisen från *TIE
-//! (`interactions/acoustic.rs`, fluidens utåtriktade normal):
+//! Equations (coupled acoustic–structural, Zienkiewicz–Newton), with S the coupling matrix from *TIE
+//! (`interactions/acoustic.rs`, outward fluid normal):
 //!
 //! ```text
 //!   [M_s 0  ] [ü]   [C_s 0  ] [u̇]   [K_s −Sᵀ ] [u]   [F]
 //!   [S   M_f] [p̈] + [0   C_f] [ṗ] + [0    K_f] [p] = [Q]
 //! ```
 //!
-//! - M_f = ∫ N N/K_f dV, K_f = ∫ ∇N·∇N/ρ_f dV, Q = inåtriktad volymacceleration
-//!   (*CLOAD på frihetsgrad 8).
-//! - Impedans (*IMPEDANCE PROPERTY med *SIMPEDANCE/*IMPEDANCE): randtermen
-//!   (iΩ/c₁ − Ω²/k₁) ∫N N dS i frekvensdomänen, dvs. dämpning ∫N N/c₁ och
-//!   massa ∫N N/k₁ i tidsdomänen. DATA=IMPEDANCE: varje rad görs om till
-//!   admittansen 1/Z vid sin frekvens, och admittansen interpoleras.
-//! - Icke-reflekterande rand (NONREFLECTING=PLANAR/CIRCULAR/SPHERICAL):
-//!   n⁻·∇p = f (i k̃ + β) p med k̃ = Ω √(ρ̃/K_f), f = 1 och β = 0, 1/(2r₁),
-//!   1/r₁; i frekvensdomänen randtermen (1/ρ̃)(i k̃ + β) ∫N N dS, i tidsdomänen
-//!   dämpning ∫N N/√(ρK) och styvhet ∫N N (β/ρ + γ/(2ρ√(ρK))) dS.
-//! - Volymetriskt motstånd γ: i frekvensdomänen komplex densitet
-//!   ρ̃ = ρ_f + γ/(iΩ) i K_f (exakt), i tidsdomänen C_f = ∫ γ/(ρ_f K_f) N N dV.
+//! - M_f = ∫ N N/K_f dV, K_f = ∫ ∇N·∇N/ρ_f dV, Q = inward volumetric acceleration
+//!   (*CLOAD on degree of freedom 8).
+//! - Impedance (*IMPEDANCE PROPERTY with *SIMPEDANCE/*IMPEDANCE): the boundary term
+//!   (iΩ/c₁ − Ω²/k₁) ∫N N dS in the frequency domain, i.e. damping ∫N N/c₁ and
+//!   mass ∫N N/k₁ in the time domain. DATA=IMPEDANCE: each row is converted to
+//!   the admittance 1/Z at its frequency, and the admittance is interpolated.
+//! - Non-reflecting boundary (NONREFLECTING=PLANAR/CIRCULAR/SPHERICAL):
+//!   n⁻·∇p = f (i k̃ + β) p with k̃ = Ω √(ρ̃/K_f), f = 1 and β = 0, 1/(2r₁),
+//!   1/r₁; in the frequency domain the boundary term (1/ρ̃)(i k̃ + β) ∫N N dS, in the time domain
+//!   damping ∫N N/√(ρK) and stiffness ∫N N (β/ρ + γ/(2ρ√(ρK))) dS.
+//! - Volumetric drag γ: in the frequency domain complex density
+//!   ρ̃ = ρ_f + γ/(iΩ) in K_f (exact), in the time domain C_f = ∫ γ/(ρ_f K_f) N N dV.
 //!
-//! *FREQUENCY löser det osymmetriska egenvärdesproblemet K x = ω² M x
-//! (dämpning och impedanser ignoreras) med skift-invert
-//! subspace-iteration (`acoustic_solve.rs`). Moderna normeras:
-//! uᵀM_s u + pᵀM_f p = 1 utan koppling, annars med vänster- och
-//! högervektorerna uᵀM_s u + (pᵀM_f p + pᵀS u)/ω² = 1.
+//! *FREQUENCY solves the unsymmetric eigenvalue problem K x = ω² M x
+//! (damping and impedances are ignored) with shift-invert
+//! subspace iteration (`acoustic_solve.rs`). The modes are normalized:
+//! uᵀM_s u + pᵀM_f p = 1 without coupling, otherwise with the left and
+//! right vectors uᵀM_s u + (pᵀM_f p + pᵀS u)/ω² = 1.
 //!
-//! *STEADY STATE DYNAMICS, DIRECT löser (K − Ω²M + iΩC + impedanser) x = F
-//! direkt som det reella systemet [[A_r, −A_i], [A_i, A_r]] med den
-//! osymmetriska LU-lösaren. Föreskrivna värden (*BOUNDARY) och laster är
-//! reella. Utdata: U, POR (realdel) och U_IM, POR_IM (imaginärdel).
+//! *STEADY STATE DYNAMICS, DIRECT solves (K − Ω²M + iΩC + impedances) x = F
+//! directly as the real system [[A_r, −A_i], [A_i, A_r]] with the
+//! unsymmetric LU solver. Prescribed values (*BOUNDARY) and loads are
+//! real. Output: U, POR (real part) and U_IM, POR_IM (imaginary part).
 //!
-//! *DYNAMIC: HHT-α (standardvärden för APPLICATION=TRANSIENT
-//! FIDELITY, α = −0,05) med fasta inkrement (DIRECT) eller dataradens
-//! inkrement; systemet är linjärt så varje inkrement är en lösning.
-//! Impedansränderna (massa ∫NN/k₁, dämpning ∫NN (1/c₁ + γ/(ρk₁)), styvhet
-//! ∫NN γ/(ρc₁) respektive strålningsvillkorets termer) verkar vid
-//! inkrementets slut utan HHT-viktning.
-//! Utdata: U, V, A, POR.
+//! *DYNAMIC: HHT-α (default values for APPLICATION=TRANSIENT
+//! FIDELITY, α = −0.05) with fixed increments (DIRECT) or the data line's
+//! increments; the system is linear so each increment is one solve.
+//! The impedance boundaries (mass ∫NN/k₁, damping ∫NN (1/c₁ + γ/(ρk₁)), stiffness
+//! ∫NN γ/(ρc₁) or the radiation condition's terms) act at the
+//! end of the increment without HHT weighting.
+//! Output: U, V, A, POR.
 //!
-//! Utdata för trycket: nodfältet POR för noder med akustiskt
-//! tryck. Massmatrisen för akustiska element: se `fluid_mass_kind`.
+//! Output for the pressure: the nodal field POR for nodes with acoustic
+//! pressure. Mass matrix for acoustic elements: see `fluid_mass_kind`.
 
 #[path = "acoustic_solve.rs"]
 pub mod solve;
 
-// område gaps1: icke-reflekterande ränder (ELLIPTICAL, PROLATE SPHEROIDAL, IMPROVED)
+// area gaps1: non-reflecting boundaries (ELLIPTICAL, PROLATE SPHEROIDAL, IMPROVED)
 #[path = "acoustic_nonrefl.rs"]
 mod nonrefl;
 #[path = "acoustic_improved.rs"]
 mod improved;
-// område acoustics2: akustiska infinita element
+// area acoustics2: acoustic infinite elements
 #[path = "acoustic_infinite.rs"]
 mod infinite;
-// område acoustics2: akustik i explicit analys
+// area acoustics2: acoustics in explicit analysis
 #[path = "acoustic_explicit.rs"]
 mod explicit;
 
@@ -80,26 +80,26 @@ pub struct AcousticStep;
 
 pub static STEP_TYPES: &[&dyn StepType] = &[&AcousticStep];
 
-/// Slot för det akustiska trycket (frihetsgrad 8).
+/// Slot for the acoustic pressure (degree of freedom 8).
 pub const PS: usize = 7;
 
 const TWO_PI: f64 = 2.0 * std::f64::consts::PI;
 
-/// Modellen har akustiska element.
+/// The model has acoustic elements.
 pub fn model_is_acoustic(m: &FeModel) -> bool {
     m.elements.iter().any(|e| ac::is_acoustic(e.etype))
 }
 
-/// Massmatristyp för akustiska element i frekvens- och implicita steg
-/// (kontrollerat mot egenvärden i testfallen): diagonal (radsummerad) för AC2D3, AC2D4,
-/// ACAX3, ACAX4, AC3D4 och AC3D8, konsistent för AC3D6 och andra ordningens
-/// element.
+/// Mass matrix type for acoustic elements in frequency and implicit steps
+/// (checked against eigenvalues in the test cases): diagonal (row-summed) for AC2D3, AC2D4,
+/// ACAX3, ACAX4, AC3D4 and AC3D8, consistent for AC3D6 and second-order
+/// elements.
 pub fn fluid_mass_kind(e: &AcousticElem) -> MassKind {
     if e.first_order() && e.geom.shape != crate::elements::heat::Shape::Wedge6 { MassKind::Lumped } else { MassKind::Consistent }
 }
 
 // ---------------------------------------------------------------------------
-// Komplexa tal
+// Complex numbers
 // ---------------------------------------------------------------------------
 
 #[derive(Debug, Clone, Copy, Default, PartialEq)]
@@ -128,20 +128,20 @@ impl C {
 }
 
 // ---------------------------------------------------------------------------
-// Impedansränder
+// Impedance boundaries
 // ---------------------------------------------------------------------------
 
 #[derive(Debug, Clone)]
 enum ImpKind {
-    /// Tabell (1/k₁, 1/c₁, frekvens), sorterad efter frekvens.
+    /// Table (1/k₁, 1/c₁, frequency), sorted by frequency.
     Admittance(Vec<(f64, f64, f64)>),
-    /// Strålningsvillkor med spridningsterm β.
+    /// Radiation condition with spreading term β.
     Radiation(f64),
 }
 
 struct ImpBoundary {
     kind: ImpKind,
-    /// ∫ N N dS i alla frihetsgrader (fria + låsta).
+    /// ∫ N N dS in all degrees of freedom (free + constrained).
     h: Gen,
     props: AcousticProps,
 }
@@ -160,7 +160,7 @@ fn interp3(t: &[(f64, f64, f64)], f: f64) -> (f64, f64) {
 }
 
 impl ImpBoundary {
-    /// Randtermens koefficient i frekvensdomänen vid Ω (multipliceras med H).
+    /// Coefficient of the boundary term in the frequency domain at Ω (multiplied by H).
     fn coeff(&self, w: f64) -> C {
         let f = w / TWO_PI;
         match &self.kind {
@@ -170,20 +170,20 @@ impl ImpBoundary {
             }
             ImpKind::Radiation(beta) => {
                 let p = &self.props;
-                // ρ̃ = ρ + γ/(iΩ) = ρ − iγ/Ω; område gaps1: komplex densitet och
-                // kompressionsmodul (COMPLEX ..., POROUS MODEL)
+                // ρ̃ = ρ + γ/(iΩ) = ρ − iγ/Ω; area gaps1: complex density and
+                // bulk modulus (COMPLEX ..., POROUS MODEL)
                 let (rt, kt) = p.complex_at(f);
                 let rho_t = C(rt.0, rt.1);
                 let k = rho_t.div(C(kt.0, kt.1)).sqrt().scale(w);
                 let base = C(1.0, 0.0).div(rho_t).mul(C(-k.1, k.0).add(C(*beta, 0.0)));
-                // område gaps1: med spridningsterm (β > 0) och volymetriskt
-                // motstånd läggs den reella termen till
-                // γ/(ρ√(ρK))/√(1 + (γ/(Ωρ))²) (gäller för
-                // CIRCULAR, SPHERICAL och ELLIPTICAL/PROLATE SPHEROIDAL,
+                // area gaps1: with spreading term (β > 0) and volumetric
+                // drag the real term is added
+                // γ/(ρ√(ρK))/√(1 + (γ/(Ωρ))²) (applies to
+                // CIRCULAR, SPHERICAL and ELLIPTICAL/PROLATE SPHEROIDAL,
                 // tests/cases/gaps1/ac_*_rand_ssd)
                 if *beta > 0.0 {
                     let g = if w > 0.0 { p.drag_at(Some(f)) / (w * p.density) } else { 0.0 };
-                    // faktorn 1/√(1 + (γ/(Ωρ))²) ger minst avvikelse (≤ 1e-5)
+                    // the factor 1/√(1 + (γ/(Ωρ))²) gives the smallest deviation (≤ 1e-5)
                     let fac = 1.0 / (1.0 + g * g).sqrt();
                     base.add(C(fac * p.drag_at(Some(f)) / (p.density * (p.density * p.bulk).sqrt()), 0.0))
                 } else {
@@ -193,7 +193,7 @@ impl ImpBoundary {
         }
     }
 
-    /// (massa, dämpning, styvhet)-koefficienter i tidsdomänen.
+    /// (mass, damping, stiffness) coefficients in the time domain.
     fn time_coeffs(&self) -> (f64, f64, f64) {
         match &self.kind {
             ImpKind::Admittance(t) => {
@@ -211,50 +211,50 @@ impl ImpBoundary {
 }
 
 // ---------------------------------------------------------------------------
-// Det assemblerade systemet
+// The assembled system
 // ---------------------------------------------------------------------------
 
-/// Numrering, matriser och laster för ett akustiskt steg. Matriserna `ms`,
-/// `mf`, `s`, `cf`, `drag` och impedansernas `h` har alla frihetsgrader:
-/// de fria (samma nummer som i `DofMap`) och sedan de låsta.
+/// Numbering, matrices and loads for an acoustic step. The matrices `ms`,
+/// `mf`, `s`, `cf`, `drag` and the impedances' `h` have all degrees of freedom:
+/// the free ones (same numbers as in `DofMap`) followed by the constrained ones.
 struct Sys<'a, 'm> {
     p: &'a Prepared<'m>,
     dm: DofMap,
-    /// Antal fria ekvationer.
+    /// Number of free equations.
     n: usize,
-    /// Index för låsta (nod, slot) (≥ n), `NONE` annars.
+    /// Index for constrained (node, slot) (≥ n), `NONE` otherwise.
     cidx: Vec<[usize; SLOTS]>,
     con_owner: Vec<(usize, usize)>,
-    /// Styvheten i bastillståndet (fria × fria): struktur och K_f med 1/ρ_f.
+    /// Stiffness in the base state (free × free): structure and K_f with 1/ρ_f.
     k0: Gen,
     ms: Gen,
     mf: Gen,
-    /// S (fluidrader, strukturkolumner).
+    /// S (fluid rows, structure columns).
     s: Gen,
-    /// C_f = ∫ γ/(ρK) N N dV (tidsdomänen).
+    /// C_f = ∫ γ/(ρK) N N dV (time domain).
     cf: Gen,
-    /// G/ρ per material med volymetriskt motstånd (för den komplexa densiteten).
+    /// G/ρ per material with volumetric drag (for the complex density).
     drag: Vec<(AcousticProps, Gen)>,
-    /// Område gaps1: H/K_f per material i `drag` (för den komplexa kompressionsmodulen).
+    /// Area gaps1: H/K_f per material in `drag` (for the complex bulk modulus).
     cmass: Vec<Gen>,
     imp: Vec<ImpBoundary>,
-    /// Område gaps1: NONREFLECTING=IMPROVED (cos θ, byggs om per inkrement).
+    /// Area gaps1: NONREFLECTING=IMPROVED (cos θ, rebuilt per increment).
     improved: Vec<improved::Improved>,
-    /// Noder med akustiskt tryck.
+    /// Nodes with acoustic pressure.
     pnode: Vec<bool>,
-    /// Trycknoder vars förskjutning interpoleras från strukturen (nod mot yta).
+    /// Pressure nodes whose displacement is interpolated from the structure (node-to-surface).
     fluid_u: Vec<(usize, Vec<(usize, f64)>)>,
-    /// Område acoustics2: akustiska infinita element per material.
+    /// Area acoustics2: acoustic infinite elements per material.
     inf: Vec<infinite::InfGroup>,
 }
 
 fn material_props(m: &FeModel, e: usize) -> Result<AcousticProps> {
     let el = &m.elements[e];
     let mi = el.section.and_then(|s| m.sections[s].material_index);
-    let Some(mi) = mi else { return fail(format!("{} saknar material", m.elem_name(e))) };
+    let Some(mi) = mi else { return fail(format!("{} has no material", m.elem_name(e))) };
     match AcousticProps::from_def(&m.materials[mi])? {
         Some(p) => Ok(p),
-        None => fail(format!("{}: materialet {} saknar *ACOUSTIC MEDIUM", m.elem_name(e), m.materials[mi].name)),
+        None => fail(format!("{}: material {} has no *ACOUSTIC MEDIUM", m.elem_name(e), m.materials[mi].name)),
     }
 }
 
@@ -262,8 +262,8 @@ fn thickness(m: &FeModel, e: usize) -> f64 {
     m.elements[e].section.map_or(1.0, |s| m.sections[s].solid_thickness())
 }
 
-/// Impedansränderna som gäller i steg `index` (modelldata och stegdata till
-/// och med steget; OP=NEW tar bort tidigare).
+/// The impedance boundaries active in step `index` (model data and step data up to
+/// and including the step; OP=NEW removes earlier ones).
 fn impedance_keywords(m: &FeModel, index: usize) -> Vec<&RawKeyword> {
     let mut v: Vec<&RawKeyword> = m.extra.iter().filter(|k| k.name == "IMPEDANCE" || k.name == "SIMPEDANCE").collect();
     for st in m.steps.iter().take(index + 1) {
@@ -279,7 +279,7 @@ fn impedance_keywords(m: &FeModel, index: usize) -> Vec<&RawKeyword> {
 
 fn property_table(m: &FeModel, name: &str, kw: &RawKeyword) -> Result<ImpKind> {
     let Some(pk) = m.extra.iter().find(|k| k.name == "IMPEDANCE PROPERTY" && k.param("NAME").is_some_and(|n| n.trim().eq_ignore_ascii_case(name))) else {
-        return kw.err(format!("*IMPEDANCE PROPERTY, NAME={name} finns inte"));
+        return kw.err(format!("*IMPEDANCE PROPERTY, NAME={name} does not exist"));
     };
     let mut t = Vec::new();
     for d in pk.records() {
@@ -287,40 +287,40 @@ fn property_table(m: &FeModel, name: &str, kw: &RawKeyword) -> Result<ImpKind> {
         t.push((v.first().copied().unwrap_or(0.0), v.get(1).copied().unwrap_or(0.0), v.get(2).copied().unwrap_or(0.0)));
     }
     if t.is_empty() {
-        return pk.err("datarader saknas");
+        return pk.err("data lines missing");
     }
     t.sort_by(|a, b| a.2.partial_cmp(&b.2).unwrap_or(std::cmp::Ordering::Equal));
     match pk.param_upper("DATA").as_deref() {
         None | Some("ADMITTANCE") => Ok(ImpKind::Admittance(t)),
         Some("IMPEDANCE") => {
-            // varje rad görs om till admittans (1/k₁, 1/c₁) vid sin
-            // frekvens, och admittansen interpoleras
+            // each row is converted to admittance (1/k₁, 1/c₁) at its
+            // frequency, and the admittance is interpolated
             let mut a = Vec::with_capacity(t.len());
             for &(zr, zi, f) in &t {
                 let y = C(1.0, 0.0).div(C(zr, zi));
                 let w = TWO_PI * f;
                 if y.1 != 0.0 && w <= 0.0 {
-                    return pk.err("en impedans med imaginärdel kräver en frekvens > 0");
+                    return pk.err("an impedance with an imaginary part requires a frequency > 0");
                 }
                 a.push((if w > 0.0 { y.1 / w } else { 0.0 }, y.0, f));
             }
             Ok(ImpKind::Admittance(a))
         }
-        Some(x) => pk.err(format!("DATA={x} ska vara ADMITTANCE eller IMPEDANCE")),
+        Some(x) => pk.err(format!("DATA={x} must be ADMITTANCE or IMPEDANCE")),
     }
 }
 
-/// Randmatrisen H = ∫ N N dS för elementytan `fi` (konsistent). För
-/// axisymmetriska element används den plana matrisen ∫ N N dl gånger
-/// 2π r_c med r_c = medelradien av ytans hörn (se
+/// Boundary matrix H = ∫ N N dS for the element face `fi` (consistent). For
+/// axisymmetric elements the planar matrix ∫ N N dl is used times
+/// 2π r_c with r_c = the mean radius of the face's corners (see
 /// tests/cases/acoustics/acax4_sfar_ssd).
 #[allow(dead_code)]
 fn face_matrix(a: &AcousticElem, x: &[[f64; 3]], fi: usize, thickness: f64) -> Result<Vec<f64>> {
     face_matrix_w(a, x, fi, thickness, &|_| 1.0)
 }
 
-/// Område gaps1: ∫ f(x) N N dS med en viktfunktion i integrationspunkterna
-/// (geometrifaktorn för NONREFLECTING=ELLIPTICAL/PROLATE SPHEROIDAL).
+/// Area gaps1: ∫ f(x) N N dS with a weight function at the integration points
+/// (the geometry factor for NONREFLECTING=ELLIPTICAL/PROLATE SPHEROIDAL).
 fn face_matrix_w(a: &AcousticElem, x: &[[f64; 3]], fi: usize, thickness: f64, wf: &dyn Fn([f64; 3]) -> f64) -> Result<Vec<f64>> {
     let nne = x.len();
     let mut he = vec![0.0; nne * nne];
@@ -374,7 +374,7 @@ impl<'a, 'm> Sys<'a, 'm> {
         let pnode: Vec<bool> = (0..nn).map(|nd| p.active[nd] & (1 << PS) != 0).collect();
         for e in &m.elements {
             if e.etype.family() == crate::elements::Family::Heat {
-                return fail("akustiska element och värmeledningselement i samma modell stöds inte");
+                return fail("acoustic elements and heat transfer elements in the same model are not supported");
             }
         }
         let mut sys = Sys {
@@ -401,7 +401,7 @@ impl<'a, 'm> Sys<'a, 'm> {
         sys.mf = Gen::new(na);
         sys.s = Gen::new(na);
         sys.cf = Gen::new(na);
-        // styvheten i bastillståndet (element och interaktioner)
+        // stiffness in the base state (elements and interactions)
         let zero = vec![[0.0; SLOTS]; nn];
         let mut rec = Recorder::new(n);
         assembly::internal(p, &sys.dm, &ctx.state.u, &zero, &ctx.state.elem_state, ctx.nlgeom, ctx.state.time, 0.0, Some(&mut rec))?;
@@ -412,7 +412,7 @@ impl<'a, 'm> Sys<'a, 'm> {
             }
         }
         sys.k0.finish();
-        // massor och fluidens dämpning
+        // masses and fluid damping
         let mut drag: Vec<(usize, AcousticProps, Gen)> = Vec::new();
         let mut cmass: Vec<Gen> = Vec::new();
         for (e, el) in m.elements.iter().enumerate() {
@@ -453,13 +453,13 @@ impl<'a, 'm> Sys<'a, 'm> {
                     cmass[i] = g;
                 }
             } else {
-                // område acoustics2: infinita element byggs i build_infinite
+                // area acoustics2: infinite elements are built in build_infinite
                 if crate::elements::acoustic_infinite::lookup(el.etype.name()).is_some() {
                     continue;
                 }
                 if let Some(mi) = mi {
                     if m.materials[mi].behavior("DAMPING").is_some() {
-                        return fail(format!("material {}: *DAMPING stöds inte ännu i akustiska steg", m.materials[mi].name));
+                        return fail(format!("material {}: *DAMPING is not yet supported in acoustic steps", m.materials[mi].name));
                     }
                 }
                 let pc = p.ctx(e, false, ctx.state.time, 0.0);
@@ -478,7 +478,7 @@ impl<'a, 'm> Sys<'a, 'm> {
             g.finish();
         }
         sys.cmass = cmass;
-        // akustisk–strukturell koppling
+        // acoustic–structural coupling
         for c in crate::interactions::acoustic::couplings(m)? {
             sys.fluid_u.extend(c.fluid_u.iter().cloned());
             for &(pn, un, dir, v) in &c.entries {
@@ -505,7 +505,7 @@ impl<'a, 'm> Sys<'a, 'm> {
         self.n + self.con_owner.len()
     }
 
-    /// Ekvationer och koefficienter för (nod, slot) i numreringen med låsta.
+    /// Equations and coefficients for (node, slot) in the numbering with constrained DOFs.
     fn eqs(&self, nd: usize, s: usize) -> Vec<(usize, f64)> {
         if self.cidx[nd][s] != NONE {
             return vec![(self.cidx[nd][s], 1.0)];
@@ -549,12 +549,12 @@ impl<'a, 'm> Sys<'a, 'm> {
     }
 
     fn build_impedances(&mut self, index: usize) -> Result<()> {
-        // område gaps1: ränderna byggs i acoustic_nonrefl.rs (även ELLIPTICAL,
-        // PROLATE SPHEROIDAL och IMPROVED)
+        // area gaps1: the boundaries are built in acoustic_nonrefl.rs (also ELLIPTICAL,
+        // PROLATE SPHEROIDAL and IMPROVED)
         self.build_impedances_gaps1(index)
     }
 
-    /// Strukturrad-/fluidkolumnblocket −Sᵀ i styvheten (alla frihetsgrader).
+    /// The structure-row/fluid-column block −Sᵀ in the stiffness (all degrees of freedom).
     fn minus_st(&self) -> Gen {
         let mut g = Gen::new(self.n_all());
         for (r, row) in self.s.rows.iter().enumerate() {
@@ -566,7 +566,7 @@ impl<'a, 'm> Sys<'a, 'm> {
         g
     }
 
-    /// Lösarens block: en nod med fria ekvationer (`mult` ekvationer per fri frihetsgrad).
+    /// Solver blocks: one node with free equations (`mult` equations per free degree of freedom).
     fn blocks(&self, mult: usize) -> Vec<([f64; 3], Vec<usize>)> {
         let m = self.p.model;
         let mut per: Vec<Vec<usize>> = vec![Vec::new(); m.nodes.len()];
@@ -579,7 +579,7 @@ impl<'a, 'm> Sys<'a, 'm> {
         per.into_iter().enumerate().filter(|(_, v)| !v.is_empty()).map(|(nd, v)| (m.nodes[nd], v)).collect()
     }
 
-    /// Nodvektor ur en vektor över de fria ekvationerna (+ låsta värden).
+    /// Nodal vector from a vector over the free equations (+ constrained values).
     fn to_nodes(&self, x: &[f64], fixed: &[f64]) -> Vec<NodeVec> {
         let nn = self.p.model.nodes.len();
         let mut u = vec![[0.0; SLOTS]; nn];
@@ -593,7 +593,7 @@ impl<'a, 'm> Sys<'a, 'm> {
         u
     }
 
-    /// U i trycknoder som är slavar i en nod-mot-yta-koppling.
+    /// U in pressure nodes that are slaves in a node-to-surface coupling.
     fn with_fluid_u(&self, u: &[NodeVec]) -> Vec<NodeVec> {
         let mut v = u.to_vec();
         for (pn, interp) in &self.fluid_u {
@@ -604,7 +604,7 @@ impl<'a, 'm> Sys<'a, 'm> {
         v
     }
 
-    /// POR-fältet (bara noder med akustiskt tryck).
+    /// The POR field (only nodes with acoustic pressure).
     fn por(&self, u: &[NodeVec]) -> Vec<Vec<f64>> {
         u.iter().zip(&self.pnode).map(|(v, &p)| if p { vec![v[PS]] } else { Vec::new() }).collect()
     }
@@ -618,7 +618,7 @@ enum Target {
 }
 
 // ---------------------------------------------------------------------------
-// Stegtypen
+// The step type
 // ---------------------------------------------------------------------------
 
 impl StepType for AcousticStep {
@@ -638,7 +638,7 @@ impl StepType for AcousticStep {
             "FREQUENCY" => Some(50),
             "STEADY STATE DYNAMICS" if step.procedure.as_ref().is_some_and(|k| k.has("DIRECT")) => Some(50),
             "DYNAMIC" if !step.procedure.as_ref().is_some_and(|k| k.has("EXPLICIT")) => Some(50),
-            // område acoustics2: *DYNAMIC, EXPLICIT (acoustic_explicit.rs)
+            // area acoustics2: *DYNAMIC, EXPLICIT (acoustic_explicit.rs)
             "DYNAMIC" => Some(50),
             _ => None,
         }
@@ -654,12 +654,12 @@ impl StepType for AcousticStep {
             "STEADY STATE DYNAMICS" => steady_state(ctx),
             "DYNAMIC" if ctx.step.procedure.as_ref().is_some_and(|k| k.has("EXPLICIT")) => explicit::dynamic_explicit(ctx),
             "DYNAMIC" => dynamic(ctx),
-            other => fail(format!("*{other} stöds inte för akustiska modeller")),
+            other => fail(format!("*{other} is not supported for acoustic models")),
         }
     }
 }
 
-/// Frame med U (och elementutdata) samt POR.
+/// Frame with U (and element output) and POR.
 fn frame(ctx: &StepCtx, sys: &Sys, u: &[NodeVec], value: f64, mode: i64, desc: String) -> Result<FrameData> {
     let mut fr = plain_frame(ctx, &sys.dm, &sys.with_fluid_u(u), value, mode, desc)?;
     fr.node_extra.push(("POR".into(), vec!["POR".into()], sys.por(u)));
@@ -680,25 +680,25 @@ fn frequency(ctx: &mut StepCtx) -> Result<()> {
     let (nev, min_f, max_f, shift) = match solver_name.as_str() {
         "LANCZOS" | "AMS" => (data_field(&kw, 0)?, data_field(&kw, 1)?, data_field(&kw, 2)?, data_field(&kw, 3)?),
         "SUBSPACE" => (data_field(&kw, 0)?, None, data_field(&kw, 1)?, data_field(&kw, 2)?),
-        other => return kw.err(format!("EIGENSOLVER={other} stöds inte")),
+        other => return kw.err(format!("EIGENSOLVER={other} is not supported")),
     };
     let nev = nev.map(|v| v.round().max(0.0) as usize).filter(|&v| v > 0);
     if nev.is_none() && max_f.is_none() {
-        return kw.err("ange antal egenvärden eller högsta frekvens på dataraden");
+        return kw.err("specify the number of eigenvalues or the highest frequency on the data line");
     }
     let sys = Sys::new(ctx, false)?;
     let n = sys.n;
     if n == 0 {
-        return fail("*FREQUENCY: inga fria frihetsgrader");
+        return fail("*FREQUENCY: no free degrees of freedom");
     }
     let mst = sys.minus_st();
     let ksym = sys.infinite_stiffness();
     let mut k = Gen::combine(&[(&sys.k0, 1.0), (&mst, 1.0), (&ksym, 1.0)], n);
     let mut m = Gen::combine(&[(&sys.ms, 1.0), (&sys.mf, 1.0), (&sys.s, 1.0)], n);
-    // skalning D K D, D M D med D = 1 för strukturen och d för trycket så att
-    // fluidens och strukturens rader har samma storleksordning (egenvärdena
-    // ändras inte; vektorn x = D x̂). Annars styr strukturdelen ortonormeringen
-    // och konvergenskontrollen helt och trycket blir onoggrant.
+    // scaling D K D, D M D with D = 1 for the structure and d for the pressure so that
+    // the fluid and structure rows have the same order of magnitude (the eigenvalues
+    // do not change; the vector x = D x̂). Otherwise the structural part fully controls
+    // the orthonormalization and the convergence check, and the pressure becomes inaccurate.
     let dscale = {
         let kd = k.diag();
         let med = |fl: bool| -> f64 {
@@ -721,10 +721,10 @@ fn frequency(ctx: &mut StepCtx) -> Result<()> {
     }
     let unsym = crate::solver::select(Some("unsymmetric"))?;
     let blocks = sys.blocks(1);
-    // skift: angivet, 0 eller negativt (singulär K: kavitetens konstanta tryck, stelkroppsmoder)
+    // shift: specified, 0 or negative (singular K: constant cavity pressure, rigid-body modes)
     let kd = k.diag();
     let md = m.diag();
-    // område acoustics2: utan de infinita elementens generaliserade frihetsgrader (nästan ingen massa)
+    // area acoustics2: without the infinite elements' generalized degrees of freedom (almost no mass)
     let mut ratios: Vec<f64> = kd
         .iter()
         .zip(&md)
@@ -743,7 +743,7 @@ fn frequency(ctx: &mut StepCtx) -> Result<()> {
     let try_factor = |sigma: f64| -> Result<Option<GenFactor>> {
         let a = Gen::combine(&[(&k, 1.0), (&m, -sigma)], n);
         let Ok(f) = factor_gen(&a, &blocks, unsym)? else { return Ok(None) };
-        // kontroll med slumpat högerled: nästan singulära matriser ger stor residual
+        // check with a random right-hand side: nearly singular matrices give a large residual
         let mut seed = 0x2545_F491_4F6C_DD1Du64;
         let b: Vec<f64> = (0..n)
             .map(|_| {
@@ -767,13 +767,13 @@ fn frequency(ctx: &mut StepCtx) -> Result<()> {
         }
     }
     let Some((mut sigma, mut fac)) = found else {
-        return fail("*FREQUENCY: systemmatrisen kunde inte faktoriseras ens med negativt skift");
+        return fail("*FREQUENCY: the system matrix could not be factorized even with a negative shift");
     };
     let lam_max = max_f.map(|f| (TWO_PI * f).powi(2));
     let lam_min = min_f.map(|f| (TWO_PI * f).powi(2));
     let mut want = nev.unwrap_or(10).min(n);
     if sigma < 0.0 && shift.is_none() {
-        // singulära moder: grov uppskattning, sedan skift ≈ −0,1 λ₁ (elastisk)
+        // singular modes: rough estimate, then shift ≈ −0.1 λ₁ (elastic)
         let op = |b: &mut [f64]| fac.solve(b);
         if let Ok(r) = solve::subspace_unsym(&k, &m, sigma, &op, want.min(n), 1e-6, 80) {
             let el = r.lambda.iter().copied().filter(|l| *l > 10.0 * sigma.abs()).fold(f64::INFINITY, f64::min);
@@ -811,9 +811,9 @@ fn frequency(ctx: &mut StepCtx) -> Result<()> {
         modes.truncate(nv);
     }
     if ctx.opts.verbose {
-        eprintln!("  akustisk egenvärdesextraktion: σ = {sigma:.4e}, {n} obekanta, {} iterationer", res.iterations);
+        eprintln!("  acoustic eigenvalue extraction: σ = {sigma:.4e}, {n} unknowns, {} iterations", res.iterations);
     }
-    // utdata
+    // output
     let base = super::frequency::base_frame(ctx.prep, &sys.dm, ctx.state)?;
     ctx.out.frames.push(base);
     let names = ["EIGVAL", "EIGFREQ", "GM"];
@@ -825,15 +825,15 @@ fn frequency(ctx: &mut StepCtx) -> Result<()> {
     for (i, (lam, mut x)) in modes.into_iter().enumerate() {
         let mode = i + 1;
         let lam = if lam.abs() < 1e-9 * scale { 0.0 } else { lam };
-        // generaliserad massa med vänstervektorn (u, p/λ)
+        // generalized mass with the left vector (u, p/λ)
         let ux: Vec<f64> = (0..n).map(|q| if sys.dm.owner[q].1 != PS { x[q] } else { 0.0 }).collect();
         let px: Vec<f64> = (0..n).map(|q| if sys.dm.owner[q].1 == PS { x[q] } else { 0.0 }).collect();
         let dotp = |a: &[f64], b: &[f64]| a.iter().zip(b).map(|(x, y)| x * y).sum::<f64>();
         let mu = dotp(&ux, &ms_f.mul(&ux));
         let mp = dotp(&px, &mf_f.mul(&px));
-        // ren akustik (ingen koppling) pᵀM_f p + uᵀM_s u = 1; kopplade
-        // moder normeras med vänster- och högervektorerna (u, p/λ) och (u, p):
-        // uᵀM_s u + (pᵀM_f p + pᵀS u)/λ = 1, för λ = 0 pᵀM_f p + pᵀS u = 1
+        // pure acoustics (no coupling) pᵀM_f p + uᵀM_s u = 1; coupled
+        // modes are normalized with the left and right vectors (u, p/λ) and (u, p):
+        // uᵀM_s u + (pᵀM_f p + pᵀS u)/λ = 1, for λ = 0 pᵀM_f p + pᵀS u = 1
         let ps = dotp(&px, &s_f.mul(&ux));
         let gm = if !coupled {
             mu + mp
@@ -847,7 +847,7 @@ fn frequency(ctx: &mut StepCtx) -> Result<()> {
             let f = 1.0 / gm.sqrt();
             x.iter_mut().for_each(|v| *v *= f);
         }
-        // tecken: största komponenten positiv (tecknet är annars godtyckligt)
+        // sign: largest component positive (the sign is otherwise arbitrary)
         let big = x.iter().copied().fold(0.0f64, |a, v| if v.abs() > a.abs() { v } else { a });
         if big < 0.0 {
             x.iter_mut().for_each(|v| *v = -*v);
@@ -876,7 +876,7 @@ fn frequency(ctx: &mut StepCtx) -> Result<()> {
 // *STEADY STATE DYNAMICS, DIRECT
 // ---------------------------------------------------------------------------
 
-/// Föreskrivna värden i de låsta frihetsgraderna (perturbation: ändringen från bastillståndet).
+/// Prescribed values in the constrained degrees of freedom (perturbation: the change from the base state).
 fn prescribed(ctx: &StepCtx, sys: &Sys, values: &[(usize, usize, f64)]) -> Vec<f64> {
     let mut x = vec![0.0; sys.con_owner.len()];
     for &(nd, s, v) in values {
@@ -889,7 +889,7 @@ fn prescribed(ctx: &StepCtx, sys: &Sys, values: &[(usize, usize, f64)]) -> Vec<f
     x
 }
 
-/// K_fc x_c (fria rader) för de låsta värdena `xc` via elementens inre krafter.
+/// K_fc x_c (free rows) for the constrained values `xc` via the elements' internal forces.
 fn k_times_fixed(ctx: &StepCtx, sys: &Sys, xc: &[f64]) -> Result<Vec<f64>> {
     let p = ctx.prep;
     let nn = p.model.nodes.len();
@@ -914,7 +914,7 @@ fn k_times_fixed(ctx: &StepCtx, sys: &Sys, xc: &[f64]) -> Result<Vec<f64>> {
 fn steady_state(ctx: &mut StepCtx) -> Result<()> {
     let kw = ctx.step.procedure.clone().unwrap();
     if kw.has("SUBSPACE PROJECTION") || kw.has("REAL ONLY") {
-        return kw.err("SUBSPACE PROJECTION/REAL ONLY stöds inte");
+        return kw.err("SUBSPACE PROJECTION/REAL ONLY is not supported");
     }
     let sys = Sys::new(ctx, true)?;
     let p = ctx.prep;
@@ -928,7 +928,7 @@ fn steady_state(ctx: &mut StepCtx) -> Result<()> {
     let unsym = crate::solver::select(Some("unsymmetric"))?;
     let blocks = sys.blocks(2);
     let mst = sys.minus_st();
-    // frekvensoberoende delar (alla frihetsgrader): massa och koppling
+    // frequency-independent parts (all degrees of freedom): mass and coupling
     let mall = Gen::combine(&[(&sys.ms, 1.0), (&sys.mf, 1.0), (&sys.s, 1.0)], na);
     let z = vec![[0.0; SLOTS]; nn];
     let mut frames = Vec::new();
@@ -937,14 +937,14 @@ fn steady_state(ctx: &mut StepCtx) -> Result<()> {
     frames.push(f0);
     for (kf, &f) in pts.iter().enumerate() {
         let w = TWO_PI * f;
-        // A = A_r + i A_i (alla frihetsgrader)
+        // A = A_r + i A_i (all degrees of freedom)
         let mut terms_r: Vec<(&Gen, f64)> = vec![(&mst, 1.0), (&mall, -w * w)];
         let mut terms_i: Vec<(&Gen, f64)> = Vec::new();
         let mut drag_c: Vec<C> = Vec::new();
         let mut kc: Vec<C> = Vec::new();
         for (pr, _) in &sys.drag {
-            // ρ/ρ̃ − 1 med ρ̃ = ρ − iγ/Ω; område gaps1: komplex densitet och
-            // kompressionsmodul, −Ω² (K/K̃ − 1) H/K
+            // ρ/ρ̃ − 1 with ρ̃ = ρ − iγ/Ω; area gaps1: complex density and
+            // bulk modulus, −Ω² (K/K̃ − 1) H/K
             pr.porous_check(f)?;
             let (rt, kt) = pr.complex_at(f);
             let r = if w > 0.0 { C(pr.density, 0.0).div(C(rt.0, rt.1)) } else { C(1.0, 0.0) };
@@ -960,7 +960,7 @@ fn steady_state(ctx: &mut StepCtx) -> Result<()> {
             terms_r.push((g, c.0));
             terms_i.push((g, c.1));
         }
-        // område acoustics2: infinita element
+        // area acoustics2: infinite elements
         let inf_c: Vec<(C, C, C)> = sys.inf.iter().map(|g| g.coeffs(w)).collect();
         for (g, c) in sys.inf.iter().zip(&inf_c) {
             terms_r.extend([(&g.k, c.0 .0), (&g.c, c.1 .0), (&g.m, c.2 .0)]);
@@ -973,7 +973,7 @@ fn steady_state(ctx: &mut StepCtx) -> Result<()> {
         }
         let ar_all = Gen::combine(&terms_r, na);
         let ai_all = Gen::combine(&terms_i, na);
-        // reellt system 2n×2n: rad 2q: A_r x − A_i y, rad 2q+1: A_i x + A_r y
+        // real 2n×2n system: row 2q: A_r x − A_i y, row 2q+1: A_i x + A_r y
         let mut big = Gen::new(2 * n);
         let k0 = &sys.k0;
         for q in 0..n {
@@ -1000,9 +1000,9 @@ fn steady_state(ctx: &mut StepCtx) -> Result<()> {
         big.finish();
         let fac = match factor_gen(&big, &blocks, unsym)? {
             Ok(fc) => fc,
-            Err(_) => return fail(format!("*STEADY STATE DYNAMICS, DIRECT: dynamiska styvhetsmatrisen är singulär vid {f} Hz (resonans utan dämpning?)")),
+            Err(_) => return fail(format!("*STEADY STATE DYNAMICS, DIRECT: the dynamic stiffness matrix is singular at {f} Hz (resonance without damping?)")),
         };
-        // högerled: laster och föreskrivna värden
+        // right-hand side: loads and prescribed values
         let fext = assembly::external(p, &lev.cloads_at(f), &lev.dloads_at(f), &z, false, ctx.state.time)?;
         let xc = prescribed(ctx, &sys, &lev.bc_at(f));
         let kx = k_times_fixed(ctx, &sys, &xc)?;
@@ -1035,7 +1035,7 @@ fn steady_state(ctx: &mut StepCtx) -> Result<()> {
     Ok(())
 }
 
-/// Imaginärdelen: U_IM (UR_IM), POR_IM och elementutdata med ändelsen _IM.
+/// Imaginary part: U_IM (UR_IM), POR_IM and element output with the suffix _IM.
 fn add_im(ctx: &StepCtx, sys: &Sys, fr: &mut FrameData, im: &[NodeVec]) -> Result<()> {
     let dim = ctx.prep.model.dim();
     let rot = super::modal::has_rotations(ctx);
@@ -1046,7 +1046,7 @@ fn add_im(ctx: &StepCtx, sys: &Sys, fr: &mut FrameData, im: &[NodeVec]) -> Resul
         fr.node_extra.push((format!("{name}_IM"), labels, vals));
     }
     if rot {
-        // realdelens rotationer som eget fält (som i steady_state.rs)
+        // the real part's rotations as a separate field (as in steady_state.rs)
         let mut tr = FrameData::default();
         super::modal::add_node_field(&mut tr, dim, rot, "_", "UR", &fr.u);
         fr.node_extra.extend(tr.node_extra.into_iter().filter(|f| f.0 != "_" && dim == 2));
@@ -1065,7 +1065,7 @@ fn add_im(ctx: &StepCtx, sys: &Sys, fr: &mut FrameData, im: &[NodeVec]) -> Resul
 }
 
 // ---------------------------------------------------------------------------
-// *DYNAMIC (implicit, linjärt)
+// *DYNAMIC (implicit, linear)
 // ---------------------------------------------------------------------------
 
 fn dynamic(ctx: &mut StepCtx) -> Result<()> {
@@ -1076,7 +1076,7 @@ fn dynamic(ctx: &mut StepCtx) -> Result<()> {
     let dt0 = d.first().copied().unwrap_or(0.0);
     let period = d.get(1).copied().filter(|v| *v > 0.0).unwrap_or(1.0);
     if !kw.has("DIRECT") && ctx.opts.verbose {
-        eprintln!("  akustisk *DYNAMIC: automatisk inkrementering från Δt = {dt0}");
+        eprintln!("  acoustic *DYNAMIC: automatic incrementation from Δt = {dt0}");
     }
     let h = if dt0 > 0.0 { dt0.min(period) } else { period / 100.0 };
     let sys = Sys::new(ctx, true)?;
@@ -1084,13 +1084,13 @@ fn dynamic(ctx: &mut StepCtx) -> Result<()> {
     let model = p.model;
     let n = sys.n;
     let nn = model.nodes.len();
-    // tidsdomänens matriser (fria × fria)
+    // time-domain matrices (free × free)
     let mst = sys.minus_st();
     let mut mt: Vec<(&Gen, f64)> = vec![(&sys.ms, 1.0), (&sys.mf, 1.0), (&sys.s, 1.0)];
     let mut ct0: Vec<(&Gen, f64)> = vec![(&sys.cf, 1.0)];
     let mut ct: Vec<(&Gen, f64)> = Vec::new();
     let mut kt: Vec<(&Gen, f64)> = vec![(&sys.k0, 1.0), (&mst, 1.0)];
-    // område acoustics2: infinita element (styvhet K_g/ρ, dämpning −C_g/(ρc) + γ/(ρK) H_g)
+    // area acoustics2: infinite elements (stiffness K_g/ρ, damping −C_g/(ρc) + γ/(ρK) H_g)
     for g in &sys.inf {
         kt.push((&g.k, 1.0));
         ct0.extend([(&g.c, -1.0), (&g.cd, 1.0)]);
@@ -1105,8 +1105,8 @@ fn dynamic(ctx: &mut StepCtx) -> Result<()> {
     let mm = Gen::combine(&mt, n);
     let cm = Gen::combine(&ct0, n);
     let ci = Gen::combine(&ct, n);
-    // impedansränderna verkar vid inkrementets slut utan HHT-viktning
-    // (kontrollerat i tests/cases/acoustics/ac3d8_ror_dynamic)
+    // the impedance boundaries act at the end of the increment without HHT weighting
+    // (checked in tests/cases/acoustics/ac3d8_ror_dynamic)
     let ki = Gen::combine(&kti, n);
     let km = Gen::combine(&kt, n);
     let unsym = crate::solver::select(Some("unsymmetric"))?;
@@ -1118,36 +1118,36 @@ fn dynamic(ctx: &mut StepCtx) -> Result<()> {
         let f = assembly::external(p, &lev.cloads_at(t), &lev.dloads_at(t), &z, false, ctx.state.time + t)?;
         Ok((0..n).map(|q| f[sys.dm.owner[q].0][sys.dm.owner[q].1]).collect())
     };
-    // starttillstånd (förskjutning och tryck från föregående steg, hastighet noll
-    // eller *INITIAL CONDITIONS, TYPE=VELOCITY)
+    // initial state (displacement and pressure from the previous step, zero velocity
+    // or *INITIAL CONDITIONS, TYPE=VELOCITY)
     let mut u: Vec<f64> = (0..n).map(|q| ctx.state.u[sys.dm.owner[q].0][sys.dm.owner[q].1]).collect();
     let v0 = super::dynamic::initial_velocity(p, ctx.state)?;
     let mut v: Vec<f64> = (0..n).map(|q| v0[sys.dm.owner[q].0][sys.dm.owner[q].1]).collect();
     let mut f_old = force(0.0)?;
-    // begynnelseacceleration: M a = F − C v − K u
+    // initial acceleration: M a = F − C v − K u
     let ku: Vec<f64> = km.mul(&u).iter().zip(ki.mul(&u)).map(|(a, b)| a + b).collect();
     let cv: Vec<f64> = cm.mul(&v).iter().zip(ci.mul(&v)).map(|(a, b)| a + b).collect();
     let mut a = if !hht.initial_accel {
         vec![0.0; n]
     } else {
-        let Ok(mf) = factor_gen(&mm, &blocks, unsym)? else { return fail("*DYNAMIC: massmatrisen är singulär") };
+        let Ok(mf) = factor_gen(&mm, &blocks, unsym)? else { return fail("*DYNAMIC: the mass matrix is singular") };
         let mut b: Vec<f64> = (0..n).map(|q| f_old[q] - ku[q] - cv[q]).collect();
         mf.solve(&mut b);
         b
     };
-    // effektiv matris
+    // effective matrix
     let c1 = (1.0 + alpha) * gamma * h;
     let c2 = (1.0 + alpha) * beta * h * h;
     let eff = Gen::combine(&[(&mm, 1.0), (&cm, c1), (&ci, gamma * h), (&km, c2), (&ki, beta * h * h)], n);
-    let Ok(fac) = factor_gen(&eff, &blocks, unsym)? else { return fail("*DYNAMIC: effektiva systemmatrisen är singulär") };
+    let Ok(fac) = factor_gen(&eff, &blocks, unsym)? else { return fail("*DYNAMIC: the effective system matrix is singular") };
     let sched = super::dynamic::output_schedule(ctx.step, period, super::dynamic::Schedule::Every(1))?;
     let wants = |inc: usize, t: f64| match sched {
         super::dynamic::Schedule::Every(k) => inc % k == 0,
         super::dynamic::Schedule::Interval(dt) => dt > 0.0 && ((t / dt) - (t / dt).round()).abs() < 1e-6,
     };
-    // område gaps1: automatisk inkrementering (utan DIRECT) med samma regler som *DYNAMIC
-    // (`dynamic_incr.rs`): halvstegsresidualen, ökning med D_M och kortning
-    // mot utdatatidpunkter
+    // area gaps1: automatic incrementation (without DIRECT) with the same rules as *DYNAMIC
+    // (`dynamic_incr.rs`): the half-increment residual, increase with D_M and cutback
+    // towards output time points
     let auto = !kw.has("DIRECT");
     let tc = super::dynamic::TimeControls::from_keyword(&kw)?;
     let plan = super::dynamic::incr::OutputPlan::from_step(model, ctx.step, period)?;
@@ -1177,9 +1177,9 @@ fn dynamic(ctx: &mut StepCtx) -> Result<()> {
     if ctx.opts.all_frames {
         frames.push(emit(ctx, 0.0, &u, &v, &a, 0)?);
     }
-    // fältet för varje ekvation (halvstegsresidualen per fält)
+    // the field for each equation (half-increment residual per field)
     let fields: Vec<crate::fem::dof::Field> = (0..n).map(|q| crate::fem::dof::field(crate::fem::dof::SLOT_DOF[sys.dm.owner[q].1])).collect();
-    // HHT-termen (K u + C v − F) vid inkrementets och föregående inkrements början
+    // the HHT term (K u + C v − F) at the start of the increment and of the previous increment
     let mut r_start: Vec<f64> = {
         let (k0u, c0v) = (km.mul(&u), cm.mul(&v));
         (0..n).map(|q| k0u[q] + c0v[q] - f_old[q]).collect()
@@ -1191,9 +1191,9 @@ fn dynamic(ctx: &mut StepCtx) -> Result<()> {
     let mut hk = inc_ctl.next(0.0);
     while t < period - eps {
         if inc >= ctx.step.max_increments {
-            return fail(format!("steget nådde största antal inkrement ({}) vid stegtid {t:.4e} – öka INC= på *STEP", ctx.step.max_increments));
+            return fail(format!("the step reached the maximum number of increments ({}) at step time {t:.4e} – increase INC= on *STEP", ctx.step.max_increments));
         }
-        // område gaps1: NONREFLECTING=IMPROVED – randen med cos θ ur de förutsagda trycken
+        // area gaps1: NONREFLECTING=IMPROVED – the boundary with cos θ from the predicted pressures
         let imp_k = if sys.improved.is_empty() {
             None
         } else {
@@ -1218,17 +1218,17 @@ fn dynamic(ctx: &mut StepCtx) -> Result<()> {
         };
         if (hk - fac_h).abs() > 1e-12 * fac_h || imp_k.is_some() {
             let e = Gen::combine(&[(&mm, 1.0), (&cm, (1.0 + alpha) * gamma * hk), (ci, gamma * hk), (&km, (1.0 + alpha) * beta * hk * hk), (ki, beta * hk * hk)], n);
-            let Ok(fk) = factor_gen(&e, &blocks, unsym)? else { return fail("*DYNAMIC: effektiva systemmatrisen är singulär") };
+            let Ok(fk) = factor_gen(&e, &blocks, unsym)? else { return fail("*DYNAMIC: the effective system matrix is singular") };
             fac_cur = fk;
             fac_h = hk;
         }
         let t1 = t + hk;
         let f_new = force(t1)?;
-        // prediktor
+        // predictor
         let up: Vec<f64> = (0..n).map(|q| u[q] + hk * v[q] + hk * hk * (0.5 - beta) * a[q]).collect();
         let vp: Vec<f64> = (0..n).map(|q| v[q] + hk * (1.0 - gamma) * a[q]).collect();
         // M a₁ + (1+α)(C v₁ + K u₁) − α(C v₀ + K u₀) + C_i v₁ + K_i u₁ = (1+α) F₁ − α F₀
-        // (C_i, K_i: impedansränderna)
+        // (C_i, K_i: the impedance boundaries)
         let kup = km.mul(&up);
         let cvp = cm.mul(&vp);
         let ku0 = km.mul(&u);
@@ -1243,7 +1243,7 @@ fn dynamic(ctx: &mut StepCtx) -> Result<()> {
         let u1: Vec<f64> = (0..n).map(|q| up[q] + beta * hk * hk * a1[q]).collect();
         let v1: Vec<f64> = (0..n).map(|q| vp[q] + gamma * hk * a1[q]).collect();
         if auto {
-            // halvstegsresidualen R½ = M a½ + (1+α)(K u½ + C v½ − F₁) − α·½(r₀ + r₋₁) + C_i v½ + K_i u½
+            // half-increment residual R½ = M a½ + (1+α)(K u½ + C v½ − F₁) − α·½(r₀ + r₋₁) + C_i v½ + K_i u½
             let hh = 0.5 * hk;
             let ah: Vec<f64> = (0..n).map(|q| 0.5 * (a[q] + a1[q])).collect();
             let uh: Vec<f64> = (0..n).map(|q| u[q] + hh * v[q] + hh * hh * ((0.5 - beta) * a[q] + beta * ah[q])).collect();
@@ -1255,7 +1255,7 @@ fn dynamic(ctx: &mut StepCtx) -> Result<()> {
                 let e = s.entry(fields[q]).or_default();
                 *e = e.max(r.abs());
             }
-            // tidsmedelvärdet av flödet (för HALFINC SCALE FACTOR)
+            // time average of the flux (for HALFINC SCALE FACTOR)
             let mut tavg: std::collections::BTreeMap<crate::fem::dof::Field, f64> = std::collections::BTreeMap::new();
             for q in 0..n {
                 let e = tavg.entry(fields[q]).or_default();
@@ -1289,7 +1289,7 @@ fn dynamic(ctx: &mut StepCtx) -> Result<()> {
         }
     }
     let nsteps = inc;
-    // tillståndet efter steget
+    // the state after the step
     let un = sys.to_nodes(&u, &[]);
     for nd in 0..nn {
         for s in 0..SLOTS {

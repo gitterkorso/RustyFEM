@@ -1,44 +1,44 @@
-//! Timoshenkobalkar (B21, B22, B31, B32) vid NLGEOM=YES. Formuleringen
-//! följer geometriskt exakt balkteori (Reissner 1972, Simo 1985,
-//! Simo–Vu-Quoc 1986) i uppdaterad, inkrementell form.
+//! Timoshenko beams (B21, B22, B31, B32) with NLGEOM=YES. The formulation
+//! follows geometrically exact beam theory (Reissner 1972, Simo 1985,
+//! Simo–Vu-Quoc 1986) in updated, incremental form.
 //!
-//! Kinematik i en integrationspunkt (Λ = [t_s, n₁, n₂] tvärsnittets axlar,
-//! Λ₀ i referensläget, x′ = dx/dS mot referensens båglängd):
+//! Kinematics at an integration point (Λ = [t_s, n₁, n₂] the section axes,
+//! Λ₀ in the reference position, x′ = dx/dS w.r.t. the reference arc length):
 //!
-//! - sträckning λ = |x′|, axelns riktning a = x′/λ;
-//! - axiell töjning ε = ln λ + ½ τ² (I11 + I22)/A (logaritmisk töjning plus
-//!   fibrernas medelförlängning vid vridning, "helixeffekten");
-//! - skjuvning γ₁ = n₁·a, γ₂ = n₂·a (sinus av vinkeln mellan tvärsnitt och axel);
-//! - krökning och vridning [τ, κ₁, κ₂] = K̃/λ, där K̃ är tvärsnittets relativa
-//!   rotation per referenslängd i dess egna axlar.
+//! - stretch λ = |x′|, axis direction a = x′/λ;
+//! - axial strain ε = ln λ + ½ τ² (I11 + I22)/A (logarithmic strain plus
+//!   the mean elongation of the fibers under twist, the "helix effect");
+//! - shear γ₁ = n₁·a, γ₂ = n₂·a (sine of the angle between section and axis);
+//! - curvature and twist [τ, κ₁, κ₂] = K̃/λ, where K̃ is the section's relative
+//!   rotation per reference length in its own axes.
 //!
-//! Rotationerna är inkrementella: med nodernas rotationsinkrement
-//! Δφₐ = log(Rₐ Rₐ,ₙᵀ) (rumsliga) och Δφ(ξ) = Σ Nₐ Δφₐ är
-//! Λ = exp([Δφ]) Λₙ och K̃ = K̃ₙ + Λₙᵀ T(Δφ)ᵀ Δφ′. Inom ett inkrement motsvarar
-//! det linjär interpolation av (inkrementella) rotationsvektorer (formuleringen
-//! är inkrementell, inte total). Λ och K̃ per integrationspunkt är elementets
-//! tillstånd.
+//! The rotations are incremental: with the nodes' rotation increments
+//! Δφₐ = log(Rₐ Rₐ,ₙᵀ) (spatial) and Δφ(ξ) = Σ Nₐ Δφₐ,
+//! Λ = exp([Δφ]) Λₙ and K̃ = K̃ₙ + Λₙᵀ T(Δφ)ᵀ Δφ′. Within an increment this corresponds to
+//! linear interpolation of (incremental) rotation vectors (the formulation
+//! is incremental, not total). Λ and K̃ per integration point are the element's
+//! state.
 //!
-//! Snittkrafterna är s = C e med det linjära elementets tvärsnittsmatris C,
-//! där skjuvstyvhetens slankhetskompensation räknas med elementets aktuella
-//! längd. Inre krafter fås med virtuella töjningar i den aktuella
-//! konfigurationen, integrerade över aktuell längd (w·J·λ):
+//! The section forces are s = C e with the linear element's section matrix C,
+//! where the slenderness compensation of the shear stiffness is computed with the element's current
+//! length. Internal forces are obtained with virtual strains in the current
+//! configuration, integrated over the current length (w·J·λ):
 //!
-//! - δε = a·δx′ₛ (+ τ (I11 + I22)/A · t_s·δθ′ₛ/λ, vridningstermen per referenslängd),
+//! - δε = a·δx′ₛ (+ τ (I11 + I22)/A · t_s·δθ′ₛ/λ, the twist term per reference length),
 //! - δγ₁ = n₁·δx′ₛ − n₂·δθ, δγ₂ = n₂·δx′ₛ + n₁·δθ,
 //! - δ[τ, κ₁, κ₂] = Λᵀ δθ′ₛ,
 //!
-//! där ′ₛ är derivata mot aktuell båglängd och δθ rumsliga virtuella rotationer.
-//! Linjäriserat ger det exakt den linjära balkens töjningar i
-//! `beam_timoshenko.rs`. Kraften är inte gradienten av en potential, så
-//! tangenten ∂f/∂q (exakt, med hyperduala tal mot nodförskjutningar och spinn,
-//! R ← exp([δw]) R) är inte symmetrisk; den symmetriseras för de symmetriska
-//! lösarna. Det ger linjär i stället för kvadratisk konvergens när momenten är
-//! stora.
+//! where ′ₛ is the derivative w.r.t. the current arc length and δθ spatial virtual rotations.
+//! Linearized, this gives exactly the strains of the linear beam in
+//! `beam_timoshenko.rs`. The force is not the gradient of a potential, so
+//! the tangent ∂f/∂q (exact, with hyper-dual numbers w.r.t. nodal displacements and spins,
+//! R ← exp([δw]) R) is not symmetric; it is symmetrized for the symmetric
+//! solvers. This gives linear instead of quadratic convergence when the moments are
+//! large.
 //!
-//! Den geometriska styvheten för *BUCKLE och *FREQUENCY med förlast är den del
-//! av tangenten i referensläget som är proportionell mot snittkrafterna (alla
-//! snittkrafter, inte bara normalkraften).
+//! The geometric stiffness for *BUCKLE and *FREQUENCY with preload is the part
+//! of the tangent in the reference position that is proportional to the section forces (all
+//! section forces, not only the axial force).
 
 use super::{gauss, shape, BeamGeom, TimoBeam};
 use crate::elements::{ElemCtx, ElemResponse};
@@ -47,10 +47,10 @@ use crate::kinematics::tensor as t;
 use crate::model::{fail, Result};
 
 // ---------------------------------------------------------------------------
-// Rotationshjälpare för hyperduala tal (används också av skalens NLGEOM)
+// Rotation helpers for hyper-dual numbers (also used by the shell NLGEOM)
 // ---------------------------------------------------------------------------
 
-/// Konstant hyperdual matris.
+/// Constant hyper-dual matrix.
 pub fn cst_m<const N: usize>(m: &t::M3) -> T3<N> {
     std::array::from_fn(|i| std::array::from_fn(|j| Hd::cst(m[i][j])))
 }
@@ -70,7 +70,7 @@ pub fn mtv<const N: usize>(a: &T3<N>, v: &V3<N>) -> V3<N> {
     std::array::from_fn(|i| a[0][i] * v[0] + a[1][i] * v[1] + a[2][i] * v[2])
 }
 
-/// f(x) med givna f, f′, f″ i x.
+/// f(x) with given f, f′, f″ at x.
 pub fn chain<const N: usize>(x: &Hd<N>, f: f64, d1: f64, d2: f64) -> Hd<N> {
     let mut r = Hd::cst(f);
     for i in 0..N {
@@ -82,7 +82,7 @@ pub fn chain<const N: usize>(x: &Hd<N>, f: f64, d1: f64, d2: f64) -> Hd<N> {
     r
 }
 
-/// h(ν) = atan(√ν)/√ν med derivator mot ν (serie för små ν).
+/// h(ν) = atan(√ν)/√ν with derivatives w.r.t. ν (series for small ν).
 fn atan_coef(nu: f64) -> (f64, f64, f64) {
     if nu < 1e-2 {
         // h = Σ (−1)^k ν^k / (2k + 1)
@@ -110,9 +110,9 @@ fn atan_coef(nu: f64) -> (f64, f64, f64) {
     (h, hr / (2.0 * r), hrr / (4.0 * nu) - hr / (4.0 * r * r * r))
 }
 
-/// Rotationsvektorn för en rotationsmatris (vinkel < π), via kvaternionen:
-/// s = ½ axial(R − Rᵀ) = sin θ·a, w² = cos²(θ/2) = (1 + tr R)/4 och
-/// φ = h(ν)·s/w² med ν = tan²(θ/2) = |s|²/(4w⁴), h(ν) = atan(√ν)/√ν.
+/// The rotation vector of a rotation matrix (angle < π), via the quaternion:
+/// s = ½ axial(R − Rᵀ) = sin θ·a, w² = cos²(θ/2) = (1 + tr R)/4 and
+/// φ = h(ν)·s/w² with ν = tan²(θ/2) = |s|²/(4w⁴), h(ν) = atan(√ν)/√ν.
 pub fn log_so3<const N: usize>(r: &T3<N>) -> Option<V3<N>> {
     let w2 = (r[0][0] + r[1][1] + r[2][2] + 1.0) * 0.25;
     if !(w2.v > 1e-8) {
@@ -126,56 +126,56 @@ pub fn log_so3<const N: usize>(r: &T3<N>) -> Option<V3<N>> {
     Some(s.map(|v| v * h))
 }
 
-/// Spinnvariabel: rotationsmatrisen exp([w]) R₀.
+/// Spin variable: the rotation matrix exp([w]) R₀.
 pub fn spun<const N: usize>(w: &V3<N>, r0: &t::M3) -> T3<N> {
     mm(&hd::exp_so3(w), &cst_m(r0))
 }
 
 // ---------------------------------------------------------------------------
-// Balken
+// The beam
 // ---------------------------------------------------------------------------
 
-/// Tillstånd per integrationspunkt: tvärsnittets axlar Λ (9, radvis) och
-/// den ackumulerade relativa rotationen per referenslängd K̃ (3, materiell).
+/// State per integration point: the section axes Λ (9, row-wise) and
+/// the accumulated relative rotation per reference length K̃ (3, material).
 const IP_STATE: usize = 12;
 
-/// Aktuellt läge och läget vid inkrementets början.
+/// The current position and the position at the start of the increment.
 struct Current {
-    /// Nodlägen relativt nod 1 (aktuella).
+    /// Nodal positions relative to node 1 (current).
     dx: Vec<[f64; 3]>,
-    /// Nodernas rotationer nu och vid inkrementets början.
+    /// The nodes' rotations now and at the start of the increment.
     rot: Vec<t::M3>,
     rot_n: Vec<t::M3>,
-    /// Λₙ och K̃ₙ per integrationspunkt vid inkrementets början.
+    /// Λₙ and K̃ₙ per integration point at the start of the increment.
     lam_n: Vec<t::M3>,
     k_n: Vec<[f64; 3]>,
 }
 
-/// Töjningar och virtuella töjningar i en integrationspunkt.
+/// Strains and virtual strains at an integration point.
 struct Point<const N: usize> {
     /// [ε, κ₁, κ₂, τ, γ₁, γ₂]
     e: [Hd<N>; 6],
-    /// Virtuella töjningar per nodvariabel: de[r][6a + c] (c: 0–2 δx, 3–5 δθ).
+    /// Virtual strains per nodal variable: de[r][6a + c] (c: 0–2 δx, 3–5 δθ).
     de: [Vec<Hd<N>>; 6],
-    /// Vikt w·J·λ (integration över aktuell längd).
+    /// Weight w·J·λ (integration over the current length).
     wl: Hd<N>,
-    /// Nytt tillstånd (Λ, K̃).
+    /// New state (Λ, K̃).
     lam: t::M3,
     k: [f64; 3],
 }
 
-/// ln för hyperduala tal.
+/// ln for hyper-dual numbers.
 fn ln_hd<const N: usize>(x: Hd<N>) -> Hd<N> {
     let v = x.v;
     chain(&x, v.ln(), 1.0 / v, -1.0 / (v * v))
 }
 
-/// Töjningar i integrationspunkterna. `var(a, c)` ger störningen för nod a,
-/// komponent c (0–2 förskjutning, 3–5 spinn).
+/// Strains at the integration points. `var(a, c)` gives the perturbation for node a,
+/// component c (0–2 displacement, 3–5 spin).
 fn points<const N: usize>(b: &TimoBeam, g: &BeamGeom, cur: &Current, var: &dyn Fn(usize, usize) -> Hd<N>) -> Option<Vec<Point<N>>> {
     let nn = b.nn;
     let xs: Vec<V3<N>> = (0..nn).map(|a| std::array::from_fn(|i| var(a, i) + cur.dx[a][i])).collect();
-    // nodernas rotationsinkrement (rumsliga): Δφₐ = log(exp([w]) Rₐ Rₐₙᵀ)
+    // the nodes' rotation increments (spatial): Δφₐ = log(exp([w]) Rₐ Rₐₙᵀ)
     let mut dphi: Vec<V3<N>> = Vec::with_capacity(nn);
     for a in 0..nn {
         let r = spun(&[var(a, 3), var(a, 4), var(a, 5)], &cur.rot[a]);
@@ -197,29 +197,29 @@ fn points<const N: usize>(b: &TimoBeam, g: &BeamGeom, cur: &Current, var: &dyn F
                 dpsi[k] = dpsi[k] + dphi[a][k] * (dn[a] / j);
             }
         }
-        // sträckning λ = |x′| och axelns riktning a
+        // stretch λ = |x′| and the axis direction a
         let lam = hd::dot3(&xd, &xd).sqrt();
         let il = lam.recip();
         let av: V3<N> = xd.map(|v| v * il);
-        // tvärsnittets axlar Λ = exp([Δφ]) Λₙ (kolumner t_s, n₁, n₂)
+        // the section axes Λ = exp([Δφ]) Λₙ (columns t_s, n₁, n₂)
         let lnh = cst_m::<N>(&cur.lam_n[q]);
         let lm = mm(&hd::exp_so3(&psi), &lnh);
         let col = |k: usize| -> V3<N> { [lm[0][k], lm[1][k], lm[2][k]] };
         let (ts, n1, n2) = (col(0), col(1), col(2));
-        // relativ rotation per referenslängd: K̃ = K̃ₙ + Λₙᵀ T(Δφ)ᵀ Δφ′, krökning K̃/λ
+        // relative rotation per reference length: K̃ = K̃ₙ + Λₙᵀ T(Δφ)ᵀ Δφ′, curvature K̃/λ
         let kr = mtv(&hd::tangent_so3(&psi), &dpsi);
         let kt: V3<N> = std::array::from_fn(|i| mtv(&lnh, &kr)[i] + cur.k_n[q][i]);
         let kk = kt.map(|v| v * il);
-        // axiell töjning: ln λ plus fibrernas medelförlängning vid vridning,
-        // ½ τ² (I11 + I22)/A (helixeffekten)
-        // skjuvtöjningen räknas från referensläget (för mittnoder som inte ligger
-        // exakt på linjen mellan ändnoderna, t.ex. avrundade koordinater)
-        // (samma räkning som för det aktuella läget, så att töjningarna är exakt noll i referensläget)
+        // axial strain: ln λ plus the mean elongation of the fibers under twist,
+        // ½ τ² (I11 + I22)/A (the helix effect)
+        // the shear strain is computed from the reference position (for midside nodes that do not lie
+        // exactly on the line between the end nodes, e.g. rounded coordinates)
+        // (the same computation as for the current position, so that the strains are exactly zero in the reference position)
         let x0d: [f64; 3] = std::array::from_fn(|k| (0..nn).fold(0.0, |acc, a| acc + (g.x[a][k] - g.x[0][k]) * (dn[a] / j)));
         let l0d = (x0d[0] * x0d[0] + x0d[1] * x0d[1] + x0d[2] * x0d[2]).sqrt();
         let g0 = [1, 2].map(|c| (0..3).map(|k| g.axes[c][k] * (x0d[k] * (1.0 / l0d))).sum::<f64>());
         let e = [ln_hd(lam) - l0d.ln() + kk[0] * kk[0] * (0.5 * ipa), kk[1], kk[2], kk[0], hd::dot3(&n1, &av) - g0[0], hd::dot3(&n2, &av) - g0[1]];
-        // virtuella töjningar (uppdaterad konfiguration):
+        // virtual strains (updated configuration):
         // δε = a·δx′ₛ, δγ₁ = n₁·δx′ₛ − n₂·δθ, δγ₂ = n₂·δx′ₛ + n₁·δθ, δκ = Λᵀ δθ′ₛ
         let nd = 6 * nn;
         let mut de: [Vec<Hd<N>>; 6] = std::array::from_fn(|_| vec![z; nd]);
@@ -234,7 +234,7 @@ fn points<const N: usize>(b: &TimoBeam, g: &BeamGeom, cur: &Current, var: &dyn F
                 de[3][6 * a + 3 + k] = ts[k] * dxs;
                 de[1][6 * a + 3 + k] = n1[k] * dxs;
                 de[2][6 * a + 3 + k] = n2[k] * dxs;
-                // vridningstermens virtuella arbete räknas per referenslängd (faktorn 1/λ)
+                // the virtual work of the twist term is computed per reference length (the factor 1/λ)
                 de[0][6 * a + 3 + k] = kk[0] * ts[k] * dxs * il * ipa;
             }
         }
@@ -249,17 +249,17 @@ fn points<const N: usize>(b: &TimoBeam, g: &BeamGeom, cur: &Current, var: &dyn F
     Some(out)
 }
 
-/// T(φ) i f64 (dR = [T dφ]× R).
+/// T(φ) in f64 (dR = [T dφ]× R).
 fn so3_tangent(p: [f64; 3]) -> t::M3 {
     let q: V3<1> = p.map(Hd::<1>::cst);
     let m = hd::tangent_so3(&q);
     std::array::from_fn(|i| std::array::from_fn(|j| m[i][j].v))
 }
 
-/// Läget nu (förskjutning `u`) och vid inkrementets början (`u − du`,
-/// tillståndet `state`). Saknas tillstånd (första NLGEOM-inkrementet) räknas
-/// Λₙ och K̃ₙ ur rotationsvektorerna vid inkrementets början som om de nåtts
-/// i ett enda inkrement från referensläget.
+/// The position now (displacement `u`) and at the start of the increment (`u − du`,
+/// the state `state`). Without a state (the first NLGEOM increment)
+/// Λₙ and K̃ₙ are computed from the rotation vectors at the start of the increment as if they had been reached
+/// in a single increment from the reference position.
 fn current(b: &TimoBeam, g: &BeamGeom, u: &[f64], du: &[f64], state: &[f64]) -> Current {
     let nn = b.nn;
     let u6 = b.expand_vector(u);
@@ -296,9 +296,9 @@ fn current(b: &TimoBeam, g: &BeamGeom, u: &[f64], du: &[f64], state: &[f64]) -> 
     }
 }
 
-/// Tvärsnittsmatrisen med skjuvstyvhetens slankhetskompensation räknad med
-/// elementets aktuella längd (avstånd mellan ändnoderna).
-/// Tvärsnittsmatrisen med aktuell längd för förskjutningen `u` (utdata).
+/// The section matrix with the slenderness compensation of the shear stiffness computed with
+/// the element's current length (distance between the end nodes).
+/// The section matrix with the current length for the displacement `u` (output).
 pub fn current_c_for(b: &TimoBeam, g: &BeamGeom, u: &[f64]) -> [[f64; 6]; 6] {
     let cur = current(b, g, u, &[], &[]);
     current_c(b, g, &cur)
@@ -312,14 +312,14 @@ fn current_c(b: &TimoBeam, g: &BeamGeom, cur: &Current) -> [[f64; 6]; 6] {
 }
 
 fn too_large(ctx: &ElemCtx, b: &TimoBeam) -> crate::model::FemError {
-    crate::model::FemError(format!("element {} ({}): för stort rotationsinkrement (≥ 180°)", ctx.label, b.name))
+    crate::model::FemError(format!("element {} ({}): too large rotation increment (≥ 180°)", ctx.label, b.name))
 }
 
 #[allow(clippy::too_many_arguments)]
 fn response_n<const N: usize>(b: &TimoBeam, ctx: &ElemCtx, u: &[f64], du: &[f64], so: &[f64], sn: &mut Vec<f64>, tangent: bool) -> Result<ElemResponse> {
     let g = b.geom(ctx)?;
-    // område struct_nonlin: med sektionspunkter (olinjärt material) ligger
-    // sektionspunkternas tillstånd först, sedan Λ och K̃ per integrationspunkt
+    // area struct_nonlin: with section points (nonlinear material) the
+    // section point state comes first, then Λ and K̃ per integration point
     let fib = if super::plastic::is_plastic(ctx) { Some(super::plastic::Fibers::new(ctx, b.name)?) } else { None };
     let ng = b.n_gauss();
     let plen = fib.as_ref().map_or(0, |f| f.ip_len() * ng);
@@ -336,7 +336,7 @@ fn response_n<const N: usize>(b: &TimoBeam, ctx: &ElemCtx, u: &[f64], du: &[f64]
     let cur = current(b, &g, u, du, so);
     let c = current_c(b, &g, &cur);
     let planar = b.dim == 2;
-    // variabelindex för nod a, komponent k (None = ingen frihetsgrad)
+    // variable index for node a, component k (None = no degree of freedom)
     let idx = |a: usize, k: usize| -> Option<usize> {
         if planar {
             match k {
@@ -354,7 +354,7 @@ fn response_n<const N: usize>(b: &TimoBeam, ctx: &ElemCtx, u: &[f64], du: &[f64]
     let mut f = vec![Hd::<N>::cst(0.0); N];
     for (ip, p) in pts.iter().enumerate() {
         let s: [Hd<N>; 6] = match &fib {
-            // sektionspunkter: s(e) med tangenten Cₜ, s = s₀ + Cₜ (e − e₀) för derivatorna
+            // section points: s(e) with the tangent Cₜ, s = s₀ + Cₜ (e − e₀) for the derivatives
             Some(fb) => {
                 let ev: [f64; 6] = std::array::from_fn(|r| p.e[r].v);
                 let len = fb.ip_len();
@@ -380,7 +380,7 @@ fn response_n<const N: usize>(b: &TimoBeam, ctx: &ElemCtx, u: &[f64], du: &[f64]
     }
     let fint: Vec<f64> = f.iter().map(|x| x.v).collect();
     if fint.iter().any(|v| !v.is_finite()) {
-        return fail(format!("element {} ({}): ogiltig deformerad geometri", ctx.label, b.name));
+        return fail(format!("element {} ({}): invalid deformed geometry", ctx.label, b.name));
     }
     sn.clear();
     sn.extend_from_slice(&psn);
@@ -390,7 +390,7 @@ fn response_n<const N: usize>(b: &TimoBeam, ctx: &ElemCtx, u: &[f64], du: &[f64]
         }
         sn.extend_from_slice(&p.k);
     }
-    // tangent: ∂f/∂q (inte symmetrisk; symmetriseras för den symmetriska lösaren)
+    // tangent: ∂f/∂q (not symmetric; symmetrized for the symmetric solver)
     let k = tangent.then(|| {
         let mut k = vec![0.0; N * N];
         for i in 0..N {
@@ -403,7 +403,7 @@ fn response_n<const N: usize>(b: &TimoBeam, ctx: &ElemCtx, u: &[f64], du: &[f64]
     Ok(ElemResponse { fint, k })
 }
 
-/// Inre kraft och tangent vid NLGEOM.
+/// Internal force and tangent with NLGEOM.
 pub fn response(b: &TimoBeam, ctx: &ElemCtx, u: &[f64], du: &[f64], so: &[f64], sn: &mut Vec<f64>, tangent: bool) -> Result<ElemResponse> {
     match (b.dim, b.nn) {
         (2, 2) => response_n::<6>(b, ctx, u, du, so, sn, tangent),
@@ -431,8 +431,8 @@ fn geometric_n<const N: usize>(b: &TimoBeam, ctx: &ElemCtx, forces: &[[f64; 6]])
     };
     let var = |a: usize, k: usize| -> Hd<N> { idx(a, k).map_or(Hd::cst(0.0), |i| Hd::var(0.0, i)) };
     let pts = points::<N>(b, &g, &cur, &var).ok_or_else(|| too_large(ctx, b))?;
-    // f(q) = Σ w J λ δe(q)ᵀ s med fasta snittkrafter s: ∂f/∂q i referensläget är
-    // den del av NLGEOM-tangenten som är proportionell mot spänningarna
+    // f(q) = Σ w J λ δe(q)ᵀ s with fixed section forces s: ∂f/∂q in the reference position is
+    // the part of the NLGEOM tangent that is proportional to the stresses
     let mut f = vec![Hd::<N>::cst(0.0); N];
     for (p, s) in pts.iter().zip(forces) {
         for a in 0..b.nn {
@@ -457,10 +457,10 @@ fn geometric_n<const N: usize>(b: &TimoBeam, ctx: &ElemCtx, forces: &[[f64; 6]])
     Ok(k)
 }
 
-/// Geometrisk styvhet (spänningsstyvhet) för *BUCKLE och *FREQUENCY med
-/// förlast: den spänningsberoende delen av NLGEOM-tangenten i referensläget,
-/// med snittkrafterna `forces` (per integrationspunkt, ordning som
-/// `section_forces`) från en linjär lösning.
+/// Geometric stiffness (stress stiffness) for *BUCKLE and *FREQUENCY with
+/// preload: the stress-dependent part of the NLGEOM tangent in the reference position,
+/// with the section forces `forces` (per integration point, ordering as
+/// `section_forces`) from a linear solution.
 pub fn geometric(b: &TimoBeam, ctx: &ElemCtx, forces: &[[f64; 6]]) -> Result<Vec<f64>> {
     match (b.dim, b.nn) {
         (2, 2) => geometric_n::<6>(b, ctx, forces),
@@ -470,8 +470,8 @@ pub fn geometric(b: &TimoBeam, ctx: &ElemCtx, forces: &[[f64; 6]]) -> Result<Vec
     }
 }
 
-/// Snittkrafter [N, M1, M2, T, V1, V2] per integrationspunkt vid NLGEOM
-/// (tvärsnittets aktuella axlar) för det godkända tillståndet `state`.
+/// Section forces [N, M1, M2, T, V1, V2] per integration point with NLGEOM
+/// (the current section axes) for the accepted state `state`.
 pub fn section_forces(b: &TimoBeam, ctx: &ElemCtx, u: &[f64], state: &[f64]) -> Result<Vec<[f64; 6]>> {
     let g = b.geom(ctx)?;
     let ng = b.n_gauss();
@@ -500,7 +500,7 @@ mod tests {
 
     #[test]
     fn log_derivatives() {
-        // d/dw log(exp(w) R) i w = 0 mot differenser, och andraderivatan
+        // d/dw log(exp(w) R) at w = 0 against differences, and the second derivative
         let p = [0.4, -0.7, 0.9];
         let r0 = t::exp_so3(p);
         let w: V3<3> = std::array::from_fn(|i| Hd::var(0.0, i));

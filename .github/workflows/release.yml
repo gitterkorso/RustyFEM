@@ -1,14 +1,14 @@
 name: release
 
-# Bygger installationspaket för Windows och publicerar dem som en release
-# när en tagg vX.Y.Z pushas.
+# Builds installers for Windows and publishes them as a release
+# when a tag vX.Y.Z is pushed.
 on:
   push:
     tags: ["v*"]
   workflow_dispatch:
     inputs:
       tag:
-        description: "Tagg att släppa (t.ex. v0.1.0)"
+        description: "Tag to release (e.g. v0.1.0)"
         required: true
 
 permissions:
@@ -25,24 +25,24 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 24
-      - name: Bygg installationspaket (MSI och setup.exe)
+      - name: Build installers (MSI and setup.exe)
         working-directory: web
         run: |
           npm ci
           npm run tauri build -- --bundles msi,nsis
-      - name: Publicera release
+      - name: Publish release
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           files=$(ls target/release/bundle/msi/*.msi target/release/bundle/nsis/*-setup.exe)
-          notes="RustyFEM ${TAG} för Windows (64-bitars).
+          notes="RustyFEM ${TAG} for Windows (64-bit).
 
-          - **RustyFEM_*_x64-setup.exe** – installationsprogram (rekommenderas).
-          - **RustyFEM_*_x64_*.msi** – MSI-paket för installation via företagets verktyg.
+          - **RustyFEM_*_x64-setup.exe** – installer (recommended).
+          - **RustyFEM_*_x64_*.msi** – MSI package for installation with company deployment tools.
 
-          Installationsfilerna är inte kodsignerade ännu, så Windows SmartScreen kan
-          varna första gången: välj *Mer information → Kör ändå*."
+          The installers are not code-signed yet, so Windows SmartScreen may
+          warn the first time: choose *More info → Run anyway*."
           if gh release view "$TAG" >/dev/null 2>&1; then
             gh release upload "$TAG" $files --clobber
           else

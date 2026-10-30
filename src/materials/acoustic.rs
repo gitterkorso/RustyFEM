@@ -1,24 +1,24 @@
-//! Akustiskt medium (*ACOUSTIC MEDIUM): kompressionsmodul K_f och volymetriskt
-//! motstånd γ (VOLUMETRIC DRAG), tillsammans med *DENSITY ρ_f.
+//! Acoustic medium (*ACOUSTIC MEDIUM): bulk modulus K_f and volumetric
+//! drag γ (VOLUMETRIC DRAG), together with *DENSITY ρ_f.
 //!
-//! Materialet används bara av de akustiska elementen (`elements/acoustic.rs`)
-//! och de akustiska stegen (`steps/acoustic.rs`), som läser egenskaperna med
-//! `AcousticProps::from_def`. Materialmodellen finns för att `Prepared` ska
-//! kunna bygga materialet; den ger fel om den används i ett mekaniskt element.
-//! `tangent_linear` returnerar [K_f] så att elementets `stiffness`/`mass` når
-//! kompressionsmodulen via `ElemCtx::material`.
+//! The material is used only by the acoustic elements (`elements/acoustic.rs`)
+//! and the acoustic steps (`steps/acoustic.rs`), which read the properties with
+//! `AcousticProps::from_def`. The material model exists so that `Prepared`
+//! can build the material; it gives an error if used in a mechanical element.
+//! `tangent_linear` returns [K_f] so that the element's `stiffness`/`mass` reaches
+//! the bulk modulus via `ElemCtx::material`.
 //!
-//! *ACOUSTIC MEDIUM får förekomma flera gånger i samma material (BULK MODULUS
-//! och VOLUMETRIC DRAG). Kompressionsmodulen får inte bero på
-//! temperaturen; det volymetriska motståndet får bero på frekvensen (andra
-//! fältet, linjär interpolation, konstant utanför tabellen; används i
-//! frekvensdomänen, tidsdomänen använder första raden).
+//! *ACOUSTIC MEDIUM may appear several times in the same material (BULK MODULUS
+//! and VOLUMETRIC DRAG). The bulk modulus must not depend on
+//! temperature; the volumetric drag may depend on frequency (second
+//! field, linear interpolation, constant outside the table; used in
+//! the frequency domain, the time domain uses the first line).
 //!
-//! Område gaps1: COMPLEX BULK MODULUS, COMPLEX DENSITY (frekvenstabeller),
-//! POROUS MODEL=DELANY BAZLEY/MIKI och CAVITATION LIMIT (explicit analys) –
-//! se `acoustic_porous.rs`. Utan BULK MODULUS respektive *DENSITY används
-//! realdelen på första raden som referensvärde (frekvens- och tidsdomänen
-//! utanför *STEADY STATE DYNAMICS).
+//! Area gaps1: COMPLEX BULK MODULUS, COMPLEX DENSITY (frequency tables),
+//! POROUS MODEL=DELANY BAZLEY/MIKI and CAVITATION LIMIT (explicit analysis) –
+//! see `acoustic_porous.rs`. Without BULK MODULUS or *DENSITY respectively,
+//! the real part of the first line is used as the reference value (frequency and time domain
+//! outside *STEADY STATE DYNAMICS).
 
 use super::{MatInput, MatOutput, MaterialFactory, MaterialModel, StressMode};
 use crate::fem::model::{MaterialDef, RawKeyword};
@@ -29,28 +29,28 @@ use std::sync::Arc;
 pub mod porous;
 
 pub static FACTORIES: &[MaterialFactory] = &[MaterialFactory {
-    name: "akustiskt medium",
+    name: "acoustic medium",
     consumes: &["ACOUSTIC MEDIUM"],
     priority: -50,
     build: Some(build),
 }];
 
-/// Det akustiska mediets egenskaper.
+/// The properties of the acoustic medium.
 #[derive(Debug, Clone, Default)]
 pub struct AcousticProps {
     pub name: String,
-    /// Kompressionsmodul K_f.
+    /// Bulk modulus K_f.
     pub bulk: f64,
-    /// Densitet ρ_f.
+    /// Density ρ_f.
     pub density: f64,
-    /// Volymetriskt motstånd: (γ, frekvens i Hz), sorterat efter frekvens.
+    /// Volumetric drag: (γ, frequency in Hz), sorted by frequency.
     pub drag: Vec<(f64, f64)>,
-    /// Område gaps1: frekvensberoende material (`acoustic_porous.rs`).
+    /// Area gaps1: frequency-dependent material (`acoustic_porous.rs`).
     pub complex: porous::ComplexProps,
 }
 
 impl AcousticProps {
-    /// Egenskaperna ur en materialdefinition, `None` om *ACOUSTIC MEDIUM saknas.
+    /// The properties from a material definition, `None` if *ACOUSTIC MEDIUM is absent.
     pub fn from_def(def: &MaterialDef) -> Result<Option<AcousticProps>> {
         let kws: Vec<&RawKeyword> = def.behaviors.iter().filter(|b| b.name == "ACOUSTIC MEDIUM").collect();
         if kws.is_empty() {
@@ -59,15 +59,15 @@ impl AcousticProps {
         let mut p = AcousticProps { name: def.name.clone(), density: def.density, ..Default::default() };
         let mut have_bulk = false;
         for kw in kws {
-            // område gaps1: komplexa och porösa material, kavitation
+            // area gaps1: complex and porous materials, cavitation
             if porous::parse(kw, &mut p.complex)? {
                 if kw.has("DEPENDENCIES") && kw.param("DEPENDENCIES").is_some_and(|d| !d.trim().is_empty() && d.trim() != "0") {
-                    return kw.err("fältvariabelberoende akustiskt medium stöds inte");
+                    return kw.err("field-variable-dependent acoustic medium is not supported");
                 }
                 continue;
             }
             if kw.has("DEPENDENCIES") && kw.param("DEPENDENCIES").is_some_and(|d| !d.trim().is_empty() && d.trim() != "0") {
-                return kw.err("fältvariabelberoende akustiskt medium stöds inte");
+                return kw.err("field-variable-dependent acoustic medium is not supported");
             }
             if kw.has("VOLUMETRIC DRAG") {
                 for d in &kw.data {
@@ -76,7 +76,7 @@ impl AcousticProps {
                 }
             } else {
                 if kw.data.len() > 1 {
-                    return kw.err("temperaturberoende kompressionsmodul stöds inte ännu (en datarad)");
+                    return kw.err("temperature-dependent bulk modulus is not supported yet (one data line)");
                 }
                 let v = kw.first_floats()?;
                 p.bulk = v.first().copied().unwrap_or(0.0);
@@ -85,17 +85,17 @@ impl AcousticProps {
         }
         porous::reference_values(&mut p, &mut have_bulk)?;
         if !have_bulk || p.bulk <= 0.0 {
-            return fail(format!("material {}: *ACOUSTIC MEDIUM, BULK MODULUS saknas eller är inte positiv", def.name));
+            return fail(format!("material {}: *ACOUSTIC MEDIUM, BULK MODULUS is missing or not positive", def.name));
         }
         if p.density <= 0.0 {
-            return fail(format!("material {}: akustiskt medium kräver *DENSITY > 0", def.name));
+            return fail(format!("material {}: acoustic medium requires *DENSITY > 0", def.name));
         }
         p.drag.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal));
         Ok(Some(p))
     }
 
-    /// Volymetriskt motstånd vid frekvensen `f` (Hz); tidsdomänen anropar med
-    /// `None` och får första raden.
+    /// Volumetric drag at the frequency `f` (Hz); the time domain calls with
+    /// `None` and gets the first line.
     pub fn drag_at(&self, f: Option<f64>) -> f64 {
         let d = &self.drag;
         if d.is_empty() {
@@ -114,13 +114,13 @@ impl AcousticProps {
         d[i].0 + s * (d[i + 1].0 - d[i].0)
     }
 
-    /// Ljudhastigheten c = √(K/ρ).
+    /// The speed of sound c = √(K/ρ).
     pub fn speed(&self) -> f64 {
         (self.bulk / self.density).sqrt()
     }
 }
 
-/// Materialmodellen för ett akustiskt medium.
+/// The material model for an acoustic medium.
 #[derive(Debug)]
 pub struct AcousticMedium {
     name: String,
@@ -135,7 +135,7 @@ fn build(def: &MaterialDef) -> Result<Option<Arc<dyn MaterialModel>>> {
 
 impl MaterialModel for AcousticMedium {
     fn name(&self) -> &str {
-        "akustiskt medium"
+        "acoustic medium"
     }
 
     fn is_linear(&self) -> bool {
@@ -143,12 +143,12 @@ impl MaterialModel for AcousticMedium {
     }
 
     fn update(&self, _input: &MatInput, _so: &[f64], _sn: &mut [f64]) -> Result<MatOutput> {
-        fail(format!("material {}: akustiskt medium (*ACOUSTIC MEDIUM) används i ett mekaniskt element", self.name))
+        fail(format!("material {}: acoustic medium (*ACOUSTIC MEDIUM) is used in a mechanical element", self.name))
     }
 
-    /// [K_f] (kompressionsmodulen) för de akustiska elementen.
+    /// [K_f] (the bulk modulus) for the acoustic elements.
     fn tangent_linear(&self, _mode: StressMode) -> Result<Vec<f64>> {
-        // område gaps1: referensdensiteten som andra värde (COMPLEX DENSITY utan *DENSITY)
+        // area gaps1: the reference density as the second value (COMPLEX DENSITY without *DENSITY)
         Ok(vec![self.bulk, self.density])
     }
 }

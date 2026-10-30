@@ -1,42 +1,42 @@
-//! Progressiv skada för duktila metaller: *DAMAGE INITIATION
-//! (CRITERION=DUCTILE eller SHEAR) med *DAMAGE EVOLUTION (TYPE=DISPLACEMENT
-//! eller ENERGY) ovanpå plasticitet (*PLASTIC, von Mises).
+//! Progressive damage for ductile metals: *DAMAGE INITIATION
+//! (CRITERION=DUCTILE or SHEAR) with *DAMAGE EVOLUTION (TYPE=DISPLACEMENT
+//! or ENERGY) on top of plasticity (*PLASTIC, von Mises).
 //!
-//! Den underliggande plasticitetsmodellen ger den effektiva (oskadade)
-//! spänningen σ̄ och plastisk ekvivalent töjning ε̄p; spänningen är
+//! The underlying plasticity model gives the effective (undamaged)
+//! stress σ̄ and the equivalent plastic strain ε̄p; the stress is
 //! σ = (1 − D) σ̄.
 //!
-//! Initiering (ω ≥ 1), integrerat med medelvärdet av initieringstöjningen vid
-//! inkrementets början och slut, Δω = Δε̄p / ½(ε̄D(ηₙ) + ε̄D(ηₙ₊₁)):
-//! - DUCTILE: ω_D = ∫ dε̄p / ε̄D(η), triaxialitet η = −p/q, tabell (ε̄D, η),
-//! - SHEAR: ω_S = ∫ dε̄p / ε̄S(θs), θs = (q + ks p)/τmax med τmax = (σ1 − σ3)/2
-//!   och KS = ks (standard 0,3), tabell (ε̄S, θs),
-//! - JOHNSON COOK: ω = ∫ dε̄p / ε̄D med ε̄D = [d1 + d2 e^(−d3 η)][1 + d4 ln(ε̄̇p/ε̇0)]
-//!   (1 + d5 θ̂) (`plasticity_rate::JcFailure`), ε̄̇p = Δε̄p/Δt; utdata JCCRT.
+//! Initiation (ω ≥ 1), integrated with the average of the initiation strain at
+//! the start and end of the increment, Δω = Δε̄p / ½(ε̄D(ηₙ) + ε̄D(ηₙ₊₁)):
+//! - DUCTILE: ω_D = ∫ dε̄p / ε̄D(η), triaxiality η = −p/q, table (ε̄D, η),
+//! - SHEAR: ω_S = ∫ dε̄p / ε̄S(θs), θs = (q + ks p)/τmax with τmax = (σ1 − σ3)/2
+//!   and KS = ks (default 0.3), table (ε̄S, θs),
+//! - JOHNSON COOK: ω = ∫ dε̄p / ε̄D with ε̄D = [d1 + d2 e^(−d3 η)][1 + d4 ln(ε̄̇p/ε̇0)]
+//!   (1 + d5 θ̂) (`plasticity_rate::JcFailure`), ε̄̇p = Δε̄p/Δt; output JCCRT.
 //!
-//! Tabellerna interpoleras linjärt och är konstanta utanför. Från och med
-//! inkrementet där kriteriet uppnås växer den plastiska ekvivalenta
-//! förskjutningen ū̇p = L ε̄̇p med elementets karakteristiska längd L
-//! (Hillerborg, `update_with_length`) och skadan d. Linjär
-//! mjukning räknar hela initieringsinkrementets ūp, exponentiell mjukning bara delen
-//! efter initieringspunkten (linjärt interpolerad i ω):
+//! The tables are interpolated linearly and are constant outside. From
+//! the increment where the criterion is reached, the equivalent plastic
+//! displacement ū̇p = L ε̄̇p grows with the element's characteristic length L
+//! (Hillerborg, `update_with_length`), and so does the damage d. Linear
+//! softening counts the whole initiation increment's ūp, exponential softening only the part
+//! after the initiation point (linearly interpolated in ω):
 //! - TYPE=DISPLACEMENT, SOFTENING=LINEAR: d = ūp/ūf,
 //! - TYPE=DISPLACEMENT, SOFTENING=EXPONENTIAL: d = (1 − e^(−α ūp/ūf))/(1 − e^(−α)),
-//! - TYPE=DISPLACEMENT, SOFTENING=TABULAR: d(ūp) ur tabell (d, ūp),
-//! - TYPE=ENERGY, SOFTENING=LINEAR: d = ūp/ūf med ūf = 2Gf/σy0 (σy0 =
-//!   flytspänningen i initieringspunkten, interpolerad inom inkrementet),
+//! - TYPE=DISPLACEMENT, SOFTENING=TABULAR: d(ūp) from a table (d, ūp),
+//! - TYPE=ENERGY, SOFTENING=LINEAR: d = ūp/ūf with ūf = 2Gf/σy0 (σy0 =
+//!   the yield stress at the initiation point, interpolated within the increment),
 //! - TYPE=ENERGY, SOFTENING=EXPONENTIAL: d = 1 − exp(−∫σy dūp / Gf).
 //!
-//! Med flera kriterier är D = max dᵢ (DEGRADATION=MAXIMUM, standard) eller
-//! D = 1 − Π(1 − dᵢ) (MULTIPLICATIVE). D begränsas till Dmax = 0,99 så att
-//! styvheten aldrig blir noll (elementborttagning stöds inte).
+//! With several criteria D = max dᵢ (DEGRADATION=MAXIMUM, default) or
+//! D = 1 − Π(1 − dᵢ) (MULTIPLICATIVE). D is limited to Dmax = 0.99 so that
+//! the stiffness never becomes zero (element deletion is not supported).
 //!
-//! Tangenten är (1 − D) C̄ när skadan inte växer och annars numerisk
-//! (framåtdifferens av hela uppdateringen); den är osymmetrisk och negativ
-//! efter mjukningens början, så den osymmetriska (LU-)lösaren väljs.
+//! The tangent is (1 − D) C̄ when the damage does not grow and otherwise numerical
+//! (forward difference of the whole update); it is unsymmetric and negative
+//! after the onset of softening, so the unsymmetric (LU) solver is selected.
 //!
-//! Utdata: den underliggande modellens fält (PEEQ, PE) samt DUCTCRT, SHRCRT
-//! (ω) och SDEG (D).
+//! Output: the underlying model's fields (PEEQ, PE) plus DUCTCRT, SHRCRT
+//! (ω) and SDEG (D).
 
 use super::{MatInput, MatOutput, MaterialFactory, MaterialModel, StressMode};
 use crate::fem::model::{MaterialDef, RawKeyword};
@@ -44,7 +44,7 @@ use crate::model::{fail, FemError, Result};
 use std::sync::Arc;
 
 pub static FACTORIES: &[MaterialFactory] = &[MaterialFactory {
-    name: "duktil skada",
+    name: "ductile damage",
     consumes: &["ELASTIC", "PLASTIC", "CYCLIC HARDENING", "DAMAGE INITIATION", "DAMAGE EVOLUTION", "POTENTIAL", "RATE DEPENDENT"],
     priority: 20,
     build: Some(build),
@@ -54,14 +54,14 @@ pub static FACTORIES: &[MaterialFactory] = &[MaterialFactory {
 enum Criterion {
     Ductile,
     Shear { ks: f64 },
-    /// CRITERION=JOHNSON COOK: ε̄D(η, ε̄̇p, θ) i sluten form (`plasticity_rate.rs`);
-    /// tillståndet sparar ε̄D i stället för η.
+    /// CRITERION=JOHNSON COOK: ε̄D(η, ε̄̇p, θ) in closed form (`plasticity_rate.rs`);
+    /// the state stores ε̄D instead of η.
     JohnsonCook(super::plasticity_rate::JcFailure),
 }
 
 #[derive(Debug, Clone)]
 enum Evolution {
-    /// Ingen utveckling: bara initieringskriteriet redovisas.
+    /// No evolution: only the initiation criterion is reported.
     None,
     DispLinear { uf: f64 },
     DispExp { uf: f64, alpha: f64 },
@@ -73,12 +73,12 @@ enum Evolution {
 #[derive(Debug, Clone)]
 struct Damage {
     crit: Criterion,
-    /// (x, ε̄ vid initiering), x = η eller θs.
+    /// (x, ε̄ at initiation), x = η or θs.
     table: Vec<(f64, f64)>,
     evol: Evolution,
-    /// Område materials5: hastighets-/temperaturberoende tabell
-    /// (`damage_tables.rs`), utvärderad med inkrementets ε̄̇pl = Δε̄pl/Δt och
-    /// temperatur i båda ändarna (η vid början och slut).
+    /// Feature area materials5: rate-/temperature-dependent table
+    /// (`damage_tables.rs`), evaluated with the increment's ε̄̇pl = Δε̄pl/Δt and
+    /// temperature at both ends (η at the start and end).
     dep: Option<super::damage_tables::DepTable>,
 }
 
@@ -89,13 +89,13 @@ pub struct DuctileDamage {
     multiplicative: bool,
 }
 
-/// Per kriterium: [ω, ūp, d, σy0 (ENERGY LINEAR), ∫σy dūp (ENERGY EXPONENTIAL),
-/// η eller θs vid inkrementets slut].
+/// Per criterion: [ω, ūp, d, σy0 (ENERGY LINEAR), ∫σy dūp (ENERGY EXPONENTIAL),
+/// η or θs at the end of the increment].
 const PER: usize = 6;
-/// Gemensamt efter kriterierna: [D, q̄ vid inkrementets slut]. D begränsas till:
+/// Shared, after the criteria: [D, q̄ at the end of the increment]. D is limited to:
 const DMAX: f64 = 0.99;
 
-/// Dmax: 0,99 eller enligt *SECTION CONTROLS/elementborttagning (`steps/model_change.rs`).
+/// Dmax: 0.99 or according to *SECTION CONTROLS/element deletion (`steps/model_change.rs`).
 fn dmax() -> f64 {
     crate::steps::model_change::max_degradation().unwrap_or(DMAX)
 }
@@ -105,31 +105,31 @@ fn table(kw: &RawKeyword) -> Result<Vec<(f64, f64)>> {
     for d in &kw.data {
         let v = kw.floats(d)?;
         if v.len() > 2 && v[2..].iter().any(|&x| x != 0.0) {
-            return kw.err_at(d.line, "töjningshastighets- eller temperaturberoende initiering stöds inte ännu");
+            return kw.err_at(d.line, "strain-rate- or temperature-dependent initiation is not supported yet");
         }
         let (e, x) = (v.first().copied().unwrap_or(0.0), v.get(1).copied().unwrap_or(0.0));
         if !(e > 0.0) {
-            return kw.err_at(d.line, "initieringstöjningen ska vara positiv");
+            return kw.err_at(d.line, "the initiation strain must be positive");
         }
         if t.last().is_some_and(|&(xl, _)| !(x > xl)) {
-            return kw.err_at(d.line, "triaxialiteten (eller θs) ska öka i tabellen");
+            return kw.err_at(d.line, "the triaxiality (or θs) must increase in the table");
         }
         t.push((x, e));
     }
     if t.is_empty() {
-        return kw.err("data saknas");
+        return kw.err("data is missing");
     }
     Ok(t)
 }
 
 fn evolution(kw: &RawKeyword) -> Result<Evolution> {
     if kw.has("DEPENDENCIES") || kw.data.len() > 1 && kw.param_upper("SOFTENING").as_deref() != Some("TABULAR") {
-        return kw.err("temperatur- eller fältberoende skadeutveckling stöds inte ännu");
+        return kw.err("temperature- or field-dependent damage evolution is not supported yet");
     }
     let ty = kw.param_upper("TYPE").unwrap_or_else(|| "DISPLACEMENT".into());
     let soft = kw.param_upper("SOFTENING").unwrap_or_else(|| "LINEAR".into());
     if kw.has("MIXED MODE BEHAVIOR") || kw.has("MODE MIX RATIO") || kw.has("POWER") {
-        return kw.err("blandade moder (MIXED MODE BEHAVIOR) stöds inte (bara för kohesiva element)");
+        return kw.err("mixed modes (MIXED MODE BEHAVIOR) are not supported (only for cohesive elements)");
     }
     let v = kw.first_floats()?;
     let a = v.first().copied().unwrap_or(0.0);
@@ -140,44 +140,44 @@ fn evolution(kw: &RawKeyword) -> Result<Evolution> {
                 let v = kw.floats(d)?;
                 let (dd, u) = (v.first().copied().unwrap_or(0.0), v.get(1).copied().unwrap_or(0.0));
                 if !(0.0..1.0).contains(&dd) || t.last().is_some_and(|&(ul, _)| !(u > ul)) {
-                    return kw.err_at(d.line, "tabellen ska ha 0 ≤ d < 1 och växande ūp");
+                    return kw.err_at(d.line, "the table must have 0 ≤ d < 1 and increasing ūp");
                 }
                 t.push((u, dd));
             }
             Ok(Evolution::DispTable(t))
         }
-        _ if !(a > 0.0) => kw.err("brottförskjutningen eller brottenergin ska vara positiv"),
+        _ if !(a > 0.0) => kw.err("the failure displacement or fracture energy must be positive"),
         ("DISPLACEMENT", "LINEAR") => Ok(Evolution::DispLinear { uf: a }),
         ("DISPLACEMENT", "EXPONENTIAL") => {
             let alpha = v.get(1).copied().unwrap_or(0.0);
             if !(alpha > 0.0) {
-                return kw.err("SOFTENING=EXPONENTIAL kräver exponenten α > 0");
+                return kw.err("SOFTENING=EXPONENTIAL requires the exponent α > 0");
             }
             Ok(Evolution::DispExp { uf: a, alpha })
         }
         ("ENERGY", "LINEAR") => Ok(Evolution::EnergyLinear { gf: a }),
         ("ENERGY", "EXPONENTIAL") => Ok(Evolution::EnergyExp { gf: a }),
-        (t, s) => kw.err(format!("TYPE={t}, SOFTENING={s} stöds inte ännu")),
+        (t, s) => kw.err(format!("TYPE={t}, SOFTENING={s} is not supported yet")),
     }
 }
 
 fn build(def: &MaterialDef) -> Result<Option<Arc<dyn MaterialModel>>> {
     if super::cohesive::is_cohesive(def) {
-        return Ok(None); // traction-separation för kohesiva element: materials/cohesive.rs
+        return Ok(None); // traction-separation for cohesive elements: materials/cohesive.rs
     }
     if super::xfem_damage::claims(def) {
-        return Ok(None); // XFEM-spricka: materials/xfem_damage.rs
+        return Ok(None); // XFEM crack: materials/xfem_damage.rs
     }
     if super::hashin::claims(def) || super::forming_limit::claims(def) {
-        return Ok(None); // område materials5: materials/hashin.rs, materials/forming_limit.rs
+        return Ok(None); // feature area materials5: materials/hashin.rs, materials/forming_limit.rs
     }
     if def.behavior("DAMAGE INITIATION").is_none() {
         if let Some(e) = def.behavior("DAMAGE EVOLUTION") {
-            return e.err("*DAMAGE EVOLUTION kräver en föregående *DAMAGE INITIATION");
+            return e.err("*DAMAGE EVOLUTION requires a preceding *DAMAGE INITIATION");
         }
         return Ok(None);
     }
-    // kriterier i ordning; *DAMAGE EVOLUTION hör till närmast föregående *DAMAGE INITIATION
+    // criteria in order; *DAMAGE EVOLUTION belongs to the nearest preceding *DAMAGE INITIATION
     let mut crits: Vec<Damage> = Vec::new();
     let mut degradation: Option<String> = None;
     for b in &def.behaviors {
@@ -187,36 +187,36 @@ fn build(def: &MaterialDef) -> Result<Option<Arc<dyn MaterialModel>>> {
                     Some("DUCTILE") => Criterion::Ductile,
                     Some("SHEAR") => {
                         let ks = match b.param("KS") {
-                            Some(s) => crate::fem::model::parse_f64(s).ok_or_else(|| FemError(format!("{}: ogiltigt KS", b.location())))?,
+                            Some(s) => crate::fem::model::parse_f64(s).ok_or_else(|| FemError(format!("{}: invalid KS", b.location())))?,
                             None => 0.3,
                         };
                         Criterion::Shear { ks }
                     }
                     Some("JOHNSON COOK") => Criterion::JohnsonCook(super::plasticity_rate::JcFailure::parse(b)?),
-                    Some(o) => return b.err(format!("CRITERION={o} stöds inte ännu (DUCTILE, SHEAR, JOHNSON COOK)")),
-                    None => return b.err("CRITERION= saknas"),
+                    Some(o) => return b.err(format!("CRITERION={o} is not supported yet (DUCTILE, SHEAR, JOHNSON COOK)")),
+                    None => return b.err("CRITERION= is missing"),
                 };
                 if b.has("DEPENDENCIES") {
-                    return b.err("fältberoende initiering stöds inte ännu");
+                    return b.err("field-dependent initiation is not supported yet");
                 }
-                // Johnson–Cook: ingen tabell, tillståndet har ε̄D direkt (obegränsat intervall)
+                // Johnson–Cook: no table, the state holds ε̄D directly (unbounded range)
                 let dep = if matches!(crit, Criterion::JohnsonCook(_)) { None } else { super::damage_tables::DepTable::parse(b)? };
                 let table = if matches!(crit, Criterion::JohnsonCook(_)) || dep.is_some() { vec![(-1e300, 1.0), (1e300, 1.0)] } else { table(b)? };
                 crits.push(Damage { crit, table, evol: Evolution::None, dep });
             }
             "DAMAGE EVOLUTION" => {
                 let Some(c) = crits.last_mut() else {
-                    return b.err("*DAMAGE EVOLUTION kräver en föregående *DAMAGE INITIATION");
+                    return b.err("*DAMAGE EVOLUTION requires a preceding *DAMAGE INITIATION");
                 };
                 if !matches!(c.evol, Evolution::None) {
-                    return b.err("kriteriet har redan en *DAMAGE EVOLUTION");
+                    return b.err("the criterion already has a *DAMAGE EVOLUTION");
                 }
                 let deg = b.param_upper("DEGRADATION").unwrap_or_else(|| "MAXIMUM".into());
                 if deg != "MAXIMUM" && deg != "MULTIPLICATIVE" {
-                    return b.err(format!("DEGRADATION={deg} stöds inte (MAXIMUM, MULTIPLICATIVE)"));
+                    return b.err(format!("DEGRADATION={deg} is not supported (MAXIMUM, MULTIPLICATIVE)"));
                 }
                 if degradation.as_ref().is_some_and(|d| *d != deg) {
-                    return b.err("alla kriterier ska ha samma DEGRADATION");
+                    return b.err("all criteria must have the same DEGRADATION");
                 }
                 degradation = Some(deg);
                 c.evol = evolution(b)?;
@@ -225,7 +225,7 @@ fn build(def: &MaterialDef) -> Result<Option<Arc<dyn MaterialModel>>> {
         }
     }
     let Some(pk) = def.behavior("PLASTIC") else {
-        return fail(format!("material {}: *DAMAGE INITIATION kräver *PLASTIC", def.name));
+        return fail(format!("material {}: *DAMAGE INITIATION requires *PLASTIC", def.name));
     };
     let base = MaterialDef {
         name: def.name.clone(),
@@ -234,7 +234,7 @@ fn build(def: &MaterialDef) -> Result<Option<Arc<dyn MaterialModel>>> {
     };
     let inner = super::build(&base)?;
     let Some(peeq) = inner.output_names().iter().position(|n| *n == "PEEQ") else {
-        return pk.err("skademodellen kräver en plasticitetsmodell med PEEQ");
+        return pk.err("the damage model requires a plasticity model with PEEQ");
     };
     Ok(Some(Arc::new(DuctileDamage { inner, peeq, crits, multiplicative: degradation.as_deref() == Some("MULTIPLICATIVE") })))
 }
@@ -243,7 +243,7 @@ fn interp(t: &[(f64, f64)], x: f64) -> f64 {
     super::principal::interp(t, x).0
 }
 
-/// 3D-spänning (Voigt, tensorskjuvning) ur spänningen i ett spänningstillstånd.
+/// 3D stress (Voigt, tensor shear) from the stress in a stress state.
 fn stress3(mode: StressMode, s: &[f64]) -> [f64; 6] {
     match mode {
         StressMode::ThreeD => [s[0], s[1], s[2], s[3], s[4], s[5]],
@@ -266,7 +266,7 @@ impl DuctileDamage {
         self.base() + PER * self.crits.len()
     }
 
-    /// Hela uppdateringen: effektiv uppdatering, kriterier, skada och spänning.
+    /// The whole update: effective update, criteria, damage and stress.
     fn eval(&self, input: &MatInput, len: f64, st: &[f64], stn: &mut [f64]) -> Result<(MatOutput, bool)> {
         let ni = self.n_inner();
         let out = self.inner.update(input, &st[..ni], &mut stn[..ni])?;
@@ -305,21 +305,21 @@ impl DuctileDamage {
                     jc.strain(eta, rate, input.temperature)
                 }
             };
-            // η (θs) begränsas till tabellens intervall (tabellen är konstant utanför)
+            // η (θs) is limited to the table's range (the table is constant outside)
             let x = x.clamp(c.table[0].0, c.table[c.table.len() - 1].0);
             stn[o + 5] = x;
             if dp <= 0.0 {
                 continue;
             }
-            // initieringskriteriet med medelvärdet av ε̄D vid inkrementets början
-            // och slut
+            // the initiation criterion with the average of ε̄D at the start
+            // and end of the increment
             let w_old = st[o];
-            // (Johnson–Cook: ε̄D sparas direkt; 0 = inte satt än, använd det nya värdet)
+            // (Johnson–Cook: ε̄D is stored directly; 0 = not set yet, use the new value)
             let eps_d = |v: f64| match c.crit {
                 Criterion::JohnsonCook(_) if v > 0.0 => v,
                 Criterion::JohnsonCook(_) => x,
-                // område materials5: båda ändarna med inkrementets hastighet och
-                // temperatur
+                // feature area materials5: both ends with the increment's rate and
+                // temperature
                 _ if c.dep.is_some() => c.dep.as_ref().map_or(1.0, |t| t.eval(v, if input.dt > 0.0 { dp / input.dt } else { 0.0 }, input.temperature)),
                 _ => interp(&c.table, v),
             };
@@ -328,15 +328,15 @@ impl DuctileDamage {
             if w < 1.0 || matches!(c.evol, Evolution::None) {
                 continue;
             }
-            // andel av inkrementet efter initieringen
+            // fraction of the increment after initiation
             let after = if w_old < 1.0 { (w - 1.0) / (w - w_old) } else { 1.0 };
             if w_old < 1.0 {
-                // flytspänningen vid initieringspunkten
+                // the yield stress at the initiation point
                 stn[o + 3] = q - after * (q - q_old);
                 stn[o + 4] = 0.0;
             }
-            // linjär mjukning räknar hela initieringsinkrementet, exponentiell
-            // bara delen efter initieringspunkten
+            // linear softening counts the whole initiation increment, exponential
+            // only the part after the initiation point
             let du_full = len * dp;
             let du_after = after * du_full;
             let d = match &c.evol {
@@ -359,7 +359,7 @@ impl DuctileDamage {
                 }
                 Evolution::EnergyExp { gf } => {
                     stn[o + 1] = st[o + 1] + du_after;
-                    // ∫σy dūp med flytspänningen vid inkrementets slut
+                    // ∫σy dūp with the yield stress at the end of the increment
                     let g = stn[o + 4] + q * du_after;
                     stn[o + 4] = g;
                     1.0 - (-g / gf).exp()
@@ -406,7 +406,7 @@ impl MaterialModel for DuctileDamage {
     }
 
     fn requires_unsymmetric(&self) -> bool {
-        // mjukningen ger en indefinit, osymmetrisk tangent
+        // the softening gives an indefinite, unsymmetric tangent
         self.crits.iter().any(|c| !matches!(c.evol, Evolution::None))
     }
 
@@ -416,14 +416,14 @@ impl MaterialModel for DuctileDamage {
     }
 
     fn update(&self, input: &MatInput, state_old: &[f64], state_new: &mut [f64]) -> Result<MatOutput> {
-        // utan elementets karakteristiska längd (stänger m.fl.): L = 1
+        // without the element's characteristic length (trusses etc.): L = 1
         self.update_with_length(input, 1.0, state_old, state_new)
     }
 
     fn update_with_length(&self, input: &MatInput, length: f64, state_old: &[f64], state_new: &mut [f64]) -> Result<MatOutput> {
         let (mut out, growing) = self.eval(input, length, state_old, state_new)?;
         if growing {
-            // numerisk tangent: skadan beror på töjningen via ε̄p
+            // numerical tangent: the damage depends on the strain via ε̄p
             let n = input.strain.len();
             let scale = input.strain.iter().fold(0.0f64, |m, x| m.max(x.abs())).max(1e-6);
             let h = 1e-7 * scale;
@@ -467,7 +467,7 @@ impl MaterialModel for DuctileDamage {
     fn output_field_values(&self, mode: StressMode, state: &[f64]) -> Vec<f64> {
         let ni = self.n_inner();
         let mut v = self.inner.output_field_values(mode, &state[..ni]);
-        // kriteriet redovisas begränsat till 1 när det har en skadeutveckling
+        // the criterion is reported capped at 1 when it has a damage evolution
         let crit = |want: fn(&Criterion) -> bool| -> Option<f64> {
             self.crits
                 .iter()

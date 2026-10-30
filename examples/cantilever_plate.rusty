@@ -1,0 +1,5 @@
+# Cantilever in plane stress: clamped at x=0, downward load at the free end.
+material steel E=210e9 nu=0.3
+plate x=0..2 y=0..0.2 t=0.01 size=0.025
+fix x=0
+load x=2 fy=-1000          # total force, distributed evenly over the end

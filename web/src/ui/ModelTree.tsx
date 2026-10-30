@@ -1,4 +1,4 @@
-// Modellträdet: instanser, set, ytor, material, tvärsnitt, steg och laster.
+// The model tree: instances, sets, surfaces, materials, sections, steps and loads.
 
 import { useState, type ReactNode } from "react";
 import { persist, set, useStore, type TreeSel } from "../store";
@@ -70,18 +70,18 @@ export function ModelTree() {
     <div className="tree">
       <div className="tree-search">
         <Icon name="search" size={14} />
-        <input placeholder="Filtrera" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Filtrera modellträdet" />
+        <input placeholder="Filter" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Filter the model tree" />
       </div>
       <div className="tree-scroll">
-        <Item sel={{ type: "model" }} label={session.name} sub={`${session.script_dim ?? model.dim}D · ${model.nodes} noder · ${model.elements} element`} />
-        {session.kind === "rusty" && <Item sel={{ type: "script" }} label="Bygg modell" sub="material, geometri, randvillkor, laster" />}
-        <Group id="etypes" title="Elementtyper" count={model.element_types.length} empty={!model.element_types.length}>
+        <Item sel={{ type: "model" }} label={session.name} sub={`${session.script_dim ?? model.dim}D · ${model.nodes} nodes · ${model.elements} elements`} />
+        {session.kind === "rusty" && <Item sel={{ type: "script" }} label="Build model" sub="materials, geometry, boundary conditions, loads" />}
+        <Group id="etypes" title="Element types" count={model.element_types.length} empty={!model.element_types.length}>
           {model.element_types.map((t) => (
             <Item key={t.name} sel={{ type: "etype", name: t.name }} label={t.name} badge={String(t.count)} />
           ))}
         </Group>
         {model.instances.length > 1 && (
-          <Group id="inst" title="Instanser" count={model.instances.length}>
+          <Group id="inst" title="Instances" count={model.instances.length}>
             {model.instances.map((n) => (
               <div key={n} className="ti static">
                 <span className="ti-label">{n}</span>
@@ -89,33 +89,33 @@ export function ModelTree() {
             ))}
           </Group>
         )}
-        <Group id="nsets" title="Nodset" count={nsets.length} empty={!model.nsets.length}>
+        <Group id="nsets" title="Node sets" count={nsets.length} empty={!model.nsets.length}>
           {nsets.map((s) => (
             <Item key={s.name} sel={{ type: "set", kind: "nset", name: s.name }} label={s.name} badge={String(s.count)} />
           ))}
         </Group>
-        <Group id="elsets" title="Elementset" count={elsets.length} empty={!model.elsets.length}>
+        <Group id="elsets" title="Element sets" count={elsets.length} empty={!model.elsets.length}>
           {elsets.map((s) => (
             <Item key={s.name} sel={{ type: "set", kind: "elset", name: s.name }} label={s.name} badge={String(s.count)} />
           ))}
         </Group>
-        <Group id="surfaces" title="Ytor" count={surfaces.length} empty={!model.surfaces.length}>
+        <Group id="surfaces" title="Surfaces" count={surfaces.length} empty={!model.surfaces.length}>
           {surfaces.map((s) => (
             <Item key={s.name} sel={{ type: "set", kind: "surface", name: s.name }} label={s.name} badge={String(s.count)} />
           ))}
         </Group>
-        <Group id="materials" title="Material" count={model.materials.length} defaultOpen>
+        <Group id="materials" title="Materials" count={model.materials.length} defaultOpen>
           {model.materials.map((m) => (
             <Item key={m.index} sel={{ type: "material", index: m.index }} label={m.name} sub={m.behaviors.map((b) => b.name.toLowerCase()).join(", ")} />
           ))}
         </Group>
-        <Group id="sections" title="Tvärsnitt" count={model.sections.length} defaultOpen>
+        <Group id="sections" title="Sections" count={model.sections.length} defaultOpen>
           {model.sections.map((s) => (
             <Item key={s.index} sel={{ type: "section", index: s.index }} label={s.elset} sub={`${s.kind.toLowerCase()} · ${s.material || "–"}`} />
           ))}
         </Group>
-        {model.initial_bcs.length > 0 && <Item sel={{ type: "initial" }} label="Randvillkor (modelldata)" badge={String(model.initial_bcs.reduce((a, b) => a + b.total, 0))} />}
-        <Group id="steps" title="Steg" count={model.steps.length} defaultOpen>
+        {model.initial_bcs.length > 0 && <Item sel={{ type: "initial" }} label="Boundary conditions (model data)" badge={String(model.initial_bcs.reduce((a, b) => a + b.total, 0))} />}
+        <Group id="steps" title="Steps" count={model.steps.length} defaultOpen>
           {model.steps.map((s) => (
             <Item
               key={s.index}
@@ -127,7 +127,7 @@ export function ModelTree() {
           ))}
         </Group>
         {model.other.length > 0 && (
-          <Group id="other" title="Övriga nyckelord" count={model.other.length}>
+          <Group id="other" title="Other keywords" count={model.other.length}>
             {model.other.map((n, i) => (
               <div key={i} className="ti static">
                 <span className="ti-label">*{n}</span>

@@ -1,22 +1,22 @@
-//! Akustiska element med en frihetsgrad per nod, akustiskt tryck p
-//! (frihetsgrad 8, utdata POR): AC2D3, AC2D4, AC2D8, ACAX3, ACAX4, ACAX8,
-//! AC3D4, AC3D6, AC3D8, AC3D10 och AC3D20.
+//! Acoustic elements with one degree of freedom per node, acoustic pressure p
+//! (degree of freedom 8, output POR): AC2D3, AC2D4, AC2D8, ACAX3, ACAX4, ACAX8,
+//! AC3D4, AC3D6, AC3D8, AC3D10 and AC3D20.
 //!
-//! Formulering (Zienkiewicz–Newton): med formfunktionerna N
+//! Formulation (Zienkiewicz–Newton): with the shape functions N
 //!
-//! - "styvhet" K_f = ∫ (1/ρ_f) ∇N·∇N dV,
-//! - "massa"   M_f = ∫ (1/K_f) N N dV,
-//! - volymetriskt motstånd i tidsdomänen C_f = ∫ γ/(ρ_f K_f) N N dV,
+//! - "stiffness" K_f = ∫ (1/ρ_f) ∇N·∇N dV,
+//! - "mass"      M_f = ∫ (1/K_f) N N dV,
+//! - volumetric drag in the time domain C_f = ∫ γ/(ρ_f K_f) N N dV,
 //!
-//! så att M_f p̈ + C_f ṗ + K_f p = Q, där Q = ∫ N n⁻·ü dS är den inåtriktade
-//! volymaccelerationen (*CLOAD på frihetsgrad 8). I frekvensdomänen ersätts
-//! 1/ρ_f av 1/ρ̃ med den komplexa densiteten ρ̃ = ρ_f + γ/(iΩ) (se
+//! so that M_f p̈ + C_f ṗ + K_f p = Q, where Q = ∫ N n⁻·ü dS is the inward
+//! volumetric acceleration (*CLOAD on degree of freedom 8). In the frequency domain
+//! 1/ρ_f is replaced by 1/ρ̃ with the complex density ρ̃ = ρ_f + γ/(iΩ) (see
 //! `steps/acoustic.rs`).
 //!
-//! Geometrin (formfunktioner, gaussregler, ytor) delas med
-//! värmeledningselementen (`elements/heat.rs`). Plana element använder
-//! tjockleken från *SOLID SECTION; axisymmetriska (x = r, y = z) integrerar över
-//! hela varvet (2π r).
+//! The geometry (shape functions, Gauss rules, surfaces) is shared with
+//! the heat conduction elements (`elements/heat.rs`). Plane elements use
+//! the thickness from *SOLID SECTION; axisymmetric ones (x = r, y = z) integrate over
+//! the full revolution (2π r).
 
 use super::api::{ElemCtx, ElementType, Family, MassKind};
 use super::common::Ip;
@@ -27,7 +27,7 @@ use crate::model::{fail, Result};
 
 pub struct AcousticElem {
     pub name: &'static str,
-    /// Geometrin (samma som motsvarande värmeledningselement).
+    /// The geometry (same as the corresponding heat conduction element).
     pub geom: HeatElem,
 }
 
@@ -53,22 +53,22 @@ pub static TYPES: &[&dyn ElementType] = &[&AC2D3, &AC2D4, &AC2D8, &ACAX3, &ACAX4
 
 static ALL: &[&AcousticElem] = &[&AC2D3, &AC2D4, &AC2D8, &ACAX3, &ACAX4, &ACAX8, &AC3D4, &AC3D6, &AC3D8, &AC3D10, &AC3D20];
 
-/// Det akustiska elementet med namnet `name`.
+/// The acoustic element named `name`.
 pub fn lookup(name: &str) -> Option<&'static AcousticElem> {
-    // område acoustics2: AC2D4R, AC3D8R, ACAX4R (acoustic_explicit.rs)
+    // area acoustics2: AC2D4R, AC3D8R, ACAX4R (acoustic_explicit.rs)
     ALL.iter().copied().find(|e| e.name == name).or_else(|| super::acoustic_explicit::lookup(name))
 }
 
-/// Elementtypen är akustisk.
+/// The element type is acoustic.
 pub fn is_acoustic(et: &dyn ElementType) -> bool {
     lookup(et.name()).is_some()
 }
 
-/// Geometriska elementmatriser (utan materialparametrar).
+/// Geometric element matrices (without material parameters).
 pub struct Geometric {
     /// G = ∫ ∇N·∇N dV.
     pub g: Vec<f64>,
-    /// H = ∫ N N dV (konsistent).
+    /// H = ∫ N N dV (consistent).
     pub h: Vec<f64>,
 }
 
@@ -77,14 +77,14 @@ impl AcousticElem {
         self.geom.n_nodes()
     }
 
-    /// Första ordningens element.
+    /// First-order element.
     pub fn first_order(&self) -> bool {
         self.geom.first_order()
     }
 
-    /// Integrationspunkter. AC3D6 använder 3 × 2 punkter (triangelregel av
-    /// grad 2 gånger tvåpunkts Gauss i ζ), övriga
-    /// samma regel som värmeledningselementen.
+    /// Integration points. AC3D6 uses 3 × 2 points (triangle rule of
+    /// degree 2 times two-point Gauss in ζ), the others
+    /// the same rule as the heat conduction elements.
     pub fn ips(&self, x: &[[f64; 3]], thickness: f64) -> Result<Vec<Ip>> {
         if self.geom.shape == Shape::Wedge6 {
             let g = 0.577_350_269_189_625_8;
@@ -100,7 +100,7 @@ impl AcousticElem {
         self.geom.ips(x, thickness)
     }
 
-    /// G och H för nodkoordinaterna `x`.
+    /// G and H for the nodal coordinates `x`.
     pub fn geometric(&self, x: &[[f64; 3]], thickness: f64) -> Result<Geometric> {
         let nn = self.n_nodes();
         let mut g = vec![0.0; nn * nn];
@@ -118,7 +118,7 @@ impl AcousticElem {
         Ok(Geometric { g, h })
     }
 
-    /// H som diagonal (radsummerad) matris.
+    /// H as a diagonal (row-summed) matrix.
     pub fn lump(h: &[f64], nn: usize) -> Vec<f64> {
         let mut d = vec![0.0; nn * nn];
         for i in 0..nn {
@@ -127,7 +127,7 @@ impl AcousticElem {
         d
     }
 
-    /// Massmatrisen M_f = H/K_f (eller diagonal) för kompressionsmodulen `bulk`.
+    /// The mass matrix M_f = H/K_f (or diagonal) for the bulk modulus `bulk`.
     pub fn fluid_mass(&self, x: &[[f64; 3]], thickness: f64, bulk: f64, kind: MassKind) -> Result<Vec<f64>> {
         let geo = self.geometric(x, thickness)?;
         let nn = self.n_nodes();
@@ -143,18 +143,18 @@ fn thickness(ctx: &ElemCtx) -> f64 {
     ctx.section.map_or(1.0, |s| s.solid_thickness())
 }
 
-/// (ρ_f, K_f) för elementet.
+/// (ρ_f, K_f) for the element.
 fn props(ctx: &ElemCtx, elem: &str) -> Result<(f64, f64)> {
     let m = ctx.material(elem)?;
     let t = m.tangent_linear(StressMode::ThreeD)?;
     let bulk = t.first().copied().unwrap_or(0.0);
-    if m.name() != "akustiskt medium" || bulk <= 0.0 {
-        return fail(format!("element {} ({elem}) kräver ett akustiskt medium (*ACOUSTIC MEDIUM), inte {}", ctx.label, m.name()));
+    if m.name() != "acoustic medium" || bulk <= 0.0 {
+        return fail(format!("element {} ({elem}) requires an acoustic medium (*ACOUSTIC MEDIUM), not {}", ctx.label, m.name()));
     }
-    // område gaps1: COMPLEX DENSITY utan *DENSITY ger referensdensiteten
+    // area gaps1: COMPLEX DENSITY without *DENSITY gives the reference density
     let density = if ctx.density > 0.0 { ctx.density } else { t.get(1).copied().unwrap_or(0.0) };
     if density <= 0.0 {
-        return fail(format!("element {} ({elem}): akustiskt medium kräver *DENSITY", ctx.label));
+        return fail(format!("element {} ({elem}): an acoustic medium requires *DENSITY", ctx.label));
     }
     Ok((density, bulk))
 }

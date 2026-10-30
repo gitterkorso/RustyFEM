@@ -1,8 +1,8 @@
-//! Materialbeteenden för tryckberoende plasticitet och skada: Mohr–Coulomb,
-//! betong med skadeplasticitet (Lee–Fenves) och duktil skada.
+//! Material behaviors for pressure-dependent plasticity and damage: Mohr–Coulomb,
+//! concrete damaged plasticity (Lee–Fenves) and ductile damage.
 //!
-//! Beteendena sparas i materialet och tolkas av `materials/mohr_coulomb.rs`,
-//! `materials/concrete_damaged.rs` och `materials/ductile_damage.rs`.
+//! The behaviors are stored in the material and parsed by `materials/mohr_coulomb.rs`,
+//! `materials/concrete_damaged.rs` and `materials/ductile_damage.rs`.
 
 use crate::fem::model::RawKeyword;
 use crate::inp::keywords::material::behavior;
@@ -21,9 +21,9 @@ pub static KEYWORDS: &[Keyword] = &[
     Keyword { name: "MOHR COULOMB HARDENING", kind: Kind::Behavior, handler: behavior },
 ];
 
-/// *DAMAGE INITIATION och *DAMAGE EVOLUTION får förekomma flera gånger i ett
-/// material (ett kriterium per *DAMAGE INITIATION, följt av sin utveckling);
-/// ordningen bevaras och tolkas i `materials/ductile_damage.rs`.
+/// *DAMAGE INITIATION and *DAMAGE EVOLUTION may appear several times in a
+/// material (one criterion per *DAMAGE INITIATION, followed by its evolution);
+/// the order is preserved and interpreted in `materials/ductile_damage.rs`.
 fn damage(ctx: &mut InpCtx, kw: &RawKeyword) -> Result<()> {
     let m = ctx.material_mut(kw)?;
     m.behaviors.push(kw.clone());

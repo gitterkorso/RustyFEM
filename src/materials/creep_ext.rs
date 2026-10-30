@@ -1,41 +1,41 @@
-//! Kryplagar och krypningsformer utöver `creep.rs`: *CREEP, LAW=ANAND,
-//! LAW=DARVEAUX och LAW=DOUBLE POWER, volymetrisk svällning (*SWELLING) och
-//! anisotrop krypning med Hills potential (*POTENTIAL under *CREEP), med
-//! isotrop linjär elasticitet. Materialet byggs här (i stället för i
-//! `creep.rs`) när någon av dessa förekommer (`claims`).
+//! Creep laws and creep forms beyond `creep.rs`: *CREEP, LAW=ANAND,
+//! LAW=DARVEAUX and LAW=DOUBLE POWER, volumetric swelling (*SWELLING) and
+//! anisotropic creep with Hill's potential (*POTENTIAL under *CREEP), with
+//! isotropic linear elasticity. The material is built here (instead of in
+//! `creep.rs`) when any of these is present (`claims`).
 //!
-//! Lagarna för krypning och svällning, q̃ = von Mises- eller Hills
-//! ekvivalenta spänning, θ temperaturen
-//! och θZ absoluta nollpunkten (*PHYSICAL CONSTANTS, ABSOLUTE ZERO=):
+//! The laws for creep and swelling, q̃ = von Mises or Hill
+//! equivalent stress, θ the temperature
+//! and θZ the absolute zero (*PHYSICAL CONSTANTS, ABSOLUTE ZERO=):
 //!
 //! - DOUBLE POWER: ε̄̇ = A1 e^(−B1/(θ−θZ)) (q̃/σ0)^C1 + A2 e^(−B2/(θ−θZ)) (q̃/σ0)^C2,
 //! - DARVEAUX: ε̄̇ = ε̄̇s [1 + εT B e^(−B ε̄̇s t)], ε̄̇s = Css [sinh(α q̃)]ⁿ e^(−Q/(R(θ−θZ))),
-//!   t = total tid,
-//! - ANAND: ε̄̇ = A [sinh(ξ q̃/s)]^(1/m) e^(−Q/(R(θ−θZ))) med deformationsmotståndet
+//!   t = total time,
+//! - ANAND: ε̄̇ = A [sinh(ξ q̃/s)]^(1/m) e^(−Q/(R(θ−θZ))) with the deformation resistance
 //!   s: ṡ = h0 |1 − s/s*|ᵃ sign(1 − s/s*) ε̄̇, s* = ŝ [ε̄̇/A e^(Q/(R(θ−θZ)))]ⁿ,
 //!   h0 = A0 + A1 (θ−θZ) + A2 (θ−θZ)² + A3 ε̄̇ + A4 ε̄̇², s0 = S1 + S2 (θ−θZ) + S3 (θ−θZ)²,
-//! - övriga lagar (TIME, STRAIN, POWER LAW, TIME POWER LAW, HYPERB) som i `creep.rs`.
+//! - other laws (TIME, STRAIN, POWER LAW, TIME POWER LAW, HYPERB) as in `creep.rs`.
 //!
-//! Svällning: ε̇ˢʷ = ε̄̇ˢʷ(θ)/3 · I med ε̄̇ˢʷ från tabellen (volymetrisk
-//! töjningshastighet mot temperatur, linjär interpolation, temperaturen vid
-//! inkrementets början). Svällningen ingår
-//! i CE (men inte i CEEQ).
+//! Swelling: ε̇ˢʷ = ε̄̇ˢʷ(θ)/3 · I with ε̄̇ˢʷ from the table (volumetric
+//! strain rate versus temperature, linear interpolation, the temperature at
+//! the start of the increment). The swelling is included
+//! in CE (but not in CEEQ).
 //!
-//! Hills potential (*POTENTIAL: R11, R22, R33, R12, R13, R23, i materialets
-//! lokala axlar) ger q̃ = √(σᵀPσ) och flödesriktningen ∂q̃/∂σ = Pσ/q̃
+//! Hill's potential (*POTENTIAL: R11, R22, R33, R12, R13, R23, in the material's
+//! local axes) gives q̃ = √(σᵀPσ) and the flow direction ∂q̃/∂σ = Pσ/q̃
 //! (`plasticity_hill::hill_matrix`).
 //!
-//! Integration som för `creep.rs` (läget sätts per steg av
-//! `time_dependence.rs`): explicit framåt Euler med spänningen och
-//! tillståndet vid inkrementets början; Arrhenius-faktorn i ANAND, DARVEAUX
-//! och DOUBLE POWER samt svällningen tas vid inkrementets början, HYPERB:s vid
-//! slutet (utom i *COUPLED TEMPERATURE-DISPLACEMENT, där allt tas vid början).
-//! DARVEAUX använder tiden vid inkrementets slut, ANAND uppdaterar s implicit
-//! med spänningen vid slutet. Tidshårdnande
-//! lagar i `creep.rs` har exakt tidsintegral för fast spänning. Annars
-//! implicit bakåt Euler (NLGEOM) med Newton på (σ, Δε̄, s) och numerisk
-//! tangent. Felmåttet för CETOL och Cormeaus stabilitetsgräns som i `creep.rs`.
-//! Utdata CEEQ och CE.
+//! Integration as for `creep.rs` (the mode is set per step by
+//! `time_dependence.rs`): explicit forward Euler with the stress and
+//! state at the start of the increment; the Arrhenius factor in ANAND, DARVEAUX
+//! and DOUBLE POWER and the swelling are taken at the start of the increment, HYPERB's at
+//! the end (except in *COUPLED TEMPERATURE-DISPLACEMENT, where everything is taken at the start).
+//! DARVEAUX uses the time at the end of the increment, ANAND updates s implicitly
+//! with the stress at the end. Time-hardening
+//! laws in `creep.rs` have an exact time integral for constant stress. Otherwise
+//! implicit backward Euler (NLGEOM) with Newton on (σ, Δε̄, s) and a numerical
+//! tangent. The error measure for CETOL and Cormeau's stability limit as in `creep.rs`.
+//! Output CEEQ and CE.
 
 use super::anisotropic::reduce_6x6;
 use super::creep::{parse_law, CreepLaw};
@@ -48,13 +48,13 @@ use std::cell::Cell;
 use std::sync::Arc;
 
 pub static FACTORIES: &[MaterialFactory] = &[MaterialFactory {
-    name: "krypning (ANAND, DARVEAUX, DOUBLE POWER, *POTENTIAL) och svällning (*SWELLING)",
+    name: "creep (ANAND, DARVEAUX, DOUBLE POWER, *POTENTIAL) and swelling (*SWELLING)",
     consumes: &["CREEP", "ELASTIC", "SWELLING", "POTENTIAL"],
     priority: 21,
     build: Some(build),
 }];
 
-/// Om materialet ska byggas här i stället för i `creep.rs`.
+/// Whether the material should be built here instead of in `creep.rs`.
 pub fn claims(def: &MaterialDef) -> bool {
     if def.behavior("PLASTIC").is_some() {
         return def.behavior("CREEP").is_some_and(new_law) || def.behavior("SWELLING").is_some();
@@ -81,14 +81,14 @@ pub struct CreepExt {
     nu: f64,
     etab: Vec<(f64, f64, f64)>,
     law: Option<Law>,
-    /// Svällningshastighet mot temperatur.
+    /// Swelling rate versus temperature.
     swell: Vec<(f64, f64)>,
-    /// Hills matris (Voigt med tensorskjuvkomponenter), `None` = von Mises.
+    /// Hill's matrix (Voigt with tensor shear components), `None` = von Mises.
     hill: Option<M6>,
     td: TimeDependence,
 }
 
-/// Tillstånd: [ε̄cr, εcr+εsw (6), s (Anand), ε 3D (6), kryptid].
+/// State: [ε̄cr, εcr+εsw (6), s (Anand), ε 3D (6), creep time].
 const CBAR: usize = 0;
 const ECR: usize = 1;
 const SANAND: usize = 7;
@@ -98,7 +98,7 @@ const NST: usize = 15;
 
 fn parse_new(kw: &RawKeyword) -> Result<Law> {
     if kw.has("DEPENDENCIES") {
-        return kw.err("parametern DEPENDENCIES stöds inte ännu");
+        return kw.err("the DEPENDENCIES parameter is not supported yet");
     }
     let rows: Vec<Vec<f64>> = kw.data.iter().map(|d| kw.floats(d)).collect::<Result<_>>()?;
     let name = kw.param_upper("LAW").unwrap_or_default();
@@ -107,33 +107,33 @@ fn parse_new(kw: &RawKeyword) -> Result<Law> {
     match name.as_str() {
         "DOUBLE POWER" => {
             if rows.len() != 1 {
-                return kw.err("LAW=DOUBLE POWER har en datarad");
+                return kw.err("LAW=DOUBLE POWER has one data line");
             }
             let s0 = g(6);
             if !(s0 > 0.0) || !(g(0) >= 0.0 && g(3) >= 0.0) {
-                return kw.err("LAW=DOUBLE POWER kräver σ0 > 0 och A1, A2 ≥ 0");
+                return kw.err("LAW=DOUBLE POWER requires σ0 > 0 and A1, A2 ≥ 0");
             }
             Ok(Law::DoublePower { a1: g(0), b1: g(1), c1: g(2), a2: g(3), b2: g(4), c2: g(5), s0 })
         }
         "DARVEAUX" => {
             if rows.len() != 1 {
-                return kw.err("LAW=DARVEAUX har en datarad");
+                return kw.err("LAW=DARVEAUX has one data line");
             }
             if !(g(0) > 0.0 && g(2) > 0.0 && g(3) > 0.0) {
-                return kw.err("LAW=DARVEAUX kräver Css > 0, α > 0 och n > 0");
+                return kw.err("LAW=DARVEAUX requires Css > 0, α > 0 and n > 0");
             }
             Ok(Law::Darveaux { css: g(0), qr: g(1), alpha: g(2), n: g(3), et: g(4), b: g(5) })
         }
         _ => {
             if rows.len() != 2 {
-                return kw.err("LAW=ANAND har två datarader (S1, Q/R, A, ξ, m, A0, ŝ, n och a, S2, S3, A1, A2, A3, A4)");
+                return kw.err("LAW=ANAND has two data lines (S1, Q/R, A, ξ, m, A0, ŝ, n and a, S2, S3, A1, A2, A3, A4)");
             }
             let mut p = [0.0; 15];
             for (i, x) in p.iter_mut().enumerate() {
                 *x = rows[i / 8].get(i % 8).copied().unwrap_or(0.0);
             }
             if !(p[0] > 0.0 && p[2] > 0.0 && p[3] > 0.0 && p[4] > 0.0 && p[6] > 0.0) {
-                return kw.err("LAW=ANAND kräver S1, A, ξ, m och ŝ > 0");
+                return kw.err("LAW=ANAND requires S1, A, ξ, m and ŝ > 0");
             }
             Ok(Law::Anand(p))
         }
@@ -145,14 +145,14 @@ fn build(def: &MaterialDef) -> Result<Option<Arc<dyn MaterialModel>>> {
         return Ok(None);
     }
     if let Some(pk) = def.behavior("PLASTIC") {
-        return pk.err("*PLASTIC tillsammans med LAW=ANAND/DARVEAUX/DOUBLE POWER eller *SWELLING stöds inte ännu");
+        return pk.err("*PLASTIC together with LAW=ANAND/DARVEAUX/DOUBLE POWER or *SWELLING is not supported yet");
     }
     let Some(ekw) = def.behavior("ELASTIC") else {
-        return fail(format!("material {}: krypning och svällning kräver *ELASTIC", def.name));
+        return fail(format!("material {}: creep and swelling require *ELASTIC", def.name));
     };
     let ty = ekw.param_upper("TYPE").unwrap_or_else(|| "ISOTROPIC".into());
     if ty != "ISOTROPIC" {
-        return ekw.err("krypning och svällning stöds bara med isotrop elasticitet (TYPE=ISOTROPIC)");
+        return ekw.err("creep and swelling are only supported with isotropic elasticity (TYPE=ISOTROPIC)");
     }
     let etab = super::thermal_elastic::iso_table(ekw)?;
     let (e, nu) = (etab[0].0, etab[0].1);
@@ -166,38 +166,38 @@ fn build(def: &MaterialDef) -> Result<Option<Arc<dyn MaterialModel>>> {
     if let Some(sk) = def.behavior("SWELLING") {
         for p in ["LAW", "DEPENDENCIES"] {
             if sk.has(p) {
-                return sk.err(format!("parametern {p} stöds inte ännu för *SWELLING"));
+                return sk.err(format!("the {p} parameter is not supported yet for *SWELLING"));
             }
         }
         for d in &sk.data {
             let v = sk.floats(d)?;
             if v.len() > 2 && v[2..].iter().any(|&x| x != 0.0) {
-                return sk.err_at(d.line, "fältberoende svällning stöds inte ännu");
+                return sk.err_at(d.line, "field-dependent swelling is not supported yet");
             }
             let (r, t) = (v.first().copied().unwrap_or(0.0), v.get(1).copied().unwrap_or(0.0));
             if let Some(&(_, tl)) = swell.last() {
                 if !(t > tl) {
-                    return sk.err_at(d.line, "temperaturerna i *SWELLING ska öka");
+                    return sk.err_at(d.line, "the temperatures in *SWELLING must increase");
                 }
             }
             swell.push((r, t));
         }
         if swell.is_empty() {
-            return sk.err("svällningshastigheten saknas");
+            return sk.err("the swelling rate is missing");
         }
     }
     let hill = match def.behavior("POTENTIAL") {
         None => None,
         Some(pk) => {
             if pk.data.len() > 1 || pk.has("DEPENDENCIES") {
-                return pk.err("temperatur- eller fältberoende *POTENTIAL stöds inte ännu");
+                return pk.err("temperature- or field-dependent *POTENTIAL is not supported yet");
             }
             let v = pk.first_floats()?;
             if v.len() < 6 || v[..6].iter().any(|&x| !(x > 0.0)) {
-                return pk.err("*POTENTIAL kräver positiva R11, R22, R33, R12, R13 och R23");
+                return pk.err("*POTENTIAL requires positive R11, R22, R33, R12, R13 and R23");
             }
             if def.behavior("CREEP").is_none() {
-                return pk.err("*POTENTIAL utan *PLASTIC kräver *CREEP");
+                return pk.err("*POTENTIAL without *PLASTIC requires *CREEP");
             }
             Some(super::plasticity_hill::hill_matrix(&[v[0], v[1], v[2], v[3], v[4], v[5]]))
         }
@@ -205,17 +205,17 @@ fn build(def: &MaterialDef) -> Result<Option<Arc<dyn MaterialModel>>> {
     Ok(Some(Arc::new(CreepExt { e, nu, etab, law, swell, hill, td: TimeDependence::default() })))
 }
 
-/// Villkoren för en uppdatering.
+/// The conditions for an update.
 struct Ctx {
     mode: u8,
-    /// Total tid vid inkrementets början.
+    /// Total time at the start of the increment.
     t: f64,
     dt: f64,
     temp: f64,
     temp_old: f64,
     tz: f64,
-    /// Temperaturen i Arrhenius-faktorn vid explicit integration (slutet,
-    /// eller början i *COUPLED TEMPERATURE-DISPLACEMENT).
+    /// The temperature in the Arrhenius factor for explicit integration (the end,
+    /// or the start in *COUPLED TEMPERATURE-DISPLACEMENT).
     theta: f64,
 }
 
@@ -225,8 +225,8 @@ struct Monitor {
     dts: f64,
 }
 
-/// Voigtvektor med tensorskjuvkomponenter → q̃ och ∂q̃/∂σ (ingenjörsform, dvs.
-/// skjuvkomponenterna är derivatan med avseende på σ12 osv.).
+/// Voigt vector with tensor shear components → q̃ and ∂q̃/∂σ (engineering form, i.e.
+/// the shear components are the derivative with respect to σ12 etc.).
 fn equivalent(hill: &Option<M6>, sig: &V6) -> (f64, V6) {
     match hill {
         None => {
@@ -249,7 +249,7 @@ fn equivalent(hill: &Option<M6>, sig: &V6) -> (f64, V6) {
     }
 }
 
-/// Löser f(s) = 0 med Newton (numerisk derivata) från startvärdet `s0`.
+/// Solves f(s) = 0 with Newton (numerical derivative) from the initial value `s0`.
 fn solve_scalar(s0: f64, f: impl Fn(f64) -> f64) -> f64 {
     let mut s = s0;
     for _ in 0..100 {
@@ -302,23 +302,23 @@ impl CreepExt {
         }
     }
 
-    /// Anands initiala deformationsmotstånd vid temperaturen θ.
+    /// Anand's initial deformation resistance at temperature θ.
     fn anand_s0(p: &[f64; 15], th: f64) -> f64 {
         p[0] + p[9] * th + p[10] * th * th
     }
 
-    /// Ekvivalent kryptöjningsinkrement Δε̄ och ändringen av s för spänningen
-    /// `q`, tillståndet (ε̄cr, s), tiden `t` (kryptid för TIME=CREEP, annars
-    /// total), temperaturerna (tabellkonstanter vid `temp`, Arrhenius vid `theta`).
+    /// Equivalent creep strain increment Δε̄ and the change of s for the stress
+    /// `q`, the state (ε̄cr, s), the time `t` (creep time for TIME=CREEP, otherwise
+    /// total), the temperatures (table constants at `temp`, Arrhenius at `theta`).
     #[allow(clippy::too_many_arguments)]
     fn increment(&self, q: f64, ecr: f64, s: f64, t: f64, dt: f64, temp: f64, theta: f64, tz: f64) -> (f64, f64) {
         let Some(law) = &self.law else { return (0.0, 0.0) };
         if !(q > 0.0) || !(dt > 0.0) {
             return (0.0, 0.0);
         }
-        // ANAND, DARVEAUX och DOUBLE POWER: Arrhenius-faktorn vid `temp`
-        // (inkrementets början vid explicit integration, kontrollerat med
-        // temperaturramp; HYPERB i `creep.rs` använder slutet)
+        // ANAND, DARVEAUX and DOUBLE POWER: the Arrhenius factor at `temp`
+        // (start of the increment for explicit integration, verified with
+        // a temperature ramp; HYPERB in `creep.rs` uses the end)
         let _ = theta;
         let th = temp - tz;
         match law {
@@ -329,7 +329,7 @@ impl CreepExt {
             }
             Law::Darveaux { css, qr, alpha, n, et, b } => {
                 let rs = css * (alpha * q).sinh().powf(*n) * (-qr / th).exp();
-                // hastigheten med tiden vid inkrementets slut
+                // the rate with the time at the end of the increment
                 let d = rs * (1.0 + et * b * (-b * rs * (t + dt)).exp()) * dt;
                 (d, 0.0)
             }
@@ -345,7 +345,7 @@ impl CreepExt {
         }
     }
 
-    /// Tiden som kryplagen använder vid inkrementets början.
+    /// The time the creep law uses at the start of the increment.
     fn law_time(&self, st: &[f64], c: &Ctx) -> f64 {
         match &self.law {
             Some(Law::Std(l)) if l.creep_time => st[TCR],
@@ -376,10 +376,10 @@ impl CreepExt {
         } else {
             0.0
         };
-        // svällning: hastigheten vid inkrementets början (kontrollerat i
-        // *VISCO med temperaturramp och i *COUPLED TEMPERATURE-DISPLACEMENT)
+        // swelling: the rate at the start of the increment (verified in
+        // *VISCO with a temperature ramp and in *COUPLED TEMPERATURE-DISPLACEMENT)
         let dsw = self.swell_rate(c.temp_old) * c.dt / 3.0;
-        // spänningen vid inkrementets början
+        // the stress at the start of the increment
         let (e0, nu0) = self.moduli(c.temp_old);
         let eps0: V6 = std::array::from_fn(|i| st[EPS3 + i] - ecr[i]);
         let sig0 = mv6(&iso_d6(e0, nu0), &eps0);
@@ -395,7 +395,7 @@ impl CreepExt {
             let sig = mv6(&d1, &ee);
             let (q1, _) = equivalent(&self.hill, &sig);
             let (dc1, _) = inc(q1, s_n);
-            // stabilitetsgräns (Cormeau) med numerisk derivata ∂Δε̄/∂q̃
+            // stability limit (Cormeau) with numerical derivative ∂Δε̄/∂q̃
             let hq = 1e-6 * q0.max(1e-12);
             let dq = (inc(q0 + hq, s_n).0 - inc((q0 - hq).max(0.0), s_n).0) / (q0 + hq - (q0 - hq).max(0.0));
             let dts = if dq > 0.0 && dq.is_finite() { 4.0 * (1.0 + nu0) * c.dt / (3.0 * e0 * dq) } else { f64::INFINITY };
@@ -403,20 +403,20 @@ impl CreepExt {
             stn[CBAR] = ecbar + dc0;
             stn[ECR..ECR + 6].copy_from_slice(&ecr1);
             if let Some(Law::Anand(_)) = &self.law {
-                // s uppdateras implicit med spänningen vid inkrementets
-                // slut och temperaturen vid slutet, s = sₙ + ṡ(q̃₁, s, θ₁) Δt
-                // (kontrollerat med temperaturramp)
+                // s is updated implicitly with the stress at the end of the
+                // increment and the temperature at the end, s = sₙ + ṡ(q̃₁, s, θ₁) Δt
+                // (verified with a temperature ramp)
                 let _ = ds0;
                 let inc1 = |q: f64, s: f64| self.increment(q, ecbar, s, tl, c.dt, c.temp, c.temp, c.tz);
                 stn[SANAND] = solve_scalar(s_n, |s| s - s_n - inc1(q1, s).1);
             }
             return Ok((sig, d1));
         }
-        // implicit: Newton på (σ, Δε̄, s)
+        // implicit: Newton on (σ, Δε̄, s)
         let sig = self.implicit(eps, &ecr, ecbar, s_n, dsw, &d1, &|q, s| self.increment(q, ecbar, s, tl, c.dt, c.temp, c.temp, c.tz), stn)?;
         let (q1, _) = equivalent(&self.hill, &sig);
         mon.set(Monitor { err: (inc(q1, s_n).0 - dc0).abs(), dts: f64::INFINITY });
-        // numerisk tangent (centraldifferens)
+        // numerical tangent (central difference)
         let scale = eps.iter().fold(0.0f64, |m, x| m.max(x.abs())).max(1e-8);
         let h = 1e-6 * scale;
         let mut tmp = vec![0.0; NST];
@@ -436,8 +436,8 @@ impl CreepExt {
         Ok((sig, cmat))
     }
 
-    /// Bakåt Euler: σ = D(ε − εcr,n − Δε̄ n(σ) − Δεsw), Δε̄ = Δ(q̃(σ), s),
-    /// s = sₙ + Δs(q̃(σ), s). Skriver tillståndet i `stn`.
+    /// Backward Euler: σ = D(ε − εcr,n − Δε̄ n(σ) − Δεsw), Δε̄ = Δ(q̃(σ), s),
+    /// s = sₙ + Δs(q̃(σ), s). Writes the state to `stn`.
     #[allow(clippy::too_many_arguments)]
     fn implicit(&self, eps: &V6, ecr: &V6, ecbar: f64, s_n: f64, dsw: f64, d1: &M6, inc: &dyn Fn(f64, f64) -> (f64, f64), stn: &mut [f64]) -> Result<V6> {
         let anand = matches!(self.law, Some(Law::Anand(_)));
@@ -503,7 +503,7 @@ impl CreepExt {
             }
         }
         if nrm(&r) > 1e-9 {
-            return fail(format!("implicit krypintegration konvergerade inte (residual {:e})", nrm(&r)));
+            return fail(format!("implicit creep integration did not converge (residual {:e})", nrm(&r)));
         }
         let sig: V6 = std::array::from_fn(|i| x[i] * sc);
         let s = x[6] * ssc;
@@ -545,7 +545,7 @@ impl MaterialModel for CreepExt {
         }
         let tz = self.td.absolute_zero();
         if mode != CREEP_OFF && self.needs_zero() && !tz.is_finite() {
-            return fail("kryplagen kräver *PHYSICAL CONSTANTS, ABSOLUTE ZERO=");
+            return fail("the creep law requires *PHYSICAL CONSTANTS, ABSOLUTE ZERO=");
         }
         let c = Ctx { mode, t: input.time - input.dt, dt: input.dt, temp: input.temperature, temp_old: input.temperature - input.dtemp, tz: if tz.is_finite() { tz } else { 0.0 }, theta: if mode == CREEP_EXPLICIT && self.td.explicit_temp_at_start() { input.temperature - input.dtemp } else { input.temperature } };
         let (e1, nu1) = self.moduli(c.temp);

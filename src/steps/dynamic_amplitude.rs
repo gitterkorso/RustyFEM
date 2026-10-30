@@ -1,22 +1,22 @@
-//! Amplituder (*AMPLITUDE) och utvärdering av laster/randvillkor med AMPLITUDE=.
+//! Amplitudes (*AMPLITUDE) and evaluation of loads/boundary conditions with AMPLITUDE=.
 //!
-//! *AMPLITUDE sparas av .inp-läsaren i `FeModel::extra`. Här tolkas de
-//! definitioner som stöds:
+//! *AMPLITUDE is stored by the .inp reader in `FeModel::extra`. Here the
+//! supported definitions are interpreted:
 //!
-//! - `DEFINITION=TABULAR` (standard): par (t, A), linjär interpolation, konstant
-//!   före första och efter sista punkten. `SMOOTH` stöds inte (utan
-//!   parametern sker ingen utjämning).
-//! - `DEFINITION=EQUALLY SPACED`: `FIXED INTERVAL=Δt`, `BEGIN=t0`, värden.
-//! - `DEFINITION=PERIODIC`: rad 1 `N, ω, t0, A0`, därefter par (Aₙ, Bₙ):
-//!   A = A0 + Σ [Aₙ cos nω(t−t0) + Bₙ sin nω(t−t0)] för t ≥ t0, annars A0.
-//! - `DEFINITION=SMOOTH STEP`: par (t, A); mellan två punkter
+//! - `DEFINITION=TABULAR` (default): pairs (t, A), linear interpolation, constant
+//!   before the first and after the last point. `SMOOTH` is not supported (without
+//!   the parameter no smoothing is done).
+//! - `DEFINITION=EQUALLY SPACED`: `FIXED INTERVAL=Δt`, `BEGIN=t0`, values.
+//! - `DEFINITION=PERIODIC`: line 1 `N, ω, t0, A0`, then pairs (Aₙ, Bₙ):
+//!   A = A0 + Σ [Aₙ cos nω(t−t0) + Bₙ sin nω(t−t0)] for t ≥ t0, otherwise A0.
+//! - `DEFINITION=SMOOTH STEP`: pairs (t, A); between two points
 //!   A = Aᵢ + (Aᵢ₊₁ − Aᵢ) ξ³(10 − 15ξ + 6ξ²), ξ = (t − tᵢ)/(tᵢ₊₁ − tᵢ).
-//! - `DEFINITION=DECAY`: `A0, A, t0, td`: A = A0 + A exp(−(t−t0)/td) för t ≥ t0.
+//! - `DEFINITION=DECAY`: `A0, A, t0, td`: A = A0 + A exp(−(t−t0)/td) for t ≥ t0.
 //!
-//! `TIME=STEP TIME` (standard) eller `TIME=TOTAL TIME`. `VALUE=RELATIVE`
-//! (standard) multiplicerar lastens storlek; `VALUE=ABSOLUTE` ersätter den.
-//! `SCALEX`, `SCALEY`, `SHIFTX`, `SHIFTY` stöds för tabellerade definitioner.
-//! Alla definitioner är kontrollerade i tests/cases/dynamics/.
+//! `TIME=STEP TIME` (default) or `TIME=TOTAL TIME`. `VALUE=RELATIVE`
+//! (default) multiplies the load magnitude; `VALUE=ABSOLUTE` replaces it.
+//! `SCALEX`, `SCALEY`, `SHIFTX`, `SHIFTY` are supported for tabular definitions.
+//! All definitions are verified in tests/cases/dynamics/.
 
 use crate::fem::model::{DistLoad, FeModel, RawKeyword};
 use crate::fem::state::StepLoads;
@@ -33,7 +33,7 @@ enum Def {
     User(crate::user::routines::UampRef),
 }
 
-/// En amplitud: A(t) med stegtid eller total tid.
+/// An amplitude: A(t) with step time or total time.
 #[derive(Debug, Clone)]
 pub struct Amplitude {
     pub name: String,
@@ -64,7 +64,7 @@ fn interp(p: &[(f64, f64)], t: f64, smooth: bool) -> f64 {
 }
 
 impl Amplitude {
-    /// A vid stegtid `step_time` och total tid `total_time`.
+    /// A at step time `step_time` and total time `total_time`.
     pub fn value(&self, step_time: f64, total_time: f64) -> f64 {
         let t = if self.total_time { total_time } else { step_time };
         match &self.def {
@@ -91,10 +91,10 @@ impl Amplitude {
         }
     }
 
-    /// Första och andra tidsderivatan (A′, A″) vid samma tid som `value`.
-    /// Används för hastighet och acceleration i föreskrivna frihetsgrader
-    /// (amplitudens analytiska derivator redovisas där, kontrollerat för
-    /// SMOOTH STEP). TABULAR ger segmentets lutning och A″ = 0.
+    /// First and second time derivatives (A′, A″) at the same time as `value`.
+    /// Used for velocity and acceleration in prescribed degrees of freedom
+    /// (the analytical derivatives of the amplitude are reported there, verified for
+    /// SMOOTH STEP). TABULAR gives the slope of the segment and A″ = 0.
     pub fn rates(&self, step_time: f64, total_time: f64) -> (f64, f64) {
         let t = if self.total_time { total_time } else { step_time };
         match &self.def {
@@ -104,7 +104,7 @@ impl Amplitude {
             }
             Def::Tabular(p) | Def::Smooth(p) => {
                 let smooth = matches!(self.def, Def::Smooth(_));
-                // område explicit_adv: höger derivata i första punkten (explicit analys: V vid t = 0)
+                // area explicit_adv: right derivative at the first point (explicit analysis: V at t = 0)
                 if p.len() < 2 || t < p[0].0 || t > p[p.len() - 1].0 {
                     return (0.0, 0.0);
                 }
@@ -150,36 +150,36 @@ impl Amplitude {
         }
     }
 
-    /// Tolkar ett *AMPLITUDE-block.
+    /// Parses an *AMPLITUDE block.
     pub fn parse(kw: &RawKeyword) -> Result<Amplitude> {
         let name = match kw.param("NAME") {
             Some(n) if !n.trim().is_empty() => n.trim().to_uppercase(),
-            _ => return kw.err("parametern NAME= saknas"),
+            _ => return kw.err("the parameter NAME= is missing"),
         };
         let def_name = kw.param_upper("DEFINITION").unwrap_or_else(|| "TABULAR".into());
         let total_time = match kw.param_upper("TIME") {
             None => false,
             Some(t) if t == "STEP TIME" => false,
             Some(t) if t == "TOTAL TIME" => true,
-            Some(t) => return kw.err(format!("TIME={t} ska vara STEP TIME eller TOTAL TIME")),
+            Some(t) => return kw.err(format!("TIME={t} must be STEP TIME or TOTAL TIME")),
         };
         let absolute = match kw.param_upper("VALUE") {
             None => false,
             Some(v) if v == "RELATIVE" => false,
             Some(v) if v == "ABSOLUTE" => true,
-            Some(v) => return kw.err(format!("VALUE={v} ska vara RELATIVE eller ABSOLUTE")),
+            Some(v) => return kw.err(format!("VALUE={v} must be RELATIVE or ABSOLUTE")),
         };
         if let Some(s) = kw.param("SMOOTH") {
             if crate::fem::model::parse_f64(s).unwrap_or(1.0) != 0.0 {
-                return kw.err("SMOOTH= stöds inte ännu");
+                return kw.err("SMOOTH= is not supported yet");
             }
         }
         if kw.has("INPUT") {
-            return kw.err("INPUT= stöds inte ännu");
+            return kw.err("INPUT= is not supported yet");
         }
         let pf = |k: &str, d: f64| -> Result<f64> {
             match kw.param(k) {
-                Some(v) => crate::fem::model::parse_f64(v).ok_or_else(|| crate::model::FemError(format!("{}: {k}={v} är inget tal", kw.location()))),
+                Some(v) => crate::fem::model::parse_f64(v).ok_or_else(|| crate::model::FemError(format!("{}: {k}={v} is not a number", kw.location()))),
                 None => Ok(d),
             }
         };
@@ -190,11 +190,11 @@ impl Amplitude {
         }
         let pairs = |vals: &[f64]| -> Result<Vec<(f64, f64)>> {
             if vals.len() % 2 != 0 || vals.is_empty() {
-                return kw.err("tabellen ska bestå av par (tid, amplitud)");
+                return kw.err("the table must consist of pairs (time, amplitude)");
             }
             let p: Vec<(f64, f64)> = vals.chunks(2).map(|c| (c[0] * sx + hx, c[1] * sy + hy)).collect();
             if p.windows(2).any(|w| w[1].0 < w[0].0) {
-                return kw.err("tiderna ska vara stigande");
+                return kw.err("the times must be increasing");
             }
             Ok(p)
         };
@@ -204,16 +204,16 @@ impl Amplitude {
             "EQUALLY SPACED" => {
                 let dt = pf("FIXED INTERVAL", 0.0)?;
                 if dt <= 0.0 {
-                    return kw.err("FIXED INTERVAL= saknas");
+                    return kw.err("FIXED INTERVAL= is missing");
                 }
                 let t0 = pf("BEGIN", 0.0)?;
                 Def::Tabular(vals.iter().enumerate().map(|(i, &a)| ((t0 + i as f64 * dt) * sx + hx, a * sy + hy)).collect())
             }
             "PERIODIC" => {
-                // första dataraden: N, ω, t0, A0; därefter Aₙ, Bₙ
+                // first data line: N, ω, t0, A0; then Aₙ, Bₙ
                 let first = kw.data.first().map(|d| kw.floats(d)).transpose()?.unwrap_or_default();
                 if first.len() < 4 {
-                    return kw.err("första dataraden ska vara 'N, ω, t0, A0'");
+                    return kw.err("the first data line must be 'N, ω, t0, A0'");
                 }
                 let n = first[0].round() as usize;
                 let mut rest = Vec::new();
@@ -221,24 +221,24 @@ impl Amplitude {
                     rest.extend(kw.floats(d)?.into_iter().zip(d.fields.iter()).filter(|(_, f)| !f.trim().is_empty()).map(|(v, _)| v));
                 }
                 if rest.len() < 2 * n {
-                    return kw.err(format!("PERIODIC med N={n} kräver {} koefficienter", 2 * n));
+                    return kw.err(format!("PERIODIC with N={n} requires {} coefficients", 2 * n));
                 }
                 Def::Periodic { omega: first[1], t0: first[2], a0: first[3], terms: rest[..2 * n].chunks(2).map(|c| (c[0], c[1])).collect() }
             }
             "DECAY" => {
                 if vals.len() < 4 {
-                    return kw.err("DECAY kräver 'A0, A, t0, td'");
+                    return kw.err("DECAY requires 'A0, A, t0, td'");
                 }
                 Def::Decay { a0: vals[0], a: vals[1], t0: vals[2], td: vals[3] }
             }
             "USER" => Def::User(crate::user::routines::UampRef::new(kw, &name)?),
-            other => return kw.err(format!("DEFINITION={other} stöds inte ännu")),
+            other => return kw.err(format!("DEFINITION={other} is not supported yet")),
         };
         Ok(Amplitude { name, def, total_time, absolute })
     }
 }
 
-/// Alla amplituder i modellen.
+/// All amplitudes in the model.
 pub fn amplitudes(model: &FeModel) -> Result<BTreeMap<String, Amplitude>> {
     let mut m = BTreeMap::new();
     for kw in model.extra.iter().filter(|k| k.name == "AMPLITUDE") {
@@ -248,20 +248,20 @@ pub fn amplitudes(model: &FeModel) -> Result<BTreeMap<String, Amplitude>> {
     Ok(m)
 }
 
-/// Utvärderar ett stegs laster och randvillkor med amplituder.
+/// Evaluates a step's loads and boundary conditions with amplitudes.
 ///
-/// Poster utan AMPLITUDE= följer stegets standardamplitud: linjär ramp från
-/// föregående värde (`ramp`) eller direkt (steg). Poster med AMPLITUDE= får
-/// värdet storlek · A(t) (VALUE=RELATIVE).
+/// Entries without AMPLITUDE= follow the step's default amplitude: linear ramp from
+/// the previous value (`ramp`) or immediately (step). Entries with AMPLITUDE= get
+/// the value magnitude · A(t) (VALUE=RELATIVE).
 pub struct LoadEval<'a> {
     pub loads: &'a StepLoads,
     pub amps: BTreeMap<String, Amplitude>,
-    /// Standardamplitud: linjär ramp över steget (annars steg).
+    /// Default amplitude: linear ramp over the step (otherwise step).
     pub ramp: bool,
-    /// Stegets längd och total tid vid stegets början.
+    /// Length of the step and total time at the start of the step.
     pub period: f64,
     pub time0: f64,
-    /// Steg-standardamplituden verkar fullt redan vid t = 0 (explicit analys).
+    /// The step default amplitude acts fully already at t = 0 (explicit analysis).
     pub step_full_at_start: bool,
 }
 
@@ -270,13 +270,13 @@ impl<'a> LoadEval<'a> {
         let amps = amplitudes(model)?;
         for name in loads.amp_bc.values().chain(loads.amp_cload.values()).chain(loads.amp_dload.iter().flatten()) {
             if !amps.contains_key(name) {
-                return fail(format!("amplituden {name} är inte definierad (*AMPLITUDE, NAME={name})"));
+                return fail(format!("the amplitude {name} is not defined (*AMPLITUDE, NAME={name})"));
             }
         }
         Ok(LoadEval { loads, amps, ramp, period, time0, step_full_at_start: false })
     }
 
-    /// Standardamplitudens faktor vid stegtidsandel `f`.
+    /// The default amplitude factor at step time fraction `f`.
     pub fn default_factor(&self, f: f64) -> f64 {
         if self.ramp {
             f.clamp(0.0, 1.0)
@@ -305,12 +305,12 @@ impl<'a> LoadEval<'a> {
         }
     }
 
-    /// Föreskrivna värden vid stegtiden `step_time`.
+    /// Prescribed values at the step time `step_time`.
     pub fn bc_at(&self, step_time: f64) -> Vec<(usize, usize, f64)> {
         self.loads.bc.iter().map(|(&k, &v)| (k.0, k.1, self.eval(self.loads.amp_bc.get(&k), v, step_time))).collect()
     }
 
-    /// Hastighet och acceleration (v, a) i föreskrivna frihetsgrader med AMPLITUDE=.
+    /// Velocity and acceleration (v, a) in prescribed degrees of freedom with AMPLITUDE=.
     pub fn bc_rates_at(&self, step_time: f64) -> Vec<(usize, usize, f64, f64)> {
         self.loads
             .amp_bc
@@ -324,7 +324,7 @@ impl<'a> LoadEval<'a> {
             .collect()
     }
 
-    /// Punktlaster vid stegtiden (inklusive avtagande reaktioner från släppta randvillkor).
+    /// Point loads at the step time (including decaying reactions from released boundary conditions).
     pub fn cloads_at(&self, step_time: f64) -> Vec<(usize, usize, f64)> {
         let mut v: Vec<(usize, usize, f64)> =
             self.loads.cload.iter().map(|(&k, &c)| (k.0, k.1, self.eval(self.loads.amp_cload.get(&k), c, step_time))).collect();
@@ -364,7 +364,7 @@ mod tests {
         }
     }
 
-    /// Referensvärden för amplituddefinitionerna (se tests/cases/dynamics).
+    /// Reference values for the amplitude definitions (see tests/cases/dynamics).
     #[test]
     fn definitions_match_reference_values() {
         let tab = Amplitude::parse(&kw(&[("NAME", "T")], &["0.0, 0.0, 0.3, 1.0, 0.6, 0.5, 1.0, 2.0"])).unwrap();

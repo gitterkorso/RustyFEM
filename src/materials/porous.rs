@@ -1,16 +1,16 @@
-//! Porvätskans egenskaper för kopplad porvattentryck–förskjutning (*SOILS):
-//! *PERMEABILITY och *POROUS BULK MODULI.
+//! Pore fluid properties for coupled pore pressure–displacement (*SOILS):
+//! *PERMEABILITY and *POROUS BULK MODULI.
 //!
-//! Beteendena påverkar inte spänningsuppdateringen (den effektiva spänningen
-//! räknas av materialets egen modell, t.ex. *ELASTIC eller *MOHR COULOMB) och
-//! förbrukas därför av en passiv post. Elementen i `elements/soils.rs` och
-//! steg-typen i `steps/soils.rs` läser dem med `PoroProps::from_def`.
+//! The behaviors do not affect the stress update (the effective stress
+//! is computed by the material's own model, e.g. *ELASTIC or *MOHR COULOMB) and
+//! are therefore consumed by a passive entry. The elements in `elements/soils.rs` and
+//! the step type in `steps/soils.rs` read them with `PoroProps::from_def`.
 //!
-//! Darcys lag: volymflödet per ytenhet är
-//! f = −(k/γw)·(∂u_w/∂x − ρw g) där k är permeabiliteten (hastighetsenhet) och
-//! γw = SPECIFIC= vätskans tunghet. Permeabiliteten får bero på portalet e
-//! (flera datarader k, e; styckvis linjär interpolation, konstant utanför
-//! tabellen). TYPE=ISOTROPIC (k), ORTHOTROPIC (k11, k22, k33) och
+//! Darcy's law: the volume flux per unit area is
+//! f = −(k/γw)·(∂u_w/∂x − ρw g) where k is the permeability (velocity units) and
+//! γw = SPECIFIC= the specific weight of the fluid. The permeability may depend on the void ratio e
+//! (several data lines k, e; piecewise linear interpolation, constant outside
+//! the table). TYPE=ISOTROPIC (k), ORTHOTROPIC (k11, k22, k33) and
 //! ANISOTROPIC (k11, k12, k22, k13, k23, k33).
 
 use super::MaterialFactory;
@@ -18,13 +18,13 @@ use crate::fem::model::{MaterialDef, RawKeyword};
 use crate::model::{fail, Result};
 
 pub static FACTORIES: &[MaterialFactory] = &[MaterialFactory {
-    name: "porvätska (permeabilitet, kompressionsmoduler)",
+    name: "pore fluid (permeability, bulk moduli)",
     consumes: &["PERMEABILITY", "POROUS BULK MODULI"],
     priority: 0,
     build: None,
 }];
 
-/// Permeabilitet som funktion av portalet: (k-tensor 3×3 radvis, e).
+/// Permeability as a function of the void ratio: (k tensor 3×3 row-major, e).
 #[derive(Debug, Clone, Default)]
 pub struct Permeability {
     pub gamma_w: f64,
@@ -32,12 +32,12 @@ pub struct Permeability {
 }
 
 impl Permeability {
-    /// Permeabiliteten varierar med portalet.
+    /// The permeability varies with the void ratio.
     pub fn varies(&self) -> bool {
         self.table.len() > 1
     }
 
-    /// k och dk/de vid portalet `e`.
+    /// k and dk/de at the void ratio `e`.
     pub fn at(&self, e: f64) -> ([f64; 9], [f64; 9]) {
         let t = &self.table;
         if t.len() == 1 || e <= t[0].1 {
@@ -60,11 +60,11 @@ impl Permeability {
     }
 }
 
-/// Porvätskans egenskaper för ett material.
+/// Pore fluid properties of a material.
 #[derive(Debug, Clone, Default)]
 pub struct PoroProps {
     pub perm: Permeability,
-    /// Kornens och vätskans kompressionsmoduler (0 = inkompressibel).
+    /// Bulk moduli of the grains and the fluid (0 = incompressible).
     pub k_grain: f64,
     pub k_fluid: f64,
 }
@@ -72,15 +72,15 @@ pub struct PoroProps {
 fn parse_perm(kw: &RawKeyword) -> Result<Permeability> {
     for p in ["DEPENDENCIES", "USER"] {
         if kw.has(p) {
-            return kw.err(format!("{p} stöds inte ännu för *PERMEABILITY"));
+            return kw.err(format!("{p} is not supported yet for *PERMEABILITY"));
         }
     }
     let gamma_w = match kw.param("SPECIFIC") {
-        Some(s) => crate::fem::model::parse_f64(s).ok_or_else(|| crate::model::FemError(format!("{}: SPECIFIC={s} är inget tal", kw.location())))?,
-        None => return kw.err("SPECIFIC= (vätskans tunghet γw) saknas"),
+        Some(s) => crate::fem::model::parse_f64(s).ok_or_else(|| crate::model::FemError(format!("{}: SPECIFIC={s} is not a number", kw.location())))?,
+        None => return kw.err("SPECIFIC= (specific weight of the fluid γw) missing"),
     };
     if !(gamma_w > 0.0) {
-        return kw.err("SPECIFIC= (γw) ska vara positivt");
+        return kw.err("SPECIFIC= (γw) must be positive");
     }
     let ty = kw.param_upper("TYPE").unwrap_or_else(|| "ISOTROPIC".into());
     let mut table: Vec<([f64; 9], f64)> = Vec::new();
@@ -93,7 +93,7 @@ fn parse_perm(kw: &RawKeyword) -> Result<Permeability> {
         let (k, e) = match ty.as_str() {
             "ISO" | "ISOTROPIC" => {
                 if v.len() > 2 && g(2) != 0.0 {
-                    return kw.err_at(d.line, "temperaturberoende permeabilitet stöds inte ännu");
+                    return kw.err_at(d.line, "temperature-dependent permeability is not supported yet");
                 }
                 ([g(0), 0.0, 0.0, 0.0, g(0), 0.0, 0.0, 0.0, g(0)], g(1))
             }
@@ -103,30 +103,30 @@ fn parse_perm(kw: &RawKeyword) -> Result<Permeability> {
                 let (k11, k12, k22, k13, k23, k33) = (g(0), g(1), g(2), g(3), g(4), g(5));
                 ([k11, k12, k13, k12, k22, k23, k13, k23, k33], g(6))
             }
-            other => return kw.err(format!("TYPE={other} stöds inte ännu för *PERMEABILITY (bara ISO, ORTHO, ANISO)")),
+            other => return kw.err(format!("TYPE={other} is not supported yet for *PERMEABILITY (only ISO, ORTHO, ANISO)")),
         };
         table.push((k, e));
     }
     if table.is_empty() {
-        return kw.err("permeabiliteten saknas");
+        return kw.err("the permeability is missing");
     }
     table.sort_by(|a, b| a.1.total_cmp(&b.1));
     Ok(Permeability { gamma_w, table })
 }
 
 impl PoroProps {
-    /// Porvätskans egenskaper ur materialet, eller `None` om *PERMEABILITY saknas.
+    /// Pore fluid properties from the material, or `None` if *PERMEABILITY is missing.
     pub fn from_def(def: &MaterialDef) -> Result<Option<PoroProps>> {
         let mut perm = None;
         for kw in def.behaviors.iter().filter(|b| b.name == "PERMEABILITY") {
             let ty = kw.param_upper("TYPE").unwrap_or_default();
             match ty.as_str() {
                 "SATURATION" | "VELOCITY" => {
-                    return kw.err(format!("*PERMEABILITY, TYPE={ty} stöds inte ännu (bara helt mättad jord utan Forchheimer-term)"));
+                    return kw.err(format!("*PERMEABILITY, TYPE={ty} is not supported yet (only fully saturated soil without a Forchheimer term)"));
                 }
                 _ => {
                     if perm.is_some() {
-                        return kw.err(format!("materialet {} har redan *PERMEABILITY", def.name));
+                        return kw.err(format!("the material {} already has *PERMEABILITY", def.name));
                     }
                     perm = Some(parse_perm(kw)?);
                 }
@@ -136,23 +136,23 @@ impl PoroProps {
         let mut p = PoroProps { perm, ..Default::default() };
         if let Some(kw) = def.behavior("POROUS BULK MODULI") {
             if kw.has("DEPENDENCIES") || kw.data.len() > 1 {
-                return kw.err("temperaturberoende *POROUS BULK MODULI stöds inte ännu");
+                return kw.err("temperature-dependent *POROUS BULK MODULI is not supported yet");
             }
             let v = kw.first_floats()?;
             p.k_grain = v.first().copied().unwrap_or(0.0);
             p.k_fluid = v.get(1).copied().unwrap_or(0.0);
             if p.k_grain < 0.0 || p.k_fluid < 0.0 {
-                return kw.err("kompressionsmodulerna ska vara positiva (eller tomma för inkompressibel)");
+                return kw.err("the bulk moduli must be positive (or empty for incompressible)");
             }
         }
         Ok(Some(p))
     }
 
-    /// Som `from_def` men fel om *PERMEABILITY saknas.
+    /// Like `from_def` but an error if *PERMEABILITY is missing.
     pub fn require(def: &MaterialDef) -> Result<PoroProps> {
         match Self::from_def(def)? {
             Some(p) => Ok(p),
-            None => fail(format!("material {}: *PERMEABILITY saknas (krävs för porvattentryckselement)", def.name)),
+            None => fail(format!("material {}: *PERMEABILITY missing (required for pore pressure elements)", def.name)),
         }
     }
 }

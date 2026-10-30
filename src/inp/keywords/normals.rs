@@ -1,11 +1,11 @@
-//! *NORMAL (område normals): normalen i en nod för ett visst element (skal)
-//! respektive balkens n2-riktning.
+//! *NORMAL (Area normals): the normal at a node for a given element (shell)
+//! or the beam's n2 direction.
 //!
-//! Dataraderna "element (eller elementset), nod, nx, ny[, nz]" sparas som
-//! ett nyckelord "NORMAL" i `FeModel::extra` med raderna
-//! "instans, element, nod, nx, ny, nz" (instansen tom och `_PART` i en part;
-//! `*INSTANCE` lägger då till `_INSTANCE`/`_PLACE`). `elements/normals.rs`
-//! använder dem när filen är läst.
+//! The data lines "element (or element set), node, nx, ny[, nz]" are stored as
+//! a keyword "NORMAL" in `FeModel::extra` with the lines
+//! "instance, element, node, nx, ny, nz" (the instance empty and `_PART` in a part;
+//! `*INSTANCE` then adds `_INSTANCE`/`_PLACE`). `elements/normals.rs`
+//! uses them once the file has been read.
 
 use crate::fem::model::{DataLine, RawKeyword};
 use crate::inp::{InpCtx, Keyword, Kind};
@@ -16,7 +16,7 @@ pub static KEYWORDS: &[Keyword] = &[Keyword { name: "NORMAL", kind: Kind::Model,
 fn normal(ctx: &mut InpCtx, kw: &RawKeyword) -> Result<()> {
     if let Some(t) = kw.param_upper("TYPE") {
         if t != "ELEMENT" {
-            return kw.err(format!("TYPE={t} stöds inte (bara TYPE=ELEMENT)"));
+            return kw.err(format!("TYPE={t} is not supported (only TYPE=ELEMENT)"));
         }
     }
     let part = ctx.part.as_ref().map(|(n, _)| n.clone());
@@ -26,7 +26,7 @@ fn normal(ctx: &mut InpCtx, kw: &RawKeyword) -> Result<()> {
     }
     for d in &kw.data {
         if d.fields.len() < 4 {
-            return kw.err_at(d.line, "*NORMAL: raden ska vara element, nod, nx, ny[, nz]");
+            return kw.err_at(d.line, "*NORMAL: the line must be element, node, nx, ny[, nz]");
         }
         let elems = ctx.elem_ref(kw, d.line, &d.fields[0], None)?;
         let nodes = ctx.node_ref(kw, d.line, &d.fields[1], None)?;
@@ -47,7 +47,7 @@ fn normal(ctx: &mut InpCtx, kw: &RawKeyword) -> Result<()> {
             }
         }
         if out.data.len() == before {
-            return kw.err_at(d.line, "*NORMAL: noden hör inte till elementet");
+            return kw.err_at(d.line, "*NORMAL: the node does not belong to the element");
         }
     }
     ctx.mesh().extra.push(out);

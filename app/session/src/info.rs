@@ -1,4 +1,4 @@
-//! Modellträdet som gränssnittet visar, och symboler för randvillkor och laster.
+//! The model tree shown by the UI, and symbols for boundary conditions and loads.
 
 use rustyfem::fem::dof;
 use rustyfem::fem::model::{BcBlock, CloadBlock, FeModel, RawKeyword, SectionKind};
@@ -6,7 +6,7 @@ use serde::Serialize;
 use specta::Type;
 use std::collections::BTreeMap;
 
-/// Högsta antal rader per block som skickas till gränssnittet.
+/// Maximum number of lines per block sent to the UI.
 const MAX_ITEMS: usize = 200;
 
 #[derive(Debug, Clone, Serialize, Type)]
@@ -43,9 +43,9 @@ pub struct SectionInfo {
 
 #[derive(Debug, Clone, Serialize, Type)]
 pub struct ItemInfo {
-    /// Nod eller element ("INSTANS.nummer").
+    /// Node or element ("INSTANCE.number").
     pub target: String,
-    /// Frihetsgrad (U1, UR3, ...) eller lasttyp (P, GRAV, ...).
+    /// Degree of freedom (U1, UR3, ...) or load type (P, GRAV, ...).
     pub what: String,
     pub value: f64,
 }
@@ -125,7 +125,7 @@ fn cload_block(m: &FeModel, i: usize, b: &CloadBlock) -> BlockInfo {
     }
 }
 
-/// Modellträdet.
+/// The model tree.
 pub fn model_info(m: &FeModel) -> ModelInfo {
     let (mut lo, mut hi) = ([f64::INFINITY; 3], [f64::NEG_INFINITY; 3]);
     for p in &m.nodes {
@@ -220,10 +220,10 @@ pub fn model_info(m: &FeModel) -> ModelInfo {
     }
 }
 
-/// Randvillkor och punktlaster som gäller i ett steg (ärvda enligt OP=NEW),
-/// packade som `u32` antal randvillkorsnoder och lastnoder, därefter
-/// (nod u32, slotmask u32) per randvillkor och (nod u32, F1–F3 f32, M1–M3 f32)
-/// per last.
+/// Boundary conditions and point loads active in a step (inherited according to OP=NEW),
+/// packed as `u32` number of boundary condition nodes and load nodes, then
+/// (node u32, slot mask u32) per boundary condition and (node u32, F1–F3 f32, M1–M3 f32)
+/// per load.
 pub fn symbols(m: &FeModel, step: Option<usize>) -> Vec<u8> {
     let mut bc: BTreeMap<usize, u32> = BTreeMap::new();
     let mut load: BTreeMap<usize, [f64; 6]> = BTreeMap::new();

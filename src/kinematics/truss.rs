@@ -1,9 +1,9 @@
-//! Stänger (T2D2, T3D2) med stora förskjutningar och töjningar.
+//! Trusses (T2D2, T3D2) with large displacements and strains.
 //!
-//! Töjningen är logaritmisk, ε = ln(l/L), och spänningen Cauchy-spänning.
-//! Tvärsnittsarean uppdateras så att volymen bevaras, A = A₀ L / l, vilket är
-//! standard för stänger (kontrollerat: sträckning 20 % ger RF = S·A₀/1,2).
-//! Normalkraften är N = σ A och inre kraften N·[−e, e] med aktuell riktning e.
+//! The strain is logarithmic, ε = ln(l/L), and the stress is Cauchy stress.
+//! The cross-sectional area is updated so that the volume is preserved, A = A₀ L / l, which is
+//! standard for trusses (verified: 20 % stretch gives RF = S·A₀/1.2).
+//! The axial force is N = σ A and the internal force N·[−e, e] with current direction e.
 
 use crate::elements::common;
 use crate::elements::{ElemCtx, ElemResponse};
@@ -46,7 +46,7 @@ pub fn response(
     let (e, l) = geom(&ctx.x, u, dim);
     let (_, l0) = geom(&ctx.x, &un, dim);
     if !(l > 0.0) || !(l0 > 0.0) {
-        return fail(format!("{name}: stången har fått längden noll"));
+        return fail(format!("{name}: the truss has reached zero length"));
     }
     let eps = [(l / ll).ln()];
     let deps = [(l / l0).ln()];

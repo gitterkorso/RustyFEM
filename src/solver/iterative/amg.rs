@@ -1,25 +1,25 @@
-//! Algebraisk multigrid med utjämnad aggregering (smoothed aggregation,
-//! Vaněk–Mandel–Brezina 1996) som förkonditionerare till CG.
+//! Algebraic multigrid with smoothed aggregation
+//! (Vaněk–Mandel–Brezina 1996) as a preconditioner for CG.
 //!
-//! - Aggregering på nodnivå (alla frihetsgrader i en nod i samma aggregat),
-//!   med starka kopplingar ‖A_IJ‖ > θ·√(‖A_II‖·‖A_JJ‖) och Vaněks tre pass.
-//! - Tentativ prolongering från nollrummet (stelkroppsrörelser beräknade ur
-//!   nodkoordinaterna: 3 i 2D, 6 i 3D, med rotationsfrihetsgrader för balkar
-//!   och skal), ortonormerad per aggregat med Gram–Schmidt.
-//! - Utjämning P = (I − ω D⁻¹ A) P̃, ω = 4/(3 ρ(D⁻¹A)), Galerkin A_c = Pᵀ A P.
-//! - V-cykel med symmetrisk Gauss–Seidel (framåt före, bakåt efter), tät
-//!   Cholesky på den grövsta nivån.
+//! - Node-level aggregation (all degrees of freedom of a node in the same aggregate),
+//!   with strong couplings ‖A_IJ‖ > θ·√(‖A_II‖·‖A_JJ‖) and Vaněk's three passes.
+//! - Tentative prolongation from the null space (rigid body modes computed from
+//!   the node coordinates: 3 in 2D, 6 in 3D, with rotational DOFs for beams
+//!   and shells), orthonormalized per aggregate with Gram–Schmidt.
+//! - Smoothing P = (I − ω D⁻¹ A) P̃, ω = 4/(3 ρ(D⁻¹A)), Galerkin A_c = Pᵀ A P.
+//! - V-cycle with symmetric Gauss–Seidel (forward before, backward after), dense
+//!   Cholesky on the coarsest level.
 
 use super::csr::{Csr, Precond};
 
-/// Grövsta nivåns största storlek.
+/// Maximum size of the coarsest level.
 const COARSE: usize = 1500;
 const MAX_LEVELS: usize = 12;
 
 struct Level {
     a: Csr,
     diag: Vec<f64>,
-    /// Prolongering (fin × grov) och restriktion (grov × fin).
+    /// Prolongation (fine × coarse) and restriction (coarse × fine).
     p: Csr,
     r: Csr,
 }
@@ -27,15 +27,15 @@ struct Level {
 pub struct Amg {
     levels: Vec<Level>,
     coarse_a: usize,
-    /// Tät LDLᵀ (Cholesky utan rot) av den grövsta matrisen, radvis.
+    /// Dense LDLᵀ (square-root-free Cholesky) of the coarsest matrix, row-wise.
     coarse_l: Vec<f64>,
     coarse_d: Vec<f64>,
     pub sizes: Vec<usize>,
     pub complexity: f64,
 }
 
-/// Nollrum (stelkroppsrörelser) för frihetsgraderna. `bptr`: blockens
-/// frihetsgradsintervall, `coords`: blockens koordinater.
+/// Null space (rigid body modes) for the degrees of freedom. `bptr`: the blocks'
+/// DOF ranges, `coords`: the blocks' coordinates.
 pub fn rigid_body_modes(coords: &[[f64; 3]], ndof: &[usize]) -> (Vec<f64>, usize) {
     let planar = coords.iter().all(|c| c[2] == 0.0);
     let nb = if planar { 3 } else { 6 };
@@ -53,7 +53,7 @@ pub fn rigid_body_modes(coords: &[[f64; 3]], ndof: &[usize]) -> (Vec<f64>, usize
         for l in 0..d {
             let br = &mut b[(row + l) * nb..(row + l + 1) * nb];
             if planar {
-                // (U1, U2) eller (U1, U2, UR3)
+                // (U1, U2) or (U1, U2, UR3)
                 match (d, l) {
                     (_, 0) => {
                         br[0] = 1.0;
@@ -67,7 +67,7 @@ pub fn rigid_body_modes(coords: &[[f64; 3]], ndof: &[usize]) -> (Vec<f64>, usize
                     _ => br[l % nb] = 1.0,
                 }
             } else {
-                // translationer t_a och rotationer θ_a × x
+                // translations t_a and rotations θ_a × x
                 match l {
                     0 => {
                         br[0] = 1.0;
@@ -104,11 +104,11 @@ fn block_of(bptr: &[usize]) -> Vec<usize> {
     o
 }
 
-/// Aggregat för varje block (Vaněks tre pass).
+/// Aggregate for each block (Vaněk's three passes).
 fn aggregate(a: &Csr, bptr: &[usize], theta: f64) -> (Vec<usize>, usize) {
     let nb = bptr.len() - 1;
     let blk = block_of(bptr);
-    // blocknormer i kvadrat per blockrad
+    // squared block norms per block row
     let mut dnorm = vec![0.0f64; nb];
     for i in 0..a.nrows {
         for p in a.ptr[i]..a.ptr[i + 1] {
@@ -146,7 +146,7 @@ fn aggregate(a: &Csr, bptr: &[usize], theta: f64) -> (Vec<usize>, usize) {
     const NONE: usize = usize::MAX;
     let mut agg = vec![NONE; nb];
     let mut n = 0;
-    // pass 1: block vars alla starka grannar är fria bildar ett nytt aggregat
+    // pass 1: blocks whose strong neighbours are all free form a new aggregate
     for b in 0..nb {
         if agg[b] == NONE && strong[b].iter().all(|&c| agg[c] == NONE) {
             agg[b] = n;
@@ -156,7 +156,7 @@ fn aggregate(a: &Csr, bptr: &[usize], theta: f64) -> (Vec<usize>, usize) {
             n += 1;
         }
     }
-    // pass 2: anslut till ett angränsande aggregat
+    // pass 2: attach to an adjacent aggregate
     let snapshot = agg.clone();
     for b in 0..nb {
         if agg[b] == NONE {
@@ -165,7 +165,7 @@ fn aggregate(a: &Csr, bptr: &[usize], theta: f64) -> (Vec<usize>, usize) {
             }
         }
     }
-    // pass 3: resten
+    // pass 3: the rest
     for b in 0..nb {
         if agg[b] == NONE {
             agg[b] = n;
@@ -180,14 +180,14 @@ fn aggregate(a: &Csr, bptr: &[usize], theta: f64) -> (Vec<usize>, usize) {
     (agg, n)
 }
 
-/// Tentativ prolongering och grovt nollrum. Returnerar (P̃, B_c, grova blockgränser).
+/// Tentative prolongation and coarse null space. Returns (P̃, B_c, coarse block boundaries).
 fn tentative(bptr: &[usize], agg: &[usize], nagg: usize, b: &[f64], nb: usize) -> (Csr, Vec<f64>, Vec<usize>) {
     let n = *bptr.last().unwrap();
     let mut members: Vec<Vec<usize>> = vec![Vec::new(); nagg];
     for (blk, &g) in agg.iter().enumerate() {
         members[g].push(blk);
     }
-    // rader i P̃: (rad, grov kolumn, värde)
+    // rows of P̃: (row, coarse column, value)
     let mut entries: Vec<(usize, usize, f64)> = Vec::new();
     let mut bc: Vec<f64> = Vec::new();
     let mut cptr = vec![0usize];
@@ -195,7 +195,7 @@ fn tentative(bptr: &[usize], agg: &[usize], nagg: usize, b: &[f64], nb: usize) -
     for mem in &members {
         let dofs: Vec<usize> = mem.iter().flat_map(|&blk| bptr[blk]..bptr[blk + 1]).collect();
         let nd = dofs.len();
-        // kolumnvis kopia av B på aggregatet
+        // column-wise copy of B on the aggregate
         let mut q: Vec<Vec<f64>> = (0..nb).map(|c| dofs.iter().map(|&i| b[i * nb + c]).collect()).collect();
         let mut kept: Vec<Vec<f64>> = Vec::new();
         let mut r = vec![vec![0.0; nb]; nb.min(nd)];
@@ -209,7 +209,7 @@ fn tentative(bptr: &[usize], agg: &[usize], nagg: usize, b: &[f64], nb: usize) -
                     *x -= s * y;
                 }
             }
-            // omortogonalisering för noggrannhet
+            // re-orthogonalization for accuracy
             for (k, qk) in kept.iter().enumerate() {
                 let s: f64 = qk.iter().zip(v.iter()).map(|(a, b)| a * b).sum();
                 r[k][c] += s;
@@ -225,7 +225,7 @@ fn tentative(bptr: &[usize], agg: &[usize], nagg: usize, b: &[f64], nb: usize) -
             }
         }
         if kept.is_empty() {
-            // inget nollrum på aggregatet: konstant vektor
+            // no null space on the aggregate: constant vector
             let s = 1.0 / (nd as f64).sqrt();
             kept.push(vec![s; nd]);
         }
@@ -256,7 +256,7 @@ fn tentative(bptr: &[usize], agg: &[usize], nagg: usize, b: &[f64], nb: usize) -
     (p, bc, cptr)
 }
 
-/// Uppskattar ρ(D⁻¹A) med potensmetoden.
+/// Estimates ρ(D⁻¹A) with the power method.
 fn spectral_radius(a: &Csr, diag: &[f64]) -> f64 {
     let n = a.nrows;
     let mut x: Vec<f64> = (0..n).map(|i| 1.0 + ((i * 7919) % 13) as f64 / 13.0).collect();
@@ -276,9 +276,9 @@ fn spectral_radius(a: &Csr, diag: &[f64]) -> f64 {
 }
 
 impl Amg {
-    /// Bygger hierarkin. `bptr`: blockens frihetsgradsintervall på fin nivå,
-    /// `b`: nollrummet (n × nb, radvis). `Err` om den grövsta matrisen inte är
-    /// positivt definit.
+    /// Builds the hierarchy. `bptr`: the blocks' DOF ranges on the fine level,
+    /// `b`: the null space (n × nb, row-wise). `Err` if the coarsest matrix is not
+    /// positive definite.
     pub fn new(a: Csr, mut bptr: Vec<usize>, mut b: Vec<f64>, nb: usize) -> Result<Amg, ()> {
         let mut levels = Vec::new();
         let mut a = a;
@@ -310,7 +310,7 @@ impl Amg {
             b = bc;
             theta *= 0.5;
         }
-        // tät LDLᵀ på den grövsta nivån
+        // dense LDLᵀ on the coarsest level
         let n = a.nrows;
         let mut l = vec![0.0; n * n];
         for i in 0..n {
@@ -372,7 +372,7 @@ impl Amg {
         let a = &l.a;
         let n = a.nrows;
         x.iter_mut().for_each(|v| *v = 0.0);
-        // framåt Gauss–Seidel
+        // forward Gauss–Seidel
         for i in 0..n {
             let mut s = b[i];
             for p in a.ptr[i]..a.ptr[i + 1] {
@@ -395,7 +395,7 @@ impl Amg {
         for i in 0..n {
             x[i] += corr[i];
         }
-        // bakåt Gauss–Seidel
+        // backward Gauss–Seidel
         for i in (0..n).rev() {
             let mut s = b[i];
             for p in a.ptr[i]..a.ptr[i + 1] {
@@ -409,7 +409,7 @@ impl Amg {
     }
 }
 
-/// P̃ − ω D⁻¹ (A P̃), radvis sammanslagning av två matriser med sorterade index.
+/// P̃ − ω D⁻¹ (A P̃), row-wise merge of two matrices with sorted indices.
 fn sub_scaled(pt: &Csr, ap: &Csr, diag: &[f64], omega: f64) -> Csr {
     let n = pt.nrows;
     let mut ptr = vec![0usize];
@@ -449,6 +449,6 @@ impl Precond for Amg {
         self.vcycle(0, r, z);
     }
     fn name(&self) -> String {
-        format!("AMG (utjämnad aggregering, {} nivåer {:?}, operatorkomplexitet {:.2})", self.sizes.len(), self.sizes, self.complexity)
+        format!("AMG (smoothed aggregation, {} levels {:?}, operator complexity {:.2})", self.sizes.len(), self.sizes, self.complexity)
     }
 }

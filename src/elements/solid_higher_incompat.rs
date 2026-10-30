@@ -1,26 +1,26 @@
-//! NLGEOM för elementen med inkompatibla moder (C3D8I, CPS4I, CPE4I, CAX4I)
-//! i inkrementell form (geometriskt olinjär formulering).
+//! NLGEOM for the incompatible-mode elements (C3D8I, CPS4I, CPE4I, CAX4I)
+//! in incremental form (geometrically nonlinear formulation).
 //!
-//! I stället för att addera moderna till den totala deformationsgradienten
-//! (Simo–Armero) läggs de till den inkrementella gradienten i varje inkrement:
+//! Instead of adding the modes to the total deformation gradient
+//! (Simo–Armero), they are added to the incremental gradient in each increment:
 //!
 //!   ΔF̄ₚ = ΔF + ΔF̃,   ΔF = ∂x_{t+Δt}/∂x_t,
-//!   ΔF̃ = Δαᵢ ⊗ (j(0)/j(ξ))|_t ∇ₓₜφᵢ   (t_t, j från läget vid inkrementets början),
-//!   ΔF̄ = ΔF̄ₚ · exp(Δβⱼ (j(0)/j(ξ))|_t ϑⱼ) (volymmoderna multiplikativt),
+//!   ΔF̃ = Δαᵢ ⊗ (j(0)/j(ξ))|_t ∇ₓₜφᵢ   (t_t, j from the position at the start of the increment),
+//!   ΔF̄ = ΔF̄ₚ · exp(Δβⱼ (j(0)/j(ξ))|_t ϑⱼ) (the volumetric modes multiplicatively),
 //!   F̄_{n+1} = ΔF̄ · F̄_n.
 //!
-//! De inre parametrarna (Δα, Δβ) börjar om från noll i varje inkrement och
-//! elimineras lokalt (f_α = 0). Gradientoperatorerna byggs med
-//! `nlgeom::points` på läget vid inkrementets början. Töjningsinkrementet är
-//! Hughes–Winget för ΔF̄ₚ, ΔL = (ΔF̄ₚ − I)·(½(I + ΔF̄ₚ))⁻¹, plus volymmodernas
-//! logaritmiska del b·I (b = Δβⱼ (j(0)/j) ϑⱼ), och δL = δΔF̄ₚ·ΔF̄ₚ⁻¹ + δb·I.
-//! Volymen i virtuellt arbete är det ΔF̄ gånger volymen vid inkrementets
-//! början i 3D men det ΔF̄ₚ i 2D (volymmoden ändrar inte vikten). Plan
-//! spänning (CPS4I) har ingen volymmod; där är j(0)/j(ξ) referenslägets kvot
-//! eftersom tjockleken ändras så att volymen bevaras. Se
+//! The internal parameters (Δα, Δβ) restart from zero in each increment and
+//! are eliminated locally (f_α = 0). The gradient operators are built with
+//! `nlgeom::points` at the position at the start of the increment. The strain increment is
+//! Hughes–Winget for ΔF̄ₚ, ΔL = (ΔF̄ₚ − I)·(½(I + ΔF̄ₚ))⁻¹, plus the volumetric modes'
+//! logarithmic part b·I (b = Δβⱼ (j(0)/j) ϑⱼ), and δL = δΔF̄ₚ·ΔF̄ₚ⁻¹ + δb·I.
+//! The volume in the virtual work is det ΔF̄ times the volume at the start of the increment
+//! in 3D but det ΔF̄ₚ in 2D (the volumetric mode does not change the weight). Plane
+//! stress (CPS4I) has no volumetric mode; there j(0)/j(ξ) is the reference position ratio
+//! since the thickness changes so that the volume is preserved. See
 //! `tests/cases/accuracy2/*_nlgeom_inkr*`.
-//! F̄_n lagras per punkt i tillståndet i stället för de totala
-//! modparametrarna.
+//! F̄_n is stored per point in the state instead of the total
+//! mode parameters.
 
 use super::nlgeom::{self as nl, Point};
 use super::{Solid, Tech};
@@ -30,12 +30,12 @@ use crate::kinematics::tensor::{self as t, M3};
 use crate::materials::{MatInput, MaterialModel, StressMode};
 use crate::model::{fail, Result};
 
-/// Antal värden i blocket efter standardlayouten: F̄ (9 per punkt).
+/// Number of values in the block after the standard layout: F̄ (9 per point).
 fn fblock_len(nips: usize) -> usize {
     9 * nips
 }
 
-/// Frihetsgrader för volymmoderna (sist bland de inre).
+/// Degrees of freedom for the volumetric modes (last among the internal ones).
 fn n_volume_modes(el: &Solid) -> usize {
     nl::n_internal(el) - el.pdim() * el.ndim()
 }
@@ -48,8 +48,8 @@ struct Eval {
     k: Option<Vec<f64>>,
 }
 
-/// Inre kraft och tangent för inkrementet `dd` (nodförskjutningsinkrement
-/// följda av Δα, Δβ) med operatorerna `pts` i läget vid inkrementets början.
+/// Internal force and tangent for the increment `dd` (nodal displacement increments
+/// followed by Δα, Δβ) with the operators `pts` at the position at the start of the increment.
 #[allow(clippy::too_many_arguments)]
 fn eval(
     ctx: &ElemCtx,
@@ -68,7 +68,7 @@ fn eval(
     let ns = mode.ncomp();
     let nd = dd.len();
     let nprin = nd - nvol;
-    // volymmodernas block: 2D (plan töjning, axisymmetri) bara i planet
+    // the volumetric modes block: 2D (plane strain, axisymmetry) only in the plane
     let nv = if mode == StressMode::ThreeD { 3 } else { 2 };
     let stride = common::ip_stride(mode, mat);
     let mut fint = vec![0.0; nd];
@@ -79,7 +79,7 @@ fn eval(
     let mut bq = vec![0.0; ns * nd];
     let mut ls: Vec<M3> = vec![t::zero(); nd];
     for (q, pt) in pts.iter().enumerate() {
-        // ΔF̄ₚ (noder och gradientmoder) och volymmodernas exponent b
+        // ΔF̄ₚ (nodes and gradient modes) and the exponent b of the volumetric modes
         let fp = nl::grad(&Point { n: Vec::new(), w0: 0.0, m: pt.m[..nprin].to_vec() }, &dd[..nprin]);
         let b: f64 = (0..nvol).map(|k| dd[nprin + k] * pt.m[nprin + k][0][0]).sum();
         let eb = b.exp();
@@ -98,8 +98,8 @@ fn eval(
         }
         let fold = nl::from9(&fbar_old[9 * q..9 * q + 9]);
         let f1 = t::mul(&df, &fold);
-        // töjningsinkrementet: Hughes–Winget för ΔF̄ₚ plus volymmodernas
-        // logaritmiska del b·I
+        // the strain increment: Hughes–Winget for ΔF̄ₚ plus the volumetric modes'
+        // logarithmic part b·I
         let mut dl = t::mul(&t::sub(&fp, &t::I3), &fmpi);
         for i in 0..nv {
             dl[i][i] += b;
@@ -136,9 +136,9 @@ fn eval(
             defgrad: Some(f1),
         };
         let out = mat.update(&inp, &mold, &mut mnew)?;
-        // integrationsvikt: volymen vid inkrementets början gånger det ΔF̄ i
-        // 3D, men utan volymmodens volymändring i 2D (det ΔF̄ₚ); plan spänning:
-        // referensvolymen (tjockleken bevarar volymen)
+        // integration weight: the volume at the start of the increment times det ΔF̄ in
+        // 3D, but without the volume change of the volumetric mode in 2D (det ΔF̄ₚ); plane stress:
+        // the reference volume (the thickness preserves the volume)
         let w = match mode {
             StressMode::PlaneStress => w_ref[q],
             StressMode::ThreeD => pt.w0 * jd,
@@ -148,7 +148,7 @@ fn eval(
             ls[j] = if j < nprin {
                 t::mul(&pt.m[j], &fpi)
             } else {
-                // δΔF_I ΔF_I⁻¹ = δβ (j(0)/j) ϑ I (i det plana blocket för 2D)
+                // δΔF_I ΔF_I⁻¹ = δβ (j(0)/j) ϑ I (in the planar block for 2D)
                 let mut l = t::zero();
                 for i in 0..nv {
                     l[i][i] = pt.m[j][0][0];
@@ -198,13 +198,13 @@ fn eval(
     Ok(Eval { fint, std_new, ext_new, fbar_new, k: tangent.then_some(kmat) })
 }
 
-/// Inre kraft och tangent med NLGEOM för elementen med inkompatibla moder.
+/// Internal force and tangent with NLGEOM for the incompatible-mode elements.
 #[allow(clippy::too_many_arguments)]
 pub fn response(el: &Solid, ctx: &ElemCtx, mat: &dyn MaterialModel, u: &[f64], du: &[f64], so: &[f64], sn: &mut Vec<f64>, tangent: bool) -> Result<ElemResponse> {
     debug_assert!(el.tech == Tech::Incompatible);
     let nd = u.len();
     let ndim = el.ndim();
-    // läget vid inkrementets början
+    // the position at the start of the increment
     let mut c0 = ctx.clone();
     for (a, p) in c0.x.iter_mut().enumerate() {
         for c in 0..ndim {
@@ -215,8 +215,8 @@ pub fn response(el: &Solid, ctx: &ElemCtx, mat: &dyn MaterialModel, u: &[f64], d
     let nips = pts.len();
     let w_ref: Vec<f64> = if el.mode == StressMode::PlaneStress { el.ips(ctx)?.iter().map(|ip| ip.w).collect() } else { Vec::new() };
     if el.mode == StressMode::PlaneStress {
-        // j(ξ) = h(ξ) det(∂x/∂ξ): tjockleken ändras så att volymen bevaras
-        // (h·da = h₀·dA), så j(0)/j(ξ) blir referenslägets kvot
+        // j(ξ) = h(ξ) det(∂x/∂ξ): the thickness changes so that the volume is preserved
+        // (h·da = h₀·dA), so j(0)/j(ξ) becomes the reference position ratio
         let (_, det0_x) = nl::center_jacobian(el, &ctx.x)?;
         let (_, det0_t) = nl::center_jacobian(el, &c0.x)?;
         let nn = el.shape.n_nodes() * el.ndim();
@@ -236,8 +236,8 @@ pub fn response(el: &Solid, ctx: &ElemCtx, mat: &dyn MaterialModel, u: &[f64], d
     let (std_old, fbar_old, ext_old): (&[f64], &[f64], Option<&[f64]>) = match crate::kinematics::ext(so) {
         Some(e) if so.len() == base_len + fl + e.len() + 2 => (&so[..base_len], &so[base_len..base_len + fl], Some(e)),
         _ => {
-            // första inkrementet (eller efter ett steg utan NLGEOM): spänning och
-            // materialtillstånd tas över om de finns, F̄ ur nodförskjutningarna
+            // first increment (or after a step without NLGEOM): stress and
+            // material state are carried over if present, F̄ from the nodal displacements
             let std0 = if so.len() >= base_len { so[..base_len].to_vec() } else { common::init_state(nips, el.mode, mat) };
             let pref = nl::points(el, ctx)?;
             let un: Vec<f64> = u.iter().zip(du).map(|(a, b)| a - b).collect();
@@ -253,7 +253,7 @@ pub fn response(el: &Solid, ctx: &ElemCtx, mat: &dyn MaterialModel, u: &[f64], d
     let mut d = du.to_vec();
     d.extend(std::iter::repeat(0.0).take(na));
     let mut ev = eval(ctx, el.mode, &pts, &w_ref, nvol, mat, &d, std_old, fbar_old, ext_old, true)?;
-    // lokal Newton för de inre frihetsgraderna: f_α = 0
+    // local Newton for the internal degrees of freedom: f_α = 0
     let n = nd + na;
     let mut ok = false;
     for _ in 0..100 {
@@ -275,7 +275,7 @@ pub fn response(el: &Solid, ctx: &ElemCtx, mat: &dyn MaterialModel, u: &[f64], d
         let scale = ev.fint[..nd].iter().fold(0.0f64, |m, v| m.max(v.abs()));
         let rnorm = ev.fint[nd..].iter().fold(0.0f64, |m, v| m.max(v.abs()));
         if rnorm > 1e-8 * scale.max(1e-300) {
-            return fail("de inkompatibla moderna konvergerade inte (NLGEOM)");
+            return fail("the incompatible modes did not converge (NLGEOM)");
         }
     }
     let fint = ev.fint[..nd].to_vec();

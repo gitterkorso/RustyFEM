@@ -1,10 +1,10 @@
-//! Område acoustics2: *INITIAL CONDITIONS, TYPE=ACOUSTIC STATIC PRESSURE
-//! (anropas från `temperature.rs`). Det statiska trycket används bara i
-//! kavitationsvillkoret i explicit analys (`steps/acoustic_explicit.rs`).
+//! Area acoustics2: *INITIAL CONDITIONS, TYPE=ACOUSTIC STATIC PRESSURE
+//! (called from `temperature.rs`). The static pressure is only used in
+//! the cavitation condition in explicit analysis (`steps/acoustic_explicit.rs`).
 //!
-//! Dataraden: nod eller nodset, p₁, x₁, y₁, z₁[, p₂, x₂, y₂, z₂]. Med två
-//! referenspunkter varierar trycket linjärt längs linjen mellan dem
-//! (projektionen av nodens läge), annars är det p₁.
+//! Data line: node or node set, p₁, x₁, y₁, z₁[, p₂, x₂, y₂, z₂]. With two
+//! reference points the pressure varies linearly along the line between them
+//! (the projection of the node position), otherwise it is p₁.
 
 use crate::fem::model::{DataLine, RawKeyword};
 use crate::inp::{InpCtx, Keyword};
@@ -12,7 +12,7 @@ use crate::model::Result;
 
 pub static KEYWORDS: &[Keyword] = &[];
 
-/// Parameter som markerar upplösta rader (nodindex, p₀) i `FeModel::extra`.
+/// Parameter that marks resolved lines (node index, p₀) in `FeModel::extra`.
 pub const RESOLVED: &str = "RUSTYFEM_ACOUSTIC_STATIC";
 
 pub fn initial_static_pressure(ctx: &mut InpCtx, kw: &RawKeyword) -> Result<()> {

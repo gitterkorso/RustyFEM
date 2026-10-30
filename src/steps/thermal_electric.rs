@@ -1,30 +1,30 @@
-//! *COUPLED THERMAL-ELECTRICAL (stationär eller transient med fasta
-//! inkrement) med elementen i `elements/thermal_electric.rs`.
+//! *COUPLED THERMAL-ELECTRICAL (steady-state or transient with fixed
+//! increments) with the elements in `elements/thermal_electric.rs`.
 //!
-//! Ekvationer:
+//! Equations:
 //!
-//! - laddningsbalans: ∫ ∇δφ · σ(T) ∇φ dV = ∫ δφ J dS + Σ I (strömmar *CECURRENT,
-//!   *DECURRENT CBF/CSn); strömtätheten J = −σ ∇φ;
-//! - värmebalans som *HEAT TRANSFER (`steps/heat.rs`) med Joulevärmen
-//!   P = η ∇φ · σ ∇φ per volym som källa (η från *JOULE HEAT FRACTION).
+//! - charge balance: ∫ ∇δφ · σ(T) ∇φ dV = ∫ δφ J dS + Σ I (currents *CECURRENT,
+//!   *DECURRENT CBF/CSn); current density J = −σ ∇φ;
+//! - heat balance as in *HEAT TRANSFER (`steps/heat.rs`) with the Joule heat
+//!   P = η ∇φ · σ ∇φ per volume as source (η from *JOULE HEAT FRACTION).
 //!
-//! Varje inkrement löses med fixpunktsiteration mellan fälten (potentialen
-//! för givna temperaturer, sedan värmebalansen med Joulevärmen) tills båda
-//! fälten ändras mindre än en relativ tolerans 1e-12. Den konvergerade
-//! lösningen är densamma som den helt kopplade Newtonlösningen. Följande är
-//! kontrollerat i tests/cases/multiphysics/:
+//! Each increment is solved with fixed-point iteration between the fields (the potential
+//! for given temperatures, then the heat balance with the Joule heat) until both
+//! fields change less than a relative tolerance 1e-12. The converged
+//! solution is the same as the fully coupled Newton solution. The following is
+//! checked in tests/cases/multiphysics/:
 //!
-//! - Joulevärmen integreras som volymflödet BF (diagonalt för första
-//!   ordningens element);
-//! - σ(T) i första ordningens element tas vid temperaturen i noden närmast
-//!   integrationspunkten, i andra ordningens vid den interpolerade;
-//! - transient: Joulevärmen i ett inkrement är medelvärdet med linjärt
-//!   varierande potential, η (a·σa + a·σb + b·σb)/3 med a, b = ∇φ vid
-//!   inkrementets början och slut; stationärt: η b·σb.
+//! - the Joule heat is integrated like the body flux BF (diagonally for first-
+//!   order elements);
+//! - σ(T) in first-order elements is taken at the temperature of the node nearest
+//!   the integration point, in second-order elements at the interpolated one;
+//! - transient: the Joule heat in an increment is the mean with linearly
+//!   varying potential, η (a·σa + a·σb + b·σb)/3 with a, b = ∇φ at the
+//!   start and end of the increment; steady state: η b·σb.
 //!
-//! Utdata: NT11, RFL11, HFL (värmen), EPOT och RECUR (nodvärden), ECD
-//! (strömtäthet −σ∇φ), EPG (∇φ) och JENER (stationärt: σ∇φ·∇φ; transient:
-//! ackumulerad elektrisk energi per volym, utan η).
+//! Output: NT11, RFL11, HFL (heat), EPOT and RECUR (nodal values), ECD
+//! (current density −σ∇φ), EPG (∇φ) and JENER (steady state: σ∇φ·∇φ; transient:
+//! accumulated electrical energy per volume, without η).
 
 use super::api::{StepCtx, StepType};
 use super::heat::{ensure_initial, heat_controls, heat_loads, HeatSystem, INIT_KEY, TS};
@@ -43,7 +43,7 @@ use crate::solver::{LinearSolver, SystemMatrix};
 
 pub struct ThermalElectric;
 
-// område coupled2: *COUPLED THERMAL-ELECTRICAL-STRUCTURAL (Q3D4, Q3D8, Q3D20)
+// area coupled2: *COUPLED THERMAL-ELECTRICAL-STRUCTURAL (Q3D4, Q3D8, Q3D20)
 #[path = "thermal_electric_structural.rs"]
 mod structural;
 
@@ -51,13 +51,13 @@ pub static STEP_TYPES: &[&dyn StepType] = &[&ThermalElectric, &structural::TES];
 
 const PROC: &str = "COUPLED THERMAL-ELECTRICAL";
 
-/// Slot för den elektriska potentialen (frihetsgrad 9).
+/// Slot for the electric potential (DOF 9).
 pub const PS: usize = 6;
 
-/// Nyckel i `SolutionState::vectors` för ackumulerad JENER.
+/// Key in `SolutionState::vectors` for the accumulated JENER.
 const JENER_KEY: &str = "JENER";
 
-/// Joulevärmen integreras diagonalt för första ordningens element (som BF).
+/// The Joule heat is integrated diagonally for first-order elements (like BF).
 const JOULE_LUMPED: bool = true;
 
 struct EElem {
@@ -68,7 +68,7 @@ struct EElem {
     bips: Vec<Ip>,
 }
 
-/// Den elektriska ledningen (linjär i φ för givna temperaturer).
+/// The electrical conduction (linear in φ for given temperatures).
 pub struct ElecSystem<'p, 'm> {
     p: &'p Prepared<'m>,
     loads: StepLoads,
@@ -76,23 +76,23 @@ pub struct ElecSystem<'p, 'm> {
     props: Vec<ElecProps>,
     dm: DofMap,
     mat: Box<dyn SystemMatrix>,
-    /// Potential per nod.
+    /// Potential per node.
     pub phi: Vec<f64>,
-    /// Potentialen vid inkrementets början.
+    /// The potential at the start of the increment.
     phi_old: Vec<f64>,
-    /// Transient: Joulevärmen är medelvärdet över inkrementet med linjärt
-    /// varierande potential, (a·σa + a·σb + b·σb)/3 (a, b = ∇φ vid början och
-    /// slut), och JENER är den ackumulerade energin per volym.
+    /// Transient: the Joule heat is the mean over the increment with linearly
+    /// varying potential, (a·σa + a·σb + b·σb)/3 (a, b = ∇φ at the start and
+    /// end), and JENER is the accumulated energy per volume.
     pub transient: bool,
-    /// Ackumulerad JENER per element och integrationspunkt.
+    /// Accumulated JENER per element and integration point.
     jener: Vec<Vec<f64>>,
     fint: Vec<f64>,
     fext: Vec<f64>,
 }
 
-/// Temperaturen för σ(T) i en punkt: första ordningens element använder
-/// temperaturen i noden närmast punkten, andra ordningens den
-/// interpolerade.
+/// The temperature for σ(T) at a point: first-order elements use
+/// the temperature of the node nearest the point, second-order elements the
+/// interpolated one.
 fn temp_at(ip: &Ip, t: &[f64], first_order: bool) -> f64 {
     if first_order {
         let i = (0..ip.n.len()).max_by(|&a, &b| ip.n[a].total_cmp(&ip.n[b])).unwrap_or(0);
@@ -124,19 +124,19 @@ impl<'p, 'm> ElecSystem<'p, 'm> {
         for (e, el) in model.elements.iter().enumerate() {
             let Some(he) = crate::elements::thermal_electric::lookup(el.etype.name()) else {
                 return fail(format!(
-                    "{}: *COUPLED THERMAL-ELECTRICAL kräver termisk-elektriska element (DC2D4E, DC3D8E, ...), inte {}",
+                    "{}: *COUPLED THERMAL-ELECTRICAL requires thermal-electrical elements (DC2D4E, DC3D8E, ...), not {}",
                     model.elem_name(e),
                     el.etype.name()
                 ));
             };
-            let Some(si) = el.section else { return fail(format!("{}: saknar *SOLID SECTION", model.elem_name(e))) };
+            let Some(si) = el.section else { return fail(format!("{}: missing *SOLID SECTION", model.elem_name(e))) };
             let sec = &model.sections[si];
-            let Some(mi) = sec.material_index else { return fail(format!("{}: tvärsnittet saknar material", model.elem_name(e))) };
+            let Some(mi) = sec.material_index else { return fail(format!("{}: the section has no material", model.elem_name(e))) };
             let pi = match pidx.get(&mi) {
                 Some(&i) => i,
                 None => {
                     let Some(ep) = ElecProps::from_def(&model.materials[mi])? else {
-                        return fail(format!("material {}: *ELECTRICAL CONDUCTIVITY saknas", model.materials[mi].name));
+                        return fail(format!("material {}: *ELECTRICAL CONDUCTIVITY is missing", model.materials[mi].name));
                     };
                     props.push(ep);
                     pidx.insert(mi, props.len() - 1);
@@ -169,7 +169,7 @@ impl<'p, 'm> ElecSystem<'p, 'm> {
         Ok(ElecSystem { p, loads, elems, props, dm, mat, phi_old: phi.clone(), phi, transient: false, jener, fint: vec![0.0; nn], fext: vec![0.0; nn] })
     }
 
-    /// σ∇-produkten (a·σa + a·σb + b·σb)/3 eller b·σb.
+    /// The σ∇ product (a·σa + a·σb + b·σb)/3 or b·σb.
     fn power(&self, s: &[[f64; 3]; 3], a: [f64; 3], b: [f64; 3]) -> f64 {
         let sb = mv(s, b);
         let bb = b[0] * sb[0] + b[1] * sb[1] + b[2] * sb[2];
@@ -182,7 +182,7 @@ impl<'p, 'm> ElecSystem<'p, 'm> {
         (aa + ab + bb) / 3.0
     }
 
-    /// Godkänner inkrementet: JENER ackumuleras med inkrementets längd `dt`.
+    /// Accepts the increment: JENER is accumulated with the increment length `dt`.
     pub fn commit(&mut self, temp: &[f64], dt: f64) {
         if self.transient {
             for (e, h) in self.elems.iter().enumerate() {
@@ -199,7 +199,7 @@ impl<'p, 'm> ElecSystem<'p, 'm> {
         self.phi_old.clone_from(&self.phi);
     }
 
-    /// JENER som nodvektor för `SolutionState::vectors` (ärvs till nästa steg).
+    /// JENER as a nodal vector for `SolutionState::vectors` (inherited by the next step).
     fn jener_vec(&self) -> Vec<NodeVec> {
         self.jener.iter().flatten().map(|&v| {
             let mut x = [0.0; SLOTS];
@@ -212,7 +212,7 @@ impl<'p, 'm> ElecSystem<'p, 'm> {
         &self.p.model.elements[e].nodes
     }
 
-    /// Löser potentialen vid stegtidsandelen `t` för nodtemperaturerna `temp`.
+    /// Solves the potential at the step time fraction `t` for the nodal temperatures `temp`.
     pub fn solve(&mut self, t: f64, temp: &[f64]) -> Result<()> {
         let model = self.p.model;
         for (n, s, v) in self.loads.bc_at(t) {
@@ -290,7 +290,7 @@ impl<'p, 'm> ElecSystem<'p, 'm> {
             for (q, &(n, _)) in self.dm.owner.iter().enumerate() {
                 self.phi[n] += r[q];
             }
-            // inre ström med den nya potentialen
+            // internal current with the new potential
             fint = vec![0.0; nn];
             for (e, h) in self.elems.iter().enumerate() {
                 let nodes = self.nodes(e);
@@ -311,7 +311,7 @@ impl<'p, 'm> ElecSystem<'p, 'm> {
         Ok(())
     }
 
-    /// Joulevärme per nod (∫ N η ∇φ·σ∇φ dV) för temperaturerna `temp`.
+    /// Joule heat per node (∫ N η ∇φ·σ∇φ dV) for the temperatures `temp`.
     pub fn joule(&self, temp: &[f64]) -> Vec<f64> {
         let mut q = vec![0.0; self.phi.len()];
         for (e, h) in self.elems.iter().enumerate() {
@@ -331,12 +331,12 @@ impl<'p, 'm> ElecSystem<'p, 'm> {
         q
     }
 
-    /// Reaktionsströmmar i låsta potentialer.
+    /// Reaction currents in locked potentials.
     pub fn reactions(&self) -> Vec<f64> {
         (0..self.phi.len()).map(|n| if self.dm.constrained[n] & (1 << PS) != 0 { self.fint[n] - self.fext[n] } else { 0.0 }).collect()
     }
 
-    /// ECD, EPG och JENER per element.
+    /// ECD, EPG and JENER per element.
     pub fn output(&self, temp: &[f64]) -> Vec<Vec<IpField>> {
         let mut out = Vec::new();
         for (e, h) in self.elems.iter().enumerate() {
@@ -363,7 +363,7 @@ impl<'p, 'm> ElecSystem<'p, 'm> {
     }
 }
 
-/// Ett inkrement av värmebalansen med fast Δt.
+/// One increment of the heat balance with fixed Δt.
 struct Sub<'a, 'p, 'm> {
     sys: &'a mut HeatSystem<'p, 'm>,
     t0: f64,
@@ -400,7 +400,7 @@ impl NonlinearSystem for Sub<'_, '_, '_> {
     }
 }
 
-/// Delar stegets laster i värmens och elektricitetens.
+/// Splits the step's loads into the thermal and the electrical ones.
 fn split_loads(l: &StepLoads) -> (StepLoads, StepLoads) {
     let mut th = l.clone();
     let mut el = l.clone();
@@ -440,12 +440,12 @@ fn frame(heat: &HeatSystem, elec: &ElecSystem, value: f64, description: String) 
     Ok(f)
 }
 
-/// Fixpunktsiteration för ett inkrement [t0, t1].
+/// Fixed-point iteration for an increment [t0, t1].
 fn coupled_increment(heat: &mut HeatSystem, elec: &mut ElecSystem, ctrl: &Controls, t0: f64, t1: f64) -> Result<usize> {
     let sub = Controls { initial: 1.0, fixed: true, ..ctrl.clone() };
     let mut iters = 0;
     let mut t_iter = temps(&heat.u_committed);
-    // föreskrivna temperaturer gäller redan i första potentiallösningen
+    // prescribed temperatures already apply in the first potential solution
     for (n, s, v) in heat.bc_now(t1) {
         if s == TS {
             t_iter[n] = v;
@@ -464,14 +464,14 @@ fn coupled_increment(heat: &mut HeatSystem, elec: &mut ElecSystem, ctrl: &Contro
         let pmax = elec.phi.iter().map(|v| v.abs()).fold(0.0, f64::max).max(1e-30);
         t_iter = t_new;
         if k > 0 && dt <= 1e-12 * tmax && dp <= 1e-12 * pmax {
-            // reaktioner och Joulevärme med de konvergerade fälten
+            // reactions and Joule heat with the converged fields
             elec.solve(t1, &t_iter)?;
             heat.commit()?;
             elec.commit(&t_iter, (t1 - t0) * heat.period);
             return Ok(iters);
         }
     }
-    fail(format!("den termisk-elektriska kopplingen konvergerade inte vid stegtid {t1:.4} (fixpunktsiteration)"))
+    fail(format!("the thermal-electrical coupling did not converge at step time {t1:.4} (fixed-point iteration)"))
 }
 
 impl StepType for ThermalElectric {
@@ -487,16 +487,16 @@ impl StepType for ThermalElectric {
         let prep = ctx.prep;
         let model = prep.model;
         if ctx.step.perturbation {
-            return fail("*COUPLED THERMAL-ELECTRICAL kan inte vara ett perturbationssteg");
+            return fail("*COUPLED THERMAL-ELECTRICAL cannot be a perturbation step");
         }
         if let Some(k) = &ctx.step.procedure {
             if k.has("ELECTRICAL") {
-                return k.err("ELECTRICAL (bara den elektriska delen) stöds inte ännu");
+                return k.err("ELECTRICAL (only the electrical part) is not supported yet");
             }
         }
         let hc = heat_controls(ctx.step)?;
         if hc.deltmx > 0.0 && !hc.steady {
-            return fail("DELTMX i *COUPLED THERMAL-ELECTRICAL stöds inte ännu (ange fasta inkrement)");
+            return fail("DELTMX in *COUPLED THERMAL-ELECTRICAL is not supported yet (give fixed increments)");
         }
         let had_init = ctx.state.vectors.contains_key(INIT_KEY);
         ensure_initial(model, ctx.state)?;
@@ -535,7 +535,7 @@ impl StepType for ThermalElectric {
         let mut iterations = 0usize;
         while t < 1.0 - 1e-12 {
             if inc >= ctrl.max_increments {
-                return fail(format!("steget nådde största antal inkrement ({}) – öka INC= på *STEP", ctrl.max_increments));
+                return fail(format!("the step reached the maximum number of increments ({}) – increase INC= on *STEP", ctrl.max_increments));
             }
             let t1 = (t + dt0).min(1.0);
             let t1 = if 1.0 - t1 < 1e-9 { 1.0 } else { t1 };
@@ -543,7 +543,7 @@ impl StepType for ThermalElectric {
             t = t1;
             inc += 1;
             if ctx.opts.verbose {
-                eprintln!("  inkrement {inc}: stegtid {:.6}", t * period);
+                eprintln!("  increment {inc}: step time {:.6}", t * period);
             }
             if all || t >= 1.0 - 1e-12 {
                 frames.push(frame(&heat, &elec, t * period, format!("Increment {inc}: Step Time = {:.4}", t * period))?);

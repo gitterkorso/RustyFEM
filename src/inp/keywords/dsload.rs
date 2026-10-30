@@ -1,8 +1,8 @@
-//! *DSLOAD: fördelad last på en elementyta (*SURFACE, TYPE=ELEMENT).
+//! *DSLOAD: distributed load on an element-based surface (*SURFACE, TYPE=ELEMENT).
 //!
-//! Lasttypen P (normaltryck) översätts till elementlasten Pn för varje
-//! elementyta Sn i ytan, så att elementens `distributed_load` används precis
-//! som för *DLOAD. Andra lasttyper (TRVEC, TRSHR, ...) ger fel.
+//! The load type P (normal pressure) is translated to the element load Pn for each
+//! element face Sn in the surface, so that the elements' `distributed_load` is used exactly
+//! as for *DLOAD. Other load types (TRVEC, TRSHR, ...) give an error.
 
 use crate::fem::model::{parse_f64, DistLoad, DloadBlock, RawKeyword};
 use crate::inp::{InpCtx, Keyword, Kind};
@@ -12,7 +12,7 @@ pub static KEYWORDS: &[Keyword] = &[Keyword { name: "DSLOAD", kind: Kind::Step, 
 
 fn dsload(ctx: &mut InpCtx, kw: &RawKeyword) -> Result<()> {
     if kw.has("FOLLOWER") || kw.has("CONSTANT RESULTANT") {
-        return kw.err("FOLLOWER/CONSTANT RESULTANT stöds inte ännu");
+        return kw.err("FOLLOWER/CONSTANT RESULTANT is not supported yet");
     }
     let mut block = DloadBlock {
         op_new: kw.param_upper("OP").is_some_and(|o| o == "NEW"),
@@ -22,25 +22,25 @@ fn dsload(ctx: &mut InpCtx, kw: &RawKeyword) -> Result<()> {
     };
     for d in &kw.data {
         if d.fields.len() < 3 {
-            return kw.err_at(d.line, "skriv 'yta, lasttyp, storlek'");
+            return kw.err_at(d.line, "write 'surface, load type, magnitude'");
         }
         let name = d.fields[0].trim().to_uppercase();
         let kind = d.fields[1].trim().to_uppercase();
         if kind != "P" {
-            return kw.err_at(d.line, format!("lasttypen {kind} i *DSLOAD stöds inte ännu (bara P)"));
+            return kw.err_at(d.line, format!("load type {kind} in *DSLOAD is not supported yet (only P)"));
         }
         let Some(mag) = parse_f64(&d.fields[2]) else {
-            return kw.err_at(d.line, format!("'{}' är inget tal", d.fields[2]));
+            return kw.err_at(d.line, format!("'{}' is not a number", d.fields[2]));
         };
         let Some(sf) = ctx.model.surfaces.get(&name) else {
-            return kw.err_at(d.line, format!("ytan {name} finns inte"));
+            return kw.err_at(d.line, format!("surface {name} does not exist"));
         };
         if sf.kind != "ELEMENT" {
-            return kw.err_at(d.line, format!("ytan {name} är inte en elementyta"));
+            return kw.err_at(d.line, format!("surface {name} is not an element-based surface"));
         }
         for (e, face) in &sf.faces {
             let Some(num) = face.strip_prefix('S').and_then(|s| s.parse::<usize>().ok()) else {
-                return kw.err_at(d.line, format!("ytbeteckningen {face} i {name} stöds inte för *DSLOAD ännu"));
+                return kw.err_at(d.line, format!("face identifier {face} in {name} is not supported for *DSLOAD yet"));
             };
             block.items.push(DistLoad { elem: *e, kind: format!("P{num}"), magnitude: mag, extra: Vec::new() });
         }

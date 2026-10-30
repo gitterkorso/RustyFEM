@@ -3,7 +3,7 @@ name = "rustyfem-ffi"
 version = "0.1.0"
 edition = "2021"
 license = "MIT OR Apache-2.0"
-description = "C-gränssnitt till RustyFEMs glesa LDLᵀ-lösare (för t.ex. Python via ctypes)"
+description = "C interface to the RustyFEM sparse LDLᵀ solver (e.g. for Python via ctypes)"
 
 [lib]
 name = "rustyfem_ffi"

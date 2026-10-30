@@ -1,30 +1,30 @@
-//! *BUCKLE: linjär knäckning (egenvärdesknäckning, linjärt perturbationssteg).
+//! *BUCKLE: linear buckling (eigenvalue buckling, linear perturbation step).
 //!
-//! Löser (K₀ + λ K_Δ) φ = 0 där
-//! - K₀ är tangentstyvheten i bastillståndet inklusive spänningsstyvheten från
-//!   förlasten (föregående allmänna steg). Den tas med även när
-//!   bastillståndet är geometriskt linjärt (kontrollerat i
-//!   tests/cases/eigen/buckle_b23_forlast); efter ett NLGEOM-steg innehåller
-//!   tangenten redan spänningsstyvheten,
-//! - K_Δ är spänningsstyvheten från perturbationslasten (stegets egna laster),
-//!   vars spänningar fås ur en linjär statisk lösning från noll.
+//! Solves (K₀ + λ K_Δ) φ = 0 where
+//! - K₀ is the tangent stiffness in the base state including the stress stiffness from
+//!   the preload (preceding general steps). It is included even when
+//!   the base state is geometrically linear (verified in
+//!   tests/cases/eigen/buckle_b23_forlast); after an NLGEOM step the
+//!   tangent already contains the stress stiffness,
+//! - K_Δ is the stress stiffness from the perturbation load (the step's own loads),
+//!   whose stresses are obtained from a linear static solution from zero.
 //!
-//! Kritisk last = förlast + λ · perturbationslast. Problemet skrivs
-//! K₀ φ = λ (−K_Δ) φ och löses med subspace-iteration (`solver::eigen`) för de
-//! egenvärden som ligger närmast noll (även negativa). Modformerna normeras så
-//! att största förskjutningskomponenten är +1. B23/B33 har inre
-//! frihetsgrader i egenvärdesproblemet, som i `frequency.rs`.
+//! Critical load = preload + λ · perturbation load. The problem is written
+//! K₀ φ = λ (−K_Δ) φ and solved with subspace iteration (`solver::eigen`) for the
+//! eigenvalues closest to zero (including negative ones). The mode shapes are normalized so
+//! that the largest displacement component is +1. B23/B33 have internal
+//! DOFs in the eigenvalue problem, as in `frequency.rs`.
 //!
-//! Perturbationslastens egen styvhet ingår för tryck på kontinuumelementens
-//! ytor (*DLOAD Pn på CPS/CPE/C3D8): trycket följer ytan, K_L = −∂f/∂u, och
-//! den symmetriska delen ½(K_L + K_Lᵀ) används (kontrollerat i
-//! tests/cases/eigen/buckle_cps4_tryck). Tryck i bastillståndet
-//! (föregående steg) ger ingen lastyvhet här.
+//! The perturbation load's own stiffness is included for pressure on continuum element
+//! faces (*DLOAD Pn on CPS/CPE/C3D8): the pressure follows the surface, K_L = −∂f/∂u, and
+//! the symmetric part ½(K_L + K_Lᵀ) is used (verified in
+//! tests/cases/eigen/buckle_cps4_tryck). Pressure in the base state
+//! (preceding steps) gives no load stiffness here.
 //!
-//! Datarad: SUBSPACE (standard): antal egenvärden, högsta egenvärde av
-//! intresse, antal iterationsvektorer, högsta antal iterationer. LANCZOS:
-//! antal, minsta och högsta egenvärde. Frames: frame 0 =
-//! bastillståndet, frame i = mod i (`value` = modnummer) med beskrivningen
+//! Data line: SUBSPACE (default): number of eigenvalues, maximum eigenvalue of
+//! interest, number of iteration vectors, maximum number of iterations. LANCZOS:
+//! number, minimum and maximum eigenvalue. Frames: frame 0 =
+//! the base state, frame i = mode i (`value` = mode number) with the description
 //! "Mode i: EigenValue = ...".
 
 use super::api::{StepCtx, StepType};
@@ -60,20 +60,20 @@ impl StepType for Buckle {
         let kw = ctx.step.procedure.as_ref().unwrap();
         match kw.param_upper("EIGENSOLVER").as_deref() {
             None | Some("SUBSPACE") | Some("LANCZOS") => {}
-            Some(x) => return kw.err(format!("EIGENSOLVER={x} stöds inte (SUBSPACE eller LANCZOS)")),
+            Some(x) => return kw.err(format!("EIGENSOLVER={x} is not supported (SUBSPACE or LANCZOS)")),
         }
         let lanczos = kw.param_upper("EIGENSOLVER").as_deref() == Some("LANCZOS");
         let nev = data_field(kw, 0)?.map(|v| v.round().max(0.0) as usize).filter(|&n| n > 0);
         let Some(nev) = nev else {
-            return kw.err("ange antal egenvärden på dataraden");
+            return kw.err("give the number of eigenvalues on the data line");
         };
-        // SUBSPACE: (antal, största egenvärde, vektorer, iterationer); LANCZOS: (antal, minsta, största, ...)
+        // SUBSPACE: (number, largest eigenvalue, vectors, iterations); LANCZOS: (number, minimum, maximum, ...)
         let (lmin, lmax, vectors) = if lanczos {
             (data_field(kw, 1)?, data_field(kw, 2)?, 0)
         } else {
             (None, data_field(kw, 1)?, data_field(kw, 2)?.map_or(0, |v| v.round().max(0.0) as usize))
         };
-        // perturbationslastens spänningar (linjärt, från noll)
+        // the perturbation load's stresses (linear, from zero)
         let mut zero = SolutionState::new(model);
         zero.elem_state = p.init_states()?;
         let (du, dstate) = {
@@ -88,7 +88,7 @@ impl StepType for Buckle {
         let kl = pressure_stiffness(p, &all, ctx.loads)?;
         let kd = combine(&[(&kg, 1.0), (&kl, 1.0)], ns);
         if kd.val.iter().all(|v| *v == 0.0) {
-            return fail("*BUCKLE: perturbationslasten ger inga spänningar (saknas *CLOAD/*DLOAD i steget?)");
+            return fail("*BUCKLE: the perturbation load gives no stresses (missing *CLOAD/*DLOAD in the step?)");
         }
         let base = &*ctx.state;
         let k0 = assemble_stiffness(p, &dm, &all, base, ctx.nlgeom)?;
@@ -99,7 +99,7 @@ impl StepType for Buckle {
             combine(&[(&k0, 1.0), (&kb, 1.0)], ns)
         };
         let Some(mat) = factor_checked(&a, &all, p, ctx.solver)? else {
-            return fail("*BUCKLE: styvheten i bastillståndet är inte positivt definit (mekanism, eller förlasten är redan över knäcklasten)");
+            return fail("*BUCKLE: the stiffness in the base state is not positive definite (mechanism, or the preload already exceeds the buckling load)");
         };
         let opts = EigenOptions { nev: nev.min(ns), vectors, ..Default::default() };
         let bmul = |x: &[f64]| kd.mul(x).into_iter().map(|v| -v).collect::<Vec<f64>>();
@@ -113,7 +113,7 @@ impl StepType for Buckle {
             let mode = i + 1;
             let mut phi = all.to_nodes(v, nn);
             normalize_displacement(&mut phi, &dm.active);
-            // RF = K φ i låsta frihetsgrader (utan spänningsstyvhet)
+            // RF = K φ in fixed DOFs (without stress stiffness)
             let fext = vec![[0.0; crate::fem::dof::SLOTS]; nn];
             let desc = format!("Mode {mode:>9}: EigenValue = {:>11}", g5(*lam));
             ctx.out.frames.push(mode_frame(p, &dm, &phi, &fext, time, mode, desc)?);
@@ -126,10 +126,10 @@ impl StepType for Buckle {
     }
 }
 
-/// Lastyvhet för följande tryck (*DLOAD Pn) på kontinuumelement: K_L = −∂f/∂x
-/// med centrala differenser av elementets tryckkraft (exakt för linjära och
-/// bilinjära ytor, där kraften är högst kvadratisk i koordinaterna),
-/// symmetriserad.
+/// Load stiffness for follower pressure (*DLOAD Pn) on continuum elements: K_L = −∂f/∂x
+/// with central differences of the element's pressure force (exact for linear and
+/// bilinear faces, where the force is at most quadratic in the coordinates),
+/// symmetrized.
 fn pressure_stiffness(p: &Prepared, all: &AllDofs, loads: &StepLoads) -> Result<SymCsr> {
     let m = p.model;
     let mut t = Triplets::new(all.n());
@@ -145,7 +145,7 @@ fn pressure_stiffness(p: &Prepared, all: &AllDofs, loads: &StepLoads) -> Result<
         let force = |x: &[[f64; 3]]| -> Result<Vec<f64>> {
             crate::elements::common::pressure_load(x, et.faces(), &dl.kind, dl.magnitude, th, ndim, et.name())
                 .map_err(|err| FemError(format!("{}: {err}", m.elem_name(e))))?
-                .ok_or_else(|| FemError(format!("{}: lasttypen {} är inget tryck", m.elem_name(e), dl.kind)))
+                .ok_or_else(|| FemError(format!("{}: the load type {} is not a pressure", m.elem_name(e), dl.kind)))
         };
         let nd = ctx.x.len() * ndim;
         let mut k = vec![0.0; nd * nd];

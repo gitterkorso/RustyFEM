@@ -1,16 +1,16 @@
-//! Kopplade temperatur–förskjutningselement (C3D8T, CPE4T, CPS4T, CAX4T, CPE3T, CPS3T, C3D4T) för
+//! Coupled temperature–displacement elements (C3D8T, CPE4T, CPS4T, CAX4T, CPE3T, CPS3T, C3D4T) for
 //! *COUPLED TEMPERATURE-DISPLACEMENT.
 //!
-//! Varje nod har förskjutningarna (1–2 eller 1–3) och temperaturen (11).
-//! Elementet är sammansatt av två delar:
-//! - den mekaniska delen är motsvarande mekaniska element (C3D8, CPE4, CPS4,
-//!   CAX4) i elementregistret; vektorer och matriser översätts mellan
-//!   elementens frihetsgradsordning (temperaturens platser får nollor);
-//! - den termiska delen är ett värmeledningselement med samma form
-//!   (`thermal`), som steg-typen i `steps/heat_coupled.rs` använder för
-//!   ledning, kapacitet och ytflöden precis som för DC-elementen.
+//! Each node has the displacements (1–2 or 1–3) and the temperature (11).
+//! The element is composed of two parts:
+//! - the mechanical part is the corresponding mechanical element (C3D8, CPE4, CPS4,
+//!   CAX4) in the element registry; vectors and matrices are mapped between
+//!   the elements' degree-of-freedom orderings (the temperature slots get zeros);
+//! - the thermal part is a heat conduction element of the same shape
+//!   (`thermal`), which the step type in `steps/heat_coupled.rs` uses for
+//!   conduction, capacity and surface fluxes just as for the DC elements.
 //!
-//! Kopplingen (termisk töjning ur nodtemperaturerna) sköts av steg-typen.
+//! The coupling (thermal strain from the nodal temperatures) is handled by the step type.
 
 use super::api::{ElemCtx, ElemResponse, ElementType, Family, IpField, MassKind};
 use super::heat::{HeatElem, Shape};
@@ -20,7 +20,7 @@ use crate::model::{fail, Result};
 
 pub struct CoupledElem {
     pub name: &'static str,
-    /// Det mekaniska elementet (namn i registret).
+    /// The mechanical element (name in the registry).
     pub mech: &'static str,
     pub thermal: &'static HeatElem,
     pub family: Family,
@@ -30,7 +30,7 @@ static TH_HEX8: HeatElem = HeatElem { name: "C3D8T", shape: Shape::Hex8, axisym:
 static TH_CPE4: HeatElem = HeatElem { name: "CPE4T", shape: Shape::Quad4, axisym: false };
 static TH_CPS4: HeatElem = HeatElem { name: "CPS4T", shape: Shape::Quad4, axisym: false };
 static TH_CAX4: HeatElem = HeatElem { name: "CAX4T", shape: Shape::Quad4, axisym: true };
-// trianglar och tetraedrar (även för *DYNAMIC TEMPERATURE-DISPLACEMENT, EXPLICIT, steps/explicit_coupled.rs)
+// triangles and tetrahedra (also for *DYNAMIC TEMPERATURE-DISPLACEMENT, EXPLICIT, steps/explicit_coupled.rs)
 static TH_CPE3: HeatElem = HeatElem { name: "CPE3T", shape: Shape::Tri3, axisym: false };
 static TH_CPS3: HeatElem = HeatElem { name: "CPS3T", shape: Shape::Tri3, axisym: false };
 static TH_TET4: HeatElem = HeatElem { name: "C3D4T", shape: Shape::Tet4, axisym: false };
@@ -47,18 +47,18 @@ pub static TYPES: &[&dyn ElementType] = &[&C3D8T, &CPE4T, &CPS4T, &CAX4T, &CPE3T
 
 static ALL: &[&CoupledElem] = &[&C3D8T, &CPE4T, &CPS4T, &CAX4T, &CPE3T, &CPS3T, &C3D4T];
 
-/// Det kopplade elementet med namnet `name`.
+/// The coupled element named `name`.
 pub fn lookup(name: &str) -> Option<&'static CoupledElem> {
-    // område coupled2: CPE4RT, CPS4RT, CAX4RT, C3D8RT i heat_coupled_reduced.rs
+    // area coupled2: CPE4RT, CPS4RT, CAX4RT, C3D8RT in heat_coupled_reduced.rs
     ALL.iter().copied().find(|e| e.name == name).or_else(|| super::heat_coupled_reduced::lookup(name))
 }
 
-/// Värmeledningsdelen av ett kopplat element.
+/// The heat conduction part of a coupled element.
 pub fn thermal(name: &str) -> Option<&'static HeatElem> {
     lookup(name).map(|e| e.thermal)
 }
 
-/// Namnet på den mekaniska delen av ett kopplat element (för termisk töjning).
+/// Name of the mechanical part of a coupled element (for thermal strain).
 pub fn mech_name(name: &str) -> Option<&'static str> {
     lookup(name).map(|e| e.mech)
 }
@@ -67,11 +67,11 @@ impl CoupledElem {
     fn mech_elem(&self) -> Result<&'static dyn ElementType> {
         match super::lookup(self.mech) {
             Some(m) => Ok(m),
-            None => fail(format!("{}: det mekaniska elementet {} finns inte i registret", self.name, self.mech)),
+            None => fail(format!("{}: the mechanical element {} is not in the registry", self.name, self.mech)),
         }
     }
 
-    /// Antal mekaniska frihetsgrader per nod.
+    /// Number of mechanical degrees of freedom per node.
     fn nm(&self) -> usize {
         if self.family == Family::Continuum3D {
             3
@@ -80,13 +80,13 @@ impl CoupledElem {
         }
     }
 
-    /// Plockar ut de mekaniska frihetsgraderna ur en kopplad vektor.
+    /// Extracts the mechanical degrees of freedom from a coupled vector.
     fn to_mech(&self, v: &[f64]) -> Vec<f64> {
         let nm = self.nm();
         v.chunks(nm + 1).flat_map(|c| c[..nm].to_vec()).collect()
     }
 
-    /// Mekanisk vektor → kopplad (nollor på temperaturens platser).
+    /// Mechanical vector → coupled (zeros in the temperature slots).
     fn from_mech(&self, v: &[f64]) -> Vec<f64> {
         let nm = self.nm();
         let mut out = Vec::with_capacity(v.len() / nm * (nm + 1));
@@ -97,7 +97,7 @@ impl CoupledElem {
         out
     }
 
-    /// Mekanisk matris (n×n) → kopplad.
+    /// Mechanical matrix (n×n) → coupled.
     fn from_mech_matrix(&self, k: &[f64]) -> Vec<f64> {
         let nm = self.nm();
         let n = (k.len() as f64).sqrt().round() as usize;

@@ -1,24 +1,24 @@
-//! Element för påtvingad konvektion/diffusion:
-//! DCC1D2, DCCAX2 (länkar), DCC2D4, DCCAX4 (fyrhörningar) och
-//! DCC3D8 (hexaeder), samt varianterna med dispersionskontroll (…D).
+//! Elements for forced convection/diffusion:
+//! DCC1D2, DCCAX2 (links), DCC2D4, DCCAX4 (quadrilaterals) and
+//! DCC3D8 (hexahedron), plus the variants with dispersion control (…D).
 //!
-//! Formulering (Yu–Heinrich): Petrov–
-//! Galerkin med viktfunktionerna Wᴺ = Nᴺ + α h/2 v̂·∇Nᴺ, där v̄ är elementets
-//! medelhastighet (massflöde per area / ρ, medel av nodvärdena), h = Σ_α |h_α·v̂|
-//! (isoparametriska linjer genom mittpunkten), γ = |v̄| h ρc/k (lokalt
-//! Pécletnummer) och α = coth(γ/2) − 2/γ ("uppströmsviktning"):
+//! Formulation (Yu–Heinrich): Petrov–
+//! Galerkin with the weight functions Wᴺ = Nᴺ + α h/2 v̂·∇Nᴺ, where v̄ is the element's
+//! mean velocity (mass flow per area / ρ, mean of the nodal values), h = Σ_α |h_α·v̂|
+//! (isoparametric lines through the center), γ = |v̄| h ρc/k (local
+//! Péclet number) and α = coth(γ/2) − 2/γ ("upwind weighting"):
 //!
-//! - konvektion  K_c = ∫ c Wᴺ (G·∇Nᴹ) dV, G = ρv interpolerat från noderna;
-//! - ledning     K_k = ∫ ∇Nᴺ·k ∇Nᴹ dV (andraderivattermen α h/2 v̂·∇Nᴺ k:∇∇Nᴹ
-//!   försvinner för parallellogramformade element och tas inte med);
-//! - kapacitet   C   = ∫ ρc Wᴺ Nᴹ dV, konsistent och exakt integrerad.
+//! - convection  K_c = ∫ c Wᴺ (G·∇Nᴹ) dV, G = ρv interpolated from the nodes;
+//! - conduction  K_k = ∫ ∇Nᴺ·k ∇Nᴹ dV (the second-derivative term α h/2 v̂·∇Nᴺ k:∇∇Nᴹ
+//!   vanishes for parallelogram-shaped elements and is not included);
+//! - capacity    C   = ∫ ρc Wᴺ Nᴹ dV, consistent and exactly integrated.
 //!
-//! Tidsintegrering (Crank–Nicolson): C(θ₁ − θ₀)/Δt + ½(K_c + K_k)(θ₁ + θ₀) = F;
-//! stationärt (K_c + K_k) θ = F. Dispersionskontrollen (β-termerna i …D) ger
-//! fel tills den stöds. Länkarna: DCC1D2 har tvärsnittsarean från *SOLID
-//! SECTION och *MASS FLOW RATE anger hela massflödet (positivt från nod 1 mot
-//! nod 2); DCCAX2 har kanalens tjocklek t i r–z-planet (tvärsnittet 2πr t).
-//! Matriserna räknas av `steps/heat_convection.rs`.
+//! Time integration (Crank–Nicolson): C(θ₁ − θ₀)/Δt + ½(K_c + K_k)(θ₁ + θ₀) = F;
+//! steady state (K_c + K_k) θ = F. The dispersion control (the β terms in …D) gives
+//! an error until it is supported. The links: DCC1D2 has the cross-sectional area from *SOLID
+//! SECTION and *MASS FLOW RATE gives the total mass flow (positive from node 1 towards
+//! node 2); DCCAX2 has the channel thickness t in the r–z plane (cross-section 2πr t).
+//! The matrices are computed by `steps/heat_convection.rs`.
 
 use super::api::{ElemCtx, ElementType, Family};
 use crate::fem::dof::{Dof, NT11};
@@ -26,22 +26,22 @@ use crate::model::{fail, Result};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Kind {
-    /// Länk i rummet (DCC1D2).
+    /// Link in space (DCC1D2).
     Link,
-    /// Axisymmetrisk länk i r–z-planet (DCCAX2).
+    /// Axisymmetric link in the r–z plane (DCCAX2).
     LinkAx,
-    /// Plan fyrhörning (DCC2D4) med tjocklek.
+    /// Plane quadrilateral (DCC2D4) with thickness.
     Quad,
-    /// Axisymmetrisk fyrhörning (DCCAX4).
+    /// Axisymmetric quadrilateral (DCCAX4).
     QuadAx,
-    /// Hexaeder (DCC3D8).
+    /// Hexahedron (DCC3D8).
     Hex,
 }
 
 pub struct ConvElem {
     pub name: &'static str,
     pub kind: Kind,
-    /// Dispersionskontroll (…D).
+    /// Dispersion control (…D).
     pub dispersion: bool,
 }
 
@@ -59,7 +59,7 @@ pub static DCC3D8D: ConvElem = ConvElem { name: "DCC3D8D", kind: Kind::Hex, disp
 pub static TYPES: &[&dyn ElementType] = &[&DCC1D2, &DCC1D2D, &DCCAX2, &DCCAX2D, &DCC2D4, &DCC2D4D, &DCCAX4, &DCCAX4D, &DCC3D8, &DCC3D8D];
 static ALL: &[&ConvElem] = &[&DCC1D2, &DCC1D2D, &DCCAX2, &DCCAX2D, &DCC2D4, &DCC2D4D, &DCCAX4, &DCCAX4D, &DCC3D8, &DCC3D8D];
 
-/// Konvektionselementet med namnet `name`.
+/// The convection element named `name`.
 pub fn lookup(name: &str) -> Option<&'static ConvElem> {
     ALL.iter().copied().find(|e| e.name == name)
 }
@@ -68,20 +68,20 @@ const LINK_FACES: &[&[usize]] = &[&[0], &[1]];
 const QUAD4_FACES: &[&[usize]] = &[&[0, 1], &[1, 2], &[2, 3], &[3, 0]];
 const HEX8_FACES: &[&[usize]] = &[&[0, 1, 2, 3], &[4, 7, 6, 5], &[0, 4, 5, 1], &[1, 5, 6, 2], &[2, 6, 7, 3], &[3, 7, 4, 0]];
 
-/// En integrationspunkt: formfunktioner, gradienter, vikt (dV) och radie.
+/// An integration point: shape functions, gradients, weight (dV) and radius.
 pub struct ConvIp {
     pub n: Vec<f64>,
     pub dndx: Vec<[f64; 3]>,
     pub w: f64,
 }
 
-/// Elementmatriserna (radvisa nn × nn).
+/// The element matrices (row-wise nn × nn).
 pub struct ConvMatrices {
     /// K_c + K_k.
     pub k: Vec<f64>,
-    /// Kapacitet (tom i stationär analys).
+    /// Capacity (empty in steady-state analysis).
     pub c: Vec<f64>,
-    /// Värmeflödet −k∇Nᴹ per integrationspunkt (för HFL): [punkt][komponent][nod].
+    /// The heat flux −k∇Nᴹ per integration point (for HFL): [point][component][node].
     pub flux: Vec<[Vec<f64>; 3]>,
 }
 
@@ -100,7 +100,7 @@ impl ConvElem {
         matches!(self.kind, Kind::Link | Kind::LinkAx)
     }
 
-    /// Integrationspunkter (gauss, ξ snabbast). Länkar: en punkt i mitten.
+    /// Integration points (Gauss, ξ fastest). Links: one point at the center.
     pub fn ips(&self, x: &[[f64; 3]], section: f64) -> Result<Vec<ConvIp>> {
         let two_pi = 2.0 * std::f64::consts::PI;
         match self.kind {
@@ -108,7 +108,7 @@ impl ConvElem {
                 let t = [x[1][0] - x[0][0], x[1][1] - x[0][1], x[1][2] - x[0][2]];
                 let l = (t[0] * t[0] + t[1] * t[1] + t[2] * t[2]).sqrt();
                 if l <= 0.0 {
-                    return fail("länken har längden 0");
+                    return fail("the link has zero length");
                 }
                 let e = [t[0] / l, t[1] / l, t[2] / l];
                 let area = if self.kind == Kind::LinkAx { section * two_pi * 0.5 * (x[0][0] + x[1][0]) } else { section };
@@ -130,7 +130,7 @@ impl ConvElem {
                     }
                     let det = j[0][0] * j[1][1] - j[0][1] * j[1][0];
                     if det <= 0.0 {
-                        return fail("elementet är förvrängt (negativ Jacobian)");
+                        return fail("the element is distorted (negative Jacobian)");
                     }
                     let inv = [[j[1][1] / det, -j[0][1] / det], [-j[1][0] / det, j[0][0] / det]];
                     let dndx: Vec<[f64; 3]> = dn.iter().map(|d| [inv[0][0] * d[0] + inv[0][1] * d[1], inv[1][0] * d[0] + inv[1][1] * d[1], 0.0]).collect();
@@ -143,7 +143,7 @@ impl ConvElem {
                     }
                     out.push(ConvIp { n, dndx, w });
                 }
-                // ordningen ξ snabbast: (−,−), (+,−), (−,+), (+,+)
+                // the order ξ fastest: (−,−), (+,−), (−,+), (+,+)
                 Ok(out)
             }
             Kind::Hex => {
@@ -174,7 +174,7 @@ impl ConvElem {
                             }
                             let (inv, det) = super::common::inv3(j);
                             if det <= 0.0 {
-                                return fail("elementet är förvrängt (negativ Jacobian)");
+                                return fail("the element is distorted (negative Jacobian)");
                             }
                             let dndx: Vec<[f64; 3]> = dn.iter().map(|d| [0, 1, 2].map(|r| (0..3).map(|s| inv[r][s] * d[s]).sum::<f64>())).collect();
                             out.push(ConvIp { n, dndx, w: det });
@@ -186,7 +186,7 @@ impl ConvElem {
         }
     }
 
-    /// Isoparametriska linjer genom mittpunkten (h_α), för h = Σ|h_α·v̂|.
+    /// Isoparametric lines through the center (h_α), for h = Σ|h_α·v̂|.
     fn iso_lines(&self, x: &[[f64; 3]]) -> Vec<[f64; 3]> {
         let mid = |ids: &[usize]| {
             let mut c = [0.0; 3];
@@ -205,13 +205,13 @@ impl ConvElem {
         }
     }
 
-    /// Element- och kapacitetsmatriser. `g` = massflöde per area (ρv) per nod
-    /// (länkar: vektorn längs länken), `k` = ledningsförmågan, `rho`, `c`.
+    /// Element and capacity matrices. `g` = mass flow per area (ρv) per node
+    /// (links: the vector along the link), `k` = the conductivity, `rho`, `c`.
     #[allow(clippy::too_many_arguments)]
     pub fn matrices(&self, x: &[[f64; 3]], section: f64, k: [[f64; 3]; 3], rho: f64, c: f64, g: &[[f64; 3]], transient: bool, lumped: bool) -> Result<ConvMatrices> {
         let nn = self.n_nodes();
         let ips = self.ips(x, section)?;
-        // elementets medelhastighet och riktning
+        // the element's mean velocity and direction
         let mut gm = [0.0; 3];
         for gn in g {
             for d in 0..3 {
@@ -223,7 +223,7 @@ impl ConvElem {
             let vh = [gm[0] / gl, gm[1] / gl, gm[2] / gl];
             let h: f64 = self.iso_lines(x).iter().map(|l| (l[0] * vh[0] + l[1] * vh[1] + l[2] * vh[2]).abs()).sum();
             let kv: f64 = (0..3).map(|r| (0..3).map(|s| vh[r] * k[r][s] * vh[s]).sum::<f64>()).sum();
-            // γ = |v| h ρ c / k med |v| = |G|/ρ
+            // γ = |v| h ρ c / k with |v| = |G|/ρ
             let gamma = if kv > 0.0 { gl * h * c / kv } else { f64::INFINITY };
             let alpha = if gamma.is_infinite() {
                 1.0
@@ -260,7 +260,7 @@ impl ConvElem {
                 }
             }
             if transient && lumped {
-                // diagonal Galerkindel, uppströmsdelen konsistent
+                // diagonal Galerkin part, the upwind part consistent
                 for a in 0..nn {
                     cm[a * nn + a] += ip.w * rho * c * ip.n[a];
                     for b in 0..nn {
@@ -277,8 +277,8 @@ impl ConvElem {
             flux.push(f);
         }
         if transient && !lumped && self.is_link() {
-            // länkar har en integrationspunkt: den konsistenta kapaciteten
-            // integreras exakt (Nᵃ Nᵇ: L/3, L/6; uppströmsdelen konstant · L/2)
+            // links have one integration point: the consistent capacity
+            // is integrated exactly (Nᵃ Nᵇ: L/3, L/6; the upwind part constant · L/2)
             let ip = &ips[0];
             for a in 0..nn {
                 let up = alpha_h * (vhat[0] * ip.dndx[a][0] + vhat[1] * ip.dndx[a][1] + vhat[2] * ip.dndx[a][2]);

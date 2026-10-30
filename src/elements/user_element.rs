@@ -1,22 +1,22 @@
-//! Användarelement: *USER ELEMENT, TYPE=Un, NODES=, COORDINATES=,
-//! PROPERTIES=, I PROPERTIES=, VARIABLES=, UNSYMM och *UEL PROPERTY, ELSET=.
+//! User elements: *USER ELEMENT, TYPE=Un, NODES=, COORDINATES=,
+//! PROPERTIES=, I PROPERTIES=, VARIABLES=, UNSYMM and *UEL PROPERTY, ELSET=.
 //!
-//! Elementtypen skapas när *ELEMENT, TYPE=Un läses (`lookup`, anropas från
-//! `inp/keywords/element.rs`) från den *USER ELEMENT som definierar typen,
-//! och anropar en UEL (`crate::user::uel`) för typnumret n. Dataraderna i
-//! *USER ELEMENT anger de aktiva frihetsgraderna: första raden gäller från
-//! nod 1, en senare rad "k, d1, d2, ..." från nod k och framåt.
+//! The element type is created when *ELEMENT, TYPE=Un is read (`lookup`, called from
+//! `inp/keywords/element.rs`) from the *USER ELEMENT that defines the type,
+//! and calls a UEL (`crate::user::uel`) for the type number n. The data lines of
+//! *USER ELEMENT give the active degrees of freedom: the first line applies from
+//! node 1, a later line "k, d1, d2, ..." from node k onwards.
 //!
-//! *UEL PROPERTY sparas som ett tvärsnitt (`SectionKind::Other`) så att
-//! `FeModel::finalize` kopplar det till elementen; dataraderna är först
-//! PROPERTIES reella värden och sedan I PROPERTIES heltal.
+//! *UEL PROPERTY is stored as a section (`SectionKind::Other`) so that
+//! `FeModel::finalize` attaches it to the elements; the data lines are first
+//! PROPERTIES real values and then I PROPERTIES integers.
 //!
-//! Elementets tillstånd är SVARS(1..NSVARS) följt av ENERGY(1..8). AMATRX
-//! symmetriseras (½(K + Kᵀ)) eftersom systemmatrisen är symmetrisk.
+//! The element state is SVARS(1..NSVARS) followed by ENERGY(1..8). AMATRX
+//! is symmetrized (½(K + Kᵀ)) since the system matrix is symmetric.
 //!
-//! Begränsningar: inga integrationspunktsutdata (inga S
-//! för användarelement), inga fördelade laster (*DLOAD), FILE= och LINEAR
-//! (linjära användarelement från fil) stöds inte.
+//! Limitations: no integration point output (no S
+//! for user elements), no distributed loads (*DLOAD), FILE= and LINEAR
+//! (linear user elements from file) are not supported.
 
 use super::api::{ElemCtx, ElemResponse, ElementType, Family, MassKind};
 use crate::fem::dof::Dof;
@@ -27,7 +27,7 @@ use crate::user::uel::{self, UelArgs};
 use std::collections::HashMap;
 use std::sync::{Mutex, OnceLock};
 
-/// Användarelement skapas från .inp-filen; inga statiska typer.
+/// User elements are created from the .inp file; no static types.
 pub static TYPES: &[&dyn ElementType] = &[];
 
 pub struct UserElement {
@@ -42,8 +42,8 @@ pub struct UserElement {
     dim: usize,
 }
 
-/// Elementtypen för TYPE=`ty` (t.ex. "U1") från *USER ELEMENT i parten eller
-/// modellen som läses, eller `None` om typen inte är ett användarelement.
+/// The element type for TYPE=`ty` (e.g. "U1") from *USER ELEMENT in the part or
+/// the model being read, or `None` if the type is not a user element.
 pub fn lookup(ctx: &InpCtx, ty: &str) -> Result<Option<&'static dyn ElementType>> {
     let up = ty.trim().to_uppercase();
     let Some(n) = up.strip_prefix('U').and_then(|s| s.parse::<u32>().ok()) else { return Ok(None) };
@@ -57,7 +57,7 @@ pub fn lookup(ctx: &InpCtx, ty: &str) -> Result<Option<&'static dyn ElementType>
     Ok(Some(define(kw, &up, n)?))
 }
 
-/// Tolkar *USER ELEMENT och skapar (eller återanvänder) elementtypen.
+/// Parses *USER ELEMENT and creates (or reuses) the element type.
 pub fn define(kw: &RawKeyword, name: &str, jtype: u32) -> Result<&'static UserElement> {
     static CACHE: OnceLock<Mutex<HashMap<String, &'static UserElement>>> = OnceLock::new();
     let key = format!("{:?}|{:?}", kw.params, kw.data.iter().map(|d| &d.fields).collect::<Vec<_>>());
@@ -67,38 +67,38 @@ pub fn define(kw: &RawKeyword, name: &str, jtype: u32) -> Result<&'static UserEl
     }
     for p in ["FILE", "LINEAR"] {
         if kw.has(p) {
-            return kw.err(format!("{p} (linjära användarelement från fil) stöds inte ännu"));
+            return kw.err(format!("{p} (linear user elements from file) is not supported yet"));
         }
     }
     let int = |key: &str, default: usize| -> Result<usize> {
         match kw.param(key) {
             None => Ok(default),
-            Some(v) => parse_label(v).filter(|&x| x >= 0).map(|x| x as usize).ok_or_else(|| FemError(format!("{}: {key}={v} ska vara ett heltal", kw.location()))),
+            Some(v) => parse_label(v).filter(|&x| x >= 0).map(|x| x as usize).ok_or_else(|| FemError(format!("{}: {key}={v} must be an integer", kw.location()))),
         }
     };
     let nnode = int("NODES", 0)?;
     if nnode == 0 {
-        return kw.err("NODES= saknas");
+        return kw.err("NODES= is missing");
     }
     let mcrd = int("COORDINATES", 1)?.clamp(1, 3);
     let (nprops, njprops, nsvars) = (int("PROPERTIES", 0)?, int("I PROPERTIES", 0)?, int("VARIABLES", 1)?);
-    // aktiva frihetsgrader per nod
+    // active degrees of freedom per node
     let mut per_node: Vec<Option<Vec<Dof>>> = vec![None; nnode];
     for (i, d) in kw.records().iter().enumerate() {
         let f: Vec<&str> = d.fields.iter().map(|s| s.trim()).filter(|s| !s.is_empty()).collect();
         if f.is_empty() {
             continue;
         }
-        let nums: Vec<i64> = f.iter().map(|s| parse_label(s).ok_or_else(|| FemError(format!("{} rad {}: '{s}' är inget heltal", kw.file, d.line)))).collect::<Result<_>>()?;
+        let nums: Vec<i64> = f.iter().map(|s| parse_label(s).ok_or_else(|| FemError(format!("{} line {}: '{s}' is not an integer", kw.file, d.line)))).collect::<Result<_>>()?;
         let (start, list) = if i == 0 { (1, &nums[..]) } else { (nums[0], &nums[1..]) };
         if start < 1 || start as usize > nnode {
-            return kw.err_at(d.line, format!("nodposition {start} finns inte (NODES={nnode})"));
+            return kw.err_at(d.line, format!("node position {start} does not exist (NODES={nnode})"));
         }
         let mut dofs: Vec<Dof> = Vec::new();
         for &x in list {
             match x {
                 1..=7 | 11 => dofs.push(x as Dof),
-                _ => return kw.err_at(d.line, format!("frihetsgrad {x} stöds inte (1–7, 11)")),
+                _ => return kw.err_at(d.line, format!("degree of freedom {x} is not supported (1–7, 11)")),
             }
         }
         dofs.sort_unstable();
@@ -109,7 +109,7 @@ pub fn define(kw: &RawKeyword, name: &str, jtype: u32) -> Result<&'static UserEl
     }
     let mut dofs: Vec<&'static [Dof]> = Vec::with_capacity(nnode);
     for (k, d) in per_node.into_iter().enumerate() {
-        let Some(d) = d else { return kw.err(format!("aktiva frihetsgrader saknas för nod {}", k + 1)) };
+        let Some(d) = d else { return kw.err(format!("active degrees of freedom are missing for node {}", k + 1)) };
         dofs.push(Box::leak(d.into_boxed_slice()));
     }
     let dim = if mcrd >= 3 || dofs.iter().any(|d| d.iter().any(|&x| x == 3 || x == 4 || x == 5)) { 3 } else { 2 };
@@ -118,41 +118,41 @@ pub fn define(kw: &RawKeyword, name: &str, jtype: u32) -> Result<&'static UserEl
     Ok(t)
 }
 
-/// Vad UEL:en ska beräkna (LFLAGS(3)).
+/// What the UEL should compute (LFLAGS(3)).
 #[derive(Clone, Copy, PartialEq)]
 enum What {
-    /// RHS och styvhet.
+    /// RHS and stiffness.
     Full = 1,
     Stiffness = 2,
     Mass = 4,
     Rhs = 5,
 }
 
-/// Resultat av ett UEL-anrop: (inre kraft = −RHS, AMATRX radvis symmetriserad, SVARS + ENERGY).
+/// Result of a UEL call: (internal force = −RHS, AMATRX row-wise symmetrized, SVARS + ENERGY).
 type Call = (Vec<f64>, Vec<f64>, Vec<f64>);
 
 impl UserElement {
-    /// Egenskaper (PROPS, JPROPS) från elementets *UEL PROPERTY.
+    /// Properties (PROPS, JPROPS) from the element's *UEL PROPERTY.
     fn props(&self, ctx: &ElemCtx) -> Result<(Vec<f64>, Vec<i32>)> {
         if self.nprops == 0 && self.njprops == 0 {
             return Ok((Vec::new(), Vec::new()));
         }
         let Some(sec) = ctx.section.filter(|s| s.raw.name == "UEL PROPERTY") else {
-            return fail(format!("element {} ({}) saknar *UEL PROPERTY", ctx.label, self.name));
+            return fail(format!("element {} ({}) has no *UEL PROPERTY", ctx.label, self.name));
         };
         let kw = &sec.raw;
         let recs = kw.records();
         let fields: Vec<&str> = recs.iter().flat_map(|d| d.fields.iter().map(|s| s.trim())).filter(|s| !s.is_empty()).collect();
         if fields.len() < self.nprops + self.njprops {
-            return kw.err(format!("PROPERTIES={} och I PROPERTIES={} men dataraderna har {} värden", self.nprops, self.njprops, fields.len()));
+            return kw.err(format!("PROPERTIES={} and I PROPERTIES={} but the data lines have {} values", self.nprops, self.njprops, fields.len()));
         }
         let mut p = Vec::with_capacity(self.nprops);
         for s in &fields[..self.nprops] {
-            p.push(crate::fem::model::parse_f64(s).ok_or_else(|| FemError(format!("{}: '{s}' är inget tal", kw.location())))?);
+            p.push(crate::fem::model::parse_f64(s).ok_or_else(|| FemError(format!("{}: '{s}' is not a number", kw.location())))?);
         }
         let mut j = Vec::with_capacity(self.njprops);
         for s in &fields[self.nprops..self.nprops + self.njprops] {
-            j.push(parse_label(s).ok_or_else(|| FemError(format!("{}: '{s}' är inget heltal", kw.location())))? as i32);
+            j.push(parse_label(s).ok_or_else(|| FemError(format!("{}: '{s}' is not an integer", kw.location())))? as i32);
         }
         Ok((p, j))
     }
@@ -160,7 +160,7 @@ impl UserElement {
     fn call(&self, ctx: &ElemCtx, u: &[f64], du: &[f64], state: &[f64], what: What) -> Result<Call> {
         let Some(routine) = uel::find(self.jtype)? else {
             return fail(format!(
-                "ingen UEL för {}: registrera en i Rust med rustyfem::user::uel::register (exempel: U9001 stång, U9002 fyrhörning) eller ange ett bibliotek med uel_ i RUSTYFEM_USER",
+                "no UEL for {}: register one in Rust with rustyfem::user::uel::register (examples: U9001 truss, U9002 quadrilateral) or specify a library with uel_ in RUSTYFEM_USER",
                 self.name
             ));
         };
@@ -218,7 +218,7 @@ impl UserElement {
         };
         routine.uel(&mut a).map_err(|e| FemError(format!("{} ({}): {e}", routine.name(), self.name)))?;
         if pnewdt < 1.0 {
-            return fail(format!("UEL för {} begär mindre inkrement (PNEWDT = {pnewdt})", self.name));
+            return fail(format!("UEL for {} requests a smaller increment (PNEWDT = {pnewdt})", self.name));
         }
         let fint: Vec<f64> = rhs.iter().map(|r| -r).collect();
         let mut k = vec![0.0; n * n];

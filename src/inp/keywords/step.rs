@@ -1,7 +1,7 @@
-//! *STEP, *END STEP och procedurnyckelordet *STATIC.
+//! *STEP, *END STEP and the procedure keyword *STATIC.
 //!
-//! Andra procedurer (*FREQUENCY, *BUCKLE, *DYNAMIC, *HEAT TRANSFER, ...)
-//! registreras i egna filer med hanteraren `inp::procedure`.
+//! Other procedures (*FREQUENCY, *BUCKLE, *DYNAMIC, *HEAT TRANSFER, ...)
+//! are registered in their own files with the handler `inp::procedure`.
 
 use crate::fem::model::{RawKeyword, StepDef};
 use crate::inp::{parse_label, procedure, InpCtx, Keyword, Kind};
@@ -15,24 +15,24 @@ pub static KEYWORDS: &[Keyword] = &[
 
 fn step(ctx: &mut InpCtx, kw: &RawKeyword) -> Result<()> {
     if ctx.part.is_some() || ctx.in_assembly {
-        return kw.err("*STEP får inte stå inne i *PART eller *ASSEMBLY");
+        return kw.err("*STEP may not appear inside *PART or *ASSEMBLY");
     }
     let index = ctx.model.steps.len() + 1;
     let name = kw.param("NAME").map(|s| s.trim().to_string()).unwrap_or_else(|| format!("Step-{index}"));
     let nlgeom = if kw.has("NLGEOM") { Some(kw.flag("NLGEOM", false)?) } else { None };
     let max_increments = match kw.param("INC") {
-        Some(v) => parse_label(v).filter(|&n| n > 0).ok_or_else(|| crate::model::FemError(format!("{}: INC={v} ska vara ett positivt heltal", kw.location())))? as usize,
+        Some(v) => parse_label(v).filter(|&n| n > 0).ok_or_else(|| crate::model::FemError(format!("{}: INC={v} must be a positive integer", kw.location())))? as usize,
         None => 100,
     };
     let amplitude_step = match kw.param_upper("AMPLITUDE") {
         None => false,
         Some(a) if a == "RAMP" => false,
         Some(a) if a == "STEP" => true,
-        Some(a) => return kw.err(format!("AMPLITUDE={a} ska vara RAMP eller STEP")),
+        Some(a) => return kw.err(format!("AMPLITUDE={a} must be RAMP or STEP")),
     };
     for p in ["CONVERT SDI", "EXTRAPOLATION"] {
         if kw.has(p) {
-            ctx.warn(kw, format!("parametern {p} ignoreras"));
+            ctx.warn(kw, format!("parameter {p} is ignored"));
         }
     }
     ctx.step = Some(StepDef {
@@ -50,7 +50,7 @@ fn step(ctx: &mut InpCtx, kw: &RawKeyword) -> Result<()> {
 fn end_step(ctx: &mut InpCtx, kw: &RawKeyword) -> Result<()> {
     let s = ctx.step.take().unwrap();
     if s.procedure.is_none() {
-        return kw.err(format!("steget {} saknar procedur (t.ex. *STATIC)", s.name));
+        return kw.err(format!("step {} has no procedure (e.g. *STATIC)", s.name));
     }
     ctx.model.steps.push(s);
     Ok(())

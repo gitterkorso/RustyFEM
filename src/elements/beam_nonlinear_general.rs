@@ -1,44 +1,44 @@
-//! Område gaps1: *BEAM GENERAL SECTION, SECTION=NONLINEAR GENERAL för
-//! Timoshenkobalkarna (B21, B22, B31, B32; inkluderas från
-//! `beam_timoshenko.rs`), geometriskt linjärt.
+//! Area gaps1: *BEAM GENERAL SECTION, SECTION=NONLINEAR GENERAL for
+//! the Timoshenko beams (B21, B22, B31, B32; included from
+//! `beam_timoshenko.rs`), geometrically linear.
 //!
-//! Snittkrafterna är okopplade funktioner av de generaliserade töjningarna:
+//! The section forces are uncoupled functions of the generalized strains:
 //!
 //! ```text
 //! N = N(ε),  M1 = M1(κ1),  M2 = M2(κ2),  T = T(φ)
 //! ```
 //!
-//! givna med *AXIAL, *M1, *M2 och *TORQUE (`inp/keywords/gaps1.rs`):
+//! given with *AXIAL, *M1, *M2 and *TORQUE (`inp/keywords/gaps1.rs`):
 //!
-//! - LINEAR: styvheten (en rad).
-//! - ELASTIC: olinjärt elastiskt, tabell från mest negativa till mest positiva
-//!   värde genom origo; konstant kraft utanför tabellen.
-//! - standard (elastiskt-plastiskt): tabell som börjar i (0, 0) med positiva
-//!   värden; första segmentets lutning k₀ är elasticiteten, därefter isotrop
-//!   hårdnande (eller mjuknande) kring flytgränsen F_y(ξ) med den ackumulerade
-//!   plastiska deformationen ξ = Σ|Δx_p|, x_p = x − F/k₀ i punkterna;
-//!   konstant utanför tabellen. Samma i drag och tryck. Tillstånd per
-//!   integrationspunkt och samband: (x_p, ξ).
+//! - LINEAR: the stiffness (one line).
+//! - ELASTIC: nonlinear elastic, table from the most negative to the most positive
+//!   value through the origin; constant force outside the table.
+//! - default (elastic-plastic): table starting at (0, 0) with positive
+//!   values; the slope k₀ of the first segment is the elasticity, after that isotropic
+//!   hardening (or softening) about the yield limit F_y(ξ) with the accumulated
+//!   plastic deformation ξ = Σ|Δx_p|, x_p = x − F/k₀ at the points;
+//!   constant outside the table. The same in tension and compression. State per
+//!   integration point and relation: (x_p, ξ).
 //!
-//! A, I11, I12, I22 och J på dataraden används bara för tvärskjuvningen:
-//! E = k_N/A ur axialsambandets begynnelselutning, G = E/2 (ν = 0) och
-//! skjuvstyvheten G·A med slankhetskompensation.
-//! Saknas ett samband är styvheten noll i den riktningen.
+//! A, I11, I12, I22 and J on the data line are used only for the transverse shear:
+//! E = k_N/A from the initial slope of the axial relation, G = E/2 (ν = 0) and
+//! the shear stiffness G·A with slenderness compensation.
+//! If a relation is missing, the stiffness is zero in that direction.
 
 use super::*;
 use crate::inp::keywords::gaps1::NLG_PARAM;
 
-/// Ett tvärsnittssamband.
+/// A section relation.
 #[derive(Debug, Clone)]
 enum Law {
     None,
     Linear(f64),
     Elastic(Vec<(f64, f64)>),
-    /// k₀ och flytkurvan (ξ, F_y).
+    /// k₀ and the yield curve (ξ, F_y).
     Plastic(f64, Vec<(f64, f64)>),
 }
 
-/// Värden per samband och integrationspunkt i tillståndet.
+/// Values per relation and integration point in the state.
 const PER: usize = 2;
 
 impl Law {
@@ -55,18 +55,18 @@ impl Law {
         match kind {
             "LINEAR" => Ok(Law::Linear(pts.first().map_or(0.0, |p| p.0))),
             "ELASTIC" => {
-                // (kraft, töjning) → (töjning, kraft), stigande töjning
+                // (force, strain) → (strain, force), ascending strain
                 let mut v: Vec<(f64, f64)> = pts.iter().map(|&(f, x)| (x, f)).collect();
                 v.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal));
                 if v.len() < 2 {
-                    return fail(format!("*{what}, ELASTIC: ange minst två punkter"));
+                    return fail(format!("*{what}, ELASTIC: give at least two points"));
                 }
                 Ok(Law::Elastic(v))
             }
             _ => {
                 let v: Vec<(f64, f64)> = pts.iter().map(|&(f, x)| (x, f)).collect();
                 if v.len() < 2 || v[0].0 != 0.0 || v[0].1 != 0.0 || !(v[1].0 > 0.0) {
-                    return fail(format!("*{what} (elastiskt-plastiskt): tabellen ska börja i (0, 0) och fortsätta med positiva värden"));
+                    return fail(format!("*{what} (elastic-plastic): the table must start at (0, 0) and continue with positive values"));
                 }
                 let k0 = v[1].1 / v[1].0;
                 let curve: Vec<(f64, f64)> = v[1..].iter().map(|&(x, f)| ((x - f / k0).max(0.0), f)).collect();
@@ -75,7 +75,7 @@ impl Law {
         }
     }
 
-    /// Begynnelsestyvhet.
+    /// Initial stiffness.
     fn k0(&self) -> f64 {
         match self {
             Law::None => 0.0,
@@ -88,7 +88,7 @@ impl Law {
         }
     }
 
-    /// Kraft och tangent för töjningen `x`; `st` = (x_p, ξ) uppdateras.
+    /// Force and tangent for the strain `x`; `st` = (x_p, ξ) is updated.
     fn eval(&self, x: f64, st_old: &[f64], st_new: &mut [f64]) -> (f64, f64) {
         match self {
             Law::None => (0.0, 0.0),
@@ -114,7 +114,7 @@ impl Law {
                     st_new[1] = xi;
                     return (ftr, *k0);
                 }
-                // |F_tr| − k₀ Δλ = F_y(ξ + Δλ): flytkurvan är styckvis linjär
+                // |F_tr| − k₀ Δλ = F_y(ξ + Δλ): the yield curve is piecewise linear
                 let mut dl = 0.0;
                 for _ in 0..50 {
                     let (f, h) = flow(curve, xi + dl);
@@ -139,7 +139,7 @@ impl Law {
     }
 }
 
-/// Flytgränsen F_y(ξ) och lutningen (konstant utanför tabellen).
+/// The yield limit F_y(ξ) and the slope (constant outside the table).
 fn flow(c: &[(f64, f64)], xi: f64) -> (f64, f64) {
     let n = c.len();
     if n == 1 || xi <= c[0].0 {
@@ -153,12 +153,12 @@ fn flow(c: &[(f64, f64)], xi: f64) -> (f64, f64) {
     (c[i].1 + s * (xi - c[i].0), s)
 }
 
-/// Sambanden för ett NONLINEAR GENERAL-tvärsnitt.
+/// The relations for a NONLINEAR GENERAL section.
 pub(super) struct Nlg {
     laws: [Law; 4],
 }
 
-/// Elementets tvärsnitt är NONLINEAR GENERAL.
+/// The element's section is NONLINEAR GENERAL.
 pub(super) fn is_nlg(ctx: &ElemCtx) -> bool {
     ctx.section.is_some_and(|s| s.raw.name == "BEAM GENERAL SECTION" && s.raw.param_upper("SECTION").as_deref() == Some("NONLINEAR GENERAL"))
 }
@@ -176,19 +176,19 @@ impl Nlg {
 }
 
 impl TimoBeam {
-    /// Geometri med E och G ur sambandens begynnelselutningar.
+    /// Geometry with E and G from the initial slopes of the relations.
     fn nlg_geom(&self, ctx: &ElemCtx, nlg: &Nlg) -> Result<BeamGeom> {
         let mut g = self.geom(ctx)?;
         let s = &mut g.sec;
         s.e = if s.a > 0.0 { nlg.laws[0].k0() / s.a } else { 0.0 };
-        // tvärskjuvningen med G = E/2 (ν = 0), E ur axialsambandets begynnelselutning
+        // the transverse shear with G = E/2 (ν = 0), E from the initial slope of the axial relation
         s.g = s.e / 2.0;
         s.k13 = s.g * s.a;
         s.k23 = s.g * s.a;
         Ok(g)
     }
 
-    /// Generaliserade töjningar i integrationspunkterna.
+    /// Generalized strains at the integration points.
     fn nlg_strains(&self, g: &BeamGeom, u: &[f64]) -> Vec<[f64; 6]> {
         let t = self.transform(g);
         let ul = common::matvec(&t, &self.expand_vector(u));
@@ -202,7 +202,7 @@ impl TimoBeam {
             .collect()
     }
 
-    /// Snittkrafter och tangent för en punkt (tillståndet uppdateras).
+    /// Section forces and tangent for a point (the state is updated).
     fn nlg_point(&self, g: &BeamGeom, nlg: &Nlg, e: &[f64; 6], so: &[f64], sn: &mut [f64]) -> ([f64; 6], [[f64; 6]; 6]) {
         let (k1, k2) = self.shear_stiffness(g);
         let mut s = [0.0; 6];
@@ -223,10 +223,10 @@ impl TimoBeam {
         vec![0.0; Nlg::state_len(self.n_gauss())]
     }
 
-    /// Inre kraft och tangent (geometriskt linjärt).
+    /// Internal force and tangent (geometrically linear).
     pub(super) fn nlg_response(&self, ctx: &ElemCtx, u: &[f64], so: &[f64], sn: &mut Vec<f64>, tangent: bool) -> Result<ElemResponse> {
         if ctx.nlgeom {
-            return not_implemented("NLGEOM med *BEAM GENERAL SECTION, SECTION=NONLINEAR GENERAL", self.name);
+            return not_implemented("NLGEOM with *BEAM GENERAL SECTION, SECTION=NONLINEAR GENERAL", self.name);
         }
         let nlg = Nlg::new(ctx)?;
         let g = self.nlg_geom(ctx, &nlg)?;
@@ -275,7 +275,7 @@ impl TimoBeam {
         Ok(ElemResponse { fint: self.reduce_vector(&fg), k })
     }
 
-    /// Elastisk styvhet (begynnelselutningarna) för linjära steg.
+    /// Elastic stiffness (the initial slopes) for linear steps.
     pub(super) fn nlg_stiffness(&self, ctx: &ElemCtx) -> Result<Vec<f64>> {
         let nlg = Nlg::new(ctx)?;
         let z = vec![0.0; self.n_nodes() * self.node_dofs(0).len()];
@@ -285,7 +285,7 @@ impl TimoBeam {
         Ok(r.k.unwrap_or_default())
     }
 
-    /// Snittkrafter ur tillståndet (för utdata).
+    /// Section forces from the state (for output).
     pub(super) fn nlg_forces(&self, ctx: &ElemCtx, u: &[f64], state: &[f64]) -> Result<Vec<[f64; 6]>> {
         let nlg = Nlg::new(ctx)?;
         let g = self.nlg_geom(ctx, &nlg)?;
@@ -295,8 +295,8 @@ impl TimoBeam {
         let strains = self.nlg_strains(&g, u);
         let mut out = Vec::new();
         for q in 0..ng {
-            // utvärdera med det sparade tillståndet (x_p, ξ) som start: ett
-            // konvergerat tillstånd ger samma kraft
+            // evaluate with the stored state (x_p, ξ) as the start: a
+            // converged state gives the same force
             let mut tmp = st[q * len..(q + 1) * len].to_vec();
             let (s, _) = self.nlg_point(&g, &nlg, &strains[q], &st[q * len..(q + 1) * len], &mut tmp);
             out.push(s);

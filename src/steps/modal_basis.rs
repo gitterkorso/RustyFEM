@@ -1,33 +1,33 @@
-//! Modbasen för de modala stegen (*MODAL DYNAMIC, *STEADY STATE DYNAMICS,
-//! *RESPONSE SPECTRUM): exakt samma egenmoder som det föregående
-//! *FREQUENCY-steget, plus modal dämpning, *SELECT EIGENMODES och *BASE MOTION.
+//! The mode basis for the modal steps (*MODAL DYNAMIC, *STEADY STATE DYNAMICS,
+//! *RESPONSE SPECTRUM): exactly the same eigenmodes as the preceding
+//! *FREQUENCY step, plus modal damping, *SELECT EIGENMODES and *BASE MOTION.
 //!
-//! Moderna räknas om med `frequency::extract` för det närmast föregående
-//! *FREQUENCY-steget, med det stegets randvillkor och bastillståndet. Det ger
-//! bit för bit samma moder som *FREQUENCY-steget skrev (deterministisk
-//! extraktion), med konsistent massa och inre frihetsgrader (B23/B33) där
-//! *FREQUENCY har det. Vektorerna normeras till generaliserad massa 1
-//! (φᵀMφ = 1 över alla frihetsgrader, även de inre).
+//! The modes are recomputed with `frequency::extract` for the nearest preceding
+//! *FREQUENCY step, with that step's boundary conditions and the base state. This gives
+//! bit for bit the same modes as the *FREQUENCY step wrote (deterministic
+//! extraction), with consistent mass and internal DOFs (B23/B33) where
+//! *FREQUENCY has them. The vectors are normalized to generalized mass 1
+//! (φᵀMφ = 1 over all DOFs, including the internal ones).
 //!
 //! *SELECT EIGENMODES: DEFINITION=MODE NUMBERS
-//! (standard) med en lista av modnummer per datarad, eller med GENERATE
-//! "första, sista, steg"; DEFINITION=FREQUENCY RANGE med "lägsta, högsta
-//! frekvens" (Hz). Modnumren i *MODAL DAMPING avser de ursprungliga numren;
-//! dämpning för moder som inte valts ignoreras.
+//! (default) with a list of mode numbers per data line, or with GENERATE
+//! "first, last, increment"; DEFINITION=FREQUENCY RANGE with "lowest, highest
+//! frequency" (Hz). The mode numbers in *MODAL DAMPING refer to the original numbers;
+//! damping for modes that were not selected is ignored.
 //!
-//! *MODAL DAMPING: VISCOUS (andel av kritisk dämpning, standard), RAYLEIGH
-//! (ζ = α/(2ω) + βω/2) och STRUCTURAL (s, imaginär styvhet i ω²(1 + is)).
-//! DEFINITION=MODE NUMBERS: "första mod, sista mod, värde" (RAYLEIGH: α, β).
-//! DEFINITION=FREQUENCY RANGE: "frekvens (Hz), värde" per rad, linjär
-//! interpolation i frekvens mellan raderna och ändvärdet utanför. Olika dämpningstyper adderas; samma typ i flera nyckelord skriver
-//! över per mod.
+//! *MODAL DAMPING: VISCOUS (fraction of critical damping, default), RAYLEIGH
+//! (ζ = α/(2ω) + βω/2) and STRUCTURAL (s, imaginary stiffness in ω²(1 + is)).
+//! DEFINITION=MODE NUMBERS: "first mode, last mode, value" (RAYLEIGH: α, β).
+//! DEFINITION=FREQUENCY RANGE: "frequency (Hz), value" per line, linear
+//! interpolation in frequency between the lines and the end value outside. Different damping types are added; the same type in several keywords overrides
+//! per mode.
 //!
-//! *BASE MOTION (huvudbasen): DOF=1–3, AMPLITUDE=, SCALE=, TYPE=ACCELERATION
-//! (standard), VELOCITY eller DISPLACEMENT. Rörelseekvationen skrivs relativt
-//! basen, u = u_rel + r u_g, så den modala lasten blir −Γᵢ ü_g med
-//! deltagandefaktorn Γᵢ = φᵢᵀ M r (r = stelkroppsförskjutning i DOF-riktningen
-//! över alla frihetsgrader, även de låsta – samma som PF i *FREQUENCY).
-//! U, V, A skrivs relativt basen och TU, TV, TA totalt.
+//! *BASE MOTION (the primary base): DOF=1–3, AMPLITUDE=, SCALE=, TYPE=ACCELERATION
+//! (default), VELOCITY or DISPLACEMENT. The equation of motion is written relative to
+//! the base, u = u_rel + r u_g, so the modal load becomes −Γᵢ ü_g with
+//! the participation factor Γᵢ = φᵢᵀ M r (r = rigid-body displacement in the DOF direction
+//! over all DOFs, including the fixed ones – the same as PF in *FREQUENCY).
+//! U, V, A are written relative to the base and TU, TV, TA as totals.
 
 use super::super::frequency::{self, AllDofs};
 use crate::fem::assembly::DofMap;
@@ -38,29 +38,29 @@ use crate::model::{fail, FemError, Result};
 use crate::solver::eigen::SymCsr;
 use crate::steps::api::StepCtx;
 
-/// Egenmoder från ett *FREQUENCY-steg (efter *SELECT EIGENMODES).
+/// Eigenmodes from a *FREQUENCY step (after *SELECT EIGENMODES).
 pub struct ModalBasis {
     pub dm: DofMap,
     pub all: AllDofs,
-    /// Massmatrisen över alla frihetsgrader (fria, inre, låsta).
+    /// The mass matrix over all DOFs (free, internal, fixed).
     pub mfull: SymCsr,
-    /// Modnummer (1-baserat) i *FREQUENCY-steget.
+    /// Mode number (1-based) in the *FREQUENCY step.
     pub number: Vec<usize>,
     pub lambda: Vec<f64>,
     pub omega: Vec<f64>,
-    /// Modvektorer i `all`-numreringen (längd `all.n()`), φᵀMφ = 1.
+    /// Mode vectors in the `all` numbering (length `all.n()`), φᵀMφ = 1.
     pub x: Vec<Vec<f64>>,
-    /// Modvektorernas nodvärden.
+    /// The nodal values of the mode vectors.
     pub phi: Vec<Vec<NodeVec>>,
 }
 
 impl ModalBasis {
-    /// Moderna från det närmast föregående *FREQUENCY-steget.
+    /// The modes from the nearest preceding *FREQUENCY step.
     pub fn from_frequency_step(ctx: &StepCtx) -> Result<ModalBasis> {
         let p = ctx.prep;
         let model = p.model;
         let Some(j) = (0..ctx.index).rev().find(|&i| model.steps[i].procedure_name() == "FREQUENCY") else {
-            return fail(format!("*{} kräver ett föregående *FREQUENCY-steg", ctx.step.procedure_name()));
+            return fail(format!("*{} requires a preceding *FREQUENCY step", ctx.step.procedure_name()));
         };
         let fs = &model.steps[j];
         let (loads, _) = StepLoads::build_with(model, fs, ctx.state, &p.active, false)?;
@@ -88,7 +88,7 @@ impl ModalBasis {
             b.omega.push(lam.max(0.0).sqrt());
         }
         if b.x.is_empty() {
-            return fail("inga egenmoder valda (*FREQUENCY/*SELECT EIGENMODES)");
+            return fail("no eigenmodes selected (*FREQUENCY/*SELECT EIGENMODES)");
         }
         Ok(b)
     }
@@ -101,12 +101,12 @@ impl ModalBasis {
         self.x.is_empty()
     }
 
-    /// Modala laster φᵢᵀ F för nodkrafter F.
+    /// Modal loads φᵢᵀ F for nodal forces F.
     pub fn modal_force(&self, f: &[NodeVec]) -> Vec<f64> {
         self.phi.iter().map(|phi| phi.iter().zip(f).map(|(a, b)| (0..SLOTS).map(|s| a[s] * b[s]).sum::<f64>()).sum()).collect()
     }
 
-    /// Σ φᵢ qᵢ som nodvektor.
+    /// Σ φᵢ qᵢ as a nodal vector.
     pub fn superpose(&self, q: &[f64]) -> Vec<NodeVec> {
         let nn = self.phi.first().map_or(0, |p| p.len());
         let mut u = vec![[0.0; SLOTS]; nn];
@@ -123,21 +123,21 @@ impl ModalBasis {
         u
     }
 
-    /// Deltagandefaktorer Γᵢ = φᵢᵀ M r för stelkroppsförskjutningen r i
-    /// riktningen `dir` (0–2 translation, 3–5 rotation kring origo).
+    /// Participation factors Γᵢ = φᵢᵀ M r for the rigid-body displacement r in
+    /// direction `dir` (0–2 translation, 3–5 rotation about the origin).
     pub fn participation(&self, nodes: &[[f64; 3]], dir: usize) -> Vec<f64> {
         let r = frequency::rigid(&self.all, nodes, dir);
         let mr = self.mfull.mul(&r);
         self.x.iter().map(|x| x.iter().zip(&mr).map(|(a, b)| a * b).sum()).collect()
     }
 
-    /// M r (alla frihetsgrader) för stelkroppsförskjutningen i riktningen `dir`.
+    /// M r (all DOFs) for the rigid-body displacement in direction `dir`.
     pub fn mass_times_rigid(&self, nodes: &[[f64; 3]], dir: usize) -> Vec<f64> {
         self.mfull.mul(&frequency::rigid(&self.all, nodes, dir))
     }
 }
 
-/// Valda moder (index i *FREQUENCY-stegets modlista) enligt *SELECT EIGENMODES.
+/// Selected modes (indices in the *FREQUENCY step's mode list) according to *SELECT EIGENMODES.
 fn select_eigenmodes(step: &StepDef, lambda: &[f64]) -> Result<Vec<bool>> {
     let kws: Vec<&RawKeyword> = step.extra.iter().filter(|k| k.name == "SELECT EIGENMODES").collect();
     if kws.is_empty() {
@@ -153,7 +153,7 @@ fn select_eigenmodes(step: &StepDef, lambda: &[f64]) -> Result<Vec<bool>> {
                 "MODE NUMBERS" => {
                     let list: Vec<usize> = if kw.has("GENERATE") {
                         if v.len() < 2 {
-                            return kw.err_at(d.line, "GENERATE: skriv 'första mod, sista mod[, steg]'");
+                            return kw.err_at(d.line, "GENERATE: write 'first mode, last mode[, increment]'");
                         }
                         let inc = v.get(2).copied().filter(|&x| x >= 1.0).unwrap_or(1.0).round() as usize;
                         (v[0].round() as usize..=v[1].round() as usize).step_by(inc).collect()
@@ -168,7 +168,7 @@ fn select_eigenmodes(step: &StepDef, lambda: &[f64]) -> Result<Vec<bool>> {
                 }
                 "FREQUENCY RANGE" => {
                     if v.len() < 2 {
-                        return kw.err_at(d.line, "skriv 'lägsta frekvens, högsta frekvens'");
+                        return kw.err_at(d.line, "write 'lowest frequency, highest frequency'");
                     }
                     for (i, l) in lambda.iter().enumerate() {
                         let f = l.max(0.0).sqrt() / two_pi;
@@ -177,23 +177,23 @@ fn select_eigenmodes(step: &StepDef, lambda: &[f64]) -> Result<Vec<bool>> {
                         }
                     }
                 }
-                other => return kw.err(format!("DEFINITION={other} ska vara MODE NUMBERS eller FREQUENCY RANGE")),
+                other => return kw.err(format!("DEFINITION={other} must be MODE NUMBERS or FREQUENCY RANGE")),
             }
         }
     }
     Ok(sel)
 }
 
-/// Modal dämpning per vald mod.
+/// Modal damping per selected mode.
 #[derive(Debug, Clone)]
 pub struct Damping {
-    /// Andel av kritisk viskös dämpning (VISCOUS + RAYLEIGH).
+    /// Fraction of critical viscous damping (VISCOUS + RAYLEIGH).
     pub zeta: Vec<f64>,
-    /// Strukturell dämpning s (ω²(1 + i s)).
+    /// Structural damping s (ω²(1 + i s)).
     pub structural: Vec<f64>,
 }
 
-/// Linjär interpolation i en tabell (x, y) sorterad i x, ändvärden utanför.
+/// Linear interpolation in a table (x, y) sorted in x, end values outside.
 fn interp(t: &[(f64, f64)], x: f64) -> f64 {
     if x <= t[0].0 {
         return t[0].1;
@@ -207,26 +207,26 @@ fn interp(t: &[(f64, f64)], x: f64) -> f64 {
     t[t.len() - 1].1
 }
 
-/// Dämpning från stegets *MODAL DAMPING för modbasen `b`.
+/// Damping from the step's *MODAL DAMPING for the mode basis `b`.
 pub fn modal_damping(step: &StepDef, b: &ModalBasis) -> Result<Damping> {
     let n = b.len();
-    // samma DEFINITION krävs i *SELECT EIGENMODES och *MODAL DAMPING i samma steg
+    // the same DEFINITION is required in *SELECT EIGENMODES and *MODAL DAMPING in the same step
     let def_of = |k: &RawKeyword| k.param_upper("DEFINITION").unwrap_or_else(|| "MODE NUMBERS".into());
     if let Some(sel) = step.extra.iter().find(|k| k.name == "SELECT EIGENMODES") {
         if let Some(md) = step.extra.iter().find(|k| k.name == "MODAL DAMPING" && def_of(k) != def_of(sel)) {
-            return md.err("DEFINITION= måste vara samma i *SELECT EIGENMODES och *MODAL DAMPING i samma steg");
+            return md.err("DEFINITION= must be the same in *SELECT EIGENMODES and *MODAL DAMPING in the same step");
         }
     }
     let two_pi = 2.0 * std::f64::consts::PI;
-    // per typ: viskös, Rayleigh (som ζ), strukturell
+    // per type: viscous, Rayleigh (as ζ), structural
     let mut vals = [vec![0.0; n], vec![0.0; n], vec![0.0; n]];
     for kw in step.extra.iter().filter(|k| k.name == "MODAL DAMPING") {
         if kw.has("COMPOSITE") || kw.param_upper("MODAL").is_some_and(|m| m != "DIRECT") {
-            return kw.err("MODAL=COMPOSITE stöds inte (bara MODAL=DIRECT)");
+            return kw.err("MODAL=COMPOSITE is not supported (only MODAL=DIRECT)");
         }
         if let Some(v) = kw.param_upper("VISCOUS") {
             if v != "FRACTION OF CRITICAL DAMPING" {
-                return kw.err(format!("VISCOUS={v} stöds inte (FRACTION OF CRITICAL DAMPING)"));
+                return kw.err(format!("VISCOUS={v} is not supported (FRACTION OF CRITICAL DAMPING)"));
             }
         }
         let kind = if kw.has("STRUCTURAL") {
@@ -242,7 +242,7 @@ pub fn modal_damping(step: &StepDef, b: &ModalBasis) -> Result<Damping> {
                 for d in &kw.data {
                     let v = kw.floats(d)?;
                     if v.len() < 3 {
-                        return kw.err_at(d.line, "skriv 'första mod, sista mod, värde'");
+                        return kw.err_at(d.line, "write 'first mode, last mode, value'");
                     }
                     let a = v[0].round() as usize;
                     let last = if v[1] > 0.0 { v[1].round() as usize } else { a };
@@ -262,32 +262,32 @@ pub fn modal_damping(step: &StepDef, b: &ModalBasis) -> Result<Damping> {
             }
             "FREQUENCY RANGE" => {
                 if kind == 1 {
-                    return kw.err("RAYLEIGH med DEFINITION=FREQUENCY RANGE stöds inte ännu");
+                    return kw.err("RAYLEIGH with DEFINITION=FREQUENCY RANGE is not supported yet");
                 }
                 let mut t: Vec<(f64, f64)> = Vec::new();
                 for d in &kw.data {
                     let v = kw.floats(d)?;
                     if v.len() < 2 {
-                        return kw.err_at(d.line, "skriv 'frekvens, värde'");
+                        return kw.err_at(d.line, "write 'frequency, value'");
                     }
                     t.push((v[0], v[1]));
                 }
                 if t.is_empty() {
-                    return kw.err("datarader saknas");
+                    return kw.err("data lines are missing");
                 }
                 t.sort_by(|a, b| a.0.total_cmp(&b.0));
                 for i in 0..n {
                     vals[kind][i] = interp(&t, b.omega[i] / two_pi);
                 }
             }
-            other => return kw.err(format!("DEFINITION={other} ska vara MODE NUMBERS eller FREQUENCY RANGE")),
+            other => return kw.err(format!("DEFINITION={other} must be MODE NUMBERS or FREQUENCY RANGE")),
         }
     }
     let zeta = (0..n).map(|i| vals[0][i] + vals[1][i]).collect();
     Ok(Damping { zeta, structural: vals[2].clone() })
 }
 
-/// Typ av basrörelse.
+/// Type of base motion.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum BaseKind {
     Acceleration,
@@ -295,51 +295,51 @@ pub enum BaseKind {
     Displacement,
 }
 
-/// *BASE MOTION (huvudbasen).
+/// *BASE MOTION (the primary base).
 #[derive(Debug, Clone)]
 pub struct BaseMotion {
-    /// Riktning 0–2.
+    /// Direction 0–2.
     pub dir: usize,
     pub amplitude: Option<String>,
     pub scale: f64,
     pub kind: BaseKind,
 }
 
-/// Stegets *BASE MOTION.
+/// The step's *BASE MOTION.
 pub fn base_motions(step: &StepDef) -> Result<Vec<BaseMotion>> {
     let mut out = Vec::new();
     for kw in step.extra.iter().filter(|k| k.name == "BASE MOTION") {
         if kw.has("BASE NAME") {
-            return kw.err("sekundära baser (BASE NAME=) stöds inte");
+            return kw.err("secondary bases (BASE NAME=) are not supported");
         }
-        let dof = kw.param("DOF").and_then(parse_f64).ok_or_else(|| FemError(format!("{}: DOF= saknas", kw.location())))?.round() as usize;
+        let dof = kw.param("DOF").and_then(parse_f64).ok_or_else(|| FemError(format!("{}: DOF= is missing", kw.location())))?.round() as usize;
         if !(1..=3).contains(&dof) {
-            return kw.err("bara translationer (DOF=1, 2 eller 3) stöds");
+            return kw.err("only translations (DOF=1, 2 or 3) are supported");
         }
         let scale = match kw.param("SCALE") {
-            Some(s) => parse_f64(s).ok_or_else(|| FemError(format!("{}: SCALE={s} är inget tal", kw.location())))?,
+            Some(s) => parse_f64(s).ok_or_else(|| FemError(format!("{}: SCALE={s} is not a number", kw.location())))?,
             None => 1.0,
         };
         let kind = match kw.param_upper("TYPE").as_deref().unwrap_or("ACCELERATION") {
             "ACCELERATION" => BaseKind::Acceleration,
             "VELOCITY" => BaseKind::Velocity,
             "DISPLACEMENT" => BaseKind::Displacement,
-            t => return kw.err(format!("TYPE={t} ska vara ACCELERATION, VELOCITY eller DISPLACEMENT")),
+            t => return kw.err(format!("TYPE={t} must be ACCELERATION, VELOCITY or DISPLACEMENT")),
         };
         if kw.has("LOADING") && kw.param_upper("LOADING").as_deref() != Some("UNIFORM") {
-            return kw.err("bara LOADING=UNIFORM stöds");
+            return kw.err("only LOADING=UNIFORM is supported");
         }
-        // basrörelsen kräver en amplitud
+        // the base motion requires an amplitude
         let Some(amplitude) = kw.param_upper("AMPLITUDE") else {
-            return kw.err("AMPLITUDE= saknas (basrörelsen kräver en amplitud)");
+            return kw.err("AMPLITUDE= is missing (the base motion requires an amplitude)");
         };
         out.push(BaseMotion { dir: dof - 1, amplitude: Some(amplitude), scale, kind });
     }
     Ok(out)
 }
 
-/// Lägger till r·v (riktning `dir`) på alla noders translation i `dir`
-/// (för TU, TV, TA).
+/// Adds r·v (direction `dir`) to the translation in `dir` of all nodes
+/// (for TU, TV, TA).
 pub fn add_rigid(u: &mut [NodeVec], dir: usize, v: f64) {
     for x in u.iter_mut() {
         x[dir] += v;

@@ -1,21 +1,21 @@
-//! Laddning av delade bibliotek (.dll/.so/.dylib) med operativsystemets
-//! laddare: LoadLibraryW/GetProcAddress (Windows) och dlopen/dlsym (Unix),
-//! direkt via FFI utan externa paket.
+//! Loading of shared libraries (.dll/.so/.dylib) with the operating system's
+//! loader: LoadLibraryW/GetProcAddress (Windows) and dlopen/dlsym (Unix),
+//! directly via FFI without external crates.
 //!
-//! Biblioteket laddas ur aldrig (funktionspekarna används under hela
-//! processens livstid).
+//! The library is never unloaded (the function pointers are used for the whole
+//! lifetime of the process).
 
 use crate::model::{fail, Result};
 use std::ffi::c_void;
 use std::path::Path;
 
-/// Ett laddat bibliotek (handtaget från operativsystemet).
+/// A loaded library (the handle from the operating system).
 pub struct DynLib {
     handle: *mut c_void,
     pub path: String,
 }
 
-// Handtaget är bara en adress som operativsystemet äger; symboluppslag är trådsäkra.
+// The handle is just an address owned by the operating system; symbol lookups are thread-safe.
 unsafe impl Send for DynLib {}
 unsafe impl Sync for DynLib {}
 
@@ -35,7 +35,7 @@ mod os {
         let wide: Vec<u16> = path.as_os_str().encode_wide().chain(std::iter::once(0)).collect();
         let h = unsafe { LoadLibraryW(wide.as_ptr()) };
         if h.is_null() {
-            return Err(format!("LoadLibraryW misslyckades (felkod {})", unsafe { GetLastError() }));
+            return Err(format!("LoadLibraryW failed (error code {})", unsafe { GetLastError() }));
         }
         Ok(h)
     }
@@ -65,8 +65,8 @@ mod os {
         let h = unsafe { dlopen(c.as_ptr() as *const c_char, RTLD_NOW) };
         if h.is_null() {
             let e = unsafe { dlerror() };
-            let msg = if e.is_null() { "okänt fel".to_string() } else { unsafe { CStr::from_ptr(e) }.to_string_lossy().to_string() };
-            return Err(format!("dlopen misslyckades: {msg}"));
+            let msg = if e.is_null() { "unknown error".to_string() } else { unsafe { CStr::from_ptr(e) }.to_string_lossy().to_string() };
+            return Err(format!("dlopen failed: {msg}"));
         }
         Ok(h)
     }
@@ -77,14 +77,14 @@ mod os {
     }
 }
 
-/// Utan feature `dynlib` (t.ex. iOS, där App Store inte tillåter kod som
-/// laddas utanför appen) kan inga bibliotek laddas.
+/// Without feature `dynlib` (e.g. iOS, where the App Store does not allow code
+/// loaded from outside the app) no libraries can be loaded.
 #[cfg(not(feature = "dynlib"))]
 mod os {
     use std::ffi::c_void;
 
     pub fn open(_path: &std::path::Path) -> Result<*mut c_void, String> {
-        Err("laddning av delade bibliotek är avstängd i den här byggkonfigurationen (feature dynlib)".into())
+        Err("loading of shared libraries is disabled in this build configuration (feature dynlib)".into())
     }
 
     pub fn symbol(_h: *mut c_void, _name: &str) -> *mut c_void {
@@ -93,19 +93,19 @@ mod os {
 }
 
 impl DynLib {
-    /// Laddar biblioteket i `path`.
+    /// Loads the library at `path`.
     pub fn open(path: &Path) -> Result<DynLib> {
         if !path.exists() {
-            return fail(format!("biblioteket {} finns inte", path.display()));
+            return fail(format!("the library {} does not exist", path.display()));
         }
         match os::open(path) {
             Ok(handle) => Ok(DynLib { handle, path: path.display().to_string() }),
-            Err(e) => fail(format!("kunde inte ladda {}: {e}", path.display())),
+            Err(e) => fail(format!("could not load {}: {e}", path.display())),
         }
     }
 
-    /// Adressen till den första av symbolerna `names` som finns (t.ex.
-    /// `umat_` från gfortran, `UMAT` från Intel Fortran på Windows).
+    /// The address of the first of the symbols `names` that exists (e.g.
+    /// `umat_` from gfortran, `UMAT` from Intel Fortran on Windows).
     pub fn symbol(&self, names: &[&str]) -> Option<(*mut c_void, String)> {
         names.iter().find_map(|n| {
             let p = os::symbol(self.handle, n);

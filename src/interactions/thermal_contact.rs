@@ -1,20 +1,21 @@
-//! Termisk kontakt mellan ytor: *GAP CONDUCTANCE och *GAP RADIATION i den
-//! *SURFACE INTERACTION som ett *CONTACT PAIR refererar till.
+//! Thermal contact between surfaces: *GAP CONDUCTANCE and *GAP RADIATION in the
+//! *SURFACE INTERACTION referenced by a *CONTACT PAIR.
 //!
-//! Diskretisering nod mot yta (standard för *CONTACT PAIR): varje
-//! slavnod A med slavytans nodarea A_A = ∫N_A dA projiceras på närmaste
-//! masteryta (formfunktionerna M_C i projektionen). Spaltens avstånd d är
-//! avståndet längs masterytans normal (positivt när ytorna är åtskilda, 0 vid
-//! genomträngning). Värmeflödet från master till slav:
+//! Node-to-surface discretization (default for *CONTACT PAIR): each
+//! slave node A with the slave surface nodal area A_A = ∫N_A dA is projected
+//! onto the closest master facet (the shape functions M_C at the projection).
+//! The gap distance d is the distance along the master surface normal
+//! (positive when the surfaces are separated, 0 at penetration). The heat
+//! flux from master to slave:
 //!
-//! - ledning: q = k(d) (T_M − T_A), T_M = Σ M_C T_C;
-//! - strålning: q = F(d) σ ((T_M − T_Z)⁴ − (T_A − T_Z)⁴) med
-//!   F = f(d) / (1/ε_A + 1/ε_B − 1) (f = siktfaktorn från tabellen).
+//! - conduction: q = k(d) (T_M − T_A), T_M = Σ M_C T_C;
+//! - radiation: q = F(d) σ ((T_M − T_Z)⁴ − (T_A − T_Z)⁴) with
+//!   F = f(d) / (1/ε_A + 1/ε_B − 1) (f = the view factor from the table).
 //!
-//! Slavnoden får +A_A q och masternoderna −M_C A_A q. Tabellerna k(d) och
-//! f(d) interpoleras linjärt och hålls konstanta utanför (en rad = konstant).
-//! Steg-typen för värmeledning (`steps/heat.rs`) anropar `build` och
-//! `contribute`; i mekaniken bidrar paret som vanligt via `contact.rs`.
+//! The slave node gets +A_A q and the master nodes −M_C A_A q. The tables k(d)
+//! and f(d) are interpolated linearly and held constant outside (one line =
+//! constant). The heat transfer step type (`steps/heat.rs`) calls `build` and
+//! `contribute`; in mechanics the pair contributes as usual via `contact.rs`.
 
 use super::geom::{self, Facet};
 use super::{Interaction, InteractionFactory};
@@ -23,18 +24,18 @@ use crate::fem::dof::NodeVec;
 use crate::fem::model::{parse_f64, FeModel, RawKeyword};
 use crate::model::{fail, FemError, Result};
 
-/// Registret ger bara kopplingarna (slavnod–masternoder) till
-/// matrisstrukturen; flödena räknas av värmeledningen via `build`.
+/// The registry only provides the couplings (slave node–master nodes) to the
+/// matrix structure; the fluxes are computed by the heat transfer via `build`.
 pub static FACTORIES: &[InteractionFactory] = &[InteractionFactory { keywords: &["CONTACT PAIR"], build: links }];
 
-/// Matrisstrukturen för termisk kontakt.
+/// The matrix structure for thermal contact.
 struct ThermalLink {
     groups: Vec<Vec<usize>>,
 }
 
 impl Interaction for ThermalLink {
     fn name(&self) -> String {
-        "termisk kontakt".into()
+        "thermal contact".into()
     }
     fn connectivity(&self) -> Vec<Vec<usize>> {
         self.groups.clone()
@@ -50,28 +51,28 @@ fn links(m: &FeModel, kw: &RawKeyword) -> Result<Vec<Box<dyn Interaction>>> {
     Ok(vec![Box::new(ThermalLink { groups })])
 }
 
-/// En slavnod med sin projektion.
+/// A slave node with its projection.
 #[derive(Debug, Clone)]
 struct SlaveNode {
     node: usize,
     area: f64,
-    /// Masternoder och formfunktioner i projektionen.
+    /// Master nodes and shape functions at the projection.
     master: Vec<(usize, f64)>,
-    /// Avstånd i referensläget längs masternormalen.
+    /// Distance in the reference configuration along the master normal.
     gap0: f64,
-    /// Masterytans utåtriktade normal i projektionen.
+    /// The master surface's outward normal at the projection.
     normal: [f64; 3],
-    /// Projektionspunkt i referensläget.
+    /// Projection point in the reference configuration.
     xm: [f64; 3],
 }
 
-/// Termisk kontakt för ett ytpar.
+/// Thermal contact for a surface pair.
 #[derive(Debug, Clone)]
 pub struct ThermalPair {
     nodes: Vec<SlaveNode>,
-    /// (d, k) sorterat efter d.
+    /// (d, k) sorted by d.
     conductance: Vec<(f64, f64)>,
-    /// (d, f) och 1/(1/ε_A + 1/ε_B − 1).
+    /// (d, f) and 1/(1/ε_A + 1/ε_B − 1).
     radiation: Option<(Vec<(f64, f64)>, f64)>,
 }
 
@@ -95,11 +96,11 @@ fn floats(kw: &RawKeyword, d: &crate::fem::model::DataLine) -> Result<Vec<f64>> 
     d.fields
         .iter()
         .filter(|f| !f.trim().is_empty())
-        .map(|f| parse_f64(f).ok_or_else(|| FemError(format!("{} rad {}: '{f}' är inget tal", kw.file, d.line))))
+        .map(|f| parse_f64(f).ok_or_else(|| FemError(format!("{} line {}: '{f}' is not a number", kw.file, d.line))))
         .collect()
 }
 
-/// Underalternativ till en *SURFACE INTERACTION (nyckelorden direkt efter den).
+/// Suboptions of a *SURFACE INTERACTION (the keywords directly after it).
 fn interaction_options<'a>(m: &'a FeModel, name: &str) -> Vec<&'a RawKeyword> {
     const SUB: &[&str] = &["FRICTION", "SURFACE BEHAVIOR", "GAP CONDUCTANCE", "GAP RADIATION", "GAP HEAT GENERATION", "CONTACT DAMPING"];
     let Some(i) = m.extra.iter().position(|k| k.name == "SURFACE INTERACTION" && k.param_upper("NAME").as_deref() == Some(name)) else {
@@ -108,8 +109,8 @@ fn interaction_options<'a>(m: &'a FeModel, name: &str) -> Vec<&'a RawKeyword> {
     m.extra.iter().skip(i + 1).take_while(|k| SUB.contains(&k.name.as_str())).collect()
 }
 
-/// Ett *CONTACT PAIR vars alla ytor ligger på värmeledningselement (ingen
-/// mekanisk kontakt; bara termisk kontakt via `build`).
+/// A *CONTACT PAIR whose surfaces all lie on heat transfer elements (no
+/// mechanical contact; only thermal contact via `build`).
 pub fn only_heat(m: &FeModel, kw: &RawKeyword) -> bool {
     let mut any = false;
     for d in kw.records() {
@@ -126,7 +127,7 @@ pub fn only_heat(m: &FeModel, kw: &RawKeyword) -> bool {
     any
 }
 
-/// Alla par med termiska egenskaper i modellen.
+/// All pairs with thermal properties in the model.
 pub fn build(m: &FeModel) -> Result<Vec<ThermalPair>> {
     let mut out = Vec::new();
     for kw in m.extra.iter().filter(|k| k.name == "CONTACT PAIR") {
@@ -135,8 +136,8 @@ pub fn build(m: &FeModel) -> Result<Vec<ThermalPair>> {
     Ok(out)
 }
 
-/// Termiska par för ett *CONTACT PAIR (tomt om interaktionen saknar
-/// *GAP CONDUCTANCE och *GAP RADIATION).
+/// Thermal pairs for a *CONTACT PAIR (empty if the interaction has neither
+/// *GAP CONDUCTANCE nor *GAP RADIATION).
 fn build_pair(m: &FeModel, kw: &RawKeyword) -> Result<Vec<ThermalPair>> {
     let mut out = Vec::new();
     {
@@ -149,7 +150,7 @@ fn build_pair(m: &FeModel, kw: &RawKeyword) -> Result<Vec<ThermalPair>> {
                 "GAP CONDUCTANCE" => {
                     for p in ["PRESSURE", "USER", "DEPENDENCIES"] {
                         if o.has(p) {
-                            return o.err(format!("{p} stöds inte ännu (bara k mot spaltavstånd)"));
+                            return o.err(format!("{p} is not supported yet (only k versus gap distance)"));
                         }
                     }
                     for d in o.records() {
@@ -162,10 +163,10 @@ fn build_pair(m: &FeModel, kw: &RawKeyword) -> Result<Vec<ThermalPair>> {
                 }
                 "GAP RADIATION" => {
                     let rec = o.records();
-                    let Some(first) = rec.first() else { return o.err("skriv 'ε slav, ε master'") };
+                    let Some(first) = rec.first() else { return o.err("write 'ε slave, ε master'") };
                     let e = floats(o, first)?;
                     if e.len() < 2 || e[0] <= 0.0 || e[1] <= 0.0 {
-                        return o.err("skriv 'ε slav, ε master' (båda > 0)");
+                        return o.err("write 'ε slave, ε master' (both > 0)");
                     }
                     let mut view = Vec::new();
                     for d in &rec[1..] {
@@ -180,7 +181,7 @@ fn build_pair(m: &FeModel, kw: &RawKeyword) -> Result<Vec<ThermalPair>> {
                     view.sort_by(|a, b| a.0.total_cmp(&b.0));
                     radiation = Some((view, 1.0 / (1.0 / e[0] + 1.0 / e[1] - 1.0)));
                 }
-                "GAP HEAT GENERATION" => return o.err("*GAP HEAT GENERATION stöds inte ännu"),
+                "GAP HEAT GENERATION" => return o.err("*GAP HEAT GENERATION is not supported yet"),
                 _ => {}
             }
         }
@@ -191,12 +192,12 @@ fn build_pair(m: &FeModel, kw: &RawKeyword) -> Result<Vec<ThermalPair>> {
         for d in kw.records() {
             let f: Vec<&str> = d.fields.iter().map(|s| s.trim()).filter(|s| !s.is_empty()).collect();
             if f.len() < 2 {
-                return kw.err_at(d.line, "skriv 'slavyta, masteryta'");
+                return kw.err_at(d.line, "write 'slave surface, master surface'");
             }
             let ss = geom::surface(m, kw, f[0])?;
             let ms = geom::surface(m, kw, f[1])?;
-            let sf = geom::facets(m, ss, "slavyta")?;
-            let mf = geom::facets(m, ms, "masteryta")?;
+            let sf = geom::facets(m, ss, "slave surface")?;
+            let mf = geom::facets(m, ms, "master surface")?;
             out.push(ThermalPair { nodes: slave_nodes(m, &sf, &mf)?, conductance: conductance.clone(), radiation: radiation.clone() });
         }
     }
@@ -214,7 +215,7 @@ fn slave_nodes(m: &FeModel, sf: &[Facet], mf: &[Facet]) -> Result<Vec<SlaveNode>
     let mut out = Vec::new();
     for (&n, &a) in &area {
         let p = m.nodes[n];
-        // närmaste masteryta (helst med projektionen inne i ytan)
+        // closest master facet (preferably with the projection inside the facet)
         let mut best: Option<(bool, f64, usize, [f64; 2])> = None;
         for (i, f) in mf.iter().enumerate() {
             let x = geom::coords(m, f, None);
@@ -227,7 +228,7 @@ fn slave_nodes(m: &FeModel, sf: &[Facet], mf: &[Facet]) -> Result<Vec<SlaveNode>
                 best = Some((inside, dist, i, xi));
             }
         }
-        let Some((_, _, i, xi)) = best else { return fail("termisk kontakt: masterytan är tom") };
+        let Some((_, _, i, xi)) = best else { return fail("thermal contact: the master surface is empty") };
         let f = &mf[i];
         let x = geom::coords(m, f, None);
         let fp = geom::eval(f, &x, xi);
@@ -245,15 +246,16 @@ fn slave_nodes(m: &FeModel, sf: &[Facet], mf: &[Facet]) -> Result<Vec<SlaveNode>
 }
 
 impl ThermalPair {
-    /// Flödet per area in i varje slavnod, (nod, q).
+    /// The flux per area into each slave node, (node, q).
     pub fn surface_flux(&self, u: &[NodeVec], ts: usize, disp: bool, abs_zero: f64, sigma: f64) -> Vec<(usize, f64)> {
         let mut f = vec![[0.0; crate::fem::dof::SLOTS]; u.len()];
         let _ = self.contribute(u, ts, disp, abs_zero, sigma, &mut f, false);
         self.nodes.iter().map(|s| (s.node, -f[s.node][ts] / s.area)).collect()
     }
 
-    /// Bidrag till inre värmeflöde (slot `ts`) och tangent (nodlista, matris)
-    /// vid temperaturerna i `u`. Med `disp` räknas spaltavståndet i aktuellt läge.
+    /// Contribution to the internal heat flux (slot `ts`) and tangent (node list,
+    /// matrix) at the temperatures in `u`. With `disp` the gap distance is
+    /// computed in the current configuration.
     pub fn contribute(
         &self,
         u: &[NodeVec],
@@ -265,7 +267,7 @@ impl ThermalPair {
         tangent: bool,
     ) -> Result<Vec<(Vec<usize>, Vec<f64>)>> {
         if self.radiation.is_some() && sigma == 0.0 {
-            return fail("*GAP RADIATION kräver *PHYSICAL CONSTANTS, ABSOLUTE ZERO=..., STEFAN BOLTZMANN=...");
+            return fail("*GAP RADIATION requires *PHYSICAL CONSTANTS, ABSOLUTE ZERO=..., STEFAN BOLTZMANN=...");
         }
         let mut mats = Vec::new();
         for s in &self.nodes {
@@ -284,7 +286,7 @@ impl ThermalPair {
             let d = d.max(0.0);
             let ta = u[s.node][ts];
             let tm: f64 = s.master.iter().map(|&(c, w)| w * u[c][ts]).sum();
-            // q = flöde in i slaven per area och derivatorna d/dT_A, d/dT_M
+            // q = flux into the slave per area and the derivatives d/dT_A, d/dT_M
             let k = table(&self.conductance, d);
             let mut q = k * (tm - ta);
             let mut dqa = -k;
@@ -297,7 +299,7 @@ impl ThermalPair {
                 dqa -= 4.0 * c * a.powi(3);
                 dqm += 4.0 * c * b.powi(3);
             }
-            // inre flöde = −tillfört flöde
+            // internal flux = −applied flux
             fint[s.node][ts] -= s.area * q;
             for &(c, w) in &s.master {
                 fint[c][ts] += w * s.area * q;

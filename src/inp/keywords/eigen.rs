@@ -1,9 +1,9 @@
-//! Procedurnyckelorden för egenvärdessteg: *FREQUENCY och *BUCKLE.
+//! Procedure keywords for eigenvalue steps: *FREQUENCY and *BUCKLE.
 //!
-//! Båda är linjära perturbationssteg: steget utgår från
-//! bastillståndet (föregående allmänna steg), bara stegets egna laster gäller
-//! och tillståndet återställs efteråt. Hanteraren sätter därför stegets
-//! `perturbation` även om *STEP saknar PERTURBATION.
+//! Both are linear perturbation steps: the step starts from
+//! the base state (the preceding general step), only the step's own loads apply
+//! and the state is restored afterwards. The handler therefore sets the step's
+//! `perturbation` even if *STEP lacks PERTURBATION.
 
 use crate::fem::model::RawKeyword;
 use crate::inp::{procedure, InpCtx, Keyword, Kind};

@@ -1,74 +1,74 @@
-//! Generell Newton–Raphson-driver med automatisk lastinkrementering.
+//! General Newton–Raphson driver with automatic load incrementation.
 //!
-//! Används av alla steg som löser jämvikt inkrementellt (statik med olinjära
-//! material, NLGEOM, kontakt, implicit dynamik). Problemet beskrivs av
-//! `NonlinearSystem`: residual R = F_ext − F_int, tangent och uppdatering.
+//! Used by all steps that solve equilibrium incrementally (statics with nonlinear
+//! materials, NLGEOM, contact, implicit dynamics). The problem is described by
+//! `NonlinearSystem`: residual R = F_ext − F_int, tangent and update.
 //!
-//! Konvergenskontrollen (standardvärden motsvarar *CONTROLS utan ändringar), men kontrolleras för varje fält
-//! (förskjutning, rotation, välvning, temperatur) för sig:
-//! - residual: max |r| ≤ R_tol · q̃, där q̃ är en tidsmedelvärdesbildad typisk
-//!   kraft (medelbelopp av inre och yttre krafter) över stegets inkrement;
-//! - korrektion: max |c| ≤ C_tol · max |Δu| i inkrementet;
-//! - linjärt inkrement: max |r| ≤ R_lin · q̃ godtas utan korrektionskontroll.
+//! The convergence check (default values correspond to *CONTROLS without changes), but checked for each field
+//! (displacement, rotation, warping, temperature) separately:
+//! - residual: max |r| ≤ R_tol · q̃, where q̃ is a time-averaged typical
+//!   force (mean magnitude of internal and external forces) over the increments of the step;
+//! - correction: max |c| ≤ C_tol · max |Δu| in the increment;
+//! - linear increment: max |r| ≤ R_lin · q̃ is accepted without a correction check.
 //!
-//! Inkrementering: start med `initial` (andel av steget), halvering till en
-//! fjärdedel vid divergens eller för många iterationer (högst `max_cutbacks`
-//! gånger per inkrement), ökning med faktorn 1,5 efter två inkrement i följd
-//! som konvergerat på högst `ig` iterationer. DIRECT ger fasta inkrement.
+//! Incrementation: start with `initial` (fraction of the step), cutback to a
+//! quarter on divergence or too many iterations (at most `max_cutbacks`
+//! times per increment), increase by the factor 1.5 after two consecutive increments
+//! that converged in at most `ig` iterations. DIRECT gives fixed increments.
 
 use crate::fem::dof::Field;
 use crate::fem::model::RawKeyword;
 use crate::model::{fail, Result};
 use std::collections::BTreeMap;
 
-/// Residual och typiska krafter per fält.
+/// Residual and typical forces per field.
 #[derive(Debug, Clone, Default)]
 pub struct Residual {
-    /// R = F_ext − F_int för varje ekvation.
+    /// R = F_ext − F_int for each equation.
     pub r: Vec<f64>,
-    /// Typisk kraftstorlek per fält (för q̃).
+    /// Typical force magnitude per field (for q̃).
     pub flux: BTreeMap<Field, f64>,
 }
 
-/// Ett olinjärt jämviktsproblem för ett step.
+/// A nonlinear equilibrium problem for a step.
 pub trait NonlinearSystem {
     fn n_eq(&self) -> usize;
-    /// Fält för varje ekvation.
+    /// Field for each equation.
     fn eq_field(&self, eq: usize) -> Field;
-    /// Problemet är linjärt (ett lösningssteg räcker).
+    /// The problem is linear (one solution step is enough).
     fn is_linear(&self) -> bool;
-    /// Startar ett inkrement från stegtid `t0` till `t1` (andelar av steget, 0–1).
-    /// Sätter föreskrivna värden vid `t1` och återställer obekanta till senast godkända.
+    /// Starts an increment from step time `t0` to `t1` (fractions of the step, 0–1).
+    /// Sets prescribed values at `t1` and resets the unknowns to the last accepted ones.
     fn begin_increment(&mut self, t0: f64, t1: f64) -> Result<()>;
-    /// Residual vid aktuell lösning; tangenten assembleras om `tangent`.
+    /// Residual at the current solution; the tangent is assembled if `tangent`.
     fn evaluate(&mut self, tangent: bool) -> Result<Residual>;
-    /// Löser K c = r med senast assemblerade tangent.
+    /// Solves K c = r with the most recently assembled tangent.
     fn solve(&mut self, r: &[f64]) -> Result<Vec<f64>>;
-    /// u += c för de fria ekvationerna.
+    /// u += c for the free equations.
     fn apply(&mut self, c: &[f64]);
-    /// Ändringen sedan inkrementets början för varje ekvation.
+    /// The change since the start of the increment for each equation.
     fn increment(&self) -> Vec<f64>;
-    /// Godkänner inkrementet.
+    /// Accepts the increment.
     fn commit(&mut self) -> Result<()>;
 }
 
-/// Inkrement- och konvergensparametrar.
+/// Increment and convergence parameters.
 #[derive(Debug, Clone)]
 pub struct Controls {
-    /// Inkrementlängder som andel av stegets tid (0–1).
+    /// Increment lengths as a fraction of the step time (0–1).
     pub initial: f64,
     pub min: f64,
     pub max: f64,
-    /// Stegets tidslängd (för utskrift av tider).
+    /// Time length of the step (for printing times).
     pub period: f64,
     pub max_increments: usize,
-    /// Fasta inkrement (DIRECT).
+    /// Fixed increments (DIRECT).
     pub fixed: bool,
     pub r_tol: f64,
     pub c_tol: f64,
     pub r_linear: f64,
     pub max_iter: usize,
-    /// Iteration från vilken divergens kontrolleras.
+    /// Iteration from which divergence is checked.
     pub i0: usize,
     pub max_cutbacks: usize,
     pub cutback: f64,
@@ -99,7 +99,7 @@ impl Default for Controls {
 }
 
 impl Controls {
-    /// Läser *STATIC-datarad: initialt inkrement, stegtid, minsta, största.
+    /// Reads the *STATIC data line: initial increment, step time, minimum, maximum.
     pub fn from_procedure(proc_kw: Option<&RawKeyword>, max_increments: usize) -> Result<Controls> {
         let mut c = Controls { max_increments: max_increments.max(1), ..Default::default() };
         let Some(kw) = proc_kw else { return Ok(c) };
@@ -130,7 +130,7 @@ pub struct Report {
     pub cutbacks: usize,
 }
 
-/// Löser ett linjärt problem i ett enda steg (t = 1) och godkänner det.
+/// Solves a linear problem in a single step (t = 1) and accepts it.
 pub fn solve_linear<S: NonlinearSystem + ?Sized>(sys: &mut S) -> Result<Report> {
     sys.begin_increment(0.0, 1.0)?;
     let r = sys.evaluate(true)?;
@@ -152,8 +152,8 @@ fn max_abs_by_field<S: NonlinearSystem + ?Sized>(sys: &S, v: &[f64]) -> BTreeMap
     m
 }
 
-/// Kör steget med Newton–Raphson. `on_increment(sys, t)` anropas efter varje
-/// godkänt inkrement (t = stegtidsandel), t.ex. för att spara en frame.
+/// Runs the step with Newton–Raphson. `on_increment(sys, t)` is called after each
+/// accepted increment (t = step time fraction), e.g. to save a frame.
 pub fn run<S: NonlinearSystem + ?Sized>(
     sys: &mut S,
     ctrl: &Controls,
@@ -175,7 +175,7 @@ pub fn run<S: NonlinearSystem + ?Sized>(
     while t < 1.0 - 1e-12 {
         if rep.increments >= ctrl.max_increments {
             return fail(format!(
-                "steget nådde största antal inkrement ({}) vid stegtid {:.4} – öka INC= på *STEP",
+                "the step reached the maximum number of increments ({}) at step time {:.4} – increase INC= on *STEP",
                 ctrl.max_increments,
                 t * ctrl.period
             ));
@@ -183,7 +183,7 @@ pub fn run<S: NonlinearSystem + ?Sized>(
         dt = dt.min(1.0 - t);
         let mut cutbacks = 0;
         let iters = loop {
-            // användarrutiner: KINC och PNEWDT (user/context.rs)
+            // user subroutines: KINC and PNEWDT (user/context.rs)
             crate::user::context::begin_increment(rep.increments + 1);
             sys.begin_increment(t, t + dt)?;
             match iterate(sys, ctrl, &flux_sum, n_flux)? {
@@ -196,19 +196,19 @@ pub fn run<S: NonlinearSystem + ?Sized>(
                 }
                 None => {
                     if ctrl.fixed {
-                        return fail(format!("inkrementet vid stegtid {:.4} konvergerade inte (DIRECT, fasta inkrement)", (t + dt) * ctrl.period));
+                        return fail(format!("the increment at step time {:.4} did not converge (DIRECT, fixed increments)", (t + dt) * ctrl.period));
                     }
                     cutbacks += 1;
                     rep.cutbacks += 1;
                     had_cutback = true;
-                    // PNEWDT < 1 från en användarrutin: nytt inkrement PNEWDT · Δt
+                    // PNEWDT < 1 from a user subroutine: new increment PNEWDT · Δt
                     dt *= match crate::user::context::pnewdt().filter(|&p| p < 1.0) {
                         Some(p) => p.max(1e-3),
                         None => ctrl.cutback,
                     };
                     if cutbacks > ctrl.max_cutbacks || dt < ctrl.min {
                         return fail(format!(
-                            "ingen konvergens vid stegtid {:.4}: inkrementet blev mindre än minimum ({:.3e}) eller för många halveringar",
+                            "no convergence at step time {:.4}: the increment became smaller than the minimum ({:.3e}) or too many cutbacks",
                             t * ctrl.period,
                             ctrl.min * ctrl.period
                         ));
@@ -227,13 +227,13 @@ pub fn run<S: NonlinearSystem + ?Sized>(
                 quick += 1;
                 if quick >= 2 {
                     dt = (dt * ctrl.growth).min(ctrl.max);
-                    // inkrementet ökas så länge de två senaste
-                    // inkrementen konvergerade på högst I_G iterationer
-                    // (räknaren nollställs inte vid ökningen;
-                    // tests/cases/rubber/c3d8h_block_plast). Har steget redan
-                    // halverats behålls den försiktigare regeln (två nya
-                    // inkrement före nästa ökning), eftersom svåra
-                    // diskontinuitetsiterationer (kontakt) inte räknas separat.
+                    // the increment is increased as long as the two latest
+                    // increments converged in at most I_G iterations
+                    // (the counter is not reset at the increase;
+                    // tests/cases/rubber/c3d8h_block_plast). If the step has already
+                    // been cut back, the more cautious rule is kept (two new
+                    // increments before the next increase), since difficult
+                    // discontinuity iterations (contact) are not counted separately.
                     if had_cutback {
                         quick = 0;
                     }
@@ -248,27 +248,27 @@ pub fn run<S: NonlinearSystem + ?Sized>(
     Ok(rep)
 }
 
-// ------------------------------------------------------------ nollflöde
+// ------------------------------------------------------------ zero flux
 //
-// Fältet α har nollflöde när q̄ ≤ ε·q̃ (ε = 1e-5), där
-// q̃ är tidsmedelvärdet av q̄ över stegets inkrement med flöde, i stegets början
-// värdet från föregående steg. Lösningen godtas då om r_max ≤ ε·q̃, annars om
-// c_max ≤ C_ε·Δu_max (C_ε = 1e-3). Utan detta konvergerar inte ett steg där alla
-// krafter går mot noll (t.ex. ett tomt steg efter avlastning till ett
-// spänningsfritt läge): det relativa kriteriet jämför då avrundningsfel med
-// avrundningsfel.
+// The field α has zero flux when q̄ ≤ ε·q̃ (ε = 1e-5), where
+// q̃ is the time average of q̄ over the increments of the step with flux, at the start of the step
+// the value from the previous step. The solution is then accepted if r_max ≤ ε·q̃, otherwise if
+// c_max ≤ C_ε·Δu_max (C_ε = 1e-3). Without this a step where all
+// forces go to zero does not converge (e.g. an empty step after unloading to a
+// stress-free state): the relative criterion then compares round-off errors with
+// round-off errors.
 
-/// Kriteriet för nollflöde relativt tidsmedelvärdet (ε^α).
+/// The criterion for zero flux relative to the time average (ε^α).
 const ZERO_FLUX: f64 = 1e-5;
-/// Korrektionskriteriet vid nollflöde (C_ε^α).
+/// The correction criterion at zero flux (C_ε^α).
 const ZERO_FLUX_CORRECTION: f64 = 1e-3;
 
 thread_local! {
-    /// q̃ per fält vid slutet av föregående steg (startvärde för nästa steg).
+    /// q̃ per field at the end of the previous step (starting value for the next step).
     static PREV_TIME_AVERAGE: std::cell::RefCell<BTreeMap<Field, f64>> = const { std::cell::RefCell::new(BTreeMap::new()) };
 }
 
-/// Glömmer q̃ från tidigare steg (anropas när en analys startar, `steps::run`).
+/// Forgets q̃ from earlier steps (called when an analysis starts, `steps::run`).
 pub fn reset_time_average() {
     PREV_TIME_AVERAGE.with(|p| p.borrow_mut().clear());
 }
@@ -287,7 +287,7 @@ fn store_time_average(flux_sum: &BTreeMap<Field, f64>, n_flux: usize) {
     });
 }
 
-/// `Some(konvergerat)` om fältet `f` har nollflöde i aktuell iteration, annars `None`.
+/// `Some(converged)` if the field `f` has zero flux in the current iteration, otherwise `None`.
 fn zero_flux_check(
     f: &Field,
     r: f64,
@@ -297,7 +297,7 @@ fn zero_flux_check(
     last_c: &Option<BTreeMap<Field, f64>>,
     inc: &BTreeMap<Field, f64>,
 ) -> Option<bool> {
-    // q̃ utan aktuellt inkrement: stegets tidigare inkrement, annars föregående steg
+    // q̃ without the current increment: the earlier increments of the step, otherwise the previous step
     let sum = flux_sum.get(f).copied().unwrap_or(0.0);
     let qt = if sum > 0.0 && n_flux > 0 { sum / n_flux as f64 } else { PREV_TIME_AVERAGE.with(|p| p.borrow().get(f).copied().unwrap_or(0.0)) };
     let qc = flux.get(f).copied().unwrap_or(0.0);
@@ -316,10 +316,10 @@ fn zero_flux_check(
     })
 }
 
-/// Itererar ett inkrement som redan startats med `begin_increment`, med
-/// tidsmedelvärdet av flux från `n_flux` tidigare godkända inkrement
-/// (`flux_sum` är summan). För steg som sköter inkrementeringen själva
-/// (implicit dynamik, `dynamic_incr.rs`). Returvärde som `iterate`.
+/// Iterates an increment that has already been started with `begin_increment`, with
+/// the time average of the flux from `n_flux` earlier accepted increments
+/// (`flux_sum` is the sum). For steps that handle the incrementation themselves
+/// (implicit dynamics, `dynamic_incr.rs`). Return value as for `iterate`.
 pub fn iterate_increment<S: NonlinearSystem + ?Sized>(
     sys: &mut S,
     ctrl: &Controls,
@@ -330,19 +330,19 @@ pub fn iterate_increment<S: NonlinearSystem + ?Sized>(
     iterate(sys, ctrl, flux_sum, n_flux)
 }
 
-/// Itererar ett inkrement. `Some((iterationer, flux))` vid konvergens, `None` om
-/// inkrementet ska halveras.
+/// Iterates an increment. `Some((iterations, flux))` on convergence, `None` if
+/// the increment is to be cut back.
 fn iterate<S: NonlinearSystem + ?Sized>(sys: &mut S, ctrl: &Controls, flux_sum: &BTreeMap<Field, f64>, n_flux: usize) -> Result<Option<(usize, BTreeMap<Field, f64>)>> {
     let mut history: Vec<f64> = Vec::new();
     let mut last_c: Option<BTreeMap<Field, f64>> = None;
     for it in 0..=ctrl.max_iter {
         let res = match sys.evaluate(true) {
             Ok(r) => r,
-            // t.ex. förvrängda element eller misslyckad materialuppdatering: halvera
+            // e.g. distorted elements or a failed material update: cut back
             Err(_) if it > 0 => return Ok(None),
             Err(e) => return Err(e),
         };
-        // en användarrutin har begärt ett mindre inkrement (PNEWDT < 1): gör om inkrementet
+        // a user subroutine has requested a smaller increment (PNEWDT < 1): redo the increment
         if crate::user::context::pnewdt().is_some_and(|p| p < 1.0) {
             return Ok(None);
         }
@@ -355,7 +355,7 @@ fn iterate<S: NonlinearSystem + ?Sized>(sys: &mut S, ctrl: &Controls, flux_sum: 
         let qall = qref.values().copied().fold(0.0, f64::max).max(1e-300);
         let inc = max_abs_by_field(sys, &sys.increment());
         let mut converged = true;
-        // fält med nollflöde ingår inte i tidsmedelvärdet
+        // fields with zero flux are not included in the time average
         let mut zero_fields: Vec<Field> = Vec::new();
         for (f, &r) in &rmax {
             let q = qref.get(f).copied().unwrap_or(0.0).max(1e-12 * qall);

@@ -1,39 +1,39 @@
-//! Tvärsnittsbiblioteket, del 2 (område beams2): HEX, TRAPEZOID, THICK PIPE
-//! och ARBITRARY, vridstyvhet för RECT, välvningsstorheter för öppna
-//! tunnväggiga tvärsnitt (B31OS/B32OS) och sektionspunkter för L och
-//! ARBITRARY med olinjärt material.
+//! The section library, part 2 (area beams2): HEX, TRAPEZOID, THICK PIPE
+//! and ARBITRARY, torsional stiffness for RECT, warping quantities for open
+//! thin-walled sections (B31OS/B32OS) and section points for L and
+//! ARBITRARY with nonlinear material.
 //!
-//! Testerna finns i `tests/beams2.rs`:
+//! The tests are in `tests/beams2.rs`:
 //!
-//! - HEX (d = omskrivna radien, t): mittlinjemodell med omskrivna radien
-//!   R = d − t/√3, Bredts formel för J, skjuvformfaktor 0,53.
-//!   Slankhetskompensationen använder den massiva sexkantens tröghetsmoment
-//!   (5√3/16)(d⁴ − dᵢ⁴), inte mittlinjemodellens.
-//! - TRAPEZOID (a nedre bredd, b höjd, c övre bredd, d origo ovanför
-//!   underkanten): massivt tvärsnitt, skjuvformfaktor 0,822, skjuvcentrum i
-//!   tyngdpunkten. J räknas numeriskt ur Prandtls spänningsfunktion med
-//!   ett fint nät av kvadratiska element (≈ exakt). För a = c används RECT-tabellen nedan.
-//! - THICK PIPE (r, t): massiv ring, J = 2I, skjuvformfaktor enligt Cowper
-//!   med ν = 0,3 (oberoende av materialet).
-//! - ARBITRARY: tunnväggiga segment (mittlinjemodell, tjocklek 0 för
-//!   hjälpsegment), öppna (J = Σ l t³/3, skjuvcentrum med sektoriella
-//!   koordinater) eller slutna med en cell (Bredts formel). Skjuvformfaktor 1.
-//!   Slutna tvärsnitt med olika väggtjocklek använder Bredts formel, som
-//!   skiljer i andra ordningen i tjockleksskillnaden från en numerisk
-//!   lösning (BOX likaså).
-//! - RECT (*BEAM SECTION och *BEAM GENERAL SECTION): J är Saint-Venants
-//!   exakta värde ur serielösningen för rektangeln (`rect_torsion`).
+//! - HEX (d = circumscribed radius, t): midline model with the circumscribed radius
+//!   R = d − t/√3, Bredt's formula for J, shear form factor 0.53.
+//!   The slenderness compensation uses the moment of inertia of the solid hexagon
+//!   (5√3/16)(d⁴ − dᵢ⁴), not that of the midline model.
+//! - TRAPEZOID (a bottom width, b height, c top width, d origin above
+//!   the bottom edge): solid section, shear form factor 0.822, shear center at
+//!   the centroid. J is computed numerically from Prandtl's stress function with
+//!   a fine mesh of quadratic elements (≈ exact). For a = c the RECT table below is used.
+//! - THICK PIPE (r, t): solid ring, J = 2I, shear form factor according to Cowper
+//!   with ν = 0.3 (independent of the material).
+//! - ARBITRARY: thin-walled segments (midline model, thickness 0 for
+//!   auxiliary segments), open (J = Σ l t³/3, shear center from sectorial
+//!   coordinates) or closed with one cell (Bredt's formula). Shear form factor 1.
+//!   Closed sections with varying wall thickness use Bredt's formula, which
+//!   differs at second order in the thickness difference from a numerical
+//!   solution (likewise BOX).
+//! - RECT (*BEAM SECTION and *BEAM GENERAL SECTION): J is Saint-Venant's
+//!   exact value from the series solution for the rectangle (`rect_torsion`).
 
 use crate::elements::beam_timoshenko::section::SectionProps;
 use crate::fem::model::RawKeyword;
 use crate::model::{fail, Result};
 use std::f64::consts::PI;
 
-// område gaps1: CHANNEL och HAT
+// area gaps1: CHANNEL and HAT
 #[path = "beam_sections_gaps1.rs"]
 mod gaps1;
 
-/// Tunnväggigt segment (mittlinje a → b, tjocklek t).
+/// Thin-walled segment (midline a → b, thickness t).
 #[derive(Debug, Clone, Copy)]
 pub struct Seg {
     pub a: [f64; 2],
@@ -47,8 +47,8 @@ impl Seg {
     }
 }
 
-/// Raden för n1-riktningen i *BEAM SECTION/*BEAM GENERAL SECTION (0-baserad).
-/// ARBITRARY har en rad per segment före n1-raden.
+/// The line for the n1 direction in *BEAM SECTION/*BEAM GENERAL SECTION (0-based).
+/// ARBITRARY has one line per segment before the n1 line.
 pub fn n1_row(shape: &str, first: &[f64]) -> usize {
     if shape == "ARBITRARY" {
         first.first().map(|&n| (n.max(1.0)) as usize).unwrap_or(1)
@@ -57,8 +57,8 @@ pub fn n1_row(shape: &str, first: &[f64]) -> usize {
     }
 }
 
-/// Måtten för en form: första dataraden, för ARBITRARY alla segmentrader
-/// efter varandra (antal, x1, x2, x1, x2, t, x1, x2, t, ...).
+/// The dimensions for a shape: the first data line, for ARBITRARY all segment lines
+/// one after the other (count, x1, x2, x1, x2, t, x1, x2, t, ...).
 pub fn data_values(kw: &RawKeyword, shape: &str) -> Result<Vec<f64>> {
     let first = kw.first_floats()?;
     if shape != "ARBITRARY" {
@@ -70,27 +70,27 @@ pub fn data_values(kw: &RawKeyword, shape: &str) -> Result<Vec<f64>> {
         let f = kw.floats(d)?;
         let need = if i == 0 { 6 } else { 3 };
         if f.len() < need {
-            return kw.err_at(d.line, format!("SECTION=ARBITRARY: rad {} ska ha {need} tal", i + 1));
+            return kw.err_at(d.line, format!("SECTION=ARBITRARY: line {} must have {need} numbers", i + 1));
         }
         v.extend_from_slice(&f[..need]);
     }
     if v.len() != 6 + 3 * (n - 1) {
-        return kw.err(format!("SECTION=ARBITRARY: {n} segment angivna men färre datarader"));
+        return kw.err(format!("SECTION=ARBITRARY: {n} segments specified but fewer data lines"));
     }
     Ok(v)
 }
 
-/// Segmenten i ett ARBITRARY-tvärsnitt.
+/// The segments of an ARBITRARY section.
 pub fn arbitrary_segments(v: &[f64]) -> Result<Vec<Seg>> {
     if v.len() < 6 {
-        return fail("SECTION=ARBITRARY kräver antal segment, två punkter och en tjocklek på första dataraden");
+        return fail("SECTION=ARBITRARY requires the number of segments, two points and a thickness on the first data line");
     }
     let n = v[0] as usize;
     if n < 2 {
-        return fail("SECTION=ARBITRARY kräver minst två segment");
+        return fail("SECTION=ARBITRARY requires at least two segments");
     }
     if v.len() < 6 + 3 * (n - 1) {
-        return fail(format!("SECTION=ARBITRARY: {n} segment angivna men data för färre"));
+        return fail(format!("SECTION=ARBITRARY: {n} segments specified but data for fewer"));
     }
     let mut segs = vec![Seg { a: [v[1], v[2]], b: [v[3], v[4]], t: v[5] }];
     for k in 1..n {
@@ -101,7 +101,7 @@ pub fn arbitrary_segments(v: &[f64]) -> Result<Vec<Seg>> {
     Ok(segs)
 }
 
-/// Area och ytmoment kring origo (mittlinjemodell, exakt integrering).
+/// Area and area moments about the origin (midline model, exact integration).
 pub fn seg_moments(segs: &[Seg]) -> (f64, f64, f64, f64, f64, f64) {
     let (mut a, mut s1, mut s2, mut i11, mut i22, mut i12) = (0.0, 0.0, 0.0, 0.0, 0.0, 0.0);
     for w in segs {
@@ -125,22 +125,22 @@ fn scale_of(segs: &[Seg]) -> f64 {
     segs.iter().fold(1e-300f64, |m, s| m.max(s.a[0].abs()).max(s.a[1].abs()).max(s.b[0].abs()).max(s.b[1].abs()))
 }
 
-/// Är segmentkedjan sluten (sista punkten = första)?
+/// Is the segment chain closed (last point = first)?
 pub fn is_closed(segs: &[Seg]) -> bool {
     close(segs[0].a, segs[segs.len() - 1].b, scale_of(segs))
 }
 
-/// Sektoriella storheter för en öppen kedja: skjuvcentrum (x1, x2) och
-/// välvningskonstanten Γ = ∫ω² dA med ω kring skjuvcentrum och ∫ω dA = 0.
-/// Hjälpsegment (t = 0) som går tillbaka längs en gren ger ω tillbaka till
-/// förgreningspunktens värde, så kedjan kan beskriva grenade tvärsnitt.
+/// Sectorial quantities for an open chain: shear center (x1, x2) and
+/// the warping constant Γ = ∫ω² dA with ω about the shear center and ∫ω dA = 0.
+/// Auxiliary segments (t = 0) that go back along a branch bring ω back to
+/// the value at the branch point, so the chain can describe branched sections.
 pub fn open_sectorial(segs: &[Seg]) -> (f64, f64, f64) {
     let (a, s1, s2, i11, i22, i12) = seg_moments(segs);
     let (c1, c2) = (s2 / a, s1 / a);
     let ixx = i11 - a * c2 * c2; // ∫ȳ²
     let iyy = i22 - a * c1 * c1; // ∫x̄²
     let ixy = i12 - a * c1 * c2;
-    // ω kring origo längs kedjan: dω = x dy − y dx
+    // ω about the origin along the chain: dω = x dy − y dx
     let mut w0 = 0.0;
     let mut omega: Vec<(f64, f64)> = Vec::new();
     for s in segs {
@@ -148,7 +148,7 @@ pub fn open_sectorial(segs: &[Seg]) -> (f64, f64, f64) {
         omega.push((w0, w0 + dw));
         w0 += dw;
     }
-    // ∫ f g dA för linjära f, g längs segmentet: L t (2 f0 g0 + f0 g1 + f1 g0 + 2 f1 g1)/6
+    // ∫ f g dA for linear f, g along the segment: L t (2 f0 g0 + f0 g1 + f1 g0 + 2 f1 g1)/6
     let prod = |f: &dyn Fn(&Seg, usize) -> (f64, f64), g: &dyn Fn(&Seg, usize) -> (f64, f64)| -> f64 {
         segs.iter()
             .enumerate()
@@ -164,8 +164,8 @@ pub fn open_sectorial(segs: &[Seg]) -> (f64, f64, f64) {
     let yb = |s: &Seg, _: usize| (s.a[1] - c2, s.b[1] - c2);
     let iwx = prod(&om, &yb);
     let iwy = prod(&om, &xb);
-    // ω_P = ω_O − xP (y − y0) + yP (x − x0): villkoren ∫ω_P ȳ = ∫ω_P x̄ = 0
-    // ger [ixx −ixy; ixy −iyy] [xP; yP] = [iwx; iwy]
+    // ω_P = ω_O − xP (y − y0) + yP (x − x0): the conditions ∫ω_P ȳ = ∫ω_P x̄ = 0
+    // give [ixx −ixy; ixy −iyy] [xP; yP] = [iwx; iwy]
     let det = -ixx * iyy + ixy * ixy;
     let xp = (iwx * (-iyy) - (-ixy) * iwy) / det;
     let yp = (ixx * iwy - ixy * iwx) / det;
@@ -184,9 +184,9 @@ pub fn open_sectorial(segs: &[Seg]) -> (f64, f64, f64) {
     (xp, yp, gamma)
 }
 
-/// Normerade sektoriella koordinaten (som i `open_sectorial`) i origo om
-/// origo ligger på ett segment med tjocklek > 0, annars 0 (Ω₀: ger
-/// koppling mellan bikrökning och normalkraft/böjning).
+/// The normalized sectorial coordinate (as in `open_sectorial`) at the origin if
+/// the origin lies on a segment with thickness > 0, otherwise 0 (Ω₀: gives
+/// coupling between bicurvature and axial force/bending).
 pub fn origin_omega(segs: &[Seg]) -> f64 {
     let (xp, yp, _) = open_sectorial(segs);
     let (a, ..) = seg_moments(segs);
@@ -216,9 +216,9 @@ pub fn origin_omega(segs: &[Seg]) -> f64 {
     0.0
 }
 
-/// Skjuvcentrum för ett slutet tunnväggigt tvärsnitt med en cell (segmenten
-/// i ordning runt cellen): öppet skjuvflöde för enhetstvärkrafter, slutet med
-/// ett konstant flöde så att ∮ q/t ds = 0, och momentjämvikt kring origo.
+/// Shear center for a closed thin-walled single-cell section (the segments
+/// in order around the cell): open shear flow for unit transverse forces, closed with
+/// a constant flow so that ∮ q/t ds = 0, and moment equilibrium about the origin.
 pub fn closed_shear_centre(segs: &[Seg]) -> (f64, f64) {
     let (a, s1, s2, i11, i22, i12) = seg_moments(segs);
     let (c1, c2) = (s2 / a, s1 / a);
@@ -249,22 +249,22 @@ pub fn closed_shear_centre(segs: &[Seg]) -> (f64, f64) {
     (moment(0.0, 1.0), -moment(1.0, 0.0))
 }
 
-/// Egenskaper för ett ARBITRARY-tvärsnitt.
+/// Properties of an ARBITRARY section.
 fn arbitrary_props(v: &[f64]) -> Result<SectionProps> {
     let segs = arbitrary_segments(v)?;
     if segs.iter().any(|s| s.t < 0.0) {
-        return fail("SECTION=ARBITRARY: negativ tjocklek");
+        return fail("SECTION=ARBITRARY: negative thickness");
     }
     let (a, s1, s2, i11, i22, i12) = seg_moments(&segs);
     if !(a > 0.0) {
-        return fail("SECTION=ARBITRARY: tvärsnittet saknar area");
+        return fail("SECTION=ARBITRARY: the section has no area");
     }
     let mut p = SectionProps { a, s1, s2, i11, i22, i12, ..Default::default() };
     if is_closed(&segs) {
-        // en cell: Bredts formel med mittlinjens area
+        // one cell: Bredt's formula with the midline area
         let am = 0.5 * segs.iter().map(|s| s.a[0] * s.b[1] - s.b[0] * s.a[1]).sum::<f64>().abs();
         if segs.iter().any(|s| s.t == 0.0) {
-            return fail("SECTION=ARBITRARY: slutna tvärsnitt med hjälpsegment (tjocklek 0) eller grenar stöds inte");
+            return fail("SECTION=ARBITRARY: closed sections with auxiliary segments (thickness 0) or branches are not supported");
         }
         let circ: f64 = segs.iter().map(|s| s.len() / s.t).sum();
         p.j = 4.0 * am * am / circ;
@@ -282,12 +282,12 @@ fn arbitrary_props(v: &[f64]) -> Result<SectionProps> {
     Ok(p)
 }
 
-/// Egenskaper för de former som `beam_timoshenko_section.rs` inte har.
-/// Skjuvformfaktorn ligger i `k13`/`k23` (multipliceras med G·A av anroparen).
+/// Properties of the shapes that `beam_timoshenko_section.rs` does not have.
+/// The shear form factor is in `k13`/`k23` (multiplied by G·A by the caller).
 pub fn shape_props(shape: &str, v: &[f64]) -> Option<Result<SectionProps>> {
     let need = |n: usize| -> Result<()> {
         if v.len() < n {
-            return fail(format!("SECTION={shape} kräver {n} mått på första dataraden"));
+            return fail(format!("SECTION={shape} requires {n} dimensions on the first data line"));
         }
         Ok(())
     };
@@ -305,10 +305,10 @@ pub fn shape_props(shape: &str, v: &[f64]) -> Option<Result<SectionProps>> {
 
 fn hex_props(d: f64, t: f64) -> Result<SectionProps> {
     if !(d > 0.0 && t > 0.0 && t < d * 3f64.sqrt()) {
-        return fail("SECTION=HEX: omskrivna radien och väggtjockleken ska vara positiva");
+        return fail("SECTION=HEX: the circumscribed radius and the wall thickness must be positive");
     }
     let r = d - t / 3f64.sqrt();
-    // hörn i (r cos(30° + 60°k), r sin(30° + 60°k)); egenskaperna är isotropa
+    // corners at (r cos(30° + 60°k), r sin(30° + 60°k)); the properties are isotropic
     let pts: Vec<[f64; 2]> = (0..=6).map(|k| {
         let f = (30.0 + 60.0 * k as f64).to_radians();
         [r * f.cos(), r * f.sin()]
@@ -324,7 +324,7 @@ fn hex_props(d: f64, t: f64) -> Result<SectionProps> {
 
 fn trapezoid_props(a: f64, b: f64, c: f64, d: f64) -> Result<SectionProps> {
     if !(a >= 0.0 && c >= 0.0 && b > 0.0 && a + c > 0.0) {
-        return fail("SECTION=TRAPEZOID: måtten a, b, c ska vara positiva");
+        return fail("SECTION=TRAPEZOID: the dimensions a, b, c must be positive");
     }
     let area = b * (a + c) / 2.0;
     let yc = b * (a + 2.0 * c) / (3.0 * (a + c)) - d;
@@ -348,7 +348,7 @@ fn trapezoid_props(a: f64, b: f64, c: f64, d: f64) -> Result<SectionProps> {
 
 fn thick_pipe_props(r: f64, t: f64) -> Result<SectionProps> {
     if !(r > 0.0 && t > 0.0 && t <= r) {
-        return fail("SECTION=THICK PIPE: radien och väggtjockleken ska vara positiva (t ≤ r)");
+        return fail("SECTION=THICK PIPE: the radius and the wall thickness must be positive (t ≤ r)");
     }
     let ri = r - t;
     let a = PI * (r * r - ri * ri);
@@ -359,8 +359,8 @@ fn thick_pipe_props(r: f64, t: f64) -> Result<SectionProps> {
     Ok(SectionProps { a, i11: i, i22: i, j: 2.0 * i, k13: k, k23: k, ..Default::default() })
 }
 
-/// Saint-Venants vridstyvhet för en rektangel med sidorna a ≥ b:
-/// J = a·b³·[1/3 − (64/π⁵)(b/a) Σ tanh(nπa/(2b))/n⁵] över udda n
+/// Saint-Venant torsional stiffness for a rectangle with sides a ≥ b:
+/// J = a·b³·[1/3 − (64/π⁵)(b/a) Σ tanh(nπa/(2b))/n⁵] over odd n
 /// (Timoshenko & Goodier, *Theory of Elasticity*, 1970, §109).
 pub fn rect_torsion(a: f64, b: f64) -> f64 {
     let (l, s) = if a >= b { (a, b) } else { (b, a) };
@@ -381,7 +381,7 @@ pub fn rect_torsion(a: f64, b: f64) -> f64 {
     (1.0 / 3.0 - 64.0 / PI.powi(5) * r * sum) * l * s.powi(3)
 }
 
-/// Niondsnodselement: formfunktioner och derivator (nodnummer j·3 + i, i längs ξ).
+/// Nine-node element: shape functions and derivatives (node number j·3 + i, i along ξ).
 fn q9(xi: f64, eta: f64) -> ([f64; 9], [f64; 9], [f64; 9]) {
     let l = |t: f64| ([0.5 * t * (t - 1.0), 1.0 - t * t, 0.5 * t * (t + 1.0)], [t - 0.5, -2.0 * t, t + 0.5]);
     let (a, da) = l(xi);
@@ -399,7 +399,7 @@ fn q9(xi: f64, eta: f64) -> ([f64; 9], [f64; 9], [f64; 9]) {
     (n, nx, ny)
 }
 
-/// Gausselimination med partiell pivotering (täta, små system).
+/// Gaussian elimination with partial pivoting (dense, small systems).
 fn solve_dense(mut k: Vec<f64>, mut f: Vec<f64>, n: usize) -> Vec<f64> {
     for c in 0..n {
         let p = (c..n).max_by(|&i, &j| k[i * n + c].abs().partial_cmp(&k[j * n + c].abs()).unwrap()).unwrap();
@@ -428,12 +428,12 @@ fn solve_dense(mut k: Vec<f64>, mut f: Vec<f64>, n: usize) -> Vec<f64> {
     x
 }
 
-/// Saint-Venants vridning för ett fyrsidigt område med raka sidor (hörnen
-/// moturs) och ett n × n nät av niondsnodselement. `warping` = välvningsfunktion
-/// (J = Ip − ωᵀKω), annars Prandtls spänningsfunktion (J = 2∫φ dA, φ = 0 på
-/// randen). `ng` gausspunkter per riktning.
+/// Saint-Venant torsion for a four-sided region with straight sides (the corners
+/// counterclockwise) and an n × n mesh of nine-node elements. `warping` = warping function
+/// (J = Ip − ωᵀKω), otherwise Prandtl's stress function (J = 2∫φ dA, φ = 0 on
+/// the boundary). `ng` Gauss points per direction.
 fn torsion_fe(corners: [[f64; 2]; 4], n: usize, ng: usize, warping: bool) -> f64 {
-    // skalas till enhetsstorlek (J ∝ längd⁴) för en välkonditionerad lösning
+    // scaled to unit size (J ∝ length⁴) for a well-conditioned solution
     let sc = corners.iter().fold(0.0f64, |m, c| m.max(c[0].abs()).max(c[1].abs()));
     if !(sc > 0.0) {
         return 0.0;
@@ -449,7 +449,7 @@ fn torsion_fe_unit(corners: [[f64; 2]; 4], n: usize, ng: usize, warping: bool) -
     let gp: &[(f64, f64)] = if ng == 2 { &g2 } else { &g3 };
     let m = 2 * n + 1;
     let nn = m * m;
-    // nodkoordinater genom bilinjär avbildning av hörnen
+    // nodal coordinates through bilinear mapping of the corners
     let map = |u: f64, v: f64| -> [f64; 2] {
         let w = [(1.0 - u) * (1.0 - v) / 4.0, (1.0 + u) * (1.0 - v) / 4.0, (1.0 + u) * (1.0 + v) / 4.0, (1.0 - u) * (1.0 + v) / 4.0];
         [(0..4).map(|k| w[k] * corners[k][0]).sum(), (0..4).map(|k| w[k] * corners[k][1]).sum()]
@@ -494,7 +494,7 @@ fn torsion_fe_unit(corners: [[f64; 2]; 4], n: usize, ng: usize, warping: bool) -
         }
     }
     let keep: Vec<usize> = if warping {
-        // ω = 0 i första noden (tar bort den konstanta moden)
+        // ω = 0 at the first node (removes the constant mode)
         (1..nn).collect()
     } else {
         (0..nn).filter(|&i| i % m != 0 && i % m != m - 1 && i / m != 0 && i / m != m - 1).collect()
@@ -507,8 +507,8 @@ fn torsion_fe_unit(corners: [[f64; 2]; 4], n: usize, ng: usize, warping: bool) -
     if warping { ip - fx } else { fx }
 }
 
-/// Vridstyvhet för ett trapets (nedre bredd a, höjd b, övre bredd c) med
-/// Prandtls spänningsfunktion på ett fint nät (8 × 8 niondsnodselement).
+/// Torsional stiffness for a trapezoid (bottom width a, height b, top width c) with
+/// Prandtl's stress function on a fine mesh (8 × 8 nine-node elements).
 pub fn trapezoid_torsion(a: f64, b: f64, c: f64) -> f64 {
     use std::sync::Mutex;
     static CACHE: Mutex<Vec<([u64; 3], f64)>> = Mutex::new(Vec::new());
@@ -525,10 +525,10 @@ pub fn trapezoid_torsion(a: f64, b: f64, c: f64) -> f64 {
     j
 }
 
-/// Tröghetsmoment för slankhetskompensationen av I-profilens
-/// skjuvstyvhet för γ2: I11 kring origo (mittlinjemodellen) minus S1'²/A, där
-/// S1' räknas med livet mellan flänsarnas insidor (kontrolleras mot
-/// k_I-matrisen i tests/cases/shells_beams/matriser).
+/// Moment of inertia for the slenderness compensation of the I profile's
+/// shear stiffness for γ2: I11 about the origin (the midline model) minus S1'²/A, where
+/// S1' is computed with the web between the inner faces of the flanges (checked against
+/// the k_I matrix in tests/cases/shells_beams/matriser).
 pub fn i_slender_i11(v: &[f64], a: f64, i11: f64) -> f64 {
     let (l, h, b1, b2, t1, t2, t3) = (v[0], v[1], v[2], v[3], v[4], v[5], v[6]);
     let hw = h - t1 - t2;
@@ -536,54 +536,54 @@ pub fn i_slender_i11(v: &[f64], a: f64, i11: f64) -> f64 {
     i11 - s1 * s1 / a
 }
 
-/// Välvningsstorheter för öppna tvärsnitt (B31OS/B32OS): (Γ, Ip) med Ip =
-/// polärt tröghetsmoment kring tyngdpunkten (mittlinjemodellen; för I-profilen
-/// med samma I11 som i slankhetskompensationen).
+/// Warping quantities for open sections (B31OS/B32OS): (Γ, Ip) with Ip =
+/// the polar moment of inertia about the centroid (the midline model; for the I profile
+/// with the same I11 as in the slenderness compensation).
 pub fn open_section(shape: &str, v: &[f64], p: &SectionProps) -> Result<(f64, f64)> {
     open_section_full(shape, v, p).map(|(g, ip, _)| (g, ip))
 }
 
-/// Som `open_section` men även Ω₀ (`origin_omega`).
+/// Like `open_section` but also Ω₀ (`origin_omega`).
 pub fn open_section_full(shape: &str, v: &[f64], p: &SectionProps) -> Result<(f64, f64, f64)> {
     let mut om0 = 0.0;
     let ip = if p.i11s > 0.0 { p.i11s } else { p.i11c } + p.i22c;
     let gamma = match shape {
         "I" => {
             if v.len() < 7 {
-                return fail("SECTION=I kräver 7 mått");
+                return fail("SECTION=I requires 7 dimensions");
             }
             let (l, h, b1, b2, t1, t2) = (v[0], v[1], v[2], v[3], v[4], v[5]);
             let hm = (-l + h - t2 / 2.0) - (-l + t1 / 2.0);
             let (f1, f2) = (t1 * b1.powi(3) / 12.0, t2 * b2.powi(3) / 12.0);
             if f1 + f2 > 0.0 { hm * hm * f1 * f2 / (f1 + f2) } else { 0.0 }
         }
-        // två ben som möts i skjuvcentrum: ingen välvning i mittlinjemodellen
+        // two legs meeting at the shear center: no warping in the midline model
         "L" => 0.0,
         "ARBITRARY" => {
             let segs = arbitrary_segments(v)?;
             if is_closed(&segs) {
-                return fail("öppna balkar (B31OS, B32OS) kräver ett öppet ARBITRARY-tvärsnitt");
+                return fail("open beams (B31OS, B32OS) require an open ARBITRARY section");
             }
             om0 = origin_omega(&segs);
             open_sectorial(&segs).2
         }
-        _ => return fail(format!("SECTION={shape} kan inte användas med öppna balkar (B31OS, B32OS: I, L, ARBITRARY)")),
+        _ => return fail(format!("SECTION={shape} cannot be used with open beams (B31OS, B32OS: I, L, ARBITRARY)")),
     };
     Ok((gamma, ip, om0))
 }
 
-/// Sektionspunkter (x1, x2, vikt) för former som `beam_timoshenko_plastic.rs`
-/// inte har:
-/// - L: 5 punkter i varje ben (9 totalt, Simpson), från spetsen av benet längs
-///   1-axeln till hörnet och vidare till spetsen av benet längs 2-axeln.
-/// - ARBITRARY: Simpson med 3 punkter per segment, punkterna i ordning
-///   (A, mitt AB, B, mitt BC, C, ...); hjälpsegment ger vikt 0.
+/// Section points (x1, x2, weight) for shapes that `beam_timoshenko_plastic.rs`
+/// does not have:
+/// - L: 5 points in each leg (9 in total, Simpson), from the tip of the leg along
+///   the 1-axis to the corner and on to the tip of the leg along the 2-axis.
+/// - ARBITRARY: Simpson with 3 points per segment, the points in order
+///   (A, mid AB, B, mid BC, C, ...); auxiliary segments give weight 0.
 pub fn section_points(shape: &str, v: &[f64]) -> Option<Result<Vec<(f64, f64, f64)>>> {
     let simp = [1.0, 4.0, 2.0, 4.0, 1.0];
     match shape {
         "L" => {
             if v.len() < 4 {
-                return Some(fail("SECTION=L kräver 4 mått på första dataraden"));
+                return Some(fail("SECTION=L requires 4 dimensions on the first data line"));
             }
             let (a, b, t1, t2) = (v[0], v[1], v[2], v[3]);
             let (l1, l2) = (a - t2 / 2.0, b - t1 / 2.0);

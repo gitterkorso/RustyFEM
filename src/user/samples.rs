@@ -1,37 +1,37 @@
-//! Exempel på användarrutiner skrivna i Rust (förregistrerade):
+//! Examples of user subroutines written in Rust (pre-registered):
 //!
-//! - UMAT för material vars namn börjar med `EXEMPEL_ELASTISK`: linjär
-//!   isotrop elasticitet, PROPS = (E, ν), inga tillståndsvariabler.
-//! - UMAT för `EXEMPEL_MISES`: von Mises-plasticitet med isotropt hårdnande,
-//!   PROPS = (E, ν, σy₁, ε̄p₁, σy₂, ε̄p₂, ...) som tabellen i *PLASTIC
-//!   (linjär interpolation, konstant efter sista punkten), STATEV(1) = ε̄p
-//!   (PEEQ), STATEV(2..1+NTENS) = plastisk töjning (ingenjörsskjuvtöjning).
-//!   Radiell återföring i inkrementell form σ_tr = σ_n + D Δε med konsistent
-//!   tangent (Simo–Taylor), en klassisk UMAT för isotropt hårdnande.
-//!   NTENS = 6 och 4 (3D, plan töjning, axisymmetri) samt 1 (stänger).
-//! - UEL U9001: linjär stång med 2 noder, MCRD = 2 eller 3 frihetsgrader per
-//!   nod (1..MCRD), PROPS = (E, A[, ρ]), SVARS(1) = normalkraft,
-//!   ENERGY(2) = töjningsenergi, diagonal massa om ρ ges.
-//! - UEL U9002: bilinjär fyrhörning i plan spänning med full 2×2-integrering
-//!   (samma som CPS4), PROPS = (E, ν, t), SVARS = (S11, S22, S12) i de fyra
-//!   integrationspunkterna (ξ varierar snabbast) om NSVARS ≥ 12.
+//! - UMAT for materials whose name starts with `EXAMPLE_ELASTIC`: linear
+//!   isotropic elasticity, PROPS = (E, ν), no state variables.
+//! - UMAT for `EXAMPLE_MISES`: von Mises plasticity with isotropic hardening,
+//!   PROPS = (E, ν, σy₁, ε̄p₁, σy₂, ε̄p₂, ...) like the table in *PLASTIC
+//!   (linear interpolation, constant after the last point), STATEV(1) = ε̄p
+//!   (PEEQ), STATEV(2..1+NTENS) = plastic strain (engineering shear strain).
+//!   Radial return in incremental form σ_tr = σ_n + D Δε with consistent
+//!   tangent (Simo–Taylor), a classic UMAT for isotropic hardening.
+//!   NTENS = 6 and 4 (3D, plane strain, axisymmetry) as well as 1 (trusses).
+//! - UEL U9001: linear two-node truss, MCRD = 2 or 3 degrees of freedom per
+//!   node (1..MCRD), PROPS = (E, A[, ρ]), SVARS(1) = axial force,
+//!   ENERGY(2) = strain energy, lumped mass if ρ is given.
+//! - UEL U9002: bilinear plane-stress quadrilateral with full 2×2 integration
+//!   (same as CPS4), PROPS = (E, ν, t), SVARS = (S11, S22, S12) at the four
+//!   integration points (ξ varies fastest) if NSVARS ≥ 12.
 //!
-//! Exemplen är geometriskt linjära (LFLAGS(2) = 1 ger fel för UEL:erna) och
-//! är skrivna som en användare skulle skriva dem, oberoende av RustyFEMs
-//! inbyggda material och element; testerna (tests/rigid_user.rs) visar att de
-//! ger samma resultat som de inbyggda (*ELASTIC, *PLASTIC, T2D2/T3D2, CPS4).
+//! The examples are geometrically linear (LFLAGS(2) = 1 gives an error for the UELs) and
+//! are written the way a user would write them, independently of RustyFEM's
+//! built-in materials and elements; the tests (tests/rigid_user.rs) show that they
+//! give the same results as the built-in ones (*ELASTIC, *PLASTIC, T2D2/T3D2, CPS4).
 
 use super::uel::{Uel, UelArgs};
 use super::umat::{Umat, UmatArgs};
 use crate::model::{fail, Result};
 use std::sync::Arc;
 
-/// Förregistrerade UMAT:er (prefix, rutin).
+/// Pre-registered UMATs (prefix, routine).
 pub fn umats() -> Vec<(String, Arc<dyn Umat>)> {
-    vec![("EXEMPEL_ELASTISK".into(), Arc::new(ElasticUmat)), ("EXEMPEL_MISES".into(), Arc::new(MisesUmat))]
+    vec![("EXAMPLE_ELASTIC".into(), Arc::new(ElasticUmat)), ("EXAMPLE_MISES".into(), Arc::new(MisesUmat))]
 }
 
-/// Förregistrerade UEL:er (typnummer, rutin).
+/// Pre-registered UELs (type number, routine).
 pub fn uels() -> Vec<(Option<u32>, Arc<dyn Uel>)> {
     vec![(Some(9001), Arc::new(TrussUel)), (Some(9002), Arc::new(QuadUel))]
 }
@@ -40,7 +40,7 @@ pub fn uels() -> Vec<(Option<u32>, Arc<dyn Uel>)> {
 // UMAT
 // ---------------------------------------------------------------------------
 
-/// Isotrop elasticitetsmatris för NTENS komponenter (kolumnvis = radvis, symmetrisk).
+/// Isotropic elasticity matrix for NTENS components (column-wise = row-wise, symmetric).
 fn elastic_d(e: f64, nu: f64, ndi: usize, ntens: usize) -> Vec<f64> {
     let mut d = vec![0.0; ntens * ntens];
     if ntens == 1 {
@@ -48,7 +48,7 @@ fn elastic_d(e: f64, nu: f64, ndi: usize, ntens: usize) -> Vec<f64> {
         return d;
     }
     if ndi == 2 {
-        // plan spänning
+        // plane stress
         let c = e / (1.0 - nu * nu);
         d[0] = c;
         d[1] = c * nu;
@@ -73,21 +73,21 @@ fn elastic_d(e: f64, nu: f64, ndi: usize, ntens: usize) -> Vec<f64> {
 
 fn props2(a: &UmatArgs, who: &str) -> Result<(f64, f64)> {
     if a.props.len() < 2 {
-        return fail(format!("{who}: PROPS ska vara (E, ν, ...), CONSTANTS={}", a.props.len()));
+        return fail(format!("{who}: PROPS must be (E, ν, ...), CONSTANTS={}", a.props.len()));
     }
     Ok((a.props[0], a.props[1]))
 }
 
-/// Linjärt elastisk UMAT.
+/// Linear elastic UMAT.
 pub struct ElasticUmat;
 
 impl Umat for ElasticUmat {
     fn name(&self) -> String {
-        "exempel-UMAT (linjär elasticitet)".into()
+        "example UMAT (linear elasticity)".into()
     }
 
     fn umat(&self, a: &mut UmatArgs) -> Result<()> {
-        let (e, nu) = props2(a, "EXEMPEL_ELASTISK")?;
+        let (e, nu) = props2(a, "EXAMPLE_ELASTIC")?;
         let n = a.ntens;
         let d = elastic_d(e, nu, a.ndi, n);
         a.ddsdde.copy_from_slice(&d);
@@ -102,7 +102,7 @@ impl Umat for ElasticUmat {
     }
 }
 
-/// Flytspänning och lutning vid ε̄p ur tabellen (σy, ε̄p)-par i PROPS(3..).
+/// Yield stress and slope at ε̄p from the table of (σy, ε̄p) pairs in PROPS(3..).
 fn hard(table: &[f64], p: f64) -> (f64, f64) {
     let np = table.len() / 2;
     let s = |k: usize| table[2 * k];
@@ -120,30 +120,30 @@ fn hard(table: &[f64], p: f64) -> (f64, f64) {
     (s(np - 1), 0.0)
 }
 
-/// von Mises-plasticitet med isotropt hårdnande.
+/// von Mises plasticity with isotropic hardening.
 pub struct MisesUmat;
 
 impl Umat for MisesUmat {
     fn name(&self) -> String {
-        "exempel-UMAT (von Mises, isotropt hårdnande)".into()
+        "example UMAT (von Mises, isotropic hardening)".into()
     }
 
     fn umat(&self, a: &mut UmatArgs) -> Result<()> {
-        let (e, nu) = props2(a, "EXEMPEL_MISES")?;
+        let (e, nu) = props2(a, "EXAMPLE_MISES")?;
         let table = &a.props[2..];
         if table.len() < 2 || table.len() % 2 != 0 {
-            return fail("EXEMPEL_MISES: PROPS ska vara (E, ν, σy₁, ε̄p₁, σy₂, ε̄p₂, ...)");
+            return fail("EXAMPLE_MISES: PROPS must be (E, ν, σy₁, ε̄p₁, σy₂, ε̄p₂, ...)");
         }
         let n = a.ntens;
         if a.nstatv < 1 + n {
-            return fail(format!("EXEMPEL_MISES: *DEPVAR ska vara minst {} (PEEQ och plastisk töjning)", 1 + n));
+            return fail(format!("EXAMPLE_MISES: *DEPVAR must be at least {} (PEEQ and plastic strain)", 1 + n));
         }
         if n == 3 {
-            return fail("EXEMPEL_MISES: plan spänning stöds inte av exempel-UMAT:en");
+            return fail("EXAMPLE_MISES: plane stress is not supported by the example UMAT");
         }
         let g = e / (2.0 * (1.0 + nu));
         let d = elastic_d(e, nu, a.ndi, n);
-        // prövospänning
+        // trial stress
         let mut st = vec![0.0; n];
         for i in 0..n {
             st[i] = a.stress[i] + (0..n).map(|j| d[i + j * n] * a.dstran[j]).sum::<f64>();
@@ -151,7 +151,7 @@ impl Umat for MisesUmat {
         let p_n = a.statev[0];
         let (sy0, _) = hard(table, p_n);
         if n == 1 {
-            // stång: endimensionell återföring
+            // truss: one-dimensional return mapping
             let f = st[0].abs() - sy0;
             a.ddsdde[0] = e;
             if f <= 1e-12 * sy0 {
@@ -175,14 +175,14 @@ impl Umat for MisesUmat {
             a.ddsdde[0] = e * h / (e + h);
             return Ok(());
         }
-        // 3D och plan töjning/axisymmetri (NDI = 3): deviator med tensorskjuvkomponenter
+        // 3D and plane strain/axisymmetry (NDI = 3): deviator with tensor shear components
         let ndi = a.ndi;
         let pm = st[..ndi].iter().sum::<f64>() / 3.0;
         let mut s = st.clone();
         for v in s.iter_mut().take(ndi) {
             *v -= pm;
         }
-        // s:s med skjuvkomponenterna två gånger (s33 ingår bland NDI = 3 normalkomponenter)
+        // s:s with the shear components twice (s33 is among the NDI = 3 normal components)
         let ss: f64 = (0..n).map(|i| if i < ndi { s[i] * s[i] } else { 2.0 * s[i] * s[i] }).sum();
         let q = (1.5 * ss).sqrt();
         a.ddsdde.copy_from_slice(&d);
@@ -190,7 +190,7 @@ impl Umat for MisesUmat {
             a.stress.copy_from_slice(&st);
             return Ok(());
         }
-        // q − 3G Δp − σy(p_n + Δp) = 0 med Newton
+        // q − 3G Δp − σy(p_n + Δp) = 0 by Newton
         let mut dp = 0.0;
         for _ in 0..200 {
             let (sy, h) = hard(table, p_n + dp);
@@ -209,7 +209,7 @@ impl Umat for MisesUmat {
         }
         a.statev[0] = p_n + dp;
         *a.spd += dp * (q - 1.5 * g * dp);
-        // konsistent tangent: K 1⊗1 + 2Gθ P_dev + c n̂⊗n̂, θ = 1 − 3GΔp/q, c = 6G²(Δp/q − 1/(3G + h))
+        // consistent tangent: K 1⊗1 + 2Gθ P_dev + c n̂⊗n̂, θ = 1 − 3GΔp/q, c = 6G²(Δp/q − 1/(3G + h))
         let k = e / (3.0 * (1.0 - 2.0 * nu));
         let theta = 1.0 - 3.0 * g * dp / q;
         let c = 6.0 * g * g * (dp / q - 1.0 / (3.0 * g + h));
@@ -231,12 +231,12 @@ impl Umat for MisesUmat {
 
 fn linear_only(a: &UelArgs, who: &str) -> Result<()> {
     if a.lflags[1] != 0 {
-        return fail(format!("{who}: exempel-UEL:en är geometriskt linjär (NLGEOM stöds inte)"));
+        return fail(format!("{who}: the example UEL is geometrically linear (NLGEOM is not supported)"));
     }
     Ok(())
 }
 
-/// Fyller RHS = −K u, AMATRX = K och ENERGY(2) för en linjär UEL.
+/// Fills RHS = −K u, AMATRX = K and ENERGY(2) for a linear UEL.
 fn linear_response(a: &mut UelArgs, k: &[f64]) {
     let n = a.ndofel;
     let what = a.lflags[2];
@@ -254,22 +254,22 @@ fn linear_response(a: &mut UelArgs, k: &[f64]) {
     }
 }
 
-/// Linjär stång med två noder.
+/// Linear two-node truss.
 pub struct TrussUel;
 
 impl Uel for TrussUel {
     fn name(&self) -> String {
-        "exempel-UEL U9001 (stång)".into()
+        "example UEL U9001 (truss)".into()
     }
 
     fn uel(&self, a: &mut UelArgs) -> Result<()> {
         linear_only(a, "U9001")?;
         let nd = a.ndofel / 2;
         if a.nnode != 2 || a.ndofel % 2 != 0 || nd < 2 || nd > 3 || a.mcrd < nd {
-            return fail("U9001: stången ska ha 2 noder med frihetsgraderna 1..MCRD (MCRD = 2 eller 3)");
+            return fail("U9001: the truss must have 2 nodes with degrees of freedom 1..MCRD (MCRD = 2 or 3)");
         }
         if a.props.len() < 2 {
-            return fail("U9001: PROPS ska vara (E, A[, ρ])");
+            return fail("U9001: PROPS must be (E, A[, ρ])");
         }
         let (e, area) = (a.props[0], a.props[1]);
         let dx: Vec<f64> = (0..nd).map(|i| a.x(1, i) - a.x(0, i)).collect();
@@ -277,7 +277,7 @@ impl Uel for TrussUel {
         let t: Vec<f64> = dx.iter().map(|v| v / l).collect();
         let n = a.ndofel;
         if a.lflags[2] == 4 {
-            // diagonal massa
+            // lumped mass
             let m = a.props.get(2).copied().unwrap_or(0.0) * area * l / 2.0;
             for i in 0..n {
                 a.amatrx[i + i * n] = m;
@@ -304,27 +304,27 @@ impl Uel for TrussUel {
     }
 }
 
-/// Bilinjär fyrhörning i plan spänning (som CPS4).
+/// Bilinear plane-stress quadrilateral (like CPS4).
 pub struct QuadUel;
 
 impl Uel for QuadUel {
     fn name(&self) -> String {
-        "exempel-UEL U9002 (fyrhörning, plan spänning)".into()
+        "example UEL U9002 (quadrilateral, plane stress)".into()
     }
 
     fn uel(&self, a: &mut UelArgs) -> Result<()> {
         linear_only(a, "U9002")?;
         if a.nnode != 4 || a.ndofel != 8 || a.mcrd < 2 {
-            return fail("U9002: elementet ska ha 4 noder med frihetsgraderna 1 och 2");
+            return fail("U9002: the element must have 4 nodes with degrees of freedom 1 and 2");
         }
         if a.props.len() < 3 {
-            return fail("U9002: PROPS ska vara (E, ν, t)");
+            return fail("U9002: PROPS must be (E, ν, t)");
         }
         let (e, nu, t) = (a.props[0], a.props[1], a.props[2]);
         let c = e / (1.0 - nu * nu);
         let dm = [[c, c * nu, 0.0], [c * nu, c, 0.0], [0.0, 0.0, c * (1.0 - nu) / 2.0]];
         let g = 1.0 / 3f64.sqrt();
-        // ordning: ξ varierar snabbast
+        // order: ξ varies fastest
         let pts = [(-g, -g), (g, -g), (-g, g), (g, g)];
         let xi = [-1.0, 1.0, 1.0, -1.0];
         let eta = [-1.0, -1.0, 1.0, 1.0];
@@ -345,7 +345,7 @@ impl Uel for QuadUel {
             }
             let det = j[0][0] * j[1][1] - j[0][1] * j[1][0];
             if det <= 0.0 {
-                return fail(format!("U9002: element {} har negativ eller noll jacobian", a.jelem));
+                return fail(format!("U9002: element {} has a negative or zero Jacobian", a.jelem));
             }
             let mut b = [[0.0; 8]; 3];
             for i in 0..4 {

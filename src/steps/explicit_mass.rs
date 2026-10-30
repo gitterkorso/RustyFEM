@@ -1,43 +1,43 @@
-//! Diagonal (lumped) massa för explicit dynamik.
+//! Diagonal (lumped) mass for explicit dynamics.
 //!
-//! - Kontinuum, stänger och membran: elementens radsummerade massa
-//!   (`MassKind::Lumped`, ρ∫Nᵢ dV per nod).
-//! - Skal (S4R, S4, S3R, S3): translationsmassan mᵢ = ρt∫Nᵢ dA och en isotrop
-//!   rotationströghet Iᵢ = mᵢ (l²/16 + A/12), oberoende av tjockleken och
-//!   ν. l är för fyrhörningar A delat med det största avståndet mellan
-//!   motstående kanters mittpunkter och för trianglar den kortaste kanten.
-//!   Formeln är kontrollerad med accelerationen i första frame av
-//!   enhetslaster på fria element med olika former (kvadrat, rektangel,
-//!   parallellogram, oregelbunden fyrhörning, rät, liksidig och trubbig
-//!   triangel) för t ≤ 0,1·l.
-//! - Balkar (B31, B21, ...): elementens diagonala massa med den fysikaliska
-//!   rotationströgheten ρ∫Nᵢ dx · (I₁₁ + I₂₂, I₁₁, I₂₂) i balkens lokala axlar
-//!   Rotationströgheten lagras som ett fullt
-//!   3×3-block per nod i globala axlar.
-//! - *MASS (MASS-element) och *ROTARY INERTIA (ROTARYI-element) från
-//!   interaktionerna.
+//! - Continuum, trusses and membranes: the row-summed element mass
+//!   (`MassKind::Lumped`, ρ∫Nᵢ dV per node).
+//! - Shells (S4R, S4, S3R, S3): the translational mass mᵢ = ρt∫Nᵢ dA and an isotropic
+//!   rotary inertia Iᵢ = mᵢ (l²/16 + A/12), independent of the thickness and
+//!   ν. For quadrilaterals l is A divided by the largest distance between
+//!   the midpoints of opposite edges, and for triangles the shortest edge.
+//!   The formula is checked with the acceleration in the first frame of
+//!   unit loads on free elements of different shapes (square, rectangle,
+//!   parallelogram, irregular quadrilateral, right, equilateral and obtuse
+//!   triangle) for t ≤ 0.1·l.
+//! - Beams (B31, B21, ...): the element's diagonal mass with the physical
+//!   rotary inertia ρ∫Nᵢ dx · (I₁₁ + I₂₂, I₁₁, I₂₂) in the local beam axes
+//!   The rotary inertia is stored as a full
+//!   3×3 block per node in global axes.
+//! - *MASS (MASS elements) and *ROTARY INERTIA (ROTARYI elements) from
+//!   the interactions.
 //!
-//! Massan kan skalas elementvis (massskalning): faktorn multiplicerar
-//! elementets densitet.
+//! The mass can be scaled element by element (mass scaling): the factor multiplies
+//! the element density.
 
 use crate::elements::{Family, MassKind};
 use crate::fem::assembly::Prepared;
 use crate::fem::dof::{self, NodeVec, SLOTS};
 use crate::model::{FemError, Result};
 
-/// Diagonal massa per nod och slot samt (för balkar och ROTARYI) fulla
-/// rotationsblock i globala axlar.
+/// Diagonal mass per node and slot as well as (for beams and ROTARYI) full
+/// rotation blocks in global axes.
 #[derive(Debug, Clone)]
 pub struct LumpedMass {
     pub diag: Vec<NodeVec>,
-    /// Rotationströghet (slots 3–5) som fullt block; `None` = diagonal i `diag`.
+    /// Rotary inertia (slots 3–5) as a full block; `None` = diagonal in `diag`.
     pub rot: Vec<Option<[[f64; 3]; 3]>>,
-    /// Inversen av `rot`.
+    /// The inverse of `rot`.
     rot_inv: Vec<Option<[[f64; 3]; 3]>>,
 }
 
 impl LumpedMass {
-    /// M⁻¹ f för nod `n`; frihetsgrader utan massa ger 0.
+    /// M⁻¹ f for node `n`; degrees of freedom without mass give 0.
     pub fn solve(&self, n: usize, f: &NodeVec, free: impl Fn(usize) -> bool) -> NodeVec {
         let mut a = [0.0; SLOTS];
         for s in 0..SLOTS {
@@ -53,7 +53,7 @@ impl LumpedMass {
         a
     }
 
-    /// M v för nod `n`.
+    /// M v for node `n`.
     pub fn mul(&self, n: usize, v: &NodeVec) -> NodeVec {
         let mut r = [0.0; SLOTS];
         for s in 0..SLOTS {
@@ -67,7 +67,7 @@ impl LumpedMass {
         r
     }
 
-    /// Kinetisk energi ½ vᵀ M v.
+    /// Kinetic energy ½ vᵀ M v.
     pub fn kinetic(&self, v: &[NodeVec]) -> f64 {
         let mut e = 0.0;
         for (n, vn) in v.iter().enumerate() {
@@ -77,13 +77,13 @@ impl LumpedMass {
         0.5 * e
     }
 
-    /// Total translationsmassa (summa över noder av slot 0).
+    /// Total translational mass (sum over nodes of slot 0).
     pub fn total(&self) -> f64 {
         self.diag.iter().map(|d| d[0]).sum()
     }
 }
 
-/// Skalets rotationströghet per massenhet, l²/16 + A/12 (se modulens dokumentation).
+/// Rotary inertia of the shell per unit mass, l²/16 + A/12 (see the module documentation).
 pub fn shell_rotary_factor(x: &[[f64; 3]]) -> f64 {
     use crate::elements::common::{cross, norm, sub};
     let dist = |a: [f64; 3], b: [f64; 3]| norm(sub(a, b));
@@ -105,8 +105,8 @@ pub fn shell_rotary_factor(x: &[[f64; 3]]) -> f64 {
     }
 }
 
-/// Bygger den diagonala massan. `scale[e]` multiplicerar elementets densitet
-/// (massskalning, tom = 1).
+/// Builds the diagonal mass. `scale[e]` multiplies the element density
+/// (mass scaling, empty = 1).
 pub fn lumped(p: &Prepared, scale: &[f64]) -> Result<LumpedMass> {
     let m = p.model;
     let nn = m.nodes.len();
@@ -129,7 +129,7 @@ pub fn lumped(p: &Prepared, scale: &[f64]) -> Result<LumpedMass> {
         let shell = el.etype.family() == Family::Shell;
         let r_shell = if shell { shell_rotary_factor(&ctx.x) } else { 0.0 };
         let beam = el.etype.family() == Family::Beam && dim == 3;
-        // translationsmassan per lokal nod (för skalets rotationströghet)
+        // translational mass per local node (for the rotary inertia of the shell)
         for (a, &(n, s)) in dl.iter().enumerate() {
             if (3..6).contains(&s) && (shell || beam) {
                 continue;
@@ -149,7 +149,7 @@ pub fn lumped(p: &Prepared, scale: &[f64]) -> Result<LumpedMass> {
             }
         }
         if beam {
-            // rotationsblock per nod
+            // rotation block per node
             for (a, &(n, s)) in dl.iter().enumerate() {
                 if !(3..6).contains(&s) {
                     continue;
@@ -163,12 +163,12 @@ pub fn lumped(p: &Prepared, scale: &[f64]) -> Result<LumpedMass> {
             }
         }
     }
-    // punktmassor och rotationströghet från interaktioner (*MASS, *ROTARY INERTIA)
+    // point masses and rotary inertia from interactions (*MASS, *ROTARY INERTIA)
     for it in &p.interactions {
         for (na, da, nb, db, v) in it.mass() {
             let (sa, sb) = (dof::slot_of(da), dof::slot_of(db));
             if na != nb {
-                return Err(FemError(format!("{}: koppling mellan noder i massan stöds inte i explicit dynamik", it.name())));
+                return Err(FemError(format!("{}: coupling between nodes in the mass is not supported in explicit dynamics", it.name())));
             }
             if sa == sb && !(3..6).contains(&sa) {
                 diag[na][sa] += v;
@@ -181,7 +181,7 @@ pub fn lumped(p: &Prepared, scale: &[f64]) -> Result<LumpedMass> {
             }
         }
     }
-    // noder med block: lägg den diagonala delen (skal) i blocket
+    // nodes with blocks: put the diagonal part (shells) in the block
     let mut rot_inv = vec![None; nn];
     for n in 0..nn {
         if let Some(b) = rot[n].as_mut() {
@@ -196,7 +196,7 @@ pub fn lumped(p: &Prepared, scale: &[f64]) -> Result<LumpedMass> {
             }
             let (inv, det) = crate::elements::common::inv3(*b);
             if det.abs() <= 0.0 {
-                return Err(FemError(format!("nod {}: singulär rotationströghet", m.node_name(n))));
+                return Err(FemError(format!("node {}: singular rotary inertia", m.node_name(n))));
             }
             rot_inv[n] = Some(inv);
         }

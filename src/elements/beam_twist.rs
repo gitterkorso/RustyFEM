@@ -1,18 +1,18 @@
-//! Nodnormaler för B31 (område beams3): medelvärdesbildade eller givna
-//! normaler (`elements/normals.rs`) som vrids kring elementaxeln mellan
-//! noderna ger en initialt vriden balk:
+//! Nodal normals for B31 (area beams3): averaged or given
+//! normals (`elements/normals.rs`) that rotate about the element axis between
+//! the nodes give an initially twisted beam:
 //!
-//! - Tvärsnittets riktning i integrationspunkten är medelvinkeln av
-//!   nodnormalerna (projicerade vinkelrätt mot elementet) kring axeln.
-//!   En normal som lutar mot elementaxeln (krökning) påverkar inte styvheten.
-//! - Vridningen ger en koppling mellan axialtöjning och vridning: töjningen
-//!   blir ε + τ·(I₁₁ + I₂₂)/A·θₜ' med τ = sin(α₂ − α₁)/L (αₙ = nodnormalens
-//!   vinkel kring axeln), dvs. sektionsstyvheten [[EA, EIₚτ], [EIₚτ, GJ + (EIₚτ)²/EA]].
-//! - Rotationströgheten i den diagonala massan räknas i nodernas egna
-//!   riktningar (tangenten vinkelrät mot normalen) som vrids linjärt längs
-//!   elementet: Jₙ = ρ∫Nₙ R(x) diag(Iₚ, I₁₁, I₂₂) R(x)ᵀ dx.
+//! - The section orientation at the integration point is the mean angle of
+//!   the nodal normals (projected perpendicular to the element) about the axis.
+//!   A normal inclined towards the element axis (curvature) does not affect the stiffness.
+//! - The twist gives a coupling between axial strain and twist: the strain
+//!   becomes ε + τ·(I₁₁ + I₂₂)/A·θₜ' with τ = sin(α₂ − α₁)/L (αₙ = angle of the nodal normal
+//!   about the axis), i.e. the section stiffness [[EA, EIₚτ], [EIₚτ, GJ + (EIₚτ)²/EA]].
+//! - The rotary inertia in the diagonal mass is computed in the nodes' own
+//!   directions (the tangent perpendicular to the normal), which rotate linearly along
+//!   the element: Jₙ = ρ∫Nₙ R(x) diag(Iₚ, I₁₁, I₂₂) R(x)ᵀ dx.
 //!
-//! Gäller linjärt elastiska B31 (inte sektionspunkter, NLGEOM eller B32).
+//! Applies to linear elastic B31 (not section points, NLGEOM or B32).
 
 use super::api::ElemCtx;
 use super::common::{cross, dot, norm, scale, sub};
@@ -23,7 +23,7 @@ fn unit(v: [f64; 3]) -> [f64; 3] {
     scale(v, 1.0 / norm(v))
 }
 
-/// Nodnormalerna (n2) för elementet om de skiljer sig från elementets egna.
+/// The nodal normals (n2) for the element if they differ from the element's own.
 fn normals(ctx: &ElemCtx, nn: usize, dim: usize) -> Option<Vec<[f64; 3]>> {
     if nn != 2 || dim != 3 {
         return None;
@@ -31,7 +31,7 @@ fn normals(ctx: &ElemCtx, nn: usize, dim: usize) -> Option<Vec<[f64; 3]>> {
     super::normals::of(ctx).filter(|v| v.len() >= 2)
 }
 
-/// Vinkeln αₙ för nodnormalen kring axeln t relativt axlarna [t, n1, n2].
+/// The angle αₙ of the nodal normal about the axis t relative to the axes [t, n1, n2].
 fn angle(axes: &[[f64; 3]; 3], n2: [f64; 3]) -> f64 {
     let t = axes[0];
     let p = sub(n2, scale(t, dot(n2, t)));
@@ -45,14 +45,14 @@ fn rotate(axes: &[[f64; 3]; 3], a: f64) -> [[f64; 3]; 3] {
     [axes[0], n1, n2]
 }
 
-/// Axlarna i integrationspunkten (medelvinkeln) och vridningen τ.
+/// The axes at the integration point (mean angle) and the twist τ.
 pub fn mean_axes(ctx: &ElemCtx, nn: usize, dim: usize, axes: [[f64; 3]; 3], l: f64) -> ([[f64; 3]; 3], f64) {
     let Some(nv) = normals(ctx, nn, dim) else { return (axes, 0.0) };
     let (a1, a2) = (angle(&axes, nv[0]), angle(&axes, nv[1]));
     (rotate(&axes, 0.5 * (a1 + a2)), (a2 - a1).sin() / l)
 }
 
-/// Kopplingsstyvheten (global, 12 × 12) för vridningen τ: L·(c(bε bθᵀ + bθ bεᵀ) + c²/EA bθ bθᵀ).
+/// The coupling stiffness (global, 12 × 12) for the twist τ: L·(c(bε bθᵀ + bθ bεᵀ) + c²/EA bθ bθᵀ).
 pub fn coupling(axes: &[[f64; 3]; 3], l: f64, tau: f64, ea: f64, eip: f64) -> Vec<f64> {
     let n = 12;
     let mut k = vec![0.0; n * n];
@@ -77,13 +77,13 @@ pub fn coupling(axes: &[[f64; 3]; 3], l: f64, tau: f64, ea: f64, eip: f64) -> Ve
     k
 }
 
-/// Nodernas rotationströghet (global 3 × 3 per nod) för diagonal massa, eller
-/// `None` om elementet inte har nodnormaler.
+/// The nodes' rotary inertia (global 3 × 3 per node) for a diagonal mass, or
+/// `None` if the element has no nodal normals.
 pub fn rotary(ctx: &ElemCtx, nn: usize, dim: usize, rho: f64, ip: [f64; 3]) -> Option<[[[f64; 3]; 3]; 2]> {
     let nv = normals(ctx, nn, dim)?;
     let c = sub(ctx.x[1], ctx.x[0]);
     let l = norm(c);
-    // nodernas riktningar [t, n1, n2] med tangenten vinkelrät mot normalen
+    // the nodes' directions [t, n1, n2] with the tangent perpendicular to the normal
     let fr: Vec<[[f64; 3]; 3]> = nv
         .iter()
         .map(|&n2| {
@@ -92,7 +92,7 @@ pub fn rotary(ctx: &ElemCtx, nn: usize, dim: usize, rho: f64, ip: [f64; 3]) -> O
             [t, cross(n2, t), n2]
         })
         .collect();
-    // relativ rotation R₂R₁ᵀ som rotationsvektor
+    // relative rotation R₂R₁ᵀ as a rotation vector
     let r = |a: [f64; 3], b: [f64; 3]| [a[0] * b[0], a[0] * b[1], a[0] * b[2], a[1] * b[0], a[1] * b[1], a[1] * b[2], a[2] * b[0], a[2] * b[1], a[2] * b[2]];
     let mut q = [0.0; 9];
     for k in 0..3 {

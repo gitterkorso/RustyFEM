@@ -1,16 +1,16 @@
-//! *INELASTIC HEAT FRACTION (område coupled2): andelen η av den plastiska
-//! dissipationen σ:ε̇ᵖˡ som blir värme. Läses av de kopplade stegen
-//! (`steps/explicit_coupled_full.rs`, `steps/heat_coupled_contact.rs`) och
-//! den adiabatiska analysen (`steps/adiabatic.rs`). Utan datarad är η = 0,9
-//! (standard).
+//! *INELASTIC HEAT FRACTION (feature area coupled2): the fraction η of the plastic
+//! dissipation σ:ε̇ᵖˡ that becomes heat. Read by the coupled steps
+//! (`steps/explicit_coupled_full.rs`, `steps/heat_coupled_contact.rs`) and
+//! the adiabatic analysis (`steps/adiabatic.rs`). Without a data line η = 0.9
+//! (default).
 //!
-//! Registret har en fabrik med hög prioritet som omsluter materialet
-//! (byggt utan *INELASTIC HEAT FRACTION) med `Adiabatic`: tre extra
-//! tillståndsvariabler sist per integrationspunkt, [T, T_före, aktiv]. I
-//! adiabatiska steg (*STATIC, ADIABATIC / *DYNAMIC, ADIABATIC, aktiv = 1)
-//! ökar temperaturen i integrationspunkten med ΔT = η σ:Δεᵖˡ / (ρ c(T)) efter
-//! varje inkrement och materialet räknas med den temperaturen (TEMP i
-//! utdata); annars är omslaget genomskinligt.
+//! The registry has a high-priority factory that wraps the material
+//! (built without *INELASTIC HEAT FRACTION) in `Adiabatic`: three extra
+//! state variables last per integration point, [T, T_prev, active]. In
+//! adiabatic steps (*STATIC, ADIABATIC / *DYNAMIC, ADIABATIC, active = 1)
+//! the integration point temperature increases by ΔT = η σ:Δεᵖˡ / (ρ c(T)) after
+//! each increment and the material is evaluated at that temperature (TEMP in
+//! the output); otherwise the wrapper is transparent.
 
 use super::{MatInput, MatOutput, MaterialFactory, MaterialModel, StressMode};
 use crate::fem::model::MaterialDef;
@@ -18,9 +18,9 @@ use crate::model::Result;
 use std::sync::Arc;
 
 pub static FACTORIES: &[MaterialFactory] = &[MaterialFactory {
-    name: "andel värme från plastisk dissipation (adiabatisk temperatur)",
-    // det inre materialet byggs (och kontrolleras) utan *INELASTIC HEAT
-    // FRACTION; här står alla beteenden som underliggande modeller förbrukar
+    name: "fraction of heat from plastic dissipation (adiabatic temperature)",
+    // the inner material is built (and checked) without *INELASTIC HEAT
+    // FRACTION; listed here are all behaviors that underlying models consume
     consumes: &[
         "CAP HARDENING",
         "CAP PLASTICITY",
@@ -82,7 +82,7 @@ fn build(def: &MaterialDef) -> Result<Option<Arc<dyn MaterialModel>>> {
     Ok(Some(Arc::new(Adiabatic { inner, eta, rho, cap: props.specific_heat })))
 }
 
-/// Material med adiabatisk uppvärmning (se modulens beskrivning).
+/// Material with adiabatic heating (see the module description).
 pub struct Adiabatic {
     pub inner: Arc<dyn MaterialModel>,
     pub eta: f64,
@@ -90,10 +90,10 @@ pub struct Adiabatic {
     cap: Option<super::heat::Table>,
 }
 
-/// Antal extra tillståndsvariabler: [T, T_före, aktiv].
+/// Number of extra state variables: [T, T_prev, active].
 pub const N_EXTRA: usize = 3;
 
-/// Omslagets namn (`MaterialModel::name`).
+/// The wrapper's name (`MaterialModel::name`).
 pub const NAME: &str = "INELASTIC HEAT FRACTION";
 
 impl Adiabatic {
@@ -135,11 +135,11 @@ impl MaterialModel for Adiabatic {
             new_x[..N_EXTRA].copy_from_slice(&old_x[..N_EXTRA]);
             return self.inner.update_with_length(input, length, old_in, new_in);
         }
-        // adiabatiskt: integrationspunktens temperatur vid inkrementets början
+        // adiabatic: the integration point temperature at the start of the increment
         let t = old_x[0];
         let inp = MatInput { temperature: t, dtemp: t - old_x[1], ..*input };
         let out = self.inner.update_with_length(&inp, length, old_in, new_in)?;
-        // ΔT = η σ:Δεᵖˡ / (ρc) med σ i slutet av inkrementet
+        // ΔT = η σ:Δεᵖˡ / (ρc) with σ at the end of the increment
         let mut dt = 0.0;
         if let Some(ip) = self.inner.output_names().iter().position(|n| *n == "PEEQ") {
             let p0 = self.inner.output_values(old_in).get(ip).copied().unwrap_or(0.0);
@@ -202,8 +202,8 @@ impl MaterialModel for Adiabatic {
     }
 }
 
-/// Sätter adiabatiskt läge i integrationspunktens materialtillstånd `st`.
-/// Vid första aktiveringen blir temperaturen `t0` (nodtemperaturen).
+/// Sets the adiabatic mode in the integration point material state `st`.
+/// On the first activation the temperature becomes `t0` (the nodal temperature).
 pub fn set_active(mat: &dyn MaterialModel, st: &mut [f64], on: bool, t0: f64) {
     if mat.name() != NAME || st.len() < mat.n_state() {
         return;
@@ -216,15 +216,15 @@ pub fn set_active(mat: &dyn MaterialModel, st: &mut [f64], on: bool, t0: f64) {
     st[b + 2] = if on { 1.0 } else { 0.0 };
 }
 
-/// η för materialet, `None` om *INELASTIC HEAT FRACTION saknas.
+/// η for the material, `None` if *INELASTIC HEAT FRACTION is missing.
 pub fn fraction(def: &MaterialDef) -> Result<Option<f64>> {
     let Some(kw) = def.behavior("INELASTIC HEAT FRACTION") else { return Ok(None) };
     let v = kw.first_floats().unwrap_or_default();
     Ok(Some(v.first().copied().unwrap_or(0.9)))
 }
 
-/// von Mises-spänning ur komponenterna (3: plan spänning, 4: plan
-/// töjning/axisymmetri, 6: 3D).
+/// von Mises stress from the components (3: plane stress, 4: plane
+/// strain/axisymmetry, 6: 3D).
 pub fn mises(s: &[f64]) -> f64 {
     let (s11, s22, s33, s12, s13, s23) = match s.len() {
         3 => (s[0], s[1], 0.0, s[2], 0.0, 0.0),
@@ -234,7 +234,7 @@ pub fn mises(s: &[f64]) -> f64 {
     (0.5 * ((s11 - s22).powi(2) + (s22 - s33).powi(2) + (s33 - s11).powi(2)) + 3.0 * (s12 * s12 + s13 * s13 + s23 * s23)).sqrt()
 }
 
-/// η per element (0 utan *INELASTIC HEAT FRACTION).
+/// η per element (0 without *INELASTIC HEAT FRACTION).
 pub fn fractions(model: &crate::fem::model::FeModel) -> Result<Vec<f64>> {
     let mut out = Vec::with_capacity(model.elements.len());
     for el in &model.elements {
@@ -247,7 +247,7 @@ pub fn fractions(model: &crate::fem::model::FeModel) -> Result<Vec<f64>> {
     Ok(out)
 }
 
-/// Spänningens antal komponenter för elementet (tillståndets layout).
+/// Number of stress components for the element (the state layout).
 pub fn stress_components(el: &crate::fem::model::Element) -> usize {
     use crate::elements::Family;
     match el.etype.family() {
@@ -257,16 +257,16 @@ pub fn stress_components(el: &crate::fem::model::Element) -> usize {
     }
 }
 
-/// Plastisk dissipation per integrationspunkt och volymsenhet, σ:Δεᵖˡ = q·Δε̄ᵖˡ
-/// (von Mises: spänningen i slutet av inkrementet), ur elementtillstånden
-/// före och efter ett inkrement. `None` om elementet saknar PEEQ.
+/// Plastic dissipation per integration point and unit volume, σ:Δεᵖˡ = q·Δε̄ᵖˡ
+/// (von Mises: the stress at the end of the increment), from the element states
+/// before and after an increment. `None` if the element has no PEEQ.
 pub fn ip_dissipation(p: &crate::fem::assembly::Prepared, e: usize, old: &[f64], new: &[f64]) -> Option<Vec<f64>> {
     let el = &p.model.elements[e];
     let ctx = p.ctx(e, false, 0.0, 0.0);
     let mat = ctx.material?;
     let ip = mat.output_names().iter().position(|n| *n == "PEEQ")?;
     let nip = el.etype.n_ips();
-    // extra tillstånd (NLGEOM, inkompatibla moder) ligger efter punkterna
+    // extra state (NLGEOM, incompatible modes) lies after the points
     let nc = stress_components(el);
     let stride = nc + mat.n_state();
     if nip == 0 || new.len() != old.len() || new.len() < nip * stride {
@@ -279,8 +279,8 @@ pub fn ip_dissipation(p: &crate::fem::assembly::Prepared, e: usize, old: &[f64],
                 let p0 = mat.output_values(&old[b + nc..b + stride]).get(ip).copied().unwrap_or(0.0);
                 let p1 = mat.output_values(&new[b + nc..b + stride]).get(ip).copied().unwrap_or(0.0);
                 if p1 > p0 {
-                    // spänningens medelvärde i inkrementet (trapetsregeln; första
-                    // plastiska inkrementet ger halva värmen)
+                    // the mean stress over the increment (trapezoidal rule; the first
+                    // plastic increment gives half the heat)
                     let avg: Vec<f64> = (0..nc).map(|i| 0.5 * (old[b + i] + new[b + i])).collect();
                     mises(&avg) * (p1 - p0)
                 } else {
@@ -291,10 +291,10 @@ pub fn ip_dissipation(p: &crate::fem::assembly::Prepared, e: usize, old: &[f64],
     )
 }
 
-/// Värmen η σ:Δεᵖˡ per nod (energi) under ett inkrement, ∫ Nᵢ r dV med
-/// värmeelementets formfunktioner: per integrationspunkt när elementets
-/// mekaniska och termiska punkter är lika många (CPE4T, C3D8T, ...), annars
-/// med elementets medelvärde av r (reducerade element CPE4RT, C3D8RT).
+/// The heat η σ:Δεᵖˡ per node (energy) over an increment, ∫ Nᵢ r dV with
+/// the heat element's shape functions: per integration point when the element's
+/// mechanical and thermal points are equally many (CPE4T, C3D8T, ...), otherwise
+/// with the element's mean value of r (reduced elements CPE4RT, C3D8RT).
 pub fn nodal_heat(p: &crate::fem::assembly::Prepared, old: &[Vec<f64>], new: &[Vec<f64>], eta: &[f64]) -> Result<Vec<f64>> {
     let m = p.model;
     let mut q = vec![0.0; m.nodes.len()];

@@ -1,14 +1,14 @@
-//! Termisk-elektrisk-strukturella element Q3D4, Q3D8 och Q3D20 (område
-//! coupled2) för *COUPLED THERMAL-ELECTRICAL-STRUCTURAL.
+//! Thermal-electrical-structural elements Q3D4, Q3D8 and Q3D20 (area
+//! coupled2) for *COUPLED THERMAL-ELECTRICAL-STRUCTURAL.
 //!
-//! Varje nod har förskjutningarna (1–3), den elektriska potentialen (9) och
-//! temperaturen (11). Som de kopplade elementen i `heat_coupled.rs`: den
-//! mekaniska delen är C3D4, C3D8 respektive C3D20 i elementregistret
-//! (vektorer och matriser översätts mellan frihetsgradsordningarna, potential
-//! och temperatur får nollor), den termiska och elektriska delen ett
-//! värmeledningselement med samma form, som `steps/heat.rs` och
-//! `steps/thermal_electric.rs` använder (`heat::lookup`,
-//! `thermal_electric::lookup`). Kopplingen sköts av steg-typen
+//! Each node has the displacements (1–3), the electric potential (9) and
+//! the temperature (11). Like the coupled elements in `heat_coupled.rs`: the
+//! mechanical part is C3D4, C3D8 and C3D20 respectively in the element registry
+//! (vectors and matrices are mapped between the degree-of-freedom orderings, potential
+//! and temperature get zeros), the thermal and electrical part a
+//! heat conduction element of the same shape, which `steps/heat.rs` and
+//! `steps/thermal_electric.rs` use (`heat::lookup`,
+//! `thermal_electric::lookup`). The coupling is handled by the step type
 //! (`steps/thermal_electric_structural.rs`).
 
 use super::api::{ElemCtx, ElemResponse, ElementType, Family, IpField, MassKind};
@@ -19,7 +19,7 @@ use crate::model::{fail, Result};
 
 pub struct QElem {
     pub name: &'static str,
-    /// Det mekaniska elementet (namn i registret).
+    /// The mechanical element (name in the registry).
     pub mech: &'static str,
     pub heat: HeatElem,
 }
@@ -32,22 +32,22 @@ pub static TYPES: &[&dyn ElementType] = &[&Q3D4, &Q3D8, &Q3D20];
 
 static ALL: &[&QElem] = &[&Q3D4, &Q3D8, &Q3D20];
 
-/// Elementet med namnet `name`.
+/// The element named `name`.
 pub fn lookup(name: &str) -> Option<&'static QElem> {
     ALL.iter().copied().find(|e| e.name == name)
 }
 
-/// Värme- och elektricitetsdelen.
+/// The heat and electricity part.
 pub fn thermal(name: &str) -> Option<&'static HeatElem> {
     lookup(name).map(|e| &e.heat)
 }
 
-/// Namnet på den mekaniska delen (termisk töjning).
+/// Name of the mechanical part (thermal strain).
 pub fn mech_name(name: &str) -> Option<&'static str> {
     lookup(name).map(|e| e.mech)
 }
 
-/// Frihetsgrader per nod och antal mekaniska bland dem.
+/// Degrees of freedom per node and the number of mechanical ones among them.
 const ND: usize = 5;
 const NM: usize = 3;
 
@@ -55,7 +55,7 @@ impl QElem {
     fn mech_elem(&self) -> Result<&'static dyn ElementType> {
         match super::lookup(self.mech) {
             Some(m) => Ok(m),
-            None => fail(format!("{}: det mekaniska elementet {} finns inte i registret", self.name, self.mech)),
+            None => fail(format!("{}: the mechanical element {} is not in the registry", self.name, self.mech)),
         }
     }
 

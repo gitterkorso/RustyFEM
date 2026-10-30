@@ -1,50 +1,50 @@
-//! Område explicit_adv: SPH (smoothed particle hydrodynamics) med PC3D i
-//! explicit analys.
+//! Area explicit_adv: SPH (smoothed particle hydrodynamics) with PC3D in
+//! explicit analysis.
 //!
-//! Partikeln i är en nod med massan mᵢ = ρ₀ (2L)³ (L = den karakteristiska
-//! längden på `*SOLID SECTION`, halva kubens sida). Med kärnan W
-//! och utjämningslängden h (stöd 2h) är
+//! Particle i is a node with mass mᵢ = ρ₀ (2L)³ (L = the characteristic
+//! length on `*SOLID SECTION`, half the cube side). With the kernel W
+//! and the smoothing length h (support 2h)
 //!
 //! ```text
-//! Lᵢ   = Σⱼ (mⱼ/ρⱼ) (vⱼ − vᵢ) ⊗ ∇ᵢWᵢⱼ                      hastighetsgradient
+//! Lᵢ   = Σⱼ (mⱼ/ρⱼ) (vⱼ − vᵢ) ⊗ ∇ᵢWᵢⱼ                      velocity gradient
 //! Fᵢ  ← (I + Lᵢ Δt) Fᵢ,  ρᵢ = ρ₀ / det Fᵢ,  Δε = sym(Lᵢ) Δt
-//! σᵢ  ← materialet(σᵢ + ΔW σᵢ − σᵢ ΔW, Δε, F)            (Jaumann, ΔW = skew(Lᵢ) Δt)
+//! σᵢ  ← material(σᵢ + ΔW σᵢ − σᵢ ΔW, Δε, F)               (Jaumann, ΔW = skew(Lᵢ) Δt)
 //! v̇ᵢ   = Σⱼ mⱼ (σᵢ/ρᵢ² + σⱼ/ρⱼ² − Πᵢⱼ I) ∇ᵢWᵢⱼ
-//! Πᵢⱼ  = (−α c̄ μᵢⱼ + β μᵢⱼ²)/ρ̄ᵢⱼ om vᵢⱼ·rᵢⱼ < 0,  μᵢⱼ = h vᵢⱼ·rᵢⱼ/(rᵢⱼ² + 0,01h²)
+//! Πᵢⱼ  = (−α c̄ μᵢⱼ + β μᵢⱼ²)/ρ̄ᵢⱼ if vᵢⱼ·rᵢⱼ < 0,  μᵢⱼ = h vᵢⱼ·rᵢⱼ/(rᵢⱼ² + 0.01h²)
 //! ```
 //!
-//! (Libersky & Petschek 1993). Spänningen räknas med materialmodellen som för ett
-//! reducerat integrerat element (en punkt per partikel). α och β är
-//! volymviskositetens koefficienter (`*BULK VISCOSITY`, standard 0,06 och
-//! 1,2) gånger skalfaktorerna på *SECTION CONTROLS första datarad (fält 4
-//! och 5); `SPH BULK VISCOSITY=VORTICITY WEIGHTED` multiplicerar Πᵢⱼ med
-//! Balsaras faktor ½(fᵢ + fⱼ), fᵢ = |∇·v|/(|∇·v| + |∇×v|). Den viskösa kraften
-//! räknas som volymviskositet (ALLVD).
+//! (Libersky & Petschek 1993). The stress is computed with the material model as for a
+//! reduced-integration element (one point per particle). α and β are
+//! the bulk viscosity coefficients (`*BULK VISCOSITY`, default 0.06 and
+//! 1.2) times the scale factors on the first data line of *SECTION CONTROLS (fields 4
+//! and 5); `SPH BULK VISCOSITY=VORTICITY WEIGHTED` multiplies Πᵢⱼ by
+//! Balsara's factor ½(fᵢ + fⱼ), fᵢ = |∇·v|/(|∇·v| + |∇×v|). The viscous force
+//! is counted as bulk viscosity (ALLVD).
 //!
-//! Kärnor (`KERNEL=`): CUBIC (standard, kubisk spline, σ = 1/π), QUADRATIC
-//! (Johnson m.fl. 1996, σ = 5/(4π)) och QUINTIC (Wendland C2
-//! (1 − q/2)⁴(2q + 1) med normeringen σ = 7/8), alla med stödet 2h.
+//! Kernels (`KERNEL=`): CUBIC (default, cubic spline, σ = 1/π), QUADRATIC
+//! (Johnson et al. 1996, σ = 5/(4π)) and QUINTIC (Wendland C2
+//! (1 − q/2)⁴(2q + 1) with normalization σ = 7/8), all with support 2h.
 //!
-//! Utjämningslängden är konstant (`SPH SMOOTHING LENGTH=CONSTANT`, standard)
-//! eller följer partikelns volym, h = h₀ (ρ₀/ρ)^⅓ (VARIABLE). Standardvärdet
-//! per tvärsnitt är h = 1,35 s (s = medelavståndet till närmaste partikel),
-//! ökat med faktorn 10/9 tills partiklarna i medel har minst
-//! min(`TARGET_NEIGHBORS`, N) partiklar inom 2h i analysens början. Regeln är
-//! kontrollerad med (fast Δt, användarangiven h mot standard-h, kuber
-//! med 27–729 partiklar och plattor: h = 1,35, 1,5, 1,667 och 1,852 gånger
-//! avståndet); *SECTION CONTROLS andra datarad ger h direkt
-//! (fält 1) eller en skalfaktor (fält 2) och det minsta antalet grannar
-//! (fält 3, standard 5: färre grannar ger Lᵢ = 0, deformationsgradienten
-//! hålls konstant).
+//! The smoothing length is constant (`SPH SMOOTHING LENGTH=CONSTANT`, default)
+//! or follows the particle volume, h = h₀ (ρ₀/ρ)^⅓ (VARIABLE). The default value
+//! per section is h = 1.35 s (s = the mean distance to the nearest particle),
+//! increased by the factor 10/9 until the particles on average have at least
+//! min(`TARGET_NEIGHBORS`, N) particles within 2h at the start of the analysis. The rule is
+//! verified with (fixed Δt, user-given h vs. default h, cubes
+//! with 27–729 particles and plates: h = 1.35, 1.5, 1.667 and 1.852 times
+//! the spacing); the second data line of *SECTION CONTROLS gives h directly
+//! (field 1) or a scale factor (field 2) and the minimum number of neighbors
+//! (field 3, default 5: fewer neighbors give Lᵢ = 0, the deformation gradient
+//! is held constant).
 //!
-//! Partiklar i olika tvärsnitt påverkar inte varandra.
+//! Particles in different sections do not interact.
 //!
-//! Utdata per partikel: S (punkt 1), DENSITY (punkt 1), EVOL = m/ρ (hela
-//! elementet) och materialets tillståndsutdata (PEEQ, ...).
+//! Output per particle: S (point 1), DENSITY (point 1), EVOL = m/ρ (whole
+//! element) and the material's state output (PEEQ, ...).
 //!
-//! Stabilitetsgränsen (automatisk inkrementering) är Δt = `DT_FACTOR` · h/(c + |v|)
-//! per partikel (faktorn är vald för en kub); testfallen
-//! använder fast Δt.
+//! The stability limit (automatic incrementation) is Δt = `DT_FACTOR` · h/(c + |v|)
+//! per particle (the factor is chosen for a cube); the test cases
+//! use fixed Δt.
 
 use super::{section_controls, Eval, Sink};
 use crate::fem::assembly::Prepared;
@@ -56,13 +56,13 @@ use crate::materials::{MatInput, MaterialModel, StressMode};
 use crate::model::{fail, FemError, Result};
 use std::collections::HashMap;
 
-/// Minsta medelantal partiklar inom stödet 2h för standardlängden (vald för
-/// kuber och plattor av partiklar).
+/// Minimum average number of particles within the support 2h for the default length (chosen for
+/// cubes and plates of particles).
 pub const TARGET_NEIGHBORS: f64 = 35.0;
-/// Stabilitetsgränsens faktor Δt = DT_FACTOR · h/(c + |v|).
+/// Stability limit factor Δt = DT_FACTOR · h/(c + |v|).
 pub const DT_FACTOR: f64 = 0.3646;
 
-/// Tillståndets platser per partikel.
+/// State slots per particle.
 const S: usize = 0;
 const FG: usize = 6;
 const EPS: usize = 15;
@@ -78,7 +78,7 @@ pub enum Kernel {
 }
 
 impl Kernel {
-    /// (f(q), f′(q)) med W = σ/h³ f(q); noll för q ≥ 2.
+    /// (f(q), f′(q)) with W = σ/h³ f(q); zero for q ≥ 2.
     pub fn eval(self, q: f64) -> (f64, f64) {
         if q >= self.support() {
             return (0.0, 0.0);
@@ -98,8 +98,8 @@ impl Kernel {
                 (s * (3.0 / 16.0 * q * q - 0.75 * q + 0.75), s * (0.375 * q - 0.75))
             }
             Kernel::Quintic => {
-                // Wendland C2 med normeringen 7/8 (2π/3 gånger den
-                // normerade 21/(16π))
+                // Wendland C2 with normalization 7/8 (2π/3 times the
+                // normalized 21/(16π))
                 let s = 0.875;
                 let a = 1.0 - 0.5 * q;
                 (s * a.powi(4) * (2.0 * q + 1.0), -s * 5.0 * q * a.powi(3))
@@ -107,12 +107,12 @@ impl Kernel {
         }
     }
 
-    /// Stödets radie i enheter av h.
+    /// Support radius in units of h.
     pub fn support(self) -> f64 {
         2.0
     }
 
-    /// W och ∂W/∂r för avståndet r och utjämningslängden h.
+    /// W and ∂W/∂r for the distance r and the smoothing length h.
     pub fn w(self, r: f64, h: f64) -> (f64, f64) {
         let (f, fp) = self.eval(r / h);
         let h3 = h * h * h;
@@ -120,17 +120,17 @@ impl Kernel {
     }
 }
 
-/// Ett tvärsnitt med partiklar.
+/// A section with particles.
 pub struct Group {
     pub kernel: Kernel,
-    /// Utjämningslängd i analysens början.
+    /// Smoothing length at the start of the analysis.
     pub h0: f64,
     pub variable_h: bool,
     pub alpha: f64,
     pub beta: f64,
     pub vorticity: bool,
     pub min_neighbors: usize,
-    /// Karakteristisk längd L (halva kubens sida).
+    /// Characteristic length L (half the cube side).
     pub length: f64,
     pub rho0: f64,
     pub ns: usize,
@@ -146,21 +146,21 @@ pub struct Particle {
 pub struct Sph {
     pub groups: Vec<Group>,
     pub parts: Vec<Particle>,
-    /// Partikelindex per element (usize::MAX = inte en partikel).
+    /// Particle index per element (usize::MAX = not a particle).
     pub of_elem: Vec<usize>,
     pub initial_energy: f64,
-    /// Antal grannar per partikel i senaste kraftberäkningen.
+    /// Number of neighbors per particle in the latest force computation.
     neighbors: Vec<usize>,
-    /// Stabilitetsgränsen (Δt, element) från senaste kraftberäkningen.
+    /// The stability limit (Δt, element) from the latest force computation.
     pub dt_est: Option<(f64, usize)>,
 }
 
 fn mat_of<'a>(p: &'a Prepared, e: usize) -> Result<&'a dyn MaterialModel> {
     let ctx = p.ctx(e, false, 0.0, 0.0);
-    ctx.material.ok_or_else(|| FemError(format!("{}: PC3D saknar material (*SOLID SECTION, MATERIAL=)", p.model.elem_name(e))))
+    ctx.material.ok_or_else(|| FemError(format!("{}: PC3D has no material (*SOLID SECTION, MATERIAL=)", p.model.elem_name(e))))
 }
 
-/// Grannar inom avståndet `r` för punkterna `x` (rutnät med sidan r).
+/// Neighbors within the distance `r` for the points `x` (grid with cell size r).
 pub fn neighbor_pairs(x: &[[f64; 3]], r: f64) -> Vec<(usize, usize, f64)> {
     let mut grid: HashMap<(i64, i64, i64), Vec<usize>> = HashMap::new();
     let key = |p: &[f64; 3]| ((p[0] / r).floor() as i64, (p[1] / r).floor() as i64, (p[2] / r).floor() as i64);
@@ -192,17 +192,17 @@ pub fn neighbor_pairs(x: &[[f64; 3]], r: f64) -> Vec<(usize, usize, f64)> {
     out
 }
 
-/// Standardvärde för utjämningslängden: h = 1,35 s (s = punkternas
-/// medelavstånd till närmaste granne), ökad med faktorn 10/9 tills punkterna i
-/// medel har minst min(`target`, N) punkter (sig själv medräknad) närmare än 2h.
-/// Se modulens dokumentation.
+/// Default value for the smoothing length: h = 1.35 s (s = the points'
+/// mean distance to the nearest neighbor), increased by the factor 10/9 until the points on
+/// average have at least min(`target`, N) points (itself included) closer than 2h.
+/// See the module documentation.
 pub fn default_smoothing_length(x: &[[f64; 3]], target: f64) -> f64 {
     let n = x.len();
     if n < 2 {
         return 1.0;
     }
     let nf = n as f64;
-    // medelavståndet till närmaste granne (rutnät med växande sida)
+    // the mean distance to the nearest neighbor (grid with growing cell size)
     let mut nearest = vec![f64::INFINITY; n];
     let ext = (0..3).map(|c| x.iter().map(|p| p[c]).fold(f64::NEG_INFINITY, f64::max) - x.iter().map(|p| p[c]).fold(f64::INFINITY, f64::min)).fold(0.0f64, f64::max);
     let mut r = (ext.max(1e-300) / nf.cbrt()).max(1e-300);
@@ -237,12 +237,12 @@ fn det3(a: &[[f64; 3]; 3]) -> f64 {
     a[0][0] * (a[1][1] * a[2][2] - a[1][2] * a[2][1]) - a[0][1] * (a[1][0] * a[2][2] - a[1][2] * a[2][0]) + a[0][2] * (a[1][0] * a[2][1] - a[1][1] * a[2][0])
 }
 
-/// Spänningen (ordning 11, 22, 33, 12, 13, 23) som tensor.
+/// The stress (order 11, 22, 33, 12, 13, 23) as a tensor.
 pub fn tensor(s: &[f64]) -> [[f64; 3]; 3] {
     [[s[0], s[3], s[4]], [s[3], s[1], s[5]], [s[4], s[5], s[2]]]
 }
 
-/// Ljudhastigheten √((K + 4G/3)/ρ) för materialet i tillståndet `ms`.
+/// The sound speed √((K + 4G/3)/ρ) for the material in the state `ms`.
 pub fn sound_speed(mat: &dyn MaterialModel, ms: &[f64], rho: f64) -> f64 {
     let d = match mat.tangent_linear(StressMode::ThreeD) {
         Ok(d) if d.len() == 36 => d,
@@ -264,19 +264,19 @@ impl Sph {
             if el.etype.name() != "PC3D" {
                 continue;
             }
-            let Some(si) = el.section else { return fail(format!("{} saknar tvärsnitt (*SOLID SECTION)", m.elem_name(e))) };
+            let Some(si) = el.section else { return fail(format!("{} has no section (*SOLID SECTION)", m.elem_name(e))) };
             let g = match group_of_sec.get(&si) {
                 Some(&g) => g,
                 None => {
                     let sec = &m.sections[si];
                     let length = sec.raw.first_floats()?.first().copied().unwrap_or(0.0);
                     if !(length > 0.0) {
-                        return sec.raw.err("PC3D: ange den karakteristiska längden (> 0) på dataraden");
+                        return sec.raw.err("PC3D: give the characteristic length (> 0) on the data line");
                     }
                     let mat = mat_of(p, e)?;
                     let rho0 = p.ctx(e, false, 0.0, 0.0).density;
                     if !(rho0 > 0.0) {
-                        return sec.raw.err("PC3D: materialet saknar *DENSITY");
+                        return sec.raw.err("PC3D: the material has no *DENSITY");
                     }
                     let mut grp = Group {
                         kernel: Kernel::Cubic,
@@ -297,24 +297,24 @@ impl Sph {
                             None | Some("CUBIC") => Kernel::Cubic,
                             Some("QUADRATIC") => Kernel::Quadratic,
                             Some("QUINTIC") => Kernel::Quintic,
-                            Some(o) => return sc.err(format!("KERNEL={o} stöds inte (CUBIC, QUADRATIC, QUINTIC)")),
+                            Some(o) => return sc.err(format!("KERNEL={o} is not supported (CUBIC, QUADRATIC, QUINTIC)")),
                         };
                         match sc.param_upper("SPH FORMULATION").as_deref() {
                             None | Some("CLASSICAL") => {}
-                            Some(o) => return sc.err(format!("SPH FORMULATION={o} stöds inte ännu (bara CLASSICAL)")),
+                            Some(o) => return sc.err(format!("SPH FORMULATION={o} is not supported yet (only CLASSICAL)")),
                         }
                         grp.variable_h = match sc.param_upper("SPH SMOOTHING LENGTH").as_deref() {
                             None | Some("CONSTANT") => false,
                             Some("VARIABLE") => true,
-                            Some(o) => return sc.err(format!("SPH SMOOTHING LENGTH={o} stöds inte (CONSTANT, VARIABLE)")),
+                            Some(o) => return sc.err(format!("SPH SMOOTHING LENGTH={o} is not supported (CONSTANT, VARIABLE)")),
                         };
                         grp.vorticity = match sc.param_upper("SPH BULK VISCOSITY").as_deref() {
                             None | Some("UNIFORM") => false,
                             Some("VORTICITY WEIGHTED") => true,
-                            Some(o) => return sc.err(format!("SPH BULK VISCOSITY={o} stöds inte (UNIFORM, VORTICITY WEIGHTED)")),
+                            Some(o) => return sc.err(format!("SPH BULK VISCOSITY={o} is not supported (UNIFORM, VORTICITY WEIGHTED)")),
                         };
                         if sc.param_upper("SPH TENSILE INSTABILITY CONTROL").as_deref() == Some("YES") {
-                            return sc.err("SPH TENSILE INSTABILITY CONTROL=YES stöds inte ännu");
+                            return sc.err("SPH TENSILE INSTABILITY CONTROL=YES is not supported yet");
                         }
                         let field = |row: usize, k: usize| -> Option<f64> {
                             sc.data.get(row).and_then(|d| d.fields.get(k)).filter(|f| !f.trim().is_empty()).and_then(|f| parse_f64(f))
@@ -333,7 +333,7 @@ impl Sph {
                             grp.min_neighbors = n as usize;
                         }
                     }
-                    // standardlängden bestäms när alla partiklar i tvärsnittet är kända
+                    // the default length is determined when all particles in the section are known
                     grp.h0 = user_h.map_or(-hfac, |h| h * hfac);
                     groups.push(grp);
                     group_of_sec.insert(si, groups.len() - 1);
@@ -348,7 +348,7 @@ impl Sph {
         if parts.is_empty() {
             return Ok(None);
         }
-        // omvandlade element: partikelns egen längd (explicit_adv_conversion.rs)
+        // converted elements: the particle's own length (explicit_adv_conversion.rs)
         let conv = super::conversion::lengths(m);
         for q in parts.iter_mut() {
             if let Some(&l) = conv.get(&q.e) {
@@ -360,7 +360,7 @@ impl Sph {
                 let x: Vec<[f64; 3]> = parts.iter().filter(|q| q.group == g).map(|q| m.nodes[q.node]).collect();
                 grp.h0 = -grp.h0 * default_smoothing_length(&x, TARGET_NEIGHBORS);
                 if std::env::var("RUSTYFEM_DEBUG_SPH").is_ok() {
-                    eprintln!("SPH: tvärsnitt {g}: h = {:.6e} ({} partiklar)", grp.h0, x.len());
+                    eprintln!("SPH: section {g}: h = {:.6e} ({} particles)", grp.h0, x.len());
                 }
             }
         }
@@ -370,7 +370,7 @@ impl Sph {
         Ok(Some(sph))
     }
 
-    /// Begynnelseenergin Σ m Eₘ₀ (*INITIAL CONDITIONS, TYPE=SPECIFIC ENERGY).
+    /// The initial energy Σ m Eₘ₀ (*INITIAL CONDITIONS, TYPE=SPECIFIC ENERGY).
     fn initial_energy_of(&self, p: &Prepared) -> Result<f64> {
         let em = specific_energies(p)?;
         Ok(self.parts.iter().map(|q| em.get(&q.e).copied().unwrap_or(0.0) * q.mass).sum())
@@ -384,7 +384,7 @@ impl Sph {
         }
     }
 
-    /// Partikelns tillstånd i analysens början.
+    /// The particle state at the start of the analysis.
     fn init_state(&self, p: &Prepared, i: usize, em: Option<f64>) -> Result<Vec<f64>> {
         let q = &self.parts[i];
         let g = &self.groups[q.group];
@@ -409,7 +409,7 @@ impl Sph {
         let n = self.parts.len();
         self.dt_est = None;
         let em = if self.parts.iter().any(|q| ev.state_old[q.e].is_empty()) { specific_energies(p)? } else { HashMap::new() };
-        // tillståndet vid inkrementets början
+        // the state at the start of the increment
         let mut old: Vec<Vec<f64>> = Vec::with_capacity(n);
         for (i, q) in self.parts.iter().enumerate() {
             let st = &ev.state_old[q.e];
@@ -424,7 +424,7 @@ impl Sph {
             .filter(|&(i, j, r)| self.parts[i].group == self.parts[j].group && r < 0.5 * self.groups[self.parts[i].group].kernel.support() * (old[i][HS] + old[j][HS]))
             .collect();
         let hij = |i: usize, j: usize, st: &[Vec<f64>]| 0.5 * (st[i][HS] + st[j][HS]);
-        // hastighetsgradienten med tätheterna vid inkrementets början
+        // the velocity gradient with the densities at the start of the increment
         let mut lg = vec![[[0.0f64; 3]; 3]; n];
         let mut count = vec![0usize; n];
         for &(i, j, r) in &pairs {
@@ -440,7 +440,7 @@ impl Sph {
             let (vi, vj) = (self.parts[i].mass / old[i][RHO], self.parts[j].mass / old[j][RHO]);
             for a in 0..3 {
                 for b in 0..3 {
-                    // ∇ⱼWⱼᵢ = −∇ᵢWᵢⱼ och (vᵢ − vⱼ) = −dv
+                    // ∇ⱼWⱼᵢ = −∇ᵢWᵢⱼ and (vᵢ − vⱼ) = −dv
                     lg[i][a][b] += vj * dv[a] * grad[b];
                     lg[j][a][b] += vi * dv[a] * grad[b];
                 }
@@ -448,7 +448,7 @@ impl Sph {
             count[i] += 1;
             count[j] += 1;
         }
-        // spänningsuppdatering per partikel
+        // stress update per particle
         let mut new: Vec<Vec<f64>> = old.clone();
         let mut balsara = vec![1.0; n];
         for i in 0..n {
@@ -500,7 +500,7 @@ impl Sph {
             }
             ns_[MAT..MAT + ns].copy_from_slice(&ms_new);
         }
-        // krafter med tillståndet vid inkrementets slut
+        // forces with the state at the end of the increment
         let mut fi = vec![[0.0f64; 3]; n];
         let mut fv = vec![[0.0f64; 3]; n];
         let cs: Vec<f64> = (0..n)
@@ -524,21 +524,21 @@ impl Sph {
             let (mi, mj) = (self.parts[i].mass, self.parts[j].mass);
             let (ri, rj) = (new[i][RHO], new[j][RHO]);
             let (si, sj) = (tensor(&new[i][S..S + 6]), tensor(&new[j][S..S + 6]));
-            // mᵢ v̇ᵢ = mᵢ Σ mⱼ (σᵢ/ρᵢ² + σⱼ/ρⱼ²) ∇ᵢWᵢⱼ; inre kraften är −mᵢ v̇ᵢ
+            // mᵢ v̇ᵢ = mᵢ Σ mⱼ (σᵢ/ρᵢ² + σⱼ/ρⱼ²) ∇ᵢWᵢⱼ; the internal force is −mᵢ v̇ᵢ
             for a in 0..3 {
                 let t: f64 = (0..3).map(|b| (si[a][b] / (ri * ri) + sj[a][b] / (rj * rj)) * grad[b]).sum();
                 let f = mi * mj * t;
                 fi[i][a] -= f;
                 fi[j][a] += f;
             }
-            // artificiell viskositet
+            // artificial viscosity
             let vij: [f64; 3] = std::array::from_fn(|c| v[i][c] - v[j][c]);
             let vr = vij[0] * rij[0] + vij[1] * rij[1] + vij[2] * rij[2];
             if vr < 0.0 && (g.alpha != 0.0 || g.beta != 0.0) {
                 let mu = h * vr / (r * r + 0.01 * h * h);
                 let cbar = 0.5 * (cs[i] + cs[j]);
                 let rbar = 0.5 * (ri + rj);
-                // den kvadratiska termen med β² (som volymviskositetens b₂²)
+                // the quadratic term with β² (like the bulk viscosity's b₂²)
                 let mut pi = (-g.alpha * cbar * mu + g.beta * g.beta * mu * mu) / rbar;
                 if g.vorticity {
                     pi *= 0.5 * (balsara[i] + balsara[j]);
@@ -571,7 +571,7 @@ impl Sph {
     pub fn output(&self, p: &Prepared, fr: &mut FrameData, _u: &[NodeVec], state: &[Vec<f64>]) -> Result<()> {
         let em = if self.parts.iter().any(|q| state[q.e].is_empty()) { specific_energies(p)? } else { HashMap::new() };
         for (i, q) in self.parts.iter().enumerate() {
-            // stegets början: begynnelsetillståndet
+            // start of the step: the initial state
             let init;
             let st = if state[q.e].is_empty() {
                 init = self.init_state(p, i, em.get(&q.e).copied())?;
@@ -608,7 +608,7 @@ impl Sph {
     }
 }
 
-/// Specifik begynnelseenergi per element (*INITIAL CONDITIONS, TYPE=SPECIFIC ENERGY).
+/// Specific initial energy per element (*INITIAL CONDITIONS, TYPE=SPECIFIC ENERGY).
 pub fn specific_energies(p: &Prepared) -> Result<HashMap<usize, f64>> {
     let mut em = HashMap::new();
     for kw in p.model.extra.iter().filter(|k| k.name == "INITIAL CONDITIONS" && k.has(crate::materials::eos::RESOLVED)) {

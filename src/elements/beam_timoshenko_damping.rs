@@ -1,28 +1,28 @@
-//! Tvärskjuvningens del av Timoshenkobalkarnas styvhet (B21, B22, B31, B32)
-//! för materialdämpningen i de modala stegen.
+//! The transverse shear part of the Timoshenko beam stiffness (B21, B22, B31, B32)
+//! for material damping in the modal steps.
 //!
-//! Tvärskjuvstyvheten ingår inte i den styvhetsproportionella
-//! dämpningen (*DAMPING, BETA) och den strukturella dämpningen
-//! (*DAMPING, STRUCTURAL) för balkar i *COMPLEX FREQUENCY, *STEADY STATE
-//! DYNAMICS, SUBSPACE PROJECTION och *DYNAMIC, SUBSPACE
+//! The transverse shear stiffness is not included in the stiffness-proportional
+//! damping (*DAMPING, BETA) or the structural damping
+//! (*DAMPING, STRUCTURAL) for beams in *COMPLEX FREQUENCY, *STEADY STATE
+//! DYNAMICS, SUBSPACE PROJECTION and *DYNAMIC, SUBSPACE
 //! (B21, `tests/cases/procedures2/cplx_b21_material`).
-//! `shear_stiffness_matrix` ger skjuvdelen K − K(γ-styvhet = 0) i elementets
-//! globala frihetsgrader, så att anroparen kan dra av den.
-//! Inkluderas med `#[path]` från `beam_timoshenko.rs`.
+//! `shear_stiffness_matrix` gives the shear part K − K(γ stiffness = 0) in the element's
+//! global degrees of freedom, so that the caller can subtract it.
+//! Included with `#[path]` from `beam_timoshenko.rs`.
 
 use super::super::api::ElemCtx;
 use super::{gauss, TimoBeam, B21, B22, B31, B32};
 use crate::elements::common;
 use crate::model::Result;
 
-/// Balken med elementnamnet `name` (bara grundtyperna, inte hybrid- eller
-/// rörvarianterna).
+/// The beam with element name `name` (only the base types, not the hybrid or
+/// pipe variants).
 fn beam(name: &str) -> Option<&'static TimoBeam> {
     [&B21, &B22, &B31, &B32].into_iter().find(|b| b.name == name)
 }
 
-/// Skjuvdelen av elementstyvheten (globala frihetsgrader, n×n radvis) för en
-/// Timoshenkobalk, `None` för andra element och för SECTION=NONLINEAR GENERAL.
+/// The shear part of the element stiffness (global degrees of freedom, n×n row-wise) for a
+/// Timoshenko beam, `None` for other elements and for SECTION=NONLINEAR GENERAL.
 pub fn shear_stiffness_matrix(name: &str, ctx: &ElemCtx) -> Option<Result<Vec<f64>>> {
     let b = beam(name)?;
     if super::nlg::is_nlg(ctx) {
@@ -33,8 +33,8 @@ pub fn shear_stiffness_matrix(name: &str, ctx: &ElemCtx) -> Option<Result<Vec<f6
 
 fn shear_part(b: &TimoBeam, ctx: &ElemCtx) -> Result<Vec<f64>> {
     let g = b.geom(ctx)?;
-    // tvärsnittsmatrisens skjuvdel: γ1, γ2 och deras koppling till
-    // vridningen kring skjuvcentrum (section_matrix)
+    // shear part of the section matrix: γ1, γ2 and their coupling to
+    // twist about the shear center (section_matrix)
     let (k1, k2) = b.shear_stiffness(&g);
     let s = &g.sec;
     let mut d = [[0.0; 6]; 6];

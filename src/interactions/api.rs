@@ -1,39 +1,39 @@
-//! Gränssnitt för interaktioner och villkor: kontakt, tie, coupling, MPC,
-//! *EQUATION, kopplingselement, fjädrar och punktmassor.
+//! Interface for interactions and constraints: contact, tie, coupling, MPC,
+//! *EQUATION, connector elements, springs and point masses.
 //!
-//! En interaktion byggs från ett eller flera sparade modellnyckelord
-//! (`FeModel::extra`) av en registrerad `InteractionFactory`. Den kan bidra på
-//! tre sätt:
-//! - `linear_constraints`: linjära villkor Σ cᵢ uᵢ = r (tie, MPC, *EQUATION).
-//!   Kärnan eliminerar dem i `fem/mpc.rs` (inte implementerat ännu).
-//! - `contribute`: inre kraft och tangent (straff, kontakt, fjädrar).
-//! - `mass`: massbidrag (punktmassor) för dynamik och egenfrekvenser.
+//! An interaction is built from one or more stored model keywords
+//! (`FeModel::extra`) by a registered `InteractionFactory`. It can contribute
+//! in three ways:
+//! - `linear_constraints`: linear constraints Σ cᵢ uᵢ = r (tie, MPC, *EQUATION).
+//!   The core eliminates them in `fem/mpc.rs` (not implemented yet).
+//! - `contribute`: internal force and tangent (penalty, contact, springs).
+//! - `mass`: mass contributions (point masses) for dynamics and eigenfrequencies.
 
 use crate::fem::dof::{Dof, NodeVec};
 use crate::fem::model::{FeModel, RawKeyword};
 use crate::model::Result;
 
-/// Σ cᵢ u(nodᵢ, dofᵢ) = rhs
+/// Σ cᵢ u(nodeᵢ, dofᵢ) = rhs
 #[derive(Debug, Clone, Default)]
 pub struct LinearConstraint {
     pub terms: Vec<(usize, Dof, f64)>,
     pub rhs: f64,
-    /// Första termen elimineras även om den har ett randvillkor; randvillkoret
-    /// ignoreras då (som för slavnoder i *TIE).
+    /// The first term is eliminated even if it has a boundary condition; the
+    /// boundary condition is then ignored (as for slave nodes in *TIE).
     pub force_slave: bool,
 }
 
-/// Mottagare för tangentbidrag mellan (nod, frihetsgrad)-par.
+/// Receiver of tangent contributions between (node, DOF) pairs.
 pub trait TangentSink {
     fn add(&mut self, node_a: usize, dof_a: Dof, node_b: usize, dof_b: Dof, v: f64);
 
-    /// Matrisen lagras osymmetriskt (osymmetrisk lösare, t.ex. *STEP, UNSYMM=YES).
+    /// The matrix is stored unsymmetric (unsymmetric solver, e.g. *STEP, UNSYMM=YES).
     fn is_unsymmetric(&self) -> bool {
         false
     }
 
-    /// Osymmetriskt bidrag till K[(a, dof_a), (b, dof_b)] (bara den raden/kolumnen).
-    /// Standard: ignoreras (symmetriska lösare använder den symmetriska tangenten).
+    /// Unsymmetric contribution to K[(a, dof_a), (b, dof_b)] (only that row/column).
+    /// Default: ignored (symmetric solvers use the symmetric tangent).
     fn add_unsym(&mut self, _node_a: usize, _dof_a: Dof, _node_b: usize, _dof_b: Dof, _v: f64) {}
 }
 
@@ -47,12 +47,12 @@ pub struct InteractionCtx<'a> {
 pub trait Interaction: Send + Sync {
     fn name(&self) -> String;
 
-    /// Frihetsgrader som interaktionen behöver (läggs till nodernas aktiva).
+    /// DOFs the interaction needs (added to the nodes' active DOFs).
     fn active_dofs(&self) -> Vec<(usize, Dof)> {
         Vec::new()
     }
 
-    /// Nodgrupper som kopplas ihop i styvhetsmatrisen.
+    /// Node groups that are coupled in the stiffness matrix.
     fn connectivity(&self) -> Vec<Vec<usize>> {
         Vec::new()
     }
@@ -61,77 +61,77 @@ pub trait Interaction: Send + Sync {
         Ok(Vec::new())
     }
 
-    /// Villkoren beror på läget (t.ex. stela kroppar med ändliga rotationer).
-    /// NLGEOM-steget linjäriserar dem då på nytt i varje iteration med
-    /// `linear_constraints_at`. Standard: nej.
+    /// The constraints depend on the configuration (e.g. rigid bodies with finite
+    /// rotations). The NLGEOM step then relinearizes them in every iteration with
+    /// `linear_constraints_at`. Default: no.
     fn constraints_depend_on_u(&self) -> bool {
         false
     }
 
-    /// Villkoren linjäriserade i läget `u`: samma termer (och slavar) som
-    /// `linear_constraints`, koefficienterna är derivator mot frihetsgraderna
-    /// (rumsliga spinn för rotationer) och rhs är vald så att slavens uttryck
-    /// u_s = rhs' + Σ c' u_m ger dess exakta läge i `u`. Standard: de linjära
-    /// villkoren.
+    /// The constraints linearized in configuration `u`: the same terms (and slaves)
+    /// as `linear_constraints`, the coefficients are derivatives with respect to the
+    /// DOFs (spatial spins for rotations) and rhs is chosen so that the slave's
+    /// expression u_s = rhs' + Σ c' u_m gives its exact position in `u`. Default:
+    /// the linear constraints.
     fn linear_constraints_at(&self, _u: &[NodeVec], _nlgeom: bool) -> Result<Vec<LinearConstraint>> {
         self.linear_constraints()
     }
 
-    /// Lägger till inre kraft i `fint` och (om `k` ges) tangenten.
+    /// Adds internal force to `fint` and (if `k` is given) the tangent.
     fn contribute(&self, _ctx: &InteractionCtx, _u: &[NodeVec], _fint: &mut [NodeVec], _k: Option<&mut dyn TangentSink>) -> Result<()> {
         Ok(())
     }
 
-    /// Massbidrag (nod, frihetsgrad, nod, frihetsgrad, värde).
+    /// Mass contributions (node, DOF, node, DOF, value).
     fn mass(&self) -> Vec<(usize, Dof, usize, Dof, f64)> {
         Vec::new()
     }
 
-    /// Dämpningsbidrag (*DASHPOT): (nod, frihetsgrad, nod, frihetsgrad, värde).
+    /// Damping contributions (*DASHPOT): (node, DOF, node, DOF, value).
     fn damping(&self) -> Vec<(usize, Dof, usize, Dof, f64)> {
         Vec::new()
     }
 
-    /// Interaktionen är linjär (bidraget beror linjärt på u och har inget
-    /// tillstånd), så att linjära steg och perturbationssteg kan använda den.
+    /// The interaction is linear (the contribution depends linearly on u and has
+    /// no state), so that linear steps and perturbation steps can use it.
     fn is_linear(&self) -> bool {
         false
     }
 
-    /// Godkänner tillståndet från senaste `contribute` (friktion, kontaktstatus).
-    /// Anropas när ett inkrement har konvergerat.
+    /// Commits the state from the latest `contribute` (friction, contact status).
+    /// Called when an increment has converged.
     fn commit(&self) {}
 
-    /// Nodutdata efter senaste godkända inkrement (t.ex. CPRESS, COPEN).
+    /// Nodal output after the latest converged increment (e.g. CPRESS, COPEN).
     fn node_output(&self) -> Vec<NodeOutput> {
         Vec::new()
     }
 
-    /// Elementutdata efter senaste godkända inkrement (t.ex. kopplingselementens
-    /// CTF, CU): (elementindex, fält). Läggs till elementets egna utdata.
+    /// Element output after the latest converged increment (e.g. the connector
+    /// elements' CTF, CU): (element index, field). Added to the element's own output.
     fn elem_output(&self) -> Vec<(usize, crate::elements::IpField)> {
         Vec::new()
     }
 
-    /// Den okondenserade inre och yttre kraften (före elimineringen av de
-    /// linjära villkoren) och slavarna efter en utvärdering, så att en
-    /// interaktion kan räkna ut sina villkorskrafter (kopplingselementens
-    /// CTF/CTM i låsta komponenter). Anropas av `fem::system::StaticSystem`.
+    /// The uncondensed internal and external force (before elimination of the
+    /// linear constraints) and the slaves after an evaluation, so that an
+    /// interaction can compute its constraint forces (the connector elements'
+    /// CTF/CTM in constrained components). Called by `fem::system::StaticSystem`.
     fn observe_residual(&self, _fint: &[NodeVec], _fext: &[NodeVec], _slaves: &[crate::fem::mpc::Slave]) {}
 
-    /// Kinematiska villkor för explicit dynamik (som inte eliminerar linjära
-    /// villkor): per villkor raden c (mot nodfrihetsgraderna, rotationer som
-    /// rumsliga spinn) och värdet g(u), som ska vara 0. Villkorskraften λ ger
-    /// den inre kraften cᵀλ (`steps/explicit_constraints.rs`). Standard: inga.
+    /// Kinematic constraints for explicit dynamics (which does not eliminate linear
+    /// constraints): per constraint the row c (against the nodal DOFs, rotations as
+    /// spatial spins) and the value g(u), which must be 0. The constraint force λ
+    /// gives the internal force cᵀλ (`steps/explicit_constraints.rs`). Default: none.
     fn kinematic_constraints(&self, _u: &[NodeVec], _nlgeom: bool) -> Vec<(Vec<(usize, Dof, f64)>, f64)> {
         Vec::new()
     }
 
-    /// Villkorskrafterna λ för `kinematic_constraints` (samma ordning), för utdata.
+    /// The constraint forces λ for `kinematic_constraints` (same order), for output.
     fn set_constraint_forces(&self, _lambda: &[f64]) {}
 }
 
-/// Ett nodfält från en interaktion: värden för vissa noder.
+/// A nodal field from an interaction: values for some nodes.
 #[derive(Debug, Clone, Default)]
 pub struct NodeOutput {
     pub name: String,
@@ -139,9 +139,9 @@ pub struct NodeOutput {
     pub values: Vec<(usize, Vec<f64>)>,
 }
 
-/// Bygger interaktioner från sparade nyckelord.
+/// Builds interactions from stored keywords.
 pub struct InteractionFactory {
-    /// Nyckelorden (utan '*', versaler) som fabriken hanterar.
+    /// The keywords (without '*', upper case) that the factory handles.
     pub keywords: &'static [&'static str],
     pub build: fn(&FeModel, &RawKeyword) -> Result<Vec<Box<dyn Interaction>>>,
 }

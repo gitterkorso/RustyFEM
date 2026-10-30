@@ -1,7 +1,7 @@
-//! Användarrutiner: *USER MATERIAL och *DEPVAR (materialbeteenden, tolkas av
-//! `materials/user_material.rs`), *USER ELEMENT (sparas i modellen, tolkas av
-//! `elements/user_element.rs` när *ELEMENT, TYPE=Un läses) och *UEL PROPERTY
-//! (sparas som tvärsnitt för elementen i ELSET=).
+//! User subroutines: *USER MATERIAL and *DEPVAR (material behaviors, parsed by
+//! `materials/user_material.rs`), *USER ELEMENT (stored in the model, parsed by
+//! `elements/user_element.rs` when *ELEMENT, TYPE=Un is read) and *UEL PROPERTY
+//! (stored as a section for the elements in ELSET=).
 
 use crate::fem::model::{RawKeyword, SectionDef, SectionKind};
 use crate::inp::keywords::material::behavior;
@@ -18,12 +18,12 @@ pub static KEYWORDS: &[Keyword] = &[
 fn user_element(ctx: &mut InpCtx, kw: &RawKeyword) -> Result<()> {
     let ty = required(kw, "TYPE")?.to_uppercase();
     let Some(n) = ty.strip_prefix('U').and_then(|s| s.parse::<u32>().ok()) else {
-        return kw.err(format!("TYPE={ty} ska vara Un (n = heltal)"));
+        return kw.err(format!("TYPE={ty} must be Un (n = integer)"));
     };
     if crate::elements::lookup(&ty).is_some() {
-        return kw.err(format!("TYPE={ty} är redan en inbyggd elementtyp"));
+        return kw.err(format!("TYPE={ty} is already a built-in element type"));
     }
-    // kontrollera definitionen redan här (fel med rätt radnummer)
+    // check the definition right here (errors with the correct line number)
     crate::elements::user_element::define(kw, &ty, n)?;
     ctx.mesh().extra.push(kw.clone());
     Ok(())
@@ -32,7 +32,7 @@ fn user_element(ctx: &mut InpCtx, kw: &RawKeyword) -> Result<()> {
 fn uel_property(ctx: &mut InpCtx, kw: &RawKeyword) -> Result<()> {
     let elset = required(kw, "ELSET")?.to_uppercase();
     if kw.has("MATERIAL") {
-        return kw.err("MATERIAL= på *UEL PROPERTY stöds inte ännu");
+        return kw.err("MATERIAL= on *UEL PROPERTY is not supported yet");
     }
     ctx.mesh().sections.push(SectionDef { elset, material: String::new(), material_index: None, kind: SectionKind::Other, raw: kw.clone() });
     Ok(())

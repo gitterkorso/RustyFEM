@@ -1,13 +1,13 @@
-// UI-läge (markering, öppna paneler, val av resultat). Modellen och
-// resultaten finns i Rust; här ligger bara en visningskopia.
+// UI state (selection, open panels, result choice). The model and
+// the results live in Rust; this is only a copy for display.
 
 import { useRef, useSyncExternalStore } from "react";
 import type { FieldInfo, McpStatus, MemoryEstimate, MeshData, ModelInfo, PickInfo, SessionInfo, StepResultInfo, UnitSystem } from "./engine/Engine";
-import type { ColormapName } from "./viewer/colormaps";
+import { colormapNames, type ColormapName } from "./viewer/colormaps";
 
 export type Mode = "model" | "results";
 
-/** Markerat objekt i modellträdet. */
+/** Selected object in the model tree. */
 export type TreeSel =
   | { type: "model" }
   | { type: "script" }
@@ -26,7 +26,7 @@ export interface LogLine {
 
 export interface RunState {
   running: boolean;
-  /** 0–1 över hela analysen. */
+  /** 0–1 over the whole analysis. */
   progress: number;
   stepIndex: number;
   steps: number;
@@ -61,13 +61,13 @@ export interface State {
   animate: "off" | "frames" | "mode";
   pick: PickInfo | null;
   pickMode: "element" | "node";
-  /** Kraftenhet för lastvärden i modellfönstret (null = visa inga värden). */
+  /** Force unit for load values in the viewport (null = show no values). */
   loadUnit: string | null;
-  /** Noder som urvalet i verktygspanelen träffar (visas i modellfönstret). */
+  /** Nodes hit by the selection in the tool panel (shown in the viewport). */
   marked: number[] | null;
-  /** Väntar på att användaren väljer en nod i modellfönstret (t.ex. för at=). */
+  /** Waiting for the user to pick a node in the viewport (e.g. for at=). */
   onNodePick: ((node: number) => void) | null;
-  /** Skriptrad (1-baserad) som verktygspanelen ska öppna för ändring. */
+  /** Script line (1-based) that the tool panel should open for editing. */
   scriptEdit: number | null;
   run: RunState;
   log: LogLine[];
@@ -90,6 +90,7 @@ export interface State {
   unitSystems: [UnitSystem, string][];
   mcp: McpStatus | null;
   mcpPanel: boolean;
+  disclaimer: boolean;
 }
 
 function load<T>(k: string, d: T): T {
@@ -105,7 +106,7 @@ export function persist(k: string, v: unknown) {
   try {
     localStorage.setItem(`rustyfem.${k}`, JSON.stringify(v));
   } catch {
-    /* ingen lagring (privat läge) */
+    /* no storage (private mode) */
   }
 }
 
@@ -142,7 +143,7 @@ let state: State = {
   undeformed: false,
   symbols: true,
   levels: load("levels", 12),
-  colormap: load<ColormapName>("colormap", "regnbåge"),
+  colormap: ((c) => (colormapNames.includes(c) ? c : "rainbow"))(load<ColormapName>("colormap", "rainbow")),
   palette: false,
   busy: null,
   toast: null,
@@ -152,6 +153,7 @@ let state: State = {
   unitSystems: [],
   mcp: null,
   mcpPanel: false,
+  disclaimer: !load("disclaimerAccepted", false),
 };
 
 const subs = new Set<() => void>();
@@ -175,7 +177,7 @@ export function useStore<T>(sel: (s: State) => T): T {
   return useSyncExternalStore(subscribe, () => sel(state));
 }
 
-/** Som `useStore`, för väljare som bygger ett nytt objekt: jämför fälten ytligt. */
+/** Like `useStore`, for selectors that build a new object: compares the fields shallowly. */
 export function useShallow<T extends object>(sel: (s: State) => T): T {
   const ref = useRef<T | null>(null);
   return useSyncExternalStore(subscribe, () => {
@@ -191,7 +193,7 @@ export function log(kind: LogLine["kind"], text: string) {
   set((s) => ({ log: [...s.log.slice(-400), { t: Date.now(), kind, text }] }));
 }
 
-/** Fältets info i det valda steget. */
+/** The field's info in the selected step. */
 export function currentField(s: State): FieldInfo | null {
   if (!s.rsel) return null;
   return s.results[s.rsel.step]?.fields.find((f) => f.name === s.rsel!.field) ?? null;

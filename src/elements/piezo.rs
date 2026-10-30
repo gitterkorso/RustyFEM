@@ -1,27 +1,27 @@
-//! Piezoelektriska element: C3D8E, C3D20E, CPE4E och CPS4E (förskjutningar
-//! och elektrisk potential, frihetsgrad 9, i varje nod).
+//! Piezoelectric elements: C3D8E, C3D20E, CPE4E and CPS4E (displacements
+//! and electric potential, degree of freedom 9, at each node).
 //!
-//! Konstitutiva samband (*PIEZOELECTRIC TYPE=S och *DIELECTRIC):
+//! Constitutive relations (*PIEZOELECTRIC TYPE=S and *DIELECTRIC):
 //!
 //! σ = C ε − eᵀ E,   D = e ε + κ E,   E = −∇φ,
 //!
-//! med e (3×6, kolumner 11, 22, 33, 12, 13, 23 och ingenjörsskjuvtöjning). Med
-//! TYPE=E är töjningskoefficienterna d givna och e = d C. Med g = ∇φ och
-//! y = [ε; g] är [σ; D] = A y med den symmetriska matrisen
+//! with e (3×6, columns 11, 22, 33, 12, 13, 23 and engineering shear strain). With
+//! TYPE=E the strain coefficients d are given and e = d C. With g = ∇φ and
+//! y = [ε; g], [σ; D] = A y with the symmetric matrix
 //!
 //! A = [[C, eᵀ], [e, −κ]],
 //!
-//! och elementmatrisen K = ∫ Bᵀ A B dV (symmetrisk, indefinit). Raderna för
-//! potentialen är laddningsbalansen ∫∇δφ·D dV, dvs. laddningsresidualen
-//! (−∫∇δφ·D dV, reaktionsladdningen RCHG) med omvänt tecken; steg-typen
-//! (`steps/piezo.rs`) vänder tecknet för laddningar och reaktioner.
-//! Plan spänning: ε33 kondenseras bort med σ33 = 0 i de mekaniska och
-//! piezoelektriska termerna (κ behålls); plan töjning: ε33 = 0. I
-//! planet är E3 = 0. Full integrering (2×2, 2×2×2, 3×3×3); C3D8E och CPE4E
-//! har B-bar (medelvärdesbildad volymtöjning) som C3D8 och CPE4,
-//! C3D20E och CPS4E inte.
+//! and the element matrix K = ∫ Bᵀ A B dV (symmetric, indefinite). The rows for
+//! the potential are the charge balance ∫∇δφ·D dV, i.e. the charge residual
+//! (−∫∇δφ·D dV, the reaction charge RCHG) with the opposite sign; the step type
+//! (`steps/piezo.rs`) flips the sign for charges and reactions.
+//! Plane stress: ε33 is condensed out with σ33 = 0 in the mechanical and
+//! piezoelectric terms (κ is kept); plane strain: ε33 = 0. In
+//! the plane E3 = 0. Full integration (2×2, 2×2×2, 3×3×3); C3D8E and CPE4E
+//! have B-bar (averaged volumetric strain) like C3D8 and CPE4,
+//! C3D20E and CPS4E do not.
 //!
-//! Utdata: S, E, EFLX (D), EPG (elektriska fältet E = −∇φ).
+//! Output: S, E, EFLX (D), EPG (the electric field E = −∇φ).
 
 use super::api::{ElemCtx, ElementType, Family, IpField, MassKind};
 use super::common::Ip;
@@ -35,7 +35,7 @@ pub struct PzElem {
     pub name: &'static str,
     pub shape: Shape,
     pub mode: StressMode,
-    /// B-bar som C3D8/CPE4 (C3D8E, CPE4E).
+    /// B-bar like C3D8/CPE4 (C3D8E, CPE4E).
     pub bbar: bool,
     geo: HeatElem,
 }
@@ -49,12 +49,12 @@ pub static TYPES: &[&dyn ElementType] = &[&C3D8E, &C3D20E, &CPE4E, &CPS4E];
 
 static ALL: &[&PzElem] = &[&C3D8E, &C3D20E, &CPE4E, &CPS4E];
 
-/// Det piezoelektriska elementet `name`.
+/// The piezoelectric element `name`.
 pub fn lookup(name: &str) -> Option<&'static PzElem> {
     ALL.iter().copied().find(|e| e.name == name)
 }
 
-/// Generaliserad konstitutiv matris A (9×9) för y = [ε (6), ∇φ (3)].
+/// Generalized constitutive matrix A (9×9) for y = [ε (6), ∇φ (3)].
 pub fn full_matrix(c: &[f64], pz: &PiezoProps) -> [[f64; 9]; 9] {
     let mut e = pz.coef;
     if pz.strain_type {
@@ -95,9 +95,9 @@ impl PzElem {
         self.dim() + 1
     }
 
-    /// Matrisen med ε33 kondenserad (σ33 = 0) för plan spänning. De
-    /// mekaniska och piezoelektriska termerna kondenseras men inte den
-    /// dielektriska (κ behålls).
+    /// The matrix with ε33 condensed (σ33 = 0) for plane stress. The
+    /// mechanical and piezoelectric terms are condensed but not the
+    /// dielectric one (κ is kept).
     fn condensed(&self, a: &[[f64; 9]; 9]) -> [[f64; 9]; 9] {
         let mut c = *a;
         if self.mode == StressMode::PlaneStress {
@@ -114,8 +114,8 @@ impl PzElem {
         c
     }
 
-    /// Komponenterna i y som elementet använder (index i 9-vektorn) och den
-    /// reducerade matrisen.
+    /// The components of y that the element uses (indices in the 9-vector) and the
+    /// reduced matrix.
     fn reduced(&self, a: &[[f64; 9]; 9]) -> (Vec<usize>, Vec<f64>) {
         let a = self.condensed(a);
         let idx: Vec<usize> = match self.mode {
@@ -137,14 +137,14 @@ impl PzElem {
         gauss_rule(self.shape).into_iter().map(|(p, w)| ip_at(self.shape, &ctx.x, p, w, t, false)).collect()
     }
 
-    /// B (rader enligt `idx`, kolumner nodvis [u…, φ]).
+    /// B (rows according to `idx`, columns node-wise [u…, φ]).
     fn bmat(&self, ip: &Ip, idx: &[usize], avg: &[[f64; 3]]) -> Vec<f64> {
         let nn = self.nn();
         let nd = self.ndof_node();
         let dim = self.dim();
         let ncol = nn * nd;
         let mut b = vec![0.0; idx.len() * ncol];
-        // B-bar: volymtöjningen (plana: ε11 + ε22) medelvärdesbildas över elementet
+        // B-bar: the volumetric strain (planar: ε11 + ε22) is averaged over the element
         let nv = if self.mode == StressMode::ThreeD { 3 } else { 2 };
         for (r, &comp) in idx.iter().enumerate() {
             for a in 0..nn {
@@ -180,17 +180,17 @@ impl PzElem {
         b
     }
 
-    /// Generaliserad konstitutiv matris för elementets material.
+    /// Generalized constitutive matrix for the element's material.
     pub fn constitutive(ctx: &ElemCtx, def: &crate::fem::model::MaterialDef, name: &str) -> Result<[[f64; 9]; 9]> {
         let mat = ctx.material(name)?;
         let Some(pz) = PiezoProps::from_def(def)? else {
-            return fail(format!("element {} ({name}): materialet {} saknar *DIELECTRIC", ctx.label, def.name));
+            return fail(format!("element {} ({name}): the material {} has no *DIELECTRIC", ctx.label, def.name));
         };
         let c = mat.tangent_linear(StressMode::ThreeD)?;
         Ok(full_matrix(&c, &pz))
     }
 
-    /// K = ∫ Bᵀ A B dV (frihetsgraderna nodvis: u, φ).
+    /// K = ∫ Bᵀ A B dV (degrees of freedom node-wise: u, φ).
     pub fn matrix(&self, ctx: &ElemCtx, a: &[[f64; 9]; 9]) -> Result<Vec<f64>> {
         let a = *a;
         let (idx, ar) = self.reduced(&a);
@@ -229,7 +229,7 @@ impl PzElem {
         Ok(k)
     }
 
-    /// Utdata S, E, EFLX och EPG för elementvektorn `u` (nodvis u, φ).
+    /// Output S, E, EFLX and EPG for the element vector `u` (node-wise u, φ).
     pub fn fields(&self, ctx: &ElemCtx, a: &[[f64; 9]; 9], u: &[f64]) -> Result<Vec<IpField>> {
         let dim = self.dim();
         let (sl, el): (&[&str], &[&str]) = if dim == 3 {
@@ -250,7 +250,7 @@ impl PzElem {
         for (q, ip) in ips.iter().enumerate() {
             let mut y = self.y_at(ip, u, &avg);
             if self.mode == StressMode::PlaneStress {
-                // ε33 ur σ33 = 0
+                // ε33 from σ33 = 0
                 let s: f64 = (0..9).filter(|&j| j != 2).map(|j| a[2][j] * y[j]).sum();
                 y[2] = -s / a[2][2];
             }
@@ -270,7 +270,7 @@ impl PzElem {
         Ok(vec![fs, fe, fd, fg])
     }
 
-    /// Elementmedelvärdet av ∇N per nod för B-bar (tomt utan B-bar).
+    /// The element mean of ∇N per node for B-bar (empty without B-bar).
     fn average(&self, ips: &[Ip]) -> Vec<[f64; 3]> {
         if !self.bbar {
             return Vec::new();
@@ -279,7 +279,7 @@ impl PzElem {
         (0..self.nn()).map(|a| [0, 1, 2].map(|k| ips.iter().map(|ip| ip.dndx[a][k] * ip.w).sum::<f64>() / vol)).collect()
     }
 
-    /// y = B v i en punkt (9 komponenter, nollor där elementet saknar).
+    /// y = B v at a point (9 components, zeros where the element lacks them).
     fn y_at(&self, ip: &Ip, v: &[f64], avg: &[[f64; 3]]) -> [f64; 9] {
         let all: Vec<usize> = (0..9).collect();
         let b = self.bmat(ip, &all, avg);

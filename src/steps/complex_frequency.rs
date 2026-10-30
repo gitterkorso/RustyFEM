@@ -1,36 +1,36 @@
-//! *COMPLEX FREQUENCY: komplexa egenvärden för det dämpade systemet
-//! (μ² M + μ C + K + i S) φ = 0, projicerat på egenmoderna från det
-//! föregående *FREQUENCY-steget.
+//! *COMPLEX FREQUENCY: complex eigenvalues for the damped system
+//! (μ² M + μ C + K + i S) φ = 0, projected onto the eigenmodes from the
+//! preceding *FREQUENCY step.
 //!
-//! Med modbasen Φ (φᵀMφ = 1, även inre frihetsgrader, `modal_basis.rs`) blir
-//! det projicerade problemet (μ² I + μ Cᵣ + Kᵣ + i Sᵣ) q = 0 med Kᵣ = diag(ωᵢ²),
-//! Cᵣ = Φᵀ C Φ och Sᵣ = Φᵀ S Φ. Dämpningen:
+//! With the modal basis Φ (φᵀMφ = 1, also internal degrees of freedom, `modal_basis.rs`) the
+//! projected problem becomes (μ² I + μ Cᵣ + Kᵣ + i Sᵣ) q = 0 with Kᵣ = diag(ωᵢ²),
+//! Cᵣ = Φᵀ C Φ and Sᵣ = Φᵀ S Φ. The damping:
 //!
-//! - dämpare (*DASHPOT, `Interaction::damping`),
-//! - materialets *DAMPING, ALPHA/BETA (C = αM + βK per element) och
-//!   STRUCTURAL (S = s K per element), samma matriser som
+//! - dashpots (*DASHPOT, `Interaction::damping`),
+//! - the material's *DAMPING, ALPHA/BETA (C = αM + βK per element) and
+//!   STRUCTURAL (S = s K per element), the same matrices as
 //!   *STEADY STATE DYNAMICS, DIRECT (`steady_state::damping_matrices`),
-//!   utom Timoshenkobalkarnas tvärskjuvstyvhet som inte tas med i
-//!   BETA- och STRUCTURAL-dämpningen (`complex_beam_shear.rs`).
+//!   except the transverse shear stiffness of the Timoshenko beams, which is not included in
+//!   the BETA and STRUCTURAL damping (`complex_beam_shear.rs`).
 //!
-//! Det kvadratiska problemet skrivs i första ordningens form
-//! A = [[0, I], [−(Kᵣ + i Sᵣ), −Cᵣ]] och löses tätt (`complex_dense.rs`).
-//! Egenvärden med positiv imaginärdel sorteras efter stigande imaginärdel.
-//! Dataraden: antal egenvärden, lägsta och högsta frekvens (Hz).
+//! The quadratic problem is written in first-order form
+//! A = [[0, I], [−(Kᵣ + i Sᵣ), −Cᵣ]] and solved densely (`complex_dense.rs`).
+//! Eigenvalues with positive imaginary part are sorted by increasing imaginary part.
+//! The data line: number of eigenvalues, lowest and highest frequency (Hz).
 //!
-//! Utdata: frame 0 (bastillståndet, nollor), sedan en frame
-//! per mod med `value` = modnumret. U är modformens realdel och U_IM dess
-//! imaginärdel (konjugerade data), normerad så att största komponenten
-//! (translationer och rotationer) är 1 + 0i. History EIGREAL (Re μ),
-//! EIGIMAG (Im μ, rad/tid), EIGFREQ (Im μ / 2π) och DAMPRATIO (−2 Re μ / Im μ)
-//! per modnummer.
+//! Output: frame 0 (the base state, zeros), then one frame
+//! per mode with `value` = the mode number. U is the real part of the mode shape and U_IM its
+//! imaginary part (conjugate data), normalized so that the largest component
+//! (translations and rotations) is 1 + 0i. History EIGREAL (Re μ),
+//! EIGIMAG (Im μ, rad/time), EIGFREQ (Im μ / 2π) and DAMPRATIO (−2 Re μ / Im μ)
+//! per mode number.
 //!
-//! Friktionsinducerad osymmetrisk styvhet (kontakt med *FRICTION) ingår inte:
-//! Kᵣ är modernas diagonala styvhet.
+//! Friction-induced unsymmetric stiffness (contact with *FRICTION) is not included:
+//! Kᵣ is the diagonal stiffness of the modes.
 
 #[path = "complex_dense.rs"]
 pub mod dense;
-// område coupled2: balkarnas tvärskjuvning ingår inte i BETA/STRUCTURAL-dämpningen
+// area coupled2: the transverse shear of the beams is not included in the BETA/STRUCTURAL damping
 #[path = "complex_beam_shear.rs"]
 mod beam_shear;
 
@@ -49,8 +49,8 @@ pub struct ComplexFrequency;
 
 pub static STEP_TYPES: &[&dyn StepType] = &[&ComplexFrequency];
 
-/// Frame för ett komplext nodfält u = re + i·im (U/UR och U_IM/UR_IM samt
-/// elementfälten och deras _IM-delar).
+/// Frame for a complex nodal field u = re + i·im (U/UR and U_IM/UR_IM plus
+/// the element fields and their _IM parts).
 pub fn complex_frame(ctx: &StepCtx, dm: &DofMap, re: &[NodeVec], im: &[NodeVec], value: f64, mode: i64, desc: String) -> Result<FrameData> {
     let dim = ctx.prep.model.dim();
     let rot = has_rotations(ctx);
@@ -70,7 +70,7 @@ pub fn complex_frame(ctx: &StepCtx, dm: &DofMap, re: &[NodeVec], im: &[NodeVec],
     Ok(fr)
 }
 
-/// Projicerade dämpningsmatriser (Cᵣ, Sᵣ), täta n × n (radvis).
+/// Projected damping matrices (Cᵣ, Sᵣ), dense n × n (row-major).
 pub fn projected_damping(ctx: &StepCtx, b: &ModalBasis) -> Result<(Vec<f64>, Vec<f64>)> {
     let p = ctx.prep;
     let n = b.len();
@@ -88,7 +88,7 @@ pub fn projected_damping(ctx: &StepCtx, b: &ModalBasis) -> Result<(Vec<f64>, Vec
         }
     }
     beam_shear::subtract(ctx, b, &mut cr, &mut sr)?;
-    // dämpare: (nod, frihetsgrad, nod, frihetsgrad, värde)
+    // dashpots: (node, degree of freedom, node, degree of freedom, value)
     for it in &p.interactions {
         for (na, da, nb, db, v) in it.damping() {
             let (ga, gb) = (b.all.idx[na][slot_of(da)], b.all.idx[nb][slot_of(db)]);
@@ -109,15 +109,15 @@ pub fn dot(a: &[f64], b: &[f64]) -> f64 {
     a.iter().zip(b).map(|(x, y)| x * y).sum()
 }
 
-/// Komplex nodvektor Σ φᵢ qᵢ.
+/// Complex nodal vector Σ φᵢ qᵢ.
 pub fn superpose_complex(b: &ModalBasis, q: &[Cx]) -> (Vec<NodeVec>, Vec<NodeVec>) {
     let re: Vec<f64> = q.iter().map(|c| c.re).collect();
     let im: Vec<f64> = q.iter().map(|c| c.im).collect();
     (b.superpose(&re), b.superpose(&im))
 }
 
-/// Normerar så att största komponenten (translationer och rotationer)
-/// blir 1 + 0i.
+/// Normalizes so that the largest component (translations and rotations)
+/// becomes 1 + 0i.
 fn normalize(re: &mut [NodeVec], im: &mut [NodeVec], active: &[u16]) {
     let mut best = (0.0f64, Cx::ZERO);
     for n in 0..re.len() {
@@ -145,7 +145,7 @@ fn data(step: &StepDef, i: usize) -> Result<Option<f64>> {
     let Some(d) = kw.data.first() else { return Ok(None) };
     match d.fields.get(i).map(|s| s.trim()) {
         None | Some("") => Ok(None),
-        Some(s) => parse_f64(s).map(Some).ok_or_else(|| FemError(format!("{}: '{s}' är inget tal", kw.location()))),
+        Some(s) => parse_f64(s).map(Some).ok_or_else(|| FemError(format!("{}: '{s}' is not a number", kw.location()))),
     }
 }
 
@@ -161,14 +161,14 @@ impl StepType for ComplexFrequency {
     fn run(&self, ctx: &mut StepCtx) -> Result<()> {
         let kw = ctx.step.procedure.as_ref().unwrap();
         if kw.has("FRICTION DAMPING") && kw.param_upper("FRICTION DAMPING").as_deref() != Some("NO") {
-            return kw.err("FRICTION DAMPING=YES stöds inte");
+            return kw.err("FRICTION DAMPING=YES is not supported");
         }
         let b = ModalBasis::from_frequency_step(ctx)?;
         let n = b.len();
         let nev = data(ctx.step, 0)?.map(|v| v.round().max(0.0) as usize).filter(|&k| k > 0).unwrap_or(n);
         let (fmin, fmax) = (data(ctx.step, 1)?, data(ctx.step, 2)?);
         let (cr, sr) = projected_damping(ctx, &b)?;
-        // första ordningens form
+        // first-order form
         let m = 2 * n;
         let mut a = vec![Cx::ZERO; m * m];
         for i in 0..n {
@@ -185,7 +185,7 @@ impl StepType for ComplexFrequency {
         ev.retain(|e| fmin.is_none_or(|f| e.im / tp >= f) && fmax.is_none_or(|f| e.im / tp <= f));
         ev.truncate(nev);
         if ev.is_empty() {
-            return fail("*COMPLEX FREQUENCY: inga komplexa egenvärden i det begärda området");
+            return fail("*COMPLEX FREQUENCY: no complex eigenvalues in the requested range");
         }
         let nn = ctx.prep.model.nodes.len();
         let z = vec![[0.0; SLOTS]; nn];

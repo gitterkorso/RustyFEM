@@ -1,7 +1,7 @@
-//! Elastomerer och skum: *HYPERFOAM, *MULLINS EFFECT och provdata för
-//! *HYPERELASTIC, TEST DATA INPUT (materialbeteenden).
+//! Elastomers and foams: *HYPERFOAM, *MULLINS EFFECT and test data for
+//! *HYPERELASTIC, TEST DATA INPUT (material behaviors).
 //!
-//! Beteendena tolkas av `materials/hyperfoam.rs`, `materials/mullins.rs` och
+//! The behaviors are parsed by `materials/hyperfoam.rs`, `materials/mullins.rs` and
 //! `materials/hyperelastic_testdata.rs`.
 
 use crate::inp::keywords::material::behavior;

@@ -1,47 +1,47 @@
-//! Utökad metallplasticitet: Hills anisotropa flytvillkor
-//! (*POTENTIAL under *PLASTIC), hastighetsberoende flytspänning
-//! (*RATE DEPENDENT), Johnson–Cooks hårdnande (*PLASTIC, HARDENING=JOHNSON
-//! COOK) och von Mises med anisotrop elasticitet. Rena von Mises-material
-//! med isotrop elasticitet hanteras av `plasticity.rs` som förut; den här
-//! modellen väljs bara när något av ovanstående finns (`claims`).
+//! Extended metal plasticity: Hill's anisotropic yield criterion
+//! (*POTENTIAL under *PLASTIC), rate-dependent yield stress
+//! (*RATE DEPENDENT), Johnson–Cook hardening (*PLASTIC, HARDENING=JOHNSON
+//! COOK) and von Mises with anisotropic elasticity. Pure von Mises materials
+//! with isotropic elasticity are handled by `plasticity.rs` as before; this
+//! model is selected only when one of the above is present (`claims`).
 //!
-//! Flytvillkoret (Hill 1948, tensorkomponenter, ξ = σ − α):
+//! Yield criterion (Hill 1948, tensor components, ξ = σ − α):
 //!
 //!   f(ξ)² = F(ξ22−ξ33)² + G(ξ33−ξ11)² + H(ξ11−ξ22)² + 2Lξ23² + 2Mξ13² + 2Nξ12² = ξᵀPξ
 //!
-//! med förhållandena Rij (*POTENTIAL: R11, R22, R33, R12, R13, R23):
+//! with the ratios Rij (*POTENTIAL: R11, R22, R33, R12, R13, R23):
 //! F = ½(1/R22² + 1/R33² − 1/R11²), G = ½(1/R33² + 1/R11² − 1/R22²),
 //! H = ½(1/R11² + 1/R22² − 1/R33²), L = 3/(2R23²), M = 3/(2R13²),
-//! N = 3/(2R12²). Utan *POTENTIAL är alla Rij = 1 (von Mises).
+//! N = 3/(2R12²). Without *POTENTIAL all Rij = 1 (von Mises).
 //!
-//! Associativt flöde: Δεp = Δλ Pξ/f (ingenjörsskjuvning, eftersom ∂f/∂σ i
-//! Voigt-form direkt ger ingenjörskomponenterna), och plastiskt arbete ger
-//! ε̄̇p = λ̇ (σy ε̄̇p = ξ:ε̇p). Mottensorerna följer Ziegler/Chaboche,
-//! α̇ₖ = Cₖ/σy dev(ξ) ε̄̇p − γₖ αₖ ε̄̇p, integrerat exakt för fix
-//! riktning under inkrementet: αₖ = θₖ αₖ,ₙ + ψₖ dev(ξ)/σy med θₖ = e^(−γₖΔλ)
-//! och ψₖ = Cₖ(1 − θₖ)/γₖ (för von Mises samma schema som `plasticity.rs`).
+//! Associated flow: Δεp = Δλ Pξ/f (engineering shear, since ∂f/∂σ in
+//! Voigt form directly gives the engineering components), and plastic work gives
+//! ε̄̇p = λ̇ (σy ε̄̇p = ξ:ε̇p). The backstresses follow Ziegler/Chaboche,
+//! α̇ₖ = Cₖ/σy dev(ξ) ε̄̇p − γₖ αₖ ε̄̇p, integrated exactly for a fixed
+//! direction during the increment: αₖ = θₖ αₖ,ₙ + ψₖ dev(ξ)/σy with θₖ = e^(−γₖΔλ)
+//! and ψₖ = Cₖ(1 − θₖ)/γₖ (for von Mises the same scheme as `plasticity.rs`).
 //!
-//! Implicit Euler (närmaste-punkt-projektion): med prövospänningen
-//! σ_tr = D(ε − εp,ₙ) och σ = σ_tr − (Δλ/σy) D P ξ blir ξ lösningen till det
-//! linjära systemet A ξ = b, A = I + (Δλ D P + Ψ Q)/σy, b = σ_tr − Σθₖαₖ,ₙ
-//! (Q = deviatorprojektionen, Ψ = Σψₖ). Kvar är den skalära ekvationen
+//! Backward Euler (closest-point projection): with the trial stress
+//! σ_tr = D(ε − εp,ₙ) and σ = σ_tr − (Δλ/σy) D P ξ, ξ is the solution of the
+//! linear system A ξ = b, A = I + (Δλ D P + Ψ Q)/σy, b = σ_tr − Σθₖαₖ,ₙ
+//! (Q = the deviatoric projection, Ψ = Σψₖ). What remains is the scalar equation
 //!
 //!   φ(Δλ) = f(ξ(Δλ)) − σy(ε̄p,ₙ + Δλ, Δλ/Δt, T) = 0,
 //!
-//! som löses med Newton inom säkra gränser. Den konsistenta tangenten
-//! dσ/dε är sluten (implicit derivering av A ξ = b och φ = 0), även med
-//! hastighetsberoende, temperaturberoende och olinjärt kinematiskt hårdnande.
+//! which is solved by Newton within safe bounds. The consistent tangent
+//! dσ/dε is closed-form (implicit differentiation of A ξ = b and φ = 0), even with
+//! rate-dependent, temperature-dependent and nonlinear kinematic hardening.
 //!
-//! Elasticiteten är isotrop (även temperaturberoende E, ν, T) eller
-//! anisotrop (*ELASTIC, TYPE=ENGINEERING CONSTANTS/ORTHOTROPIC/ANISOTROPIC,
-//! via `anisotropic.rs`). Hills förhållanden och den anisotropa elasticiteten
-//! gäller i materialets lokala axlar (*ORIENTATION, som kontinuumelementen
-//! och skalen redan roterar till). Plan spänning och stänger går via
-//! `plasticity::update_reduced` (lokal Newton på de spänningsfria
-//! komponenterna).
+//! The elasticity is isotropic (also temperature-dependent E, ν, T) or
+//! anisotropic (*ELASTIC, TYPE=ENGINEERING CONSTANTS/ORTHOTROPIC/ANISOTROPIC,
+//! via `anisotropic.rs`). Hill's ratios and the anisotropic elasticity
+//! apply in the material's local axes (*ORIENTATION, which the continuum elements
+//! and shells already rotate to). Plane stress and trusses go through
+//! `plasticity::update_reduced` (local Newton on the stress-free
+//! components).
 //!
-//! Utdata: PEEQ och PE som von Mises-modellen. Tillståndslayouten är
-//! densamma som i `plasticity.rs`: [ε̄p, εp (6), ε 3D (6), αₖ (6 per mottensor)].
+//! Output: PEEQ and PE as in the von Mises model. The state layout is
+//! the same as in `plasticity.rs`: [ε̄p, εp (6), ε 3D (6), αₖ (6 per backstress)].
 
 use super::anisotropic::{invert, reduce_6x6};
 use super::plasticity::{iso_d6, pe_labels, rotate_v6, update_reduced, Hardening, M6, V6};
@@ -52,7 +52,7 @@ use crate::model::{fail, FemError, Result};
 use std::sync::Arc;
 
 pub static FACTORIES: &[MaterialFactory] = &[MaterialFactory {
-    name: "metallplasticitet (Hill, hastighetsberoende, Johnson–Cook)",
+    name: "metal plasticity (Hill, rate-dependent, Johnson–Cook)",
     consumes: &["ELASTIC", "PLASTIC", "CYCLIC HARDENING", "POTENTIAL", "RATE DEPENDENT"],
     priority: 15,
     build: Some(build),
@@ -63,13 +63,13 @@ const EP: usize = 1;
 const EPS3: usize = 7;
 const ALPHA: usize = 13;
 
-/// Ska materialet hanteras av den här modellen (och inte av `plasticity.rs`)?
+/// Should the material be handled by this model (and not by `plasticity.rs`)?
 pub fn claims(def: &MaterialDef) -> bool {
     let Some(pk) = def.behavior("PLASTIC") else { return false };
     if def.behavior("POTENTIAL").is_some() || def.behavior("RATE DEPENDENT").is_some() {
         return true;
     }
-    // område materials4: flytkurvor per töjningshastighet (*PLASTIC, RATE=)
+    // area materials4: yield curves per strain rate (*PLASTIC, RATE=)
     if def.behaviors.iter().any(|b| b.name == "PLASTIC" && b.has("RATE")) {
         return true;
     }
@@ -79,7 +79,7 @@ pub fn claims(def: &MaterialDef) -> bool {
     def.behavior("ELASTIC").is_some_and(|e| e.param_upper("TYPE").is_some_and(|t| t != "ISOTROPIC"))
 }
 
-/// Hills matris P (Voigt med tensorskjuvkomponenter, f² = ξᵀPξ) ur Rij.
+/// Hill's matrix P (Voigt with tensor shear components, f² = ξᵀPξ) from Rij.
 pub fn hill_matrix(r: &[f64; 6]) -> M6 {
     let inv2 = |x: f64| 1.0 / (x * x);
     let (a, b, c) = (inv2(r[0]), inv2(r[1]), inv2(r[2]));
@@ -105,7 +105,7 @@ pub fn hill_matrix(r: &[f64; 6]) -> M6 {
 
 #[derive(Debug, Clone)]
 enum Elastic {
-    /// (E, ν, T) i stigande temperatur (en post om konstant).
+    /// (E, ν, T) in ascending temperature (one entry if constant).
     Iso(Vec<(f64, f64, f64)>),
     Aniso(M6),
 }
@@ -125,12 +125,12 @@ impl Elastic {
 #[derive(Debug, Clone)]
 enum Iso {
     Fixed(Hardening),
-    /// Temperaturberoende tabeller (T, [(ε̄p, σ0)]).
+    /// Temperature-dependent tables (T, [(ε̄p, σ0)]).
     Temp(Vec<(f64, Vec<(f64, f64)>)>),
     JohnsonCook(JohnsonCook),
 }
 
-/// Isotropt hårdnande vid en given temperatur.
+/// Isotropic hardening at a given temperature.
 enum IsoAt<'a> {
     H(&'a Hardening),
     Owned(Hardening),
@@ -147,25 +147,25 @@ impl IsoAt<'_> {
     }
 }
 
-/// Hill-/Mises-plasticitet med isotropt, kinematiskt och hastighetsberoende hårdnande.
+/// Hill/Mises plasticity with isotropic, kinematic and rate-dependent hardening.
 #[derive(Debug, Clone)]
 pub struct MetalPlastic {
     elastic: Elastic,
-    /// Elasticitetsmatrisen vid referenstemperaturen (linjär styvhet).
+    /// Elasticity matrix at the reference temperature (linear stiffness).
     ce: M6,
     hill: M6,
     iso: Iso,
-    /// Mottensorer (C, γ).
+    /// Backstresses (C, γ).
     back: Vec<(f64, f64)>,
     rate: RateLaw,
-    /// Område materials4: flytkurvor per töjningshastighet (*PLASTIC, RATE=),
-    /// (ε̄̇p, tabell) i stigande hastighet; tom = ingen.
+    /// Area materials4: yield curves per strain rate (*PLASTIC, RATE=),
+    /// (ε̄̇p, table) in ascending rate; empty = none.
     rate_tabs: Vec<(f64, Vec<(f64, f64)>)>,
-    /// Område materials4: temperaturberoende *POTENTIAL, (T, Rij) i stigande T; tom = konstant.
+    /// Area materials4: temperature-dependent *POTENTIAL, (T, Rij) in ascending T; empty = constant.
     hill_t: Vec<(f64, [f64; 6])>,
 }
 
-/// Mellanresultat för ett värde på Δλ.
+/// Intermediate results for one value of Δλ.
 struct Ev {
     xi: V6,
     ainv: [f64; 36],
@@ -194,7 +194,7 @@ fn dot(a: &V6, b: &V6) -> f64 {
     (0..6).map(|i| a[i] * b[i]).sum()
 }
 
-/// Deviatorprojektionen (Voigt, tensorkomponenter).
+/// Deviatoric projection (Voigt, tensor components).
 fn qdev() -> M6 {
     let mut q = [[0.0; 6]; 6];
     for i in 0..3 {
@@ -206,7 +206,7 @@ fn qdev() -> M6 {
     q
 }
 
-/// C (1 − e^(−γ Δλ))/γ (→ C Δλ när γ → 0).
+/// C (1 − e^(−γ Δλ))/γ (→ C Δλ as γ → 0).
 fn psi(c: f64, gam: f64, dl: f64) -> f64 {
     let x = gam * dl;
     if x.abs() < 1e-8 {
@@ -227,7 +227,7 @@ fn floats_all(kw: &RawKeyword) -> Result<Vec<f64>> {
 fn single_table(kw: &RawKeyword) -> Result<Vec<(f64, f64)>> {
     let t = super::thermal_elastic::yield_tables(kw)?;
     if t.len() > 1 {
-        return kw.err("temperaturberoende data stöds inte här ännu");
+        return kw.err("temperature-dependent data is not supported here yet");
     }
     Ok(t[0].1.clone())
 }
@@ -238,21 +238,21 @@ fn build(def: &MaterialDef) -> Result<Option<Arc<dyn MaterialModel>>> {
     }
     let pk = def.behavior("PLASTIC").unwrap();
     let Some(ek) = def.behavior("ELASTIC") else {
-        return fail(format!("material {}: *PLASTIC kräver *ELASTIC", def.name));
+        return fail(format!("material {}: *PLASTIC requires *ELASTIC", def.name));
     };
     if ek.has("TEMPERATURE") {
-        return ek.err("parametern TEMPERATURE stöds inte ännu");
+        return ek.err("the TEMPERATURE parameter is not supported yet");
     }
     let ety = ek.param_upper("TYPE").unwrap_or_else(|| "ISOTROPIC".into());
     let elastic = if ety == "ISOTROPIC" {
         Elastic::Iso(super::thermal_elastic::iso_table(ek)?)
     } else {
         if ety == "LAMINA" {
-            return ek.err("plasticitet med *ELASTIC, TYPE=LAMINA stöds inte (använd ENGINEERING CONSTANTS)");
+            return ek.err("plasticity with *ELASTIC, TYPE=LAMINA is not supported (use ENGINEERING CONSTANTS)");
         }
         let only = MaterialDef { name: def.name.clone(), behaviors: vec![ek.clone()], density: def.density };
         let Some(m) = (super::anisotropic::FACTORIES[0].build.unwrap())(&only)? else {
-            return ek.err(format!("TYPE={ety} stöds inte"));
+            return ek.err(format!("TYPE={ety} is not supported"));
         };
         let d = m.tangent_linear(StressMode::ThreeD)?;
         Elastic::Aniso(std::array::from_fn(|i| std::array::from_fn(|j| d[i * 6 + j])))
@@ -262,13 +262,13 @@ fn build(def: &MaterialDef) -> Result<Option<Arc<dyn MaterialModel>>> {
         _ => 0.0,
     });
     if pk.has("DEPENDENCIES") {
-        return pk.err("parametern DEPENDENCIES stöds inte ännu");
+        return pk.err("the DEPENDENCIES parameter is not supported yet");
     }
     let rate_tabs = super::plasticity_rate_tables::rate_tables(def)?;
     let hard = pk.param_upper("HARDENING").unwrap_or_else(|| "ISOTROPIC".into());
     let cyclic = def.behavior("CYCLIC HARDENING");
     if cyclic.is_some() && hard != "COMBINED" {
-        return pk.err("*CYCLIC HARDENING kräver HARDENING=COMBINED");
+        return pk.err("*CYCLIC HARDENING requires HARDENING=COMBINED");
     }
     let (iso, back) = match hard.as_str() {
         "ISOTROPIC" => {
@@ -283,7 +283,7 @@ fn build(def: &MaterialDef) -> Result<Option<Arc<dyn MaterialModel>>> {
         "KINEMATIC" => {
             let t = single_table(pk)?;
             if t.len() > 2 {
-                return pk.err("linjärt kinematiskt hårdnande tar högst två datapunkter (σ0, 0) och (σ1, εp1)");
+                return pk.err("linear kinematic hardening takes at most two data points (σ0, 0) and (σ1, εp1)");
             }
             let c = if t.len() == 2 { (t[1].1 - t[0].1) / t[1].0 } else { 0.0 };
             (Iso::Fixed(Hardening::Table(vec![t[0]])), vec![(c, 0.0)])
@@ -291,7 +291,7 @@ fn build(def: &MaterialDef) -> Result<Option<Arc<dyn MaterialModel>>> {
         "COMBINED" => {
             let dt = pk.param_upper("DATATYPE").unwrap_or_else(|| "HALF CYCLE".into());
             if dt != "PARAMETERS" {
-                return pk.err(format!("HARDENING=COMBINED stöds bara med DATATYPE=PARAMETERS (inte {dt})"));
+                return pk.err(format!("HARDENING=COMBINED is only supported with DATATYPE=PARAMETERS (not {dt})"));
             }
             let nb = match pk.param("NUMBER BACKSTRESSES") {
                 Some(s) => s
@@ -299,18 +299,18 @@ fn build(def: &MaterialDef) -> Result<Option<Arc<dyn MaterialModel>>> {
                     .parse::<usize>()
                     .ok()
                     .filter(|&n| (1..=10).contains(&n))
-                    .ok_or_else(|| FemError(format!("{}: NUMBER BACKSTRESSES={s} ska vara 1–10", pk.location())))?,
+                    .ok_or_else(|| FemError(format!("{}: NUMBER BACKSTRESSES={s} must be 1–10", pk.location())))?,
                 None => 1,
             };
             if pk.records().len() > 1 {
-                return pk.err("temperaturberoende parametrar (flera datarader) stöds inte ännu");
+                return pk.err("temperature-dependent parameters (multiple data lines) are not supported yet");
             }
             let v = floats_all(pk)?;
             if v.len() < 1 + 2 * nb {
-                return pk.err(format!("dataraden ska ha σ0 och {nb} par (C, γ)"));
+                return pk.err(format!("the data line must have σ0 and {nb} pairs (C, γ)"));
             }
             if v.len() > 1 + 2 * nb && v[1 + 2 * nb..].iter().any(|&x| x != 0.0) {
-                return pk.err("temperaturberoende parametrar stöds inte ännu");
+                return pk.err("temperature-dependent parameters are not supported yet");
             }
             let back: Vec<(f64, f64)> = (0..nb).map(|k| (v[1 + 2 * k], v[2 + 2 * k])).collect();
             let iso = match cyclic {
@@ -319,7 +319,7 @@ fn build(def: &MaterialDef) -> Result<Option<Arc<dyn MaterialModel>>> {
                     if ck.has("PARAMETERS") {
                         let w = ck.first_floats()?;
                         if w.len() < 3 {
-                            return ck.err("PARAMETERS kräver σ|0, Q∞ och b");
+                            return ck.err("PARAMETERS requires σ|0, Q∞ and b");
                         }
                         Hardening::Voce { s0: w[0], q: w[1], b: w[2] }
                     } else {
@@ -329,30 +329,30 @@ fn build(def: &MaterialDef) -> Result<Option<Arc<dyn MaterialModel>>> {
             };
             (Iso::Fixed(iso), back)
         }
-        other => return pk.err(format!("HARDENING={other} stöds inte ännu (ISOTROPIC, KINEMATIC, COMBINED, JOHNSON COOK)")),
+        other => return pk.err(format!("HARDENING={other} is not supported yet (ISOTROPIC, KINEMATIC, COMBINED, JOHNSON COOK)")),
     };
     if !back.is_empty() && matches!(&elastic, Elastic::Iso(t) if t.len() > 1) {
-        return pk.err("temperaturberoende elasticitet med kinematiskt hårdnande stöds inte ännu");
+        return pk.err("temperature-dependent elasticity with kinematic hardening is not supported yet");
     }
     let hill = match def.behavior("POTENTIAL") {
         None => hill_matrix(&[1.0; 6]),
         Some(pot) => {
             if pot.has("DEPENDENCIES") {
-                return pot.err("fältberoende *POTENTIAL stöds inte ännu");
+                return pot.err("field-dependent *POTENTIAL is not supported yet");
             }
             let v = floats_all(pot)?;
             if v.len() < 6 {
-                return pot.err("*POTENTIAL kräver R11, R22, R33, R12, R13 och R23");
+                return pot.err("*POTENTIAL requires R11, R22, R33, R12, R13 and R23");
             }
             let r: [f64; 6] = std::array::from_fn(|i| v[i]);
             if r.iter().any(|&x| !(x > 0.0)) {
-                return pot.err("förhållandena Rij ska vara positiva");
+                return pot.err("the ratios Rij must be positive");
             }
             let p = hill_matrix(&r);
-            // flytytan ska vara sluten i deviatorrummet: F+G, F+H, G+H > 0 och FG+GH+HF > 0
+            // the yield surface must be closed in deviatoric space: F+G, F+H, G+H > 0 and FG+GH+HF > 0
             let (f, g, h) = (-p[1][2], -p[0][2], -p[0][1]);
             if !(f + g > 0.0 && f + h > 0.0 && g + h > 0.0 && f * g + g * h + h * f > 0.0) {
-                return pot.err("förhållandena Rij ger ingen sluten flytyta (Hill-konstanterna F, G, H)");
+                return pot.err("the ratios Rij do not give a closed yield surface (Hill constants F, G, H)");
             }
             p
         }
@@ -366,7 +366,7 @@ fn build(def: &MaterialDef) -> Result<Option<Arc<dyn MaterialModel>>> {
         _ => Vec::new(),
     };
     if !rate_tabs.is_empty() && !matches!(rate, RateLaw::None) {
-        return pk.err("*PLASTIC, RATE= och *RATE DEPENDENT kan inte kombineras");
+        return pk.err("*PLASTIC, RATE= and *RATE DEPENDENT cannot be combined");
     }
     let m = MetalPlastic { elastic, ce, hill, iso, back, rate, rate_tabs, hill_t };
     let s0 = m.iso_at(0.0).eval(0.0).0;
@@ -375,7 +375,7 @@ fn build(def: &MaterialDef) -> Result<Option<Arc<dyn MaterialModel>>> {
         _ => s0,
     };
     if !(s0 > 0.0) {
-        return pk.err("den initiala flytspänningen ska vara positiv");
+        return pk.err("the initial yield stress must be positive");
     }
     Ok(Some(Arc::new(m)))
 }
@@ -393,7 +393,7 @@ impl MetalPlastic {
         self.back.len()
     }
 
-    /// Flytspänning (σy, dσy/dΔλ) vid Δλ.
+    /// Yield stress (σy, dσy/dΔλ) at Δλ.
     fn yield_stress(&self, iso: &IsoAt, p_n: f64, dl: f64, dt: f64) -> (f64, f64) {
         if !self.rate_tabs.is_empty() {
             return super::plasticity_rate_tables::yield_stress(&self.rate_tabs, p_n + dl, dl, dt);
@@ -403,7 +403,7 @@ impl MetalPlastic {
             return (s, h);
         }
         if dt <= 0.0 {
-            // obegränsad töjningshastighet
+            // unbounded strain rate
             let r = self.rate.ratio_infinite().unwrap_or(f64::INFINITY);
             return (s * r, h * r);
         }
@@ -411,7 +411,7 @@ impl MetalPlastic {
         (s * r, h * r + s * dr / dt)
     }
 
-    /// Returalgoritmen och den konsistenta tangenten i 3D.
+    /// The return-mapping algorithm and the consistent tangent in 3D.
     fn update3d(&self, d: &M6, iso: &IsoAt, pmat: &M6, dt: f64, eps: &V6, st: &[f64], stn: &mut [f64]) -> Result<(V6, M6)> {
         let nb = self.nb();
         let p_n = st[P];
@@ -459,7 +459,7 @@ impl MetalPlastic {
                 }
             }
             let ainv: [f64; 36] = invert(&amat, 6)
-                .ok_or_else(|| FemError("returalgoritmen för Hill-plasticitet: singulärt system".into()))?
+                .ok_or_else(|| FemError("return mapping for Hill plasticity: singular system".into()))?
                 .try_into()
                 .unwrap();
             let xi = mvf(&ainv, &b);
@@ -471,7 +471,7 @@ impl MetalPlastic {
             let dphi = dot(&n, &xi_d) - sy_d;
             Ok(Ev { xi, ainv, f, sy, sy_d, phi: f - sy, dphi, xi_d })
         };
-        // gränser: φ(0) > 0; sök en övre gräns där φ < 0
+        // bounds: φ(0) > 0; search for an upper bound where φ < 0
         let gref = d[3][3].min(d[4][4]).min(d[5][5]).max(1e-300);
         let mut lo = 0.0;
         let mut hi = (f_tr - sy0) / (3.0 * gref) + 1e-300;
@@ -483,7 +483,7 @@ impl MetalPlastic {
             ev_hi = eval(hi)?;
             grow += 1;
             if grow > 200 {
-                return fail("returalgoritmen för Hill-plasticitet hittade ingen övre gräns för Δλ");
+                return fail("return mapping for Hill plasticity found no upper bound for Δλ");
             }
         }
         let tol = 1e-13 * sy0.max(f_tr);
@@ -512,7 +512,7 @@ impl MetalPlastic {
             ev = eval(dl)?;
         }
         if !conv {
-            return fail("returalgoritmen för Hill-plasticitet konvergerade inte");
+            return fail("return mapping for Hill plasticity did not converge");
         }
         let Ev { xi, ainv, f, sy, sy_d, xi_d, .. } = ev;
         let pxi = mv(pmat, &xi);
@@ -520,7 +520,7 @@ impl MetalPlastic {
         let dpxi = mv(&dp, &xi);
         let sig: V6 = std::array::from_fn(|i| sig_tr[i] - c * dpxi[i]);
         stn[P] = p_n + dl;
-        // Δεp = Δλ Pξ/f (ingenjörskomponenter)
+        // Δεp = Δλ Pξ/f (engineering components)
         for i in 0..6 {
             stn[EP + i] = st[EP + i] + dl * pxi[i] / f;
         }
@@ -533,7 +533,7 @@ impl MetalPlastic {
                 stn[ALPHA + 6 * k + i] = th * a[i] + ps * xdev[i] / sy;
             }
         }
-        // konsistent tangent
+        // consistent tangent
         let n: V6 = std::array::from_fn(|i| pxi[i] / f);
         let kappa = sy_d - dot(&n, &xi_d);
         // r = (nᵀ A⁻¹ D)ᵀ
@@ -563,7 +563,7 @@ impl MetalPlastic {
 
 impl MaterialModel for MetalPlastic {
     fn name(&self) -> &str {
-        "PLASTIC (Hill/hastighetsberoende)"
+        "PLASTIC (Hill/rate-dependent)"
     }
 
     fn n_state(&self) -> usize {

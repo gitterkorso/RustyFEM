@@ -1,15 +1,15 @@
-//! *COHESIVE SECTION för kohesiva element (`elements/cohesive.rs`).
+//! *COHESIVE SECTION for cohesive elements (`elements/cohesive.rs`).
 //!
-//! Parametrar: ELSET=, MATERIAL=, RESPONSE=TRACTION SEPARATION (standard),
-//! THICKNESS=SPECIFIED (standard) eller GEOMETRY, CONTROLS= (*SECTION
-//! CONTROLS med VISCOSITY= för viskös regularisering av skadan).
-//! Dataraden: konstitutiv tjocklek T0 (tomt eller 0 = 1) och tjockleken
-//! ut ur planet för COH2D4 (tomt eller 0 = 1).
+//! Parameters: ELSET=, MATERIAL=, RESPONSE=TRACTION SEPARATION (default),
+//! THICKNESS=SPECIFIED (default) or GEOMETRY, CONTROLS= (*SECTION
+//! CONTROLS with VISCOSITY= for viscous regularization of the damage).
+//! Data line: constitutive thickness T0 (empty or 0 = 1) and the out-of-plane
+//! thickness for COH2D4 (empty or 0 = 1).
 //!
-//! Tvärsnittet sparas som `SectionKind::Other` med originalnyckelordet;
-//! *SECTION CONTROLS (sparat av `keywords/explicit.rs`) slås upp här och
-//! viskositeten läggs till som den interna parametern `_VISCOSITY`. Därför
-//! måste *SECTION CONTROLS stå före *COHESIVE SECTION i RustyFEM.
+//! The section is stored as `SectionKind::Other` with the original keyword;
+//! *SECTION CONTROLS (stored by `keywords/explicit.rs`) is looked up here and
+//! the viscosity is added as the internal parameter `_VISCOSITY`. Therefore
+//! *SECTION CONTROLS must appear before *COHESIVE SECTION in RustyFEM.
 
 use crate::fem::model::{parse_f64, RawKeyword, SectionDef, SectionKind};
 use crate::inp::{required, InpCtx, Keyword, Kind};
@@ -17,7 +17,7 @@ use crate::model::Result;
 
 pub static KEYWORDS: &[Keyword] = &[Keyword { name: "COHESIVE SECTION", kind: Kind::Model, handler: cohesive_section }];
 
-/// Intern parameter med viskositeten från *SECTION CONTROLS.
+/// Internal parameter holding the viscosity from *SECTION CONTROLS.
 pub const VISCOSITY: &str = "_VISCOSITY";
 
 fn cohesive_section(ctx: &mut InpCtx, kw: &RawKeyword) -> Result<()> {
@@ -26,20 +26,20 @@ fn cohesive_section(ctx: &mut InpCtx, kw: &RawKeyword) -> Result<()> {
     let resp = kw.param_upper("RESPONSE").unwrap_or_else(|| "TRACTION SEPARATION".into());
     let resp = resp.split_whitespace().collect::<Vec<_>>().join(" ");
     if resp != "TRACTION SEPARATION" {
-        return kw.err(format!("RESPONSE={resp} stöds inte ännu (bara TRACTION SEPARATION)"));
+        return kw.err(format!("RESPONSE={resp} is not supported yet (only TRACTION SEPARATION)"));
     }
     match kw.param_upper("THICKNESS").as_deref() {
         None | Some("SPECIFIED") | Some("GEOMETRY") => {}
-        Some(t) => return kw.err(format!("THICKNESS={t} stöds inte (SPECIFIED, GEOMETRY)")),
+        Some(t) => return kw.err(format!("THICKNESS={t} is not supported (SPECIFIED, GEOMETRY)")),
     }
     for p in ["ORIENTATION", "STACK DIRECTION"] {
         if kw.has(p) {
-            return kw.err(format!("{p}= stöds inte ännu för kohesiva element"));
+            return kw.err(format!("{p}= is not supported yet for cohesive elements"));
         }
     }
     let v = kw.first_floats()?;
     if v.iter().any(|x| *x < 0.0) {
-        return kw.err("tjocklekarna får inte vara negativa");
+        return kw.err("the thicknesses may not be negative");
     }
     let mut raw = kw.clone();
     if let Some(name) = kw.param_upper("CONTROLS") {
@@ -48,14 +48,14 @@ fn cohesive_section(ctx: &mut InpCtx, kw: &RawKeyword) -> Result<()> {
         };
         let sc = find(&ctx.mesh_ref().extra).or_else(|| find(&ctx.model.extra));
         let Some(sc) = sc else {
-            return kw.err(format!("*SECTION CONTROLS, NAME={name} saknas (den måste stå före *COHESIVE SECTION i RustyFEM)"));
+            return kw.err(format!("*SECTION CONTROLS, NAME={name} is missing (it must appear before *COHESIVE SECTION in RustyFEM)"));
         };
         let mu = match sc.param("VISCOSITY") {
-            Some(s) => parse_f64(s).ok_or_else(|| crate::model::FemError(format!("{}: ogiltigt VISCOSITY=", sc.location())))?,
+            Some(s) => parse_f64(s).ok_or_else(|| crate::model::FemError(format!("{}: invalid VISCOSITY=", sc.location())))?,
             None => 0.0,
         };
         if mu < 0.0 {
-            return sc.err("VISCOSITY= får inte vara negativ");
+            return sc.err("VISCOSITY= may not be negative");
         }
         raw.params.push((VISCOSITY.into(), format!("{mu:e}")));
     }
@@ -63,7 +63,7 @@ fn cohesive_section(ctx: &mut InpCtx, kw: &RawKeyword) -> Result<()> {
     Ok(())
 }
 
-/// Konstitutiv tjocklek (None = ur geometrin), tjocklek ut ur planet och viskositet.
+/// Constitutive thickness (None = from the geometry), out-of-plane thickness and viscosity.
 pub fn section_values(sec: &SectionDef) -> (Option<f64>, f64, f64) {
     let v = sec.raw.first_floats().unwrap_or_default();
     let geometry = sec.raw.param_upper("THICKNESS").as_deref() == Some("GEOMETRY");

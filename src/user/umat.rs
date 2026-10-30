@@ -1,45 +1,45 @@
-//! UMAT: användarmaterial med det etablerade UMAT-gränssnittet.
+//! UMAT: user materials with the established UMAT interface.
 //!
-//! En UMAT skrivs i Rust genom att implementera `Umat` och registrera den med
-//! `register(prefix, ...)`; materialet väljs med materialnamnet (CMNAME),
-//! där längsta registrerade prefix vinner. En UMAT i ett delat
-//! bibliotek (Fortran eller C, symbolen `umat_`/`UMAT`) laddas med
-//! `super::load_library` eller miljövariabeln `RUSTYFEM_USER`.
+//! A UMAT is written in Rust by implementing `Umat` and registering it with
+//! `register(prefix, ...)`; the material is selected by the material name (CMNAME),
+//! where the longest registered prefix wins. A UMAT in a shared
+//! library (Fortran or C, symbol `umat_`/`UMAT`) is loaded with
+//! `super::load_library` or the environment variable `RUSTYFEM_USER`.
 //!
-//! Argumenten har de etablerade namnen och betydelserna:
+//! The arguments have the established names and meanings:
 //!
-//! | Argument | Innehåll |
+//! | Argument | Content |
 //! |---|---|
-//! | STRESS(NTENS) | spänning vid inkrementets början → slut (Cauchy, roterad med DROT vid NLGEOM) |
-//! | STATEV(NSTATV) | tillståndsvariabler (*DEPVAR) vid början → slut |
-//! | DDSDDE(NTENS,NTENS) | Jacobian ∂Δσ/∂Δε, kolumnvis som i Fortran (`ddsdde[i + j·NTENS]`) |
-//! | SSE, SPD, SCD | specifik elastisk, plastisk och krypenergi (ackumuleras) |
-//! | STRAN, DSTRAN | töjning vid början och töjningsinkrement (ingenjörsskjuvtöjning) |
-//! | TIME(2), DTIME | stegtid och total tid vid början, inkrementets längd |
-//! | TEMP, DTEMP | temperatur vid början och dess ändring |
-//! | NDI, NSHR, NTENS | antal normal- och skjuvkomponenter: 3D 3/3/6, plan töjning och axisymmetri 3/1/4, plan spänning 2/1/3, stänger 1/0/1 |
-//! | PROPS(NPROPS) | konstanterna från *USER MATERIAL, CONSTANTS= |
-//! | DROT(3,3) | inkrementell rotation (Hughes–Winget från DFGRD0/DFGRD1) |
-//! | PNEWDT | sätts < 1 för att begära mindre inkrement (inkrementet görs om) |
-//! | DFGRD0, DFGRD1 | deformationsgradient vid början och slut (enhetsmatris utan NLGEOM) |
+//! | STRESS(NTENS) | stress at the start → end of the increment (Cauchy, rotated with DROT under NLGEOM) |
+//! | STATEV(NSTATV) | state variables (*DEPVAR) at start → end |
+//! | DDSDDE(NTENS,NTENS) | Jacobian ∂Δσ/∂Δε, column-wise as in Fortran (`ddsdde[i + j·NTENS]`) |
+//! | SSE, SPD, SCD | specific elastic, plastic and creep energy (accumulated) |
+//! | STRAN, DSTRAN | strain at the start and strain increment (engineering shear strain) |
+//! | TIME(2), DTIME | step time and total time at the start, increment size |
+//! | TEMP, DTEMP | temperature at the start and its change |
+//! | NDI, NSHR, NTENS | number of direct and shear components: 3D 3/3/6, plane strain and axisymmetry 3/1/4, plane stress 2/1/3, trusses 1/0/1 |
+//! | PROPS(NPROPS) | the constants from *USER MATERIAL, CONSTANTS= |
+//! | DROT(3,3) | incremental rotation (Hughes–Winget from DFGRD0/DFGRD1) |
+//! | PNEWDT | set < 1 to request a smaller increment (the increment is redone) |
+//! | DFGRD0, DFGRD1 | deformation gradient at start and end (identity matrix without NLGEOM) |
 //!
-//! Komponentordningen är 11, 22, 33, 12, 13, 23.
+//! The component order is 11, 22, 33, 12, 13, 23.
 //!
-//! COORDS (integrationspunktens läge, aktuellt vid NLGEOM), CELENT, NOEL,
-//! NPT, KSTEP, KINC, TIME(1) = stegtid och PREDEF/DPRED (fältvariablerna)
-//! kommer från `super::context` (satta av elementen och stegramverket);
-//! LAYER = KSPT = 1. PNEWDT < 1 gör om inkrementet med längden PNEWDT · Δt.
-//! RPL, DDSDDT, DRPLDE och DRPLDT skickas men används inte.
+//! COORDS (integration point position, current under NLGEOM), CELENT, NOEL,
+//! NPT, KSTEP, KINC, TIME(1) = step time and PREDEF/DPRED (the field variables)
+//! come from `super::context` (set by the elements and the step framework);
+//! LAYER = KSPT = 1. PNEWDT < 1 redoes the increment with size PNEWDT · Δt.
+//! RPL, DDSDDT, DRPLDE and DRPLDT are passed but not used.
 
 use super::dynlib::DynLib;
 use crate::model::{fail, Result};
 use std::sync::{Arc, Mutex, OnceLock, RwLock};
 
-/// Argumenten till en UMAT (Fortran-namnen, 0-baserade index i Rust).
+/// The arguments to a UMAT (the Fortran names, 0-based indices in Rust).
 pub struct UmatArgs<'a> {
     pub stress: &'a mut [f64],
     pub statev: &'a mut [f64],
-    /// DDSDDE(NTENS, NTENS) kolumnvis: element (i, j) = `ddsdde[i + j * ntens]`.
+    /// DDSDDE(NTENS, NTENS) column-wise: entry (i, j) = `ddsdde[i + j * ntens]`.
     pub ddsdde: &'a mut [f64],
     pub sse: &'a mut f64,
     pub spd: &'a mut f64,
@@ -63,18 +63,18 @@ pub struct UmatArgs<'a> {
     pub nstatv: usize,
     pub props: &'a [f64],
     pub coords: [f64; 3],
-    /// DROT(3,3) radvis (`drot[i][j]` = DROT(i+1, j+1)).
+    /// DROT(3,3) row-wise (`drot[i][j]` = DROT(i+1, j+1)).
     pub drot: [[f64; 3]; 3],
     pub pnewdt: &'a mut f64,
     pub celent: f64,
-    /// DFGRD0 och DFGRD1 radvis (`dfgrd1[i][j]` = DFGRD1(i+1, j+1)).
+    /// DFGRD0 and DFGRD1 row-wise (`dfgrd1[i][j]` = DFGRD1(i+1, j+1)).
     pub dfgrd0: [[f64; 3]; 3],
     pub dfgrd1: [[f64; 3]; 3],
     pub noel: i64,
     pub npt: usize,
     pub layer: usize,
     pub kspt: usize,
-    /// JSTEP(1..4): steg, procedurtyp, NLGEOM (1/0), linjär perturbation (1/0).
+    /// JSTEP(1..4): step, procedure type, NLGEOM (1/0), linear perturbation (1/0).
     pub jstep: [i32; 4],
     pub kinc: usize,
 }
@@ -85,21 +85,21 @@ impl UmatArgs<'_> {
         self.ddsdde[i + j * self.ntens]
     }
 
-    /// Sätter DDSDDE(i+1, j+1).
+    /// Sets DDSDDE(i+1, j+1).
     pub fn set_d(&mut self, i: usize, j: usize, v: f64) {
         let n = self.ntens;
         self.ddsdde[i + j * n] = v;
     }
 }
 
-/// En användarmaterialmodell med UMAT:s semantik.
+/// A user material model with UMAT semantics.
 pub trait Umat: Send + Sync {
-    /// Namn för meddelanden.
+    /// Name for messages.
     fn name(&self) -> String {
         "UMAT".into()
     }
 
-    /// Uppdaterar STRESS, STATEV och energierna och sätter DDSDDE.
+    /// Updates STRESS, STATEV and the energies and sets DDSDDE.
     fn umat(&self, a: &mut UmatArgs) -> Result<()>;
 }
 
@@ -110,9 +110,9 @@ fn registry() -> &'static Registry {
     R.get_or_init(|| RwLock::new(super::samples::umats()))
 }
 
-/// Registrerar en UMAT för material vars namn börjar med `prefix` (versaler
-/// spelar ingen roll; tomt prefix = alla material med *USER MATERIAL).
-/// En senare registrering med samma prefix ersätter den tidigare.
+/// Registers a UMAT for materials whose name starts with `prefix` (case
+/// does not matter; empty prefix = all materials with *USER MATERIAL).
+/// A later registration with the same prefix replaces the earlier one.
 pub fn register(prefix: &str, umat: Arc<dyn Umat>) {
     let p = prefix.trim().to_uppercase();
     let mut r = registry().write().unwrap_or_else(|e| e.into_inner());
@@ -120,8 +120,8 @@ pub fn register(prefix: &str, umat: Arc<dyn Umat>) {
     r.push((p, umat));
 }
 
-/// UMAT för materialet `cmname`: längsta registrerade prefix, annars
-/// biblioteket i `RUSTYFEM_USER`.
+/// The UMAT for material `cmname`: longest registered prefix, otherwise
+/// the library in `RUSTYFEM_USER`.
 pub fn find(cmname: &str) -> Result<Option<Arc<dyn Umat>>> {
     let up = cmname.trim().to_uppercase();
     {
@@ -136,8 +136,8 @@ pub fn find(cmname: &str) -> Result<Option<Arc<dyn Umat>>> {
     }
 }
 
-/// UMAT i Fortrans anropskonvention: alla argument som pekare, CMNAME
-/// (CHARACTER*80) med dold längd sist (gfortran och Intel Fortran som standard).
+/// UMAT in the Fortran calling convention: all arguments as pointers, CMNAME
+/// (CHARACTER*80) with a hidden length last (gfortran and Intel Fortran by default).
 pub type UmatFn = unsafe extern "C" fn(
     stress: *mut f64,
     statev: *mut f64,
@@ -179,12 +179,12 @@ pub type UmatFn = unsafe extern "C" fn(
     cmname_len: usize,
 );
 
-/// UMAT i ett delat bibliotek.
+/// UMAT in a shared library.
 pub struct DllUmat {
     pub f: UmatFn,
     pub lib: Arc<DynLib>,
     pub symbol: String,
-    /// Anropen görs ett i taget (Fortrankod kan ha SAVE-variabler).
+    /// Calls are made one at a time (Fortran code may have SAVE variables).
     lock: Mutex<()>,
 }
 
@@ -194,14 +194,14 @@ impl DllUmat {
     }
 }
 
-/// 3×3 radvis → kolumnvis (Fortran).
+/// 3×3 row-wise → column-wise (Fortran).
 fn colmajor(m: &[[f64; 3]; 3]) -> [f64; 9] {
     std::array::from_fn(|k| m[k % 3][k / 3])
 }
 
 impl Umat for DllUmat {
     fn name(&self) -> String {
-        format!("{} i {}", self.symbol, self.lib.path)
+        format!("{} in {}", self.symbol, self.lib.path)
     }
 
     fn umat(&self, a: &mut UmatArgs) -> Result<()> {
@@ -215,7 +215,7 @@ impl Umat for DllUmat {
         let drot = colmajor(&a.drot);
         let f0 = colmajor(&a.dfgrd0);
         let f1 = colmajor(&a.dfgrd1);
-        // tomma fält får ändå en giltig adress
+        // empty arrays still get a valid address
         let mut statev_dummy = [0.0f64; 1];
         let statev: *mut f64 = if a.statev.is_empty() { statev_dummy.as_mut_ptr() } else { a.statev.as_mut_ptr() };
         let props_dummy = [0.0f64; 1];
@@ -265,7 +265,7 @@ impl Umat for DllUmat {
             );
         }
         if a.stress.iter().chain(a.ddsdde.iter()).any(|v| !v.is_finite()) {
-            return fail(format!("UMAT {} gav spänning eller DDSDDE som inte är ändliga tal", self.symbol));
+            return fail(format!("UMAT {} returned stress or DDSDDE values that are not finite numbers", self.symbol));
         }
         Ok(())
     }

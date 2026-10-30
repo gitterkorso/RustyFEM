@@ -1,38 +1,38 @@
-//! Rörelement PIPE21, PIPE22 (plana) och PIPE31, PIPE32 (rumsliga).
+//! Pipe elements PIPE21, PIPE22 (planar) and PIPE31, PIPE32 (spatial).
 //!
-//! Rörelementen är Timoshenkobalkarna B21/B22/B31/B32 (`beam_timoshenko.rs`)
-//! med tunnväggigt rörtvärsnitt (`*BEAM SECTION, SECTION=PIPE` eller
-//! `*BEAM GENERAL SECTION, SECTION=PIPE`: ytterradie r, väggtjocklek t) och
-//! en extra variabel per integrationspunkt för ringtöjningen εθ (1 för
-//! PIPE21/PIPE31, 2 för PIPE22/PIPE32). Ringtöjningen ligger i
-//! U1 på en intern nod per integrationspunkt (`internal_nodes`).
+//! The pipe elements are the Timoshenko beams B21/B22/B31/B32 (`beam_timoshenko.rs`)
+//! with a thin-walled pipe section (`*BEAM SECTION, SECTION=PIPE` or
+//! `*BEAM GENERAL SECTION, SECTION=PIPE`: outer radius r, wall thickness t) and
+//! an extra variable per integration point for the hoop strain εθ (1 for
+//! PIPE21/PIPE31, 2 for PIPE22/PIPE32). The hoop strain is stored in
+//! U1 on one internal node per integration point (`internal_nodes`).
 //!
-//! Formulering:
+//! Formulation:
 //!
-//! - Väggens membrandel är i plan spänning med Ē = E/(1 − ν²):
-//!   N = Ē·A·(ε + ν·εθ) och ringkraften Nθ = Ē·A·(εθ + ν·ε) per längdenhet.
-//!   Böjning, vridning och skjuvning är balkens (E·I, G·J, k·G·A), dvs.
-//!   fibrernas ringspänning är densamma i hela tvärsnittet.
-//! - Utan tryck blir εθ = −ν·ε och N = E·A·ε (som balken).
-//! - *DLOAD PI/PE (inre/yttre tryck p med effektiv diameter D på dataraden,
-//!   slutna ändar): ringlasten ger σθ = (pᵢ·Dᵢ − pₑ·Dₑ)/(2t) och
-//!   ändlocksbidraget P = π/4·(pᵢ·Dᵢ² − pₑ·Dₑ²) läggs som axialkrafter −P·t
-//!   och +P·t i elementets ändnoder (t = elementets axel). Längs ett
-//!   sammanhängande rör tar ändlockskrafterna ut varandra, så rörets
-//!   normalkraft SF1 = P plus Poissoneffekten men den effektiva normalkraften
-//!   (ESF1 = SF1 − P) bestäms av jämvikten – ingen reaktion uppstår av trycket
-//!   i ett fast inspänt rör.
+//! - The membrane part of the wall is in plane stress with Ē = E/(1 − ν²):
+//!   N = Ē·A·(ε + ν·εθ) and the hoop force Nθ = Ē·A·(εθ + ν·ε) per unit length.
+//!   Bending, torsion and shear are the beam's (E·I, G·J, k·G·A), i.e.
+//!   the hoop stress of the fibers is the same in the whole section.
+//! - Without pressure εθ = −ν·ε and N = E·A·ε (like the beam).
+//! - *DLOAD PI/PE (internal/external pressure p with effective diameter D on the data line,
+//!   closed ends): the hoop load gives σθ = (pᵢ·Dᵢ − pₑ·Dₑ)/(2t) and
+//!   the end cap contribution P = π/4·(pᵢ·Dᵢ² − pₑ·Dₑ²) is applied as axial forces −P·t
+//!   and +P·t at the element's end nodes (t = the element axis). Along a
+//!   continuous pipe the end cap forces cancel each other, so the pipe's
+//!   axial force SF1 = P plus the Poisson effect, but the effective axial force
+//!   (ESF1 = SF1 − P) is determined by equilibrium – no reaction arises from the pressure
+//!   in a fully clamped pipe.
 //!
-//! Utdata: SF/SM som balkarna (SF1 = rörväggens normalkraft) och för
-//! `*BEAM SECTION` spänningen S (S11 axiell, S22 ring, S12 vridskjuvning) och
-//! töjningen E i standardpunkterna på medelradien: 1, 3, 5, 7 (rumsliga,
-//! vid x2 = −rₘ, x1 = rₘ, x2 = rₘ, x1 = −rₘ) respektive 1 och 5 (plana,
-//! x2 = −rₘ och rₘ).
+//! Output: SF/SM like the beams (SF1 = the axial force of the pipe wall) and for
+//! `*BEAM SECTION` the stress S (S11 axial, S22 hoop, S12 torsional shear) and
+//! the strain E at the standard points on the mean radius: 1, 3, 5, 7 (spatial,
+//! at x2 = −rₘ, x1 = rₘ, x2 = rₘ, x1 = −rₘ) and 1 and 5, respectively (planar,
+//! x2 = −rₘ and rₘ).
 //!
-//! Med olinjärt material eller NLGEOM räknas balkdelen som B2x/B3x
-//! (sektionspunkter respektive den geometriskt olinjära balken) och
-//! ringtöjningen är då frikopplad från axialtöjningen (trycket ger inget
-//! Poissonbidrag).
+//! With a nonlinear material or NLGEOM the beam part is computed as B2x/B3x
+//! (section points and the geometrically nonlinear beam, respectively) and
+//! the hoop strain is then decoupled from the axial strain (the pressure gives no
+//! Poisson contribution).
 
 use super::api::{ElemCtx, ElemResponse, ElementType, Family, IpField, MassKind};
 use super::beam_timoshenko::{self as timo, plastic, BeamGeom, TimoBeam};
@@ -45,7 +45,7 @@ pub struct Pipe {
     name: &'static str,
     beam: &'static TimoBeam,
     dim: usize,
-    /// Antal balknoder (2 eller 3).
+    /// Number of beam nodes (2 or 3).
     nb: usize,
 }
 
@@ -56,7 +56,7 @@ pub static PIPE32: Pipe = Pipe { name: "PIPE32", beam: &timo::B32, dim: 3, nb: 3
 
 pub static TYPES: &[&dyn ElementType] = &[&PIPE21, &PIPE22, &PIPE31, &PIPE32];
 
-/// Gausspunkter som balkarna (1 för linjära, 2 för kvadratiska element).
+/// Gauss points like the beams (1 for linear, 2 for quadratic elements).
 fn gauss(nb: usize) -> &'static [(f64, f64)] {
     const G1: &[(f64, f64)] = &[(0.0, 2.0)];
     const G2P: &[(f64, f64)] = &[(-common::G2, 1.0), (common::G2, 1.0)];
@@ -67,14 +67,14 @@ fn dshape(nb: usize, xi: f64) -> Vec<f64> {
     if nb == 2 { vec![-0.5, 0.5] } else { vec![xi - 0.5, -2.0 * xi, xi + 0.5] }
 }
 
-/// Rörtvärsnittets materialdata.
+/// Material data of the pipe section.
 struct Wall {
     e: f64,
     nu: f64,
     /// Ē = E/(1 − ν²)
     eb: f64,
     a: f64,
-    /// Ytterradie och väggtjocklek (0 om de saknas, t.ex. GENERAL).
+    /// Outer radius and wall thickness (0 if missing, e.g. GENERAL).
     r: f64,
     t: f64,
 }
@@ -92,7 +92,7 @@ impl Pipe {
         if self.dim == 2 { 3 } else { 6 }
     }
 
-    /// Elementets sammanhang för balkdelen (utan de interna noderna).
+    /// The element context for the beam part (without the internal nodes).
     fn beam_ctx<'a>(&self, ctx: &ElemCtx<'a>) -> ElemCtx<'a> {
         let mut b = ctx.clone();
         let nn = self.n_nodes();
@@ -116,15 +116,15 @@ impl Pipe {
         let shape = sec.beam().map(|b| b.shape.to_uppercase()).unwrap_or_default();
         if shape != "PIPE" {
             return fail(format!(
-                "element {} ({}): rörelement kräver SECTION=PIPE på *BEAM SECTION eller *BEAM GENERAL SECTION (inte {shape})",
+                "element {} ({}): pipe elements require SECTION=PIPE on *BEAM SECTION or *BEAM GENERAL SECTION (not {shape})",
                 ctx.label, self.name
             ));
         }
         let v = sec.raw.first_floats()?;
         let (r, t) = (v.first().copied().unwrap_or(0.0), v.get(1).copied().unwrap_or(0.0));
         let e = g.sec.e;
-        // *BEAM GENERAL SECTION har inget tvärkontraktionstal: ring- och
-        // axialtöjningen kopplas då inte (ν = POISSON=, standard 0)
+        // *BEAM GENERAL SECTION has no Poisson's ratio: the hoop and
+        // axial strains are then not coupled (ν = POISSON=, default 0)
         let nu = if sec.raw.name == "BEAM GENERAL SECTION" {
             sec.raw.param("POISSON").and_then(|s| s.trim().parse::<f64>().ok()).unwrap_or(0.0)
         } else if g.sec.g > 0.0 {
@@ -135,8 +135,8 @@ impl Pipe {
         Ok(Wall { e, nu, eb: e / (1.0 - nu * nu), a: g.sec.a, r, t })
     }
 
-    /// Axialtöjningens B-vektor (över balkfrihetsgraderna) och vikt w·|dx/dξ|
-    /// i gausspunkt `q`.
+    /// The B vector of the axial strain (over the beam degrees of freedom) and the weight w·|dx/dξ|
+    /// at Gauss point `q`.
     fn axial_b(&self, g: &BeamGeom, q: usize) -> (Vec<f64>, f64) {
         let (xi, w) = gauss(self.nb)[q];
         let dn = dshape(self.nb, xi);
@@ -158,7 +158,7 @@ impl Pipe {
         (b, w * j)
     }
 
-    /// Lägger in en balkmatris (nb-frihetsgrader) i elementmatrisen.
+    /// Places a beam matrix (nb degrees of freedom) into the element matrix.
     fn embed(&self, kb: &[f64]) -> Vec<f64> {
         let nbd = self.ndof_beam();
         let n = nbd + self.nh();
@@ -175,7 +175,7 @@ impl Pipe {
         f
     }
 
-    /// Ringtöjningens styvhet (frikopplad) eller membrankopplingen (linjär).
+    /// The hoop strain stiffness (decoupled) or the membrane coupling (linear).
     fn add_hoop(&self, ctx: &ElemCtx, k: &mut [f64], coupled: bool) -> Result<()> {
         let bctx = self.beam_ctx(ctx);
         let g = self.beam.geom(&bctx)?;
@@ -262,7 +262,7 @@ impl ElementType for Pipe {
             let k = self.stiffness(ctx)?;
             return Ok(ElemResponse { fint: common::matvec(&k, u), k: tangent.then_some(k) });
         }
-        // olinjärt material eller NLGEOM: balken som B2x/B3x, ringtöjningen frikopplad
+        // nonlinear material or NLGEOM: the beam as B2x/B3x, the hoop strain decoupled
         let r = self.beam.internal_force(&self.beam_ctx(ctx), &u[..nbd], &du[..nbd], so, sn, tangent)?;
         let mut kh = vec![0.0; n * n];
         self.add_hoop(ctx, &mut kh, false)?;
@@ -300,17 +300,17 @@ impl ElementType for Pipe {
         let d = load.extra.first().copied().unwrap_or(0.0);
         if !(d > 0.0) {
             return fail(format!(
-                "element {} ({}): *DLOAD {} kräver den effektiva diametern efter storleken",
+                "element {} ({}): *DLOAD {} requires the effective diameter after the magnitude",
                 ctx.label, self.name, load.kind
             ));
         }
         let g = self.beam.geom(&bctx)?;
         let wl = self.wall(ctx, &g)?;
         if !(wl.t > 0.0) {
-            return fail(format!("element {} ({}): rörets väggtjocklek saknas", ctx.label, self.name));
+            return fail(format!("element {} ({}): the pipe wall thickness is missing", ctx.label, self.name));
         }
         let mut f = vec![0.0; nbd + self.nh()];
-        // ändlocken: axialkrafter längs elementets axel i ändnoderna
+        // the end caps: axial forces along the element axis at the end nodes
         let cap = std::f64::consts::PI / 4.0 * (pi - pe) * d * d;
         let tdir = |xi: f64| -> [f64; 3] {
             let dn = dshape(self.nb, xi);
@@ -328,7 +328,7 @@ impl ElementType for Pipe {
             f[c] -= cap * t0[c];
             f[(self.nb - 1) * nt + c] += cap * t1[c];
         }
-        // ringlasten: σθ = (pᵢDᵢ − pₑDₑ)/(2t) i jämvikt med Ē·A·(εθ + ν·ε)
+        // the hoop load: σθ = (pᵢDᵢ − pₑDₑ)/(2t) in equilibrium with Ē·A·(εθ + ν·ε)
         let sth = (pi - pe) * d / (2.0 * wl.t);
         for q in 0..self.nh() {
             let (_, wj) = self.axial_b(&g, q);
@@ -372,7 +372,7 @@ impl ElementType for Pipe {
                 sm = f.points.iter().map(|p| p.2.clone()).collect();
             }
         }
-        // spänningar i standardpunkterna (bara *BEAM SECTION)
+        // stresses at the standard points (only *BEAM SECTION)
         let sec = ctx.section(self.name)?;
         if sec.raw.name != "BEAM SECTION" || wl.t <= 0.0 || sm.len() != self.nh() {
             return Ok(out);

@@ -1,19 +1,19 @@
-//! Nyckelord för multifysik: kopplad termisk-elektrisk analys,
-//! piezoelektricitet, masstransport och termisk kontakt.
+//! Keywords for multiphysics: coupled thermal-electrical analysis,
+//! piezoelectricity, mass diffusion and thermal contact.
 //!
-//! - *COUPLED THERMAL-ELECTRICAL, *MASS DIFFUSION: procedurer
+//! - *COUPLED THERMAL-ELECTRICAL, *MASS DIFFUSION: procedures
 //!   (`steps/thermal_electric.rs`, `steps/mass_diffusion.rs`).
 //! - *ELECTRICAL CONDUCTIVITY, *JOULE HEAT FRACTION, *PIEZOELECTRIC,
-//!   *DIELECTRIC, *DIFFUSIVITY, *SOLUBILITY: materialbeteenden
+//!   *DIELECTRIC, *DIFFUSIVITY, *SOLUBILITY: material behaviors
 //!   (`materials/multiphysics.rs`).
-//! - *CECURRENT och *CECHARGE: koncentrerad ström/laddning på frihetsgrad 9,
-//!   lagras som punktlaster så att stegens arvsregler gäller.
-//! - *DECURRENT (CBF per volym, CSn per area) och *DSECURRENT (yta, CS):
-//!   fördelade strömmar med typerna `ECUR:CBF` och `ECUR:CSn`.
-//! - *GAP CONDUCTANCE, *GAP RADIATION: underalternativ till *SURFACE
-//!   INTERACTION, sparas i `FeModel::extra` (`interactions/thermal_contact.rs`).
-//! - *INITIAL CONDITIONS, TYPE=CONCENTRATION skickas hit från
-//!   `temperature.rs` och sparas med upplösta nodindex [nod, värde].
+//! - *CECURRENT and *CECHARGE: concentrated current/charge on degree of freedom 9,
+//!   stored as point loads so that the steps' inheritance rules apply.
+//! - *DECURRENT (CBF per volume, CSn per area) and *DSECURRENT (surface, CS):
+//!   distributed currents with the types `ECUR:CBF` and `ECUR:CSn`.
+//! - *GAP CONDUCTANCE, *GAP RADIATION: suboptions of *SURFACE
+//!   INTERACTION, stored in `FeModel::extra` (`interactions/thermal_contact.rs`).
+//! - *INITIAL CONDITIONS, TYPE=CONCENTRATION is forwarded here from
+//!   `temperature.rs` and stored with resolved node indices [node, value].
 
 use crate::fem::dof::EPOT;
 use crate::fem::model::{parse_f64, CloadBlock, DataLine, DistLoad, DloadBlock, RawKeyword};
@@ -39,7 +39,7 @@ pub static KEYWORDS: &[Keyword] = &[
 ];
 
 fn num(kw: &RawKeyword, line: usize, s: &str) -> Result<f64> {
-    parse_f64(s).ok_or_else(|| FemError(format!("{} rad {line} (*{}): '{s}' är inget tal", kw.file, kw.name)))
+    parse_f64(s).ok_or_else(|| FemError(format!("{} line {line} (*{}): '{s}' is not a number", kw.file, kw.name)))
 }
 
 fn op_new(kw: &RawKeyword) -> bool {
@@ -49,23 +49,23 @@ fn op_new(kw: &RawKeyword) -> bool {
 fn no_amplitude(kw: &RawKeyword) -> Result<()> {
     for p in ["AMPLITUDE", "USER", "FIELD"] {
         if kw.has(p) {
-            return kw.err(format!("{p}= stöds inte ännu"));
+            return kw.err(format!("{p}= is not supported yet"));
         }
     }
     Ok(())
 }
 
-/// Punktlast på frihetsgrad 9 (ström eller laddning).
+/// Point load on degree of freedom 9 (current or charge).
 fn point9(ctx: &mut InpCtx, kw: &RawKeyword, what: &str) -> Result<()> {
     no_amplitude(kw)?;
     let mut block = CloadBlock { op_new: op_new(kw), amplitude: None, follower: false, items: Vec::new(), source: kw.location() };
     for d in &kw.data {
         if d.fields.len() < 3 {
-            return kw.err_at(d.line, format!("skriv 'nod/nset, 9, {what}'"));
+            return kw.err_at(d.line, format!("write 'node/nset, 9, {what}'"));
         }
         let nodes = ctx.node_ref(kw, d.line, &d.fields[0], None)?;
         if parse_label(&d.fields[1]).unwrap_or(0) != 9 {
-            return kw.err_at(d.line, format!("frihetsgrad {} – *{} gäller den elektriska potentialen (9)", d.fields[1].trim(), kw.name));
+            return kw.err_at(d.line, format!("degree of freedom {} – *{} applies to the electric potential (9)", d.fields[1].trim(), kw.name));
         }
         let v = num(kw, d.line, &d.fields[2])?;
         for n in nodes {
@@ -77,11 +77,11 @@ fn point9(ctx: &mut InpCtx, kw: &RawKeyword, what: &str) -> Result<()> {
 }
 
 fn cecurrent(ctx: &mut InpCtx, kw: &RawKeyword) -> Result<()> {
-    point9(ctx, kw, "ström")
+    point9(ctx, kw, "current")
 }
 
 fn cecharge(ctx: &mut InpCtx, kw: &RawKeyword) -> Result<()> {
-    point9(ctx, kw, "laddning")
+    point9(ctx, kw, "charge")
 }
 
 fn decurrent(ctx: &mut InpCtx, kw: &RawKeyword) -> Result<()> {
@@ -89,14 +89,14 @@ fn decurrent(ctx: &mut InpCtx, kw: &RawKeyword) -> Result<()> {
     let mut block = DloadBlock { op_new: op_new(kw), amplitude: None, items: Vec::new(), source: kw.location() };
     for d in &kw.data {
         if d.fields.len() < 3 {
-            return kw.err_at(d.line, "skriv 'element/elset, CBF eller CSn, strömtäthet'");
+            return kw.err_at(d.line, "write 'element/elset, CBF or CSn, current density'");
         }
         let elems = ctx.elem_ref(kw, d.line, &d.fields[0], None)?;
         let label = d.fields[1].trim().to_uppercase();
-        // område physics3: CJ (volymströmtäthet med riktning) i *ELECTROMAGNETIC
+        // Area physics3: CJ (volume current density with direction) in *ELECTROMAGNETIC
         let ok = label == "CBF" || label == "CJ" || label.strip_prefix("CS").and_then(|s| s.parse::<usize>().ok()).is_some_and(|n| n >= 1);
         if !ok {
-            return kw.err_at(d.line, format!("strömtypen {label} stöds inte (CBF, CS1, CS2, ..., CJ)"));
+            return kw.err_at(d.line, format!("current type {label} is not supported (CBF, CS1, CS2, ..., CJ)"));
         }
         let q = num(kw, d.line, &d.fields[2])?;
         for e in elems {
@@ -113,22 +113,22 @@ fn dsecurrent(ctx: &mut InpCtx, kw: &RawKeyword) -> Result<()> {
     let mut block = DloadBlock { op_new: op_new(kw), amplitude: None, items: Vec::new(), source: kw.location() };
     for d in &kw.data {
         if d.fields.len() < 3 {
-            return kw.err_at(d.line, "skriv 'yta, CS, strömtäthet'");
+            return kw.err_at(d.line, "write 'surface, CS, current density'");
         }
         let label = d.fields[1].trim().to_uppercase();
         if label != "CS" {
-            return kw.err_at(d.line, format!("strömtypen {label} stöds inte (CS)"));
+            return kw.err_at(d.line, format!("current type {label} is not supported (CS)"));
         }
         let q = num(kw, d.line, &d.fields[2])?;
         let up = d.fields[0].trim().to_uppercase();
         let faces = {
             let mesh = ctx.mesh_ref();
-            let Some(s) = mesh.surfaces.get(&up) else { return kw.err_at(d.line, format!("ytan '{}' finns inte", d.fields[0].trim())) };
+            let Some(s) = mesh.surfaces.get(&up) else { return kw.err_at(d.line, format!("surface '{}' does not exist", d.fields[0].trim())) };
             s.faces.clone()
         };
         for (e, f) in faces {
             let Some(n) = f.strip_prefix('S').and_then(|s| s.parse::<usize>().ok()) else {
-                return kw.err_at(d.line, format!("ytbeteckningen {f} stöds inte (S1, S2, ...)"));
+                return kw.err_at(d.line, format!("face identifier {f} is not supported (S1, S2, ...)"));
             };
             block.items.push(DistLoad { elem: e, kind: format!("ECUR:CS{n}"), magnitude: q, extra: Vec::new() });
         }
@@ -137,11 +137,11 @@ fn dsecurrent(ctx: &mut InpCtx, kw: &RawKeyword) -> Result<()> {
     Ok(())
 }
 
-/// *INITIAL CONDITIONS, TYPE=CONCENTRATION (normerad koncentration per nod).
+/// *INITIAL CONDITIONS, TYPE=CONCENTRATION (normalized concentration per node).
 pub fn initial_concentration(ctx: &mut InpCtx, kw: &RawKeyword) -> Result<()> {
     for p in ["FILE", "USER", "INPUT"] {
         if kw.has(p) {
-            return kw.err(format!("parametern {p} stöds inte ännu"));
+            return kw.err(format!("parameter {p} is not supported yet"));
         }
     }
     let mut out = kw.clone();

@@ -1,7 +1,7 @@
-//! Nyckelord som RustyFEM känner till men inte stöder ännu och som
-//! påverkar resultatet. De ger fel i stället för varning. En registrerad
-//! hanterare går alltid före listan, så den här filen behöver inte ändras när
-//! ett nyckelord implementeras.
+//! Keywords that RustyFEM knows about but does not support yet and that
+//! affect the result. They give an error instead of a warning. A registered
+//! handler always takes precedence over the list, so this file does not need to change when
+//! a keyword is implemented.
 
 pub const AFFECTS_RESULTS: &[&str] = &[
     "BASE MOTION",

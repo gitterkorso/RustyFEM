@@ -1,45 +1,45 @@
-//! Automatisk tidsinkrementering i implicit dynamik (*DYNAMIC).
-//! Reglerna är kontrollerade med testfall (stång, balk, kontinuum,
-//! kontakt; se tests/cases/dyn_incr/), styrda av halvstegsresidualen och
+//! Automatic time incrementation in implicit dynamics (*DYNAMIC).
+//! The rules are checked against test cases (bar, beam, continuum,
+//! contact; see tests/cases/dyn_incr/), driven by the half-step residual and
 //! *CONTROLS, PARAMETERS=TIME INCREMENTATION:
 //!
-//! - **Tillämpning**: TRANSIENT FIDELITY ger INCREMENTATION=CONSERVATIVE
-//!   (halvstegsresidualen styr), MODERATE DISSIPATION och QUASI-STATIC ger
-//!   AGGRESSIVE (bara konvergensen styr, som statik; NOHAF). INCREMENTATION=
-//!   och NOHAF på *DYNAMIC skriver över.
-//! - **Största inkrement** (0 eller tomt på dataraden): TF max(T/100, Δt₀),
-//!   MD max(T/10, Δt₀), QS T. **Minsta**: min(Δt₀, 10⁻⁵ T).
-//! - **Halvstegstolerans** T_J: HAFTOL (kraft; moment HAFTOL · karakteristisk
-//!   elementlängd), annars HALFINC SCALE FACTOR (standard 1000, 10000 med
-//!   kontakt) gånger tidsmedelvärdet av kraften (momentet) inklusive aktuellt
-//!   försök.
-//! - **Nedskärning**: |R½| = S_J > T_J ger nytt försök med D_A (T_J/S_J) Δt
-//!   (D_A = 0,85, ingen undre gräns förutom minsta inkrementet, som prövas en
-//!   gång); utebliven konvergens ger D_f Δt (0,25). Högst I_A = 5 försök.
-//! - **Ökning (CONSERVATIVE)**: glidande fönster över de I_T = 3 senaste
-//!   inkrementen sedan senaste nedskärning. Om Δt S_i/Δt_i < W_G T_J för alla i
-//!   (Δt = nominellt inkrement) blir förslaget min(D_G Δt_p, D_M Δt) med
-//!   Δt_p = I_T T_J / Σ(S_i/Δt_i), D_G = 0,8, D_M = 1,25. I linjära problem
-//!   används förslaget bara om det är minst D_L D_M Δt (D_L = 0,95), annars
-//!   behålls Δt (undviker ny faktorisering). Fönstret nollställs inte efter en
-//!   ökning, så Δt kan öka i varje inkrement.
-//! - **Ökning (AGGRESSIVE)**: D_D Δt (1,5) när två inkrement i följd (sedan
-//!   senaste nedskärning) konvergerat på högst I_G = 4 iterationer. Fler än
-//!   I_L = 10 iterationer ger D_B Δt (0,75) i nästa inkrement.
-//! - **Tidpunkter**: inkrementet kortas för att träffa nästa utdatatidpunkt
-//!   (*OUTPUT TIME INTERVAL/NUMBER INTERVAL/TIME POINTS, fält och historia,
-//!   utom TIME MARKS=NO) och stegets slut, utan sträckning (D_T = 1). Efter ett
-//!   inkrement som kortats till en tidpunkt fortsätter inkrementeringen med
-//!   max(nominellt Δt, Δt₀), dvs. det föreslagna initiala inkrementet om det
-//!   nominella är mindre (kontrollerat med Δt₀ = 1,5e-5 och 2e-5, olika
-//!   tidpunkter och amplituder).
+//! - **Application**: TRANSIENT FIDELITY gives INCREMENTATION=CONSERVATIVE
+//!   (the half-step residual controls), MODERATE DISSIPATION and QUASI-STATIC give
+//!   AGGRESSIVE (only convergence controls, as in statics; NOHAF). INCREMENTATION=
+//!   and NOHAF on *DYNAMIC override.
+//! - **Largest increment** (0 or empty on the data line): TF max(T/100, Δt₀),
+//!   MD max(T/10, Δt₀), QS T. **Smallest**: min(Δt₀, 10⁻⁵ T).
+//! - **Half-step tolerance** T_J: HAFTOL (force; moment HAFTOL · characteristic
+//!   element length), otherwise HALFINC SCALE FACTOR (default 1000, 10000 with
+//!   contact) times the time average of the force (moment) including the current
+//!   attempt.
+//! - **Cutback**: |R½| = S_J > T_J gives a new attempt with D_A (T_J/S_J) Δt
+//!   (D_A = 0.85, no lower bound except the minimum increment, which is tried
+//!   once); lack of convergence gives D_f Δt (0.25). At most I_A = 5 attempts.
+//! - **Increase (CONSERVATIVE)**: sliding window over the I_T = 3 latest
+//!   increments since the latest cutback. If Δt S_i/Δt_i < W_G T_J for all i
+//!   (Δt = nominal increment) the proposal is min(D_G Δt_p, D_M Δt) with
+//!   Δt_p = I_T T_J / Σ(S_i/Δt_i), D_G = 0.8, D_M = 1.25. In linear problems
+//!   the proposal is used only if it is at least D_L D_M Δt (D_L = 0.95), otherwise
+//!   Δt is kept (avoids a new factorization). The window is not reset after an
+//!   increase, so Δt can increase in every increment.
+//! - **Increase (AGGRESSIVE)**: D_D Δt (1.5) when two consecutive increments (since
+//!   the latest cutback) have converged in at most I_G = 4 iterations. More than
+//!   I_L = 10 iterations gives D_B Δt (0.75) in the next increment.
+//! - **Time points**: the increment is shortened to hit the next output time point
+//!   (*OUTPUT TIME INTERVAL/NUMBER INTERVAL/TIME POINTS, field and history,
+//!   except TIME MARKS=NO) and the end of the step, without stretching (D_T = 1). After an
+//!   increment shortened to a time point the incrementation continues with
+//!   max(nominal Δt, Δt₀), i.e. the suggested initial increment if the
+//!   nominal one is smaller (checked with Δt₀ = 1.5e-5 and 2e-5, different
+//!   time points and amplitudes).
 
 use crate::fem::dof::Field;
 use crate::fem::model::{parse_f64, FeModel, RawKeyword, StepDef};
 use crate::model::{FemError, Result};
 use std::collections::BTreeMap;
 
-/// Tidsinkrementeringens parametrar (*CONTROLS, PARAMETERS=TIME INCREMENTATION).
+/// Parameters of the time incrementation (*CONTROLS, PARAMETERS=TIME INCREMENTATION).
 #[derive(Debug, Clone)]
 pub struct IncParams {
     pub i_l: usize,
@@ -63,7 +63,7 @@ impl Default for IncParams {
     }
 }
 
-/// Talen på en datarad; tomma fält blir `None`.
+/// The numbers on a data line; empty fields become `None`.
 fn values(kw: &RawKeyword, d: &crate::fem::model::DataLine) -> Result<Vec<Option<f64>>> {
     d.fields
         .iter()
@@ -72,14 +72,14 @@ fn values(kw: &RawKeyword, d: &crate::fem::model::DataLine) -> Result<Vec<Option
             if f.is_empty() {
                 Ok(None)
             } else {
-                parse_f64(f).map(Some).ok_or_else(|| FemError(format!("{} rad {} (*CONTROLS): '{f}' är inget tal", kw.file, d.line)))
+                parse_f64(f).map(Some).ok_or_else(|| FemError(format!("{} line {} (*CONTROLS): '{f}' is not a number", kw.file, d.line)))
             }
         })
         .collect()
 }
 
 impl IncParams {
-    /// Läser *CONTROLS, PARAMETERS=TIME INCREMENTATION i steget (RESET ger standardvärden).
+    /// Reads *CONTROLS, PARAMETERS=TIME INCREMENTATION in the step (RESET gives default values).
     pub fn from_step(step: &StepDef) -> Result<IncParams> {
         let mut p = IncParams::default();
         for kw in step.extra.iter().filter(|k| k.name == "CONTROLS") {
@@ -103,18 +103,18 @@ impl IncParams {
                     *x = v;
                 }
             };
-            // första raden: I0, IR, IP, IC, IL, IG, IS, IA, IJ, IT
+            // first line: I0, IR, IP, IC, IL, IG, IS, IA, IJ, IT
             setu(&mut p.i_l, get(&l1, 4));
             setu(&mut p.i_g, get(&l1, 5));
             setu(&mut p.i_a, get(&l1, 7));
             setu(&mut p.i_t, get(&l1, 9));
-            // andra raden: Df, DC, DB, DA, DS, DH, DD, WG
+            // second line: Df, DC, DB, DA, DS, DH, DD, WG
             setf(&mut p.d_f, get(&l2, 0));
             setf(&mut p.d_b, get(&l2, 2));
             setf(&mut p.d_a, get(&l2, 3));
             setf(&mut p.d_d, get(&l2, 6));
             setf(&mut p.w_g, get(&l2, 7));
-            // tredje raden: DG, DM, DM (dynamik), DM (diffusion), DL, ...
+            // third line: DG, DM, DM (dynamics), DM (diffusion), DL, ...
             setf(&mut p.d_g, get(&l3, 0));
             setf(&mut p.d_m, get(&l3, 1));
             setf(&mut p.d_m_dyn, get(&l3, 2));
@@ -125,30 +125,30 @@ impl IncParams {
     }
 }
 
-/// Utdatabegäran för fält-frames.
+/// Output request for field frames.
 #[derive(Debug, Clone)]
 pub enum FieldRequest {
-    /// Var n:te inkrement.
+    /// Every n-th increment.
     Every(usize),
-    /// Vid dessa stegtider.
+    /// At these step times.
     Points(Vec<f64>),
 }
 
-/// Utdatatidpunkter och fältbegäran för steget.
+/// Output time points and field request for the step.
 #[derive(Debug, Clone, Default)]
 pub struct OutputPlan {
-    /// Tidpunkter (stegtid, stigande, ≤ stegtiden) som inkrementen ska träffa.
-    /// Stegets slut räknas bara som tidpunkt om utdata begärs där (då kan
-    /// sista inkrementet sträckas dit).
+    /// Time points (step time, ascending, ≤ the step time) that the increments must hit.
+    /// The end of the step counts as a time point only if output is requested there (then
+    /// the last increment can be stretched to it).
     pub points: Vec<f64>,
-    /// Fältbegäran (tom: varje inkrement).
+    /// Field request (empty: every increment).
     pub field: Vec<FieldRequest>,
 }
 
-/// *TIME POINTS, NAME=namn (med eller utan GENERATE).
+/// *TIME POINTS, NAME=name (with or without GENERATE).
 fn named_time_points(model: &FeModel, kw: &RawKeyword, name: &str) -> Result<Vec<f64>> {
     let Some(tp) = model.extra.iter().find(|k| k.name == "TIME POINTS" && k.param_upper("NAME").as_deref() == Some(name)) else {
-        return kw.err(format!("*TIME POINTS, NAME={name} finns inte"));
+        return kw.err(format!("*TIME POINTS, NAME={name} does not exist"));
     };
     let mut out = Vec::new();
     for d in tp.records() {
@@ -156,7 +156,7 @@ fn named_time_points(model: &FeModel, kw: &RawKeyword, name: &str) -> Result<Vec
         if tp.has("GENERATE") {
             let (a, b, s) = (v.first().copied().unwrap_or(0.0), v.get(1).copied().unwrap_or(0.0), v.get(2).copied().unwrap_or(0.0));
             if s <= 0.0 {
-                return tp.err_at(d.line, "GENERATE kräver ett positivt tidsinkrement");
+                return tp.err_at(d.line, "GENERATE requires a positive time increment");
             }
             let n = ((b - a) / s + 1e-9).floor() as usize;
             out.extend((0..=n).map(|i| a + i as f64 * s));
@@ -168,7 +168,7 @@ fn named_time_points(model: &FeModel, kw: &RawKeyword, name: &str) -> Result<Vec
 }
 
 impl OutputPlan {
-    /// Läser stegets *OUTPUT-begäran (FIELD och HISTORY).
+    /// Reads the step's *OUTPUT requests (FIELD and HISTORY).
     pub fn from_step(model: &FeModel, step: &StepDef, period: f64) -> Result<OutputPlan> {
         let mut plan = OutputPlan::default();
         let eps = 1e-9 * period;
@@ -211,7 +211,7 @@ impl OutputPlan {
         Ok(plan)
     }
 
-    /// Ska en frame skrivas efter inkrement `inc` som slutar vid stegtiden `t`?
+    /// Should a frame be written after increment `inc` ending at step time `t`?
     pub fn write_frame(&self, inc: usize, t: f64, eps: f64) -> bool {
         if self.field.is_empty() {
             return true;
@@ -223,34 +223,34 @@ impl OutputPlan {
     }
 }
 
-/// Inkrementeringsläge.
+/// Incrementation mode.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Mode {
-    /// Fasta inkrement (DIRECT).
+    /// Fixed increments (DIRECT).
     Fixed,
-    /// Halvstegsresidualen styr (TRANSIENT FIDELITY).
+    /// The half-step residual controls (TRANSIENT FIDELITY).
     Conservative,
-    /// Bara konvergensen styr (MODERATE DISSIPATION, QUASI-STATIC).
+    /// Only convergence controls (MODERATE DISSIPATION, QUASI-STATIC).
     Aggressive,
 }
 
-/// Halvstegstolerans: absolut (HAFTOL) eller skalfaktor på tidsmedelvärdet.
+/// Half-step tolerance: absolute (HAFTOL) or scale factor on the time average.
 #[derive(Debug, Clone, Copy)]
 pub enum HalfTol {
     Absolute(f64),
     Scale(f64),
 }
 
-/// Ett godkänt inkrement i ökningsfönstret.
+/// An accepted increment in the increase window.
 #[derive(Debug, Clone)]
 struct Done {
-    /// Halvstegsresidual per fält.
+    /// Half-step residual per field.
     s: BTreeMap<Field, f64>,
     dt: f64,
     iters: usize,
 }
 
-/// Tillståndet för den automatiska inkrementeringen.
+/// The state of the automatic incrementation.
 #[derive(Debug, Clone)]
 pub struct Incrementer {
     pub mode: Mode,
@@ -259,26 +259,26 @@ pub struct Incrementer {
     pub dt_min: f64,
     pub dt_max: f64,
     pub period: f64,
-    /// Nominellt inkrement (före kortning mot tidpunkter).
+    /// Nominal increment (before shortening to time points).
     pub nominal: f64,
     pub tol: Option<HalfTol>,
-    /// Karakteristisk elementlängd (momenttolerans = kraftens · längden).
+    /// Characteristic element length (moment tolerance = the force tolerance · the length).
     pub length: f64,
     pub linear: bool,
     points: Vec<f64>,
     window: Vec<Done>,
-    /// Försök i aktuellt inkrement.
+    /// Attempts in the current increment.
     pub attempt: usize,
-    /// Aktuellt försöks längd och om det kortats till en tidpunkt.
+    /// Length of the current attempt and whether it was shortened to a time point.
     pub h: f64,
     pub to_point: bool,
 }
 
-/// Utfall av ett försök.
+/// Outcome of an attempt.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Verdict {
     Accept,
-    /// Gör om inkrementet med detta Δt.
+    /// Redo the increment with this Δt.
     Retry(f64),
 }
 
@@ -292,7 +292,7 @@ impl Incrementer {
         1e-9 * self.period
     }
 
-    /// Längden på nästa försök från stegtiden `t`.
+    /// Length of the next attempt from step time `t`.
     pub fn next(&mut self, t: f64) -> f64 {
         let eps = self.eps();
         let mut h = if self.mode == Mode::Fixed { self.dt0 } else { self.nominal.min(self.dt_max) };
@@ -312,7 +312,7 @@ impl Incrementer {
         h
     }
 
-    /// Tolerans per fält vid tidsmedelvärdet `tavg` (inklusive aktuellt försök).
+    /// Tolerance per field at the time average `tavg` (including the current attempt).
     pub fn tolerance(&self, tavg: &BTreeMap<Field, f64>) -> BTreeMap<Field, f64> {
         let mut out = BTreeMap::new();
         match self.tol {
@@ -331,7 +331,7 @@ impl Incrementer {
         out
     }
 
-    /// Kontroll av ett konvergerat försök: halvstegsresidualen `s` mot `tol`.
+    /// Check of a converged attempt: the half-step residual `s` against `tol`.
     pub fn check(&mut self, s: &BTreeMap<Field, f64>, tol: &BTreeMap<Field, f64>) -> Result<Verdict> {
         if self.mode != Mode::Conservative {
             return Ok(Verdict::Accept);
@@ -350,10 +350,10 @@ impl Incrementer {
         Ok(Verdict::Accept)
     }
 
-    /// Utebliven konvergens: nytt försök med D_f Δt.
+    /// Lack of convergence: new attempt with D_f Δt.
     pub fn diverged(&mut self) -> Result<f64> {
         if self.mode == Mode::Fixed {
-            return crate::model::fail("inkrementet konvergerade inte (DIRECT, fasta inkrement)");
+            return crate::model::fail("the increment did not converge (DIRECT, fixed increments)");
         }
         self.cut(self.p.d_f)
     }
@@ -362,12 +362,12 @@ impl Incrementer {
         self.attempt += 1;
         self.window.clear();
         if self.attempt >= self.p.i_a {
-            return crate::model::fail(format!("för många försök ({}) i samma inkrement – tidsinkrementet {:.3e} räcker inte", self.p.i_a, self.h));
+            return crate::model::fail(format!("too many attempts ({}) in the same increment – the time increment {:.3e} is not sufficient", self.p.i_a, self.h));
         }
         let mut h = self.h * f;
         if h < self.dt_min {
             if self.h <= self.dt_min * (1.0 + 1e-9) {
-                return crate::model::fail(format!("tidsinkrementet blev mindre än minimum ({:.3e})", self.dt_min));
+                return crate::model::fail(format!("the time increment became smaller than the minimum ({:.3e})", self.dt_min));
             }
             h = self.dt_min;
         }
@@ -377,23 +377,23 @@ impl Incrementer {
         Ok(h)
     }
 
-    /// En ökning från `base` till `prop` används: i linjära problem bara om den
-    /// är minst D_L D_M (undviker ny faktorisering för små ändringar).
+    /// An increase from `base` to `prop` is used: in linear problems only if it
+    /// is at least D_L D_M (avoids a new factorization for small changes).
     fn allowed_increase(&self, prop: f64, base: f64) -> bool {
         prop > base * (1.0 + 1e-9) && (!self.linear || prop >= self.p.d_l * self.p.d_m_dyn * base * (1.0 - 1e-6))
     }
 
-    /// Godkänt inkrement med halvstegsresidualen `s`, toleransen `tol` och
-    /// `iters` jämviktsiterationer: bestämmer nästa nominella inkrement.
-    /// Returnerar `Some(Δt)` om inkrementet ökades.
-    /// `t` är stegtiden vid inkrementets slut.
+    /// Accepted increment with the half-step residual `s`, the tolerance `tol` and
+    /// `iters` equilibrium iterations: determines the next nominal increment.
+    /// Returns `Some(Δt)` if the increment was increased.
+    /// `t` is the step time at the end of the increment.
     pub fn accepted(&mut self, t: f64, s: BTreeMap<Field, f64>, tol: &BTreeMap<Field, f64>, iters: usize) -> Option<f64> {
         self.attempt = 0;
         if self.mode == Mode::Fixed {
             return None;
         }
         let h = self.h;
-        // efter ett inkrement som kortats till en tidpunkt: max(nominellt, Δt₀)
+        // after an increment shortened to a time point: max(nominal, Δt₀)
         let base = if self.to_point && h < self.nominal { self.nominal.max(self.dt0) } else { self.nominal };
         self.window.push(Done { s, dt: h, iters });
         let it = self.p.i_t.max(2);
@@ -402,7 +402,7 @@ impl Incrementer {
         }
         let mut next = base;
         let mut grown = None;
-        // noggrannhetens förslag D_G Δt_p (utan taket D_M), om villkoret uppfylls
+        // the accuracy proposal D_G Δt_p (without the cap D_M), if the condition is satisfied
         let mut accuracy: Option<f64> = None;
         match self.mode {
             Mode::Conservative => {
@@ -438,14 +438,14 @@ impl Incrementer {
             }
             Mode::Fixed => {}
         }
-        // Nästa utdatatidpunkt r bortom inkrementet (sonderat i
-        // tests/cases/dyn_incr/): om r ligger inom D_M gånger det nya inkrementet
-        // blir nästa inkrement min(D_G Δt_p, r) utan taket D_M (bara r om
-        // noggrannhetsvillkoret inte är uppfyllt), förutsatt att det är en
-        // tillåten ökning (minst D_L D_M Δt i linjära problem); annars behålls
-        // Δt. Inkrementet sträcks alltså till tidpunkten i stället för att lämna
-        // ett litet sista inkrement, och en ökning som skulle gå förbi en
-        // tidpunkt som det nuvarande Δt inte når görs inte.
+        // Next output time point r beyond the increment (probed in
+        // tests/cases/dyn_incr/): if r lies within D_M times the new increment
+        // the next increment becomes min(D_G Δt_p, r) without the cap D_M (only r if
+        // the accuracy condition is not satisfied), provided that it is an
+        // allowed increase (at least D_L D_M Δt in linear problems); otherwise
+        // Δt is kept. The increment is thus stretched to the time point instead of leaving
+        // a small last increment, and an increase that would pass a
+        // time point that the current Δt does not reach is not made.
         if self.mode == Mode::Conservative {
             let eps = self.eps();
             if let Some(&tp) = self.points.iter().find(|&&x| x > t + eps) {

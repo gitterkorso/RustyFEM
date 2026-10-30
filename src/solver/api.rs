@@ -1,63 +1,63 @@
-//! Gränssnitt för linjära ekvationslösare.
+//! Interface for linear equation solvers.
 //!
-//! Kärnan beskriver systemets struktur som en graf över "block" (noder med
-//! fria frihetsgrader). Lösaren väljer ekvationsordning (`first_dof`), tar
-//! emot den undre triangeln av en symmetrisk matris och löser K x = b.
-//! Samma matrisobjekt återanvänds mellan Newton-iterationer: `zero`,
-//! assemblering med `add`, `factor`, `solve`.
+//! The core describes the system structure as a graph of "blocks" (nodes with
+//! free degrees of freedom). The solver chooses the equation ordering (`first_dof`),
+//! receives the lower triangle of a symmetric matrix and solves K x = b.
+//! The same matrix object is reused between Newton iterations: `zero`,
+//! assembly with `add`, `factor`, `solve`.
 
 use crate::model::Result;
 
-/// Systemets struktur: ett block per nod med fria frihetsgrader.
+/// System structure: one block per node with free degrees of freedom.
 pub struct Graph {
-    /// Blockens koordinater (för geometrisk ordning).
+    /// Block coordinates (for geometric ordering).
     pub coords: Vec<[f64; 3]>,
-    /// Grannblock (utan blocket självt), sorterade.
+    /// Neighbour blocks (excluding the block itself), sorted.
     pub adj: Vec<Vec<usize>>,
-    /// Antal ekvationer i varje block.
+    /// Number of equations in each block.
     pub ndof: Vec<usize>,
 }
 
 pub trait LinearSolver: Send + Sync {
-    /// Namn för val och utskrift, t.ex. "direct".
+    /// Name for selection and printing, e.g. "direct".
     fn name(&self) -> &'static str;
-    /// Symbolisk analys: ger en nollställd matris att assemblera i.
+    /// Symbolic analysis: returns a zeroed matrix to assemble into.
     fn prepare(&self, g: &Graph) -> Result<Box<dyn SystemMatrix>>;
 }
 
 pub trait SystemMatrix: Send {
-    /// Antal ekvationer.
+    /// Number of equations.
     fn n(&self) -> usize;
-    /// Ekvationsnummer för första frihetsgraden i varje block; blockets övriga
-    /// frihetsgrader följer direkt efter.
+    /// Equation number of the first degree of freedom in each block; the block's other
+    /// degrees of freedom follow directly after.
     fn first_dof(&self) -> &[usize];
     fn zero(&mut self);
-    /// Adderar `v` till (r, c) i undre triangeln (r ≥ c).
+    /// Adds `v` to (r, c) in the lower triangle (r ≥ c).
     fn add(&mut self, r: usize, c: usize, v: f64);
-    /// Faktoriserar. `Err(ekvation)` om matrisen är singulär eller inte
-    /// positivt definit vid den ekvationen.
+    /// Factorizes. `Err(equation)` if the matrix is singular or not
+    /// positive definite at that equation.
     fn factor(&mut self) -> std::result::Result<(), usize>;
-    /// Löser K x = b på plats (efter `factor`).
+    /// Solves K x = b in place (after `factor`).
     fn solve(&self, b: &mut [f64]);
 
-    /// Adderar `v` till (r, c) i en osymmetrisk matris (r och c godtyckliga).
-    /// `add(r, c, v)` betyder alltid ett symmetriskt bidrag (även (c, r));
-    /// en symmetrisk lösare behåller bara den undre triangeln.
+    /// Adds `v` to (r, c) in an unsymmetric matrix (r and c arbitrary).
+    /// `add(r, c, v)` always means a symmetric contribution (also (c, r));
+    /// a symmetric solver keeps only the lower triangle.
     fn add_unsym(&mut self, r: usize, c: usize, v: f64) {
         if r >= c {
             self.add(r, c, v);
         }
     }
-    /// `false` om lösaren lagrar och löser en osymmetrisk matris.
+    /// `false` if the solver stores and solves an unsymmetric matrix.
     fn is_symmetric(&self) -> bool {
         true
     }
-    /// Tröghet (antal negativa, noll- och positiva pivoter) efter `factor`,
-    /// om lösaren beräknar den. Ger varningen om negativa egenvärden.
+    /// Inertia (number of negative, zero and positive pivots) after `factor`,
+    /// if the solver computes it. Gives the warning about negative eigenvalues.
     fn inertia(&self) -> Option<Inertia> {
         None
     }
 }
 
-/// Tröghet hos en faktoriserad symmetrisk matris (Sylvesters tröghetslag).
+/// Inertia of a factorized symmetric matrix (Sylvester's law of inertia).
 pub use crate::sparse::indef::Inertia;

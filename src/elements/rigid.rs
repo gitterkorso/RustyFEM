@@ -1,14 +1,14 @@
-//! Stela element: R3D4, R3D3 (3D), R2D2 (plant) och RAX2 (axisymmetriskt).
+//! Rigid elements: R3D4, R3D3 (3D), R2D2 (planar) and RAX2 (axisymmetric).
 //!
-//! Stela element har ingen styvhet, massa eller spänning. De ger bara noder
-//! (med translationerna U1–U3 respektive U1–U2) och ytor som
-//! kan användas som stela masterytor i kontakt (*SURFACE med SPOS/SNEG, se
-//! `interactions/geom.rs`). Elementen måste ingå i en *RIGID BODY
-//! (`interactions/rigid_body.rs`) som knyter deras noder till referensnoden.
+//! Rigid elements have no stiffness, mass or stress. They only provide nodes
+//! (with the translations U1–U3 and U1–U2, respectively) and surfaces that
+//! can be used as rigid master surfaces in contact (*SURFACE with SPOS/SNEG, see
+//! `interactions/geom.rs`). The elements must belong to a *RIGID BODY
+//! (`interactions/rigid_body.rs`) that ties their nodes to the reference node.
 //!
-//! Ytornas positiva normal (SPOS) följer nodordningen:
-//! högerhandsregeln för R3D4/R3D3 och riktningen från nod 1 till nod 2
-//! vriden 90° moturs för R2D2/RAX2.
+//! The positive normal of the surfaces (SPOS) follows the node ordering:
+//! the right-hand rule for R3D4/R3D3 and the direction from node 1 to node 2
+//! rotated 90° counterclockwise for R2D2/RAX2.
 
 use super::api::{ElemCtx, ElemResponse, ElementType, Family, MassKind};
 use crate::fem::dof::{Dof, U1, U2, U3};
@@ -30,7 +30,7 @@ pub static RAX2: Rigid = Rigid { name: "RAX2", dim: 2, nn: 2, faces: &[&[0, 1]],
 
 pub static TYPES: &[&dyn ElementType] = &[&R2D2, &R3D3, &R3D4, &RAX2];
 
-/// Är elementtypen ett stelt element (R3D4, R3D3, R2D2, RAX2)?
+/// Is the element type a rigid element (R3D4, R3D3, R2D2, RAX2)?
 pub fn is_rigid(t: &dyn ElementType) -> bool {
     TYPES.iter().any(|r| r.name() == t.name())
 }
@@ -63,15 +63,15 @@ impl ElementType for Rigid {
         Ok(vec![0.0; n * n])
     }
 
-    /// Ingen inre kraft: rörelsen bestäms helt av den stela kroppen (även vid NLGEOM).
+    /// No internal force: the motion is fully determined by the rigid body (also with NLGEOM).
     fn internal_force(&self, _ctx: &ElemCtx, u: &[f64], _du: &[f64], _so: &[f64], sn: &mut Vec<f64>, tangent: bool) -> Result<ElemResponse> {
         let n = u.len();
         sn.clear();
         Ok(ElemResponse { fint: vec![0.0; n], k: tangent.then(|| vec![0.0; n * n]) })
     }
 
-    /// Stela element har ingen egen massa (massa och tröghet anges på
-    /// referensnoden med *MASS/*ROTARY INERTIA).
+    /// Rigid elements have no mass of their own (mass and inertia are given on
+    /// the reference node with *MASS/*ROTARY INERTIA).
     fn mass(&self, _ctx: &ElemCtx, _kind: MassKind) -> Result<Vec<f64>> {
         let n = self.n_dofs();
         Ok(vec![0.0; n * n])
@@ -87,6 +87,6 @@ impl ElementType for Rigid {
     }
 
     fn distributed_load(&self, _ctx: &ElemCtx, load: &DistLoad, _u: &[f64]) -> Result<Vec<f64>> {
-        super::api::not_implemented(&format!("lasttypen {} (laster på stela kroppar anges på referensnoden)", load.kind), self.name)
+        super::api::not_implemented(&format!("load type {} (loads on rigid bodies are given on the reference node)", load.kind), self.name)
     }
 }
