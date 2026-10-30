@@ -385,9 +385,25 @@ export class Viewer {
       [new THREE.Vector3(0, 1, 0), 0x57ab5a],
       [new THREE.Vector3(0, 0, 1), 0x539bf5],
     ];
-    for (const [d, c] of axes) {
+    axes.forEach(([d, c], i) => {
       scene.add(new THREE.ArrowHelper(d, new THREE.Vector3(), 1.1, c, 0.32, 0.18));
-    }
+      // axis name past the arrow tip, in the arrow's colour
+      const px = 64;
+      const cv = document.createElement("canvas");
+      cv.width = cv.height = px;
+      const ctx = cv.getContext("2d")!;
+      ctx.font = `700 ${px * 0.8}px system-ui, "Segoe UI", sans-serif`;
+      ctx.fillStyle = `#${c.toString(16).padStart(6, "0")}`;
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText("xyz"[i], px / 2, px / 2 + 2);
+      const tex = new THREE.CanvasTexture(cv);
+      tex.colorSpace = THREE.SRGBColorSpace;
+      const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, depthTest: false, transparent: true }));
+      sp.scale.setScalar(0.5);
+      sp.position.copy(d).multiplyScalar(1.32);
+      scene.add(sp);
+    });
     return { scene, camera };
   }
 
