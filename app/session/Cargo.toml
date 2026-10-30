@@ -1,6 +1,6 @@
 [package]
 name = "rustyfem-session"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
 license = "MIT OR Apache-2.0"
 description = "App API for RustyFEM: session, undo/redo, runs with progress, display data and project file"
