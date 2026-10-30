@@ -45,6 +45,7 @@ targets:
     info:
       path: rustyfem-app_iOS/Info.plist
       properties:
+        ITSAppUsesNonExemptEncryption: false
         LSRequiresIPhoneOS: true
         NSLocalNetworkUsageDescription: "RustyFEM's MCP server can accept connections from AI assistants on other computers on your network when “Allow from network” is on."
         UILaunchStoryboardName: LaunchScreen
