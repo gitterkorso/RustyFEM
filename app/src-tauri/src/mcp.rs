@@ -1,7 +1,9 @@
 //! Local MCP server (Model Context Protocol) built into the app.
 //!
 //! - HTTP (Streamable HTTP, JSON responses) on `127.0.0.1`, with a bearer token.
-//!   Local connections only; web pages are blocked by the Origin check.
+//!   Local connections only, unless "allow from the network" is on (then
+//!   `0.0.0.0`, e.g. to reach an iPad from a Mac); web pages are blocked by the
+//!   Origin check.
 //! - stdio: `rustyfem-app --mcp` is a bridge for clients that start
 //!   the server as a command (Claude Desktop, Claude Code, Codex). The bridge
 //!   starts the app if it is not already running and forwards each JSON-RPC line.
@@ -33,6 +35,9 @@ pub struct Config {
     pub enabled: bool,
     pub port: u16,
     pub token: String,
+    /// Listen on all interfaces instead of only `127.0.0.1`.
+    #[serde(default)]
+    pub network: bool,
 }
 
 /// The app's configuration directory (the same for the app and the stdio bridge).
@@ -83,6 +88,15 @@ fn new_token() -> String {
     out
 }
 
+/// This device's address on the local network (the interface used for the
+/// default route; the UDP "connect" sends nothing).
+fn lan_ip() -> Option<std::net::IpAddr> {
+    let s = std::net::UdpSocket::bind("0.0.0.0:0").ok()?;
+    s.connect("192.0.2.1:80").ok()?;
+    let ip = s.local_addr().ok()?.ip();
+    (!ip.is_unspecified() && !ip.is_loopback()).then_some(ip)
+}
+
 /// Status for the UI.
 #[derive(Debug, Clone, Serialize, Type)]
 pub struct McpStatus {
@@ -90,6 +104,10 @@ pub struct McpStatus {
     pub port: u16,
     pub token: String,
     pub url: String,
+    /// Reachable from other devices on the network.
+    pub network: bool,
+    /// URL for other devices (when `network` is on and an address was found).
+    pub lan_url: Option<String>,
     /// Path to the app's executable (for the stdio configuration).
     pub exe: String,
     pub calls: u32,
@@ -102,7 +120,8 @@ pub struct McpStatus {
 pub struct Mcp {
     state: AppState,
     app: Mutex<Option<AppHandle>>,
-    server: Mutex<Option<(u16, Arc<AtomicBool>)>>,
+    /// Port, stop flag, listening on the network.
+    server: Mutex<Option<(u16, Arc<AtomicBool>, bool)>>,
     calls: AtomicU32,
     last_tool: Mutex<Option<String>>,
     error: Mutex<Option<String>>,
@@ -125,13 +144,16 @@ impl Mcp {
 
     pub fn status(&self) -> McpStatus {
         let c = load_config();
-        let running = self.server.lock().unwrap().as_ref().map(|s| s.0);
-        let port = running.unwrap_or(c.port);
+        let running = self.server.lock().unwrap().as_ref().map(|s| (s.0, s.2));
+        let port = running.map_or(c.port, |r| r.0);
+        let network = running.map_or(c.network, |r| r.1);
         McpStatus {
             running: running.is_some(),
             port,
             token: c.token,
             url: format!("http://127.0.0.1:{port}/mcp"),
+            network,
+            lan_url: if network { lan_ip().map(|ip| format!("http://{}/mcp", std::net::SocketAddr::new(ip, port))) } else { None },
             exe: std::env::current_exe().map(|p| p.display().to_string()).unwrap_or_default(),
             calls: self.calls.load(Ordering::Relaxed),
             last_tool: self.last_tool.lock().unwrap().clone(),
@@ -140,8 +162,9 @@ impl Mcp {
         }
     }
 
-    /// Starts the HTTP server (`port` = 0 gives the saved or default port).
-    pub fn start(self: &Arc<Self>, port: u16) -> Res<McpStatus> {
+    /// Starts the HTTP server (`port` = 0 gives the saved or default port,
+    /// `network` = None the saved choice).
+    pub fn start(self: &Arc<Self>, port: u16, network: Option<bool>) -> Res<McpStatus> {
         if self.server.lock().unwrap().is_some() {
             return Ok(self.status());
         }
@@ -149,8 +172,12 @@ impl Mcp {
         if port != 0 {
             c.port = port;
         }
-        let listener = TcpListener::bind(("127.0.0.1", c.port)).map_err(|e| {
-            let msg = format!("could not listen on 127.0.0.1:{} ({e}) – choose another port", c.port);
+        if let Some(n) = network {
+            c.network = n;
+        }
+        let host = if c.network { "0.0.0.0" } else { "127.0.0.1" };
+        let listener = TcpListener::bind((host, c.port)).map_err(|e| {
+            let msg = format!("could not listen on {host}:{} ({e}) – choose another port", c.port);
             *self.error.lock().unwrap() = Some(msg.clone());
             msg
         })?;
@@ -158,7 +185,7 @@ impl Mcp {
         save_config(&c);
         *self.error.lock().unwrap() = None;
         let stop = Arc::new(AtomicBool::new(false));
-        *self.server.lock().unwrap() = Some((c.port, stop.clone()));
+        *self.server.lock().unwrap() = Some((c.port, stop.clone(), c.network));
         let me = self.clone();
         let token = c.token.clone();
         std::thread::Builder::new()
@@ -183,7 +210,7 @@ impl Mcp {
     }
 
     pub fn stop(&self) -> McpStatus {
-        if let Some((port, stop)) = self.server.lock().unwrap().take() {
+        if let Some((port, stop, _)) = self.server.lock().unwrap().take() {
             stop.store(true, Ordering::Relaxed);
             // wake the accept loop
             let _ = TcpStream::connect_timeout(&([127, 0, 0, 1], port).into(), Duration::from_millis(200));

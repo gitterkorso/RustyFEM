@@ -284,9 +284,9 @@ export async function listenEngine() {
   set({ mcp: await engine.mcpStatus() });
 }
 
-export async function mcpToggle(port: number | null) {
+export async function mcpToggle(port: number | null, network: boolean | null = null) {
   try {
-    set({ mcp: get().mcp?.running ? await engine.mcpStop() : await engine.mcpStart(port) });
+    set({ mcp: get().mcp?.running ? await engine.mcpStop() : await engine.mcpStart(port, network) });
   } catch (e) {
     toast("error", errText(e));
     set({ mcp: await engine.mcpStatus() });

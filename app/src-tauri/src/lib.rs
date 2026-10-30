@@ -288,11 +288,12 @@ fn mcp_status(m: State<'_, Arc<mcp::Mcp>>) -> mcp::McpStatus {
     m.status()
 }
 
-/// Starts the local MCP server (`port` = null: saved or default port).
+/// Starts the local MCP server (`port` = null: saved or default port;
+/// `network` = null: saved choice, true: reachable from other devices).
 #[tauri::command]
 #[specta::specta]
-fn mcp_start(m: State<'_, Arc<mcp::Mcp>>, port: Option<u16>) -> Res<mcp::McpStatus> {
-    m.inner().start(port.unwrap_or(0))
+fn mcp_start(m: State<'_, Arc<mcp::Mcp>>, port: Option<u16>, network: Option<bool>) -> Res<mcp::McpStatus> {
+    m.inner().start(port.unwrap_or(0), network)
 }
 
 #[tauri::command]
@@ -457,7 +458,7 @@ pub fn run_app() {
             server.set_app(app.handle().clone());
             // the MCP server is started if it was on last time or if the stdio bridge started the app
             if std::env::var_os("RUSTYFEM_MCP_AUTOSTART").is_some() || mcp::load_config().enabled {
-                let _ = server.start(0);
+                let _ = server.start(0, None);
             }
             Ok(())
         })

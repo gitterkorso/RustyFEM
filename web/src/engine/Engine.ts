@@ -102,7 +102,7 @@ export interface Engine {
   selftestDone(png: string, report: string): Promise<void>;
   /** Local MCP server for AI assistants (Claude, Codex). */
   mcpStatus(): Promise<McpStatus>;
-  mcpStart(port: number | null): Promise<McpStatus>;
+  mcpStart(port: number | null, network: boolean | null): Promise<McpStatus>;
   mcpStop(): Promise<McpStatus>;
   mcpInstallClaudeDesktop(): Promise<string[]>;
   listen(h: EngineEvents): Promise<() => void>;

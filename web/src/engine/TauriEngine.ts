@@ -46,7 +46,7 @@ export class TauriEngine implements Engine {
   systemMemory = async () => (await commands.systemMemory()) ?? 0;
   selftest = () => commands.selftest();
   mcpStatus = () => commands.mcpStatus();
-  mcpStart = (port: number | null) => ok(commands.mcpStart(port));
+  mcpStart = (port: number | null, network: boolean | null) => ok(commands.mcpStart(port, network));
   mcpStop = () => commands.mcpStop();
   mcpInstallClaudeDesktop = () => ok(commands.mcpInstallClaudeDesktop());
 

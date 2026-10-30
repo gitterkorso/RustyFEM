@@ -36,8 +36,11 @@ export const commands = {
 	 */
 	selftestDone: (png: string, report: string) => typedError<null, string>(__TAURI_INVOKE("selftest_done", { png, report })),
 	mcpStatus: () => __TAURI_INVOKE<McpStatus_Serialize>("mcp_status"),
-	/**  Starts the local MCP server (`port` = null: saved or default port). */
-	mcpStart: (port: number | null) => typedError<McpStatus_Serialize, string>(__TAURI_INVOKE("mcp_start", { port })),
+	/**
+	 *  Starts the local MCP server (`port` = null: saved or default port;
+	 *  `network` = null: saved choice, true: reachable from other devices).
+	 */
+	mcpStart: (port: number | null, network: boolean | null) => typedError<McpStatus_Serialize, string>(__TAURI_INVOKE("mcp_start", { port, network })),
 	mcpStop: () => __TAURI_INVOKE<McpStatus_Serialize>("mcp_stop"),
 	/**  Adds RustyFEM to the Claude Desktop configuration; returns the files that were written. */
 	mcpInstallClaudeDesktop: () => typedError<string[], string>(__TAURI_INVOKE("mcp_install_claude_desktop")),
@@ -164,6 +167,10 @@ export type McpStatus_Deserialize = {
 	port: number,
 	token: string,
 	url: string,
+	/**  Reachable from other devices on the network. */
+	network: boolean,
+	/**  URL for other devices (when `network` is on and an address was found). */
+	lan_url?: string | null,
 	/**  Path to the app's executable (for the stdio configuration). */
 	exe: string,
 	calls: number,
@@ -179,6 +186,10 @@ export type McpStatus_Serialize = {
 	port: number,
 	token: string,
 	url: string,
+	/**  Reachable from other devices on the network. */
+	network: boolean,
+	/**  URL for other devices (when `network` is on and an address was found). */
+	lan_url: string | null,
 	/**  Path to the app's executable (for the stdio configuration). */
 	exe: string,
 	calls: number,

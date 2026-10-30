@@ -34,7 +34,11 @@ export function McpPanel() {
   const st = useStore((s) => s.mcp);
   const [client, setClient] = useState<Client>("desktop");
   const [port, setPort] = useState("");
+  const [network, setNetwork] = useState<boolean | null>(null);
   if (!open || !st) return null;
+  const net = network ?? st.network;
+  // other devices (e.g. Claude Code on a Mac talking to an iPad) use the network address
+  const url = st.lan_url ?? st.url;
   const exe = st.exe;
   const quoted = exe.includes(" ") ? `"${exe}"` : exe;
   const close = () => set({ mcpPanel: false });
@@ -61,7 +65,7 @@ export function McpPanel() {
             <div className="muted small">
               {st.running ? (
                 <>
-                  {st.url} · {st.calls} calls{st.last_tool ? ` · latest ${st.last_tool}` : ""}
+                  {url} · {st.calls} calls{st.last_tool ? ` · latest ${st.last_tool}` : ""}
                 </>
               ) : (
                 "Switch on to connect via HTTP. Claude Desktop, Claude Code and Codex start it themselves via the command below."
@@ -70,6 +74,12 @@ export function McpPanel() {
             {st.error && <div className="small err">{st.error}</div>}
           </div>
           {!st.running && (
+            <label className="check small" title="Listen on the local network so that other devices can connect (still requires the token)">
+              <input type="checkbox" checked={net} onChange={(e) => setNetwork(e.target.checked)} />
+              Allow from network
+            </label>
+          )}
+          {!st.running && (
             <label className="field port">
               <span className="flabel">Port</span>
               <span className="finput">
@@ -77,7 +87,7 @@ export function McpPanel() {
               </span>
             </label>
           )}
-          <button type="button" className={`btn ${st.running ? "" : "primary"}`} onClick={() => mcpToggle(port ? Number(port) : null)}>
+          <button type="button" className={`btn ${st.running ? "" : "primary"}`} onClick={() => mcpToggle(port ? Number(port) : null, network)}>
             {st.running ? "Stop" : "Start"}
           </button>
         </div>
@@ -122,7 +132,7 @@ export function McpPanel() {
               <p>Run in a terminal. Claude Code starts RustyFEM itself when needed:</p>
               <Code text={`claude mcp add rustyfem -- ${quoted} --mcp`} />
               <p className="muted small">Or via HTTP when the server is running:</p>
-              <Code text={`claude mcp add --transport http rustyfem ${st.url} --header "Authorization: Bearer ${st.token}"`} />
+              <Code text={`claude mcp add --transport http rustyfem ${url} --header "Authorization: Bearer ${st.token}"`} />
             </>
           )}
           {client === "codex" && (
@@ -140,8 +150,11 @@ export function McpPanel() {
           )}
           {client === "http" && (
             <>
-              <p>Streamable HTTP (JSON responses), only from this computer. The server must be started.</p>
-              <Code text={`URL:    ${st.url}\nHeader: Authorization: Bearer ${st.token}`} />
+              <p>
+                Streamable HTTP (JSON responses). The server must be started.{" "}
+                {st.network ? "Reachable from other devices on the same network." : "Only from this device – tick “Allow from network” to connect from another computer."}
+              </p>
+              <Code text={`URL:    ${url}\nHeader: Authorization: Bearer ${st.token}`} />
               <p className="muted small">Clients that only start commands (stdio) use:</p>
               <Code text={`${quoted} --mcp`} />
             </>
