@@ -261,6 +261,7 @@ export class Viewer {
   private center = new THREE.Vector3();
   private box = new THREE.Box3();
   private radius = 1;
+  private autoFit = true;
   private is2d = false;
   private frameReq = 0;
   private animating: { kind: "mode"; base: number; t0: number } | null = null;
@@ -284,6 +285,8 @@ export class Viewer {
     this.controls.zoomToCursor = true;
     this.controls.rotateSpeed = 0.9;
     this.controls.addEventListener("change", () => this.requestRender());
+    // once the user has moved the camera, a resize keeps their view instead of refitting
+    this.controls.addEventListener("start", () => (this.autoFit = false));
     this.cmapTex = new THREE.DataTexture(colormap(opts.colormap), 256, 1, THREE.RGBAFormat);
     this.cmapTex.magFilter = THREE.NearestFilter;
     this.cmapTex.minFilter = THREE.NearestFilter;
@@ -356,7 +359,8 @@ export class Viewer {
     this.scene.add(this.root, this.symbolGroup, this.highlight, this.marks);
     this.triad = this.makeTriad();
     this.applyTheme();
-    this.ro = new ResizeObserver(() => this.resize());
+    // the viewport changes size when the console or a side panel opens: refit until the user moves the camera
+    this.ro = new ResizeObserver(() => (this.autoFit ? this.fit() : this.resize()));
     this.ro.observe(canvas.parentElement ?? canvas);
     canvas.addEventListener("pointerdown", this.onDown);
     canvas.addEventListener("pointerup", this.onUp);
@@ -951,6 +955,7 @@ export class Viewer {
   }
 
   fit() {
+    this.autoFit = true;
     this.camera.zoom = 1;
     this.resize();
     this.controls.target.copy(this.center);
@@ -967,10 +972,21 @@ export class Viewer {
       ex = Math.max(ex, Math.abs(p.x - c.x));
       ey = Math.max(ey, Math.abs(p.y - c.y));
     }
+    // the view tools float over the right edge: fit the model into the area left of them
+    const w = Math.max(this.canvas.clientWidth, 1);
+    const tools = this.canvas.parentElement?.querySelector<HTMLElement>(".vp-tools");
+    const inset = Math.min(tools ? tools.offsetWidth + 20 : 0, w * 0.4);
     if (ex > 0 || ey > 0) {
-      const z = Math.min(this.camera.right / Math.max(ex, 1e-12), this.camera.top / Math.max(ey, 1e-12)) * 0.82;
+      const z = Math.min((this.camera.right * (w - inset)) / w / Math.max(ex, 1e-12), this.camera.top / Math.max(ey, 1e-12)) * 0.82;
       this.camera.zoom = Math.min(Math.max(z, 0.05), 50);
       this.camera.updateProjectionMatrix();
+    }
+    if (inset > 0) {
+      // move the camera sideways so that the model is centred in that area
+      const perPx = (this.camera.right - this.camera.left) / this.camera.zoom / w;
+      const shift = new THREE.Vector3().setFromMatrixColumn(this.camera.matrixWorld, 0).multiplyScalar((inset / 2) * perPx);
+      this.camera.position.add(shift);
+      this.controls.target.add(shift);
     }
     this.controls.update();
     this.requestRender();

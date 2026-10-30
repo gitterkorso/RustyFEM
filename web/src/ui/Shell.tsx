@@ -58,9 +58,9 @@ export function TopBar() {
               Cancel
             </button>
           ) : (
-            <button type="button" className="btn primary run" onClick={solve} title="Solve (F5)">
+            <button type="button" className="btn primary run" onClick={solve} title="Solve (F5)" aria-label="Solve">
               <Icon name="play" size={14} />
-              Solve
+              <span className="run-label">Solve</span>
             </button>
           ))}
         {hasResults && mode === "model" && (
