@@ -112,6 +112,17 @@ testprojekt.
 
 ## Licens
 
-Copyright © 2026 Nick Westin. Alla rättigheter förbehållna – se
-[LICENSE](LICENSE). Programvara från tredje part omfattas av sina egna
-licenser, se [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md).
+RustyFEM är öppen källkod och licensieras under valfri av
+
+- Apache License, Version 2.0 ([LICENSE-APACHE](LICENSE-APACHE)), eller
+- MIT-licensen ([LICENSE-MIT](LICENSE-MIT)).
+
+Copyright © 2026 Nick Westin. Programvara från tredje part omfattas av sina
+egna licenser, se [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md).
+
+### Bidrag
+
+Bidrag är välkomna. Om du inte uttryckligen anger något annat licensieras
+varje bidrag som du avsiktligt skickar in för att ingå i RustyFEM, enligt
+definitionen i Apache-2.0-licensen, under båda licenserna ovan utan
+ytterligare villkor.
