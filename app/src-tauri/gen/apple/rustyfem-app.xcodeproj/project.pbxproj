@@ -1,0 +1,481 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		0E31A149BC63225CEED2A470 /* Security.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 9DCABB88FEAA29BCD3CC8D5F /* Security.framework */; };
+		2E292E9B7C3C8C7F04AC86AE /* WebKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 717E8307E35A6EF813FD9575 /* WebKit.framework */; };
+		37D2F0138922B9E0F7DA9ED7 /* QuartzCore.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 59A4CD9ED92C35037D5E68E7 /* QuartzCore.framework */; };
+		7386323641311677C6C26DE2 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 600E8B007AA3CF8546038D5A /* Assets.xcassets */; };
+		793CF2864DE9FF85AED02E9B /* CoreGraphics.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 6F88B69678C5EA0B9791AE63 /* CoreGraphics.framework */; };
+		93DBBC1BEE11969FDD3A16F9 /* Metal.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = E919FEEA757EBBC3A20EC3F2 /* Metal.framework */; };
+		B454ECA39CB6DDB5BD84E145 /* libapp.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 71918307FD7E8F61382EDE3D /* libapp.a */; };
+		BB8094FE4293236D15DFC2D1 /* MetalKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 41CAF736D1D432BCB28F0552 /* MetalKit.framework */; };
+		DE6973439049A32E6C9E0C99 /* assets in Resources */ = {isa = PBXBuildFile; fileRef = AE09312446EE3820B37C448A /* assets */; };
+		E46CF366E37D1813F1599BAE /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 8FB2D84D4997BC5AB1A8D276 /* LaunchScreen.storyboard */; };
+		ED64DDF66CEDD5105A02B9EC /* UIKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 41BC1B663227297ED4204FDC /* UIKit.framework */; };
+		FB6FF4A48D95B0943F266969 /* main.mm in Sources */ = {isa = PBXBuildFile; fileRef = 9609EA67773112C96ECA8E95 /* main.mm */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		0F01B6630986E306E28A11DE /* bindings.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = bindings.h; sourceTree = "<group>"; };
+		34DE5E84F7A10F35E85609F7 /* mcp.rs */ = {isa = PBXFileReference; path = mcp.rs; sourceTree = "<group>"; };
+		41BC1B663227297ED4204FDC /* UIKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = UIKit.framework; path = System/Library/Frameworks/UIKit.framework; sourceTree = SDKROOT; };
+		41CAF736D1D432BCB28F0552 /* MetalKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = MetalKit.framework; path = System/Library/Frameworks/MetalKit.framework; sourceTree = SDKROOT; };
+		59A4CD9ED92C35037D5E68E7 /* QuartzCore.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = QuartzCore.framework; path = System/Library/Frameworks/QuartzCore.framework; sourceTree = SDKROOT; };
+		600E8B007AA3CF8546038D5A /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		6F88B69678C5EA0B9791AE63 /* CoreGraphics.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CoreGraphics.framework; path = System/Library/Frameworks/CoreGraphics.framework; sourceTree = SDKROOT; };
+		717E8307E35A6EF813FD9575 /* WebKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = WebKit.framework; path = System/Library/Frameworks/WebKit.framework; sourceTree = SDKROOT; };
+		71918307FD7E8F61382EDE3D /* libapp.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; path = libapp.a; sourceTree = "<group>"; };
+		75504CA0B1634311A34AB0AD /* rustyfem-app_iOS.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = "rustyfem-app_iOS.entitlements"; sourceTree = "<group>"; };
+		8FB2D84D4997BC5AB1A8D276 /* LaunchScreen.storyboard */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; path = LaunchScreen.storyboard; sourceTree = "<group>"; };
+		922521F87D37D692C163E530 /* rustyfem-app_iOS.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = "rustyfem-app_iOS.app"; sourceTree = BUILT_PRODUCTS_DIR; };
+		9609EA67773112C96ECA8E95 /* main.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = main.mm; sourceTree = "<group>"; };
+		9DCABB88FEAA29BCD3CC8D5F /* Security.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Security.framework; path = System/Library/Frameworks/Security.framework; sourceTree = SDKROOT; };
+		9F647B2967CF899CDEA2891B /* lib.rs */ = {isa = PBXFileReference; path = lib.rs; sourceTree = "<group>"; };
+		AE09312446EE3820B37C448A /* assets */ = {isa = PBXFileReference; lastKnownFileType = folder; path = assets; sourceTree = SOURCE_ROOT; };
+		B57C2E3294FA2090F8EC03E6 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
+		CC92103AA3870D7E40FF2847 /* main.rs */ = {isa = PBXFileReference; path = main.rs; sourceTree = "<group>"; };
+		E919FEEA757EBBC3A20EC3F2 /* Metal.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Metal.framework; path = System/Library/Frameworks/Metal.framework; sourceTree = SDKROOT; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		D43D4FEE16505CB18E4018EF /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				B454ECA39CB6DDB5BD84E145 /* libapp.a in Frameworks */,
+				793CF2864DE9FF85AED02E9B /* CoreGraphics.framework in Frameworks */,
+				93DBBC1BEE11969FDD3A16F9 /* Metal.framework in Frameworks */,
+				BB8094FE4293236D15DFC2D1 /* MetalKit.framework in Frameworks */,
+				37D2F0138922B9E0F7DA9ED7 /* QuartzCore.framework in Frameworks */,
+				0E31A149BC63225CEED2A470 /* Security.framework in Frameworks */,
+				ED64DDF66CEDD5105A02B9EC /* UIKit.framework in Frameworks */,
+				2E292E9B7C3C8C7F04AC86AE /* WebKit.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		19BD68A1FE64E49C7D521D13 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				922521F87D37D692C163E530 /* rustyfem-app_iOS.app */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		1A9C5DAC059FC73685F84D0D = {
+			isa = PBXGroup;
+			children = (
+				AE09312446EE3820B37C448A /* assets */,
+				600E8B007AA3CF8546038D5A /* Assets.xcassets */,
+				8FB2D84D4997BC5AB1A8D276 /* LaunchScreen.storyboard */,
+				B7E4999BE8780E4F70B939B4 /* Externals */,
+				2E6C72899269ECFEE1E65086 /* rustyfem-app_iOS */,
+				C4D44229CC72C85119D5A866 /* Sources */,
+				835A0A3C1EB9E50BB48DA60D /* src */,
+				D09438749522CC4D605FE33C /* Frameworks */,
+				19BD68A1FE64E49C7D521D13 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		2E6C72899269ECFEE1E65086 /* rustyfem-app_iOS */ = {
+			isa = PBXGroup;
+			children = (
+				B57C2E3294FA2090F8EC03E6 /* Info.plist */,
+				75504CA0B1634311A34AB0AD /* rustyfem-app_iOS.entitlements */,
+			);
+			path = "rustyfem-app_iOS";
+			sourceTree = "<group>";
+		};
+		835A0A3C1EB9E50BB48DA60D /* src */ = {
+			isa = PBXGroup;
+			children = (
+				9F647B2967CF899CDEA2891B /* lib.rs */,
+				CC92103AA3870D7E40FF2847 /* main.rs */,
+				34DE5E84F7A10F35E85609F7 /* mcp.rs */,
+			);
+			name = src;
+			path = ../../src;
+			sourceTree = "<group>";
+		};
+		92AD169B473AD102C405988E /* rustyfem-app */ = {
+			isa = PBXGroup;
+			children = (
+				9609EA67773112C96ECA8E95 /* main.mm */,
+				FBAFEFCF87A05A25F7368351 /* bindings */,
+			);
+			path = "rustyfem-app";
+			sourceTree = "<group>";
+		};
+		B7E4999BE8780E4F70B939B4 /* Externals */ = {
+			isa = PBXGroup;
+			children = (
+			);
+			path = Externals;
+			sourceTree = "<group>";
+		};
+		C4D44229CC72C85119D5A866 /* Sources */ = {
+			isa = PBXGroup;
+			children = (
+				92AD169B473AD102C405988E /* rustyfem-app */,
+			);
+			path = Sources;
+			sourceTree = "<group>";
+		};
+		D09438749522CC4D605FE33C /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+				6F88B69678C5EA0B9791AE63 /* CoreGraphics.framework */,
+				71918307FD7E8F61382EDE3D /* libapp.a */,
+				E919FEEA757EBBC3A20EC3F2 /* Metal.framework */,
+				41CAF736D1D432BCB28F0552 /* MetalKit.framework */,
+				59A4CD9ED92C35037D5E68E7 /* QuartzCore.framework */,
+				9DCABB88FEAA29BCD3CC8D5F /* Security.framework */,
+				41BC1B663227297ED4204FDC /* UIKit.framework */,
+				717E8307E35A6EF813FD9575 /* WebKit.framework */,
+			);
+			name = Frameworks;
+			sourceTree = "<group>";
+		};
+		FBAFEFCF87A05A25F7368351 /* bindings */ = {
+			isa = PBXGroup;
+			children = (
+				0F01B6630986E306E28A11DE /* bindings.h */,
+			);
+			path = bindings;
+			sourceTree = "<group>";
+		};
+		"TEMP_6DA6CA67-4FB1-4FD6-8F63-39232BE84832" /* x86_64 */ = {
+			isa = PBXGroup;
+			children = (
+			);
+			path = x86_64;
+			sourceTree = "<group>";
+		};
+		"TEMP_EE535CA6-29E2-4C24-8D11-471A3646C300" /* arm64 */ = {
+			isa = PBXGroup;
+			children = (
+			);
+			path = arm64;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		4C15FE797D8BEFE98AB84B63 /* rustyfem-app_iOS */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = D9CE0EE939EEEF7614FB2FBB /* Build configuration list for PBXNativeTarget "rustyfem-app_iOS" */;
+			buildPhases = (
+				7BF4961B2604EA9FAE10C006 /* Build Rust Code */,
+				BF7BD79AF7764077089D0C39 /* Sources */,
+				E94D8E6240CBB0453CCD5C56 /* Resources */,
+				D43D4FEE16505CB18E4018EF /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = "rustyfem-app_iOS";
+			packageProductDependencies = (
+			);
+			productName = "rustyfem-app_iOS";
+			productReference = 922521F87D37D692C163E530 /* rustyfem-app_iOS.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		5829062A0AF7CA0BA11847AA /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = YES;
+				LastUpgradeCheck = 1430;
+				TargetAttributes = {
+					4C15FE797D8BEFE98AB84B63 = {
+						DevelopmentTeam = MQTBFQ9Q83;
+					};
+				};
+			};
+			buildConfigurationList = 40CF686174AD4D1ABF5F143E /* Build configuration list for PBXProject "rustyfem-app" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				Base,
+				en,
+			);
+			mainGroup = 1A9C5DAC059FC73685F84D0D;
+			minimizedProjectReferenceProxies = 1;
+			preferredProjectObjectVersion = 77;
+			productRefGroup = 19BD68A1FE64E49C7D521D13 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				4C15FE797D8BEFE98AB84B63 /* rustyfem-app_iOS */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		E94D8E6240CBB0453CCD5C56 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				7386323641311677C6C26DE2 /* Assets.xcassets in Resources */,
+				E46CF366E37D1813F1599BAE /* LaunchScreen.storyboard in Resources */,
+				DE6973439049A32E6C9E0C99 /* assets in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXShellScriptBuildPhase section */
+		7BF4961B2604EA9FAE10C006 /* Build Rust Code */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+			);
+			name = "Build Rust Code";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+				"$(SRCROOT)/Externals/x86_64/${CONFIGURATION}/libapp.a",
+				"$(SRCROOT)/Externals/arm64/${CONFIGURATION}/libapp.a",
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "[ -n \"${SKIP_RUST_BUILD:-}\" ] && exit 0; cd \"${SRCROOT}/../../../../web\" && npm run -- tauri ios xcode-script -v --platform \"${PLATFORM_DISPLAY_NAME:?}\" --sdk-root \"${SDKROOT:?}\" --framework-search-paths \"${FRAMEWORK_SEARCH_PATHS:?}\" --header-search-paths \"${HEADER_SEARCH_PATHS:?}\" --gcc-preprocessor-definitions \"${GCC_PREPROCESSOR_DEFINITIONS:-}\" --configuration \"${CONFIGURATION:?}\" ${FORCE_COLOR} ${ARCHS:?}\n";
+		};
+/* End PBXShellScriptBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		BF7BD79AF7764077089D0C39 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				FB6FF4A48D95B0943F266969 /* main.mm in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+		1D14997B0C761E82A30F8E50 /* release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_VERSION = 5.0;
+			};
+			name = release;
+		};
+		A0CE774DD4964AE46A156E01 /* debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES = YES;
+				ARCHS = (
+					arm64,
+				);
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = "rustyfem-app_iOS/rustyfem-app_iOS.entitlements";
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				DEVELOPMENT_TEAM = MQTBFQ9Q83;
+				ENABLE_BITCODE = NO;
+				"EXCLUDED_ARCHS[sdk=iphoneos*]" = x86_64;
+				FRAMEWORK_SEARCH_PATHS = (
+					"$(inherited)",
+					"\".\"",
+				);
+				INFOPLIST_FILE = "rustyfem-app_iOS/Info.plist";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				"LIBRARY_SEARCH_PATHS[arch=arm64]" = "$(inherited) $(PROJECT_DIR)/Externals/arm64/$(CONFIGURATION) $(SDKROOT)/usr/lib/swift $(DEVELOPER_DIR)/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/$(PLATFORM_NAME) $(DEVELOPER_DIR)/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift-5.0/$(PLATFORM_NAME)";
+				"LIBRARY_SEARCH_PATHS[arch=x86_64]" = "$(inherited) $(PROJECT_DIR)/Externals/x86_64/$(CONFIGURATION) $(SDKROOT)/usr/lib/swift $(DEVELOPER_DIR)/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/$(PLATFORM_NAME) $(DEVELOPER_DIR)/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift-5.0/$(PLATFORM_NAME)";
+				PRODUCT_BUNDLE_IDENTIFIER = se.rustyfem.app;
+				PRODUCT_NAME = RustyFEM;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				VALID_ARCHS = arm64;
+			};
+			name = debug;
+		};
+		C0E6886ECCA7183CD31F8DAE /* release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES = YES;
+				ARCHS = (
+					arm64,
+				);
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = "rustyfem-app_iOS/rustyfem-app_iOS.entitlements";
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				DEVELOPMENT_TEAM = MQTBFQ9Q83;
+				ENABLE_BITCODE = NO;
+				"EXCLUDED_ARCHS[sdk=iphoneos*]" = x86_64;
+				FRAMEWORK_SEARCH_PATHS = (
+					"$(inherited)",
+					"\".\"",
+				);
+				INFOPLIST_FILE = "rustyfem-app_iOS/Info.plist";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				"LIBRARY_SEARCH_PATHS[arch=arm64]" = "$(inherited) $(PROJECT_DIR)/Externals/arm64/$(CONFIGURATION) $(SDKROOT)/usr/lib/swift $(DEVELOPER_DIR)/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/$(PLATFORM_NAME) $(DEVELOPER_DIR)/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift-5.0/$(PLATFORM_NAME)";
+				"LIBRARY_SEARCH_PATHS[arch=x86_64]" = "$(inherited) $(PROJECT_DIR)/Externals/x86_64/$(CONFIGURATION) $(SDKROOT)/usr/lib/swift $(DEVELOPER_DIR)/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/$(PLATFORM_NAME) $(DEVELOPER_DIR)/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift-5.0/$(PLATFORM_NAME)";
+				PRODUCT_BUNDLE_IDENTIFIER = se.rustyfem.app;
+				PRODUCT_NAME = RustyFEM;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				VALID_ARCHS = arm64;
+			};
+			name = release;
+		};
+		DFA94EB8EF5E9314A6288AAC /* debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"$(inherited)",
+					"DEBUG=1",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 5.0;
+			};
+			name = debug;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		40CF686174AD4D1ABF5F143E /* Build configuration list for PBXProject "rustyfem-app" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				DFA94EB8EF5E9314A6288AAC /* debug */,
+				1D14997B0C761E82A30F8E50 /* release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = debug;
+		};
+		D9CE0EE939EEEF7614FB2FBB /* Build configuration list for PBXNativeTarget "rustyfem-app_iOS" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				A0CE774DD4964AE46A156E01 /* debug */,
+				C0E6886ECCA7183CD31F8DAE /* release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = debug;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = 5829062A0AF7CA0BA11847AA /* Project object */;
+}
