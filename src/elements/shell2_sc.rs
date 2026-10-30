@@ -28,7 +28,7 @@
 //!   rotationströgheten är liten för tunna skal.
 //!
 //! För allmänt förvrängda fyrhörningar gäller samma begränsningar som för
-//! S4R (README).
+//! S4R (docs/REFERENS.md).
 
 use super::super::api::{not_implemented, ElemCtx, ElemResponse, ElementType, Family, IpField, MassKind};
 use super::super::common::{self, cross, dot, norm, scale, sub};

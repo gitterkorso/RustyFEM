@@ -606,5 +606,5 @@ Kvarvarande skuld efter sammanslagningen:
 
 ## Status
 
-Se README: "Funktioner per område" för vad som stöds, "Tester" för
+Se docs/REFERENS.md: "Funktioner per område" för vad som stöds, "Tester" för
 regressionsfallen och "Begränsningar" för vad som saknas.

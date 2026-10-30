@@ -1,5 +1,5 @@
 #!/usr/bin/env sh
-# Byggkontroller för motorn och appen (PLAN.md, Fas 0 och 2).
+# Byggkontroller för motorn och appen.
 # Kör från repots rot: sh scripts/check.sh
 set -e
 

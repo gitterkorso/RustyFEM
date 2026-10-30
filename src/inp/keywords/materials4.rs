@@ -15,5 +15,5 @@ pub static KEYWORDS: &[Keyword] = &[
 ];
 
 fn unsupported(_ctx: &mut InpCtx, kw: &RawKeyword) -> Result<()> {
-    kw.err(format!("*{} stöds inte ännu (se README, Begränsningar)", kw.name))
+    kw.err(format!("*{} stöds inte ännu (se docs/REFERENS.md, Begränsningar)", kw.name))
 }

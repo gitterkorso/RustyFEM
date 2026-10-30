@@ -6,7 +6,7 @@
 //! fix x=0
 //! load x=2 fy=-1000
 //! ```
-//! Se README för alla kommandon.
+//! Se docs/REFERENS.md för alla kommandon.
 
 use crate::model::{fail, Dim, Material, Model, Result, Sel, RX, RY, RZ, UX, UY, UZ};
 use crate::section::BeamSection;

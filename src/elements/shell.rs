@@ -25,7 +25,7 @@
 //!   rotation och membranets rotation ½(v,x − u,y) i noden, styvhet
 //!   kᵢ = G·t·det(Jᵢ)/(6 + 0,6·A/t²).
 //!
-//! Begränsningar för allmänt förvrängda fyrhörningar beskrivs i README.
+//! Begränsningar för allmänt förvrängda fyrhörningar beskrivs i docs/REFERENS.md.
 //!
 //! Tvärsnitt: *SHELL SECTION och *SHELL GENERAL SECTION (homogena, isotropt
 //! linjärelastiskt material). Utdata: S (S11, S22, S12) i sektionspunkterna 1

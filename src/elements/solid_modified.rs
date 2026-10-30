@@ -370,7 +370,7 @@ impl ElementType for ModifiedTet {
         }
         let (ips, bs, ss) = self.ips(ctx)?;
         let mut r = common::response(ctx, StressMode::ThreeD, &ips, &bs, ctx.material(self.name)?, u, du, so, sn, tangent)?;
-        // stabiliseringen är elastisk (se README)
+        // stabiliseringen är elastisk (se docs/REFERENS.md)
         let kh = self.stabilization(ctx, &ss)?;
         let fh = common::matvec(&kh, u);
         for (a, b) in r.fint.iter_mut().zip(&fh) {

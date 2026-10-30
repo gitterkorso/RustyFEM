@@ -49,7 +49,7 @@ fn fluid_behavior(ctx: &mut InpCtx, kw: &RawKeyword) -> Result<()> {
 
 /// Nyckelord som påverkar resultatet men inte stöds ännu.
 fn unsupported(_ctx: &mut InpCtx, kw: &RawKeyword) -> Result<()> {
-    kw.err(format!("*{} stöds inte ännu (se README, Begränsningar)", kw.name))
+    kw.err(format!("*{} stöds inte ännu (se docs/REFERENS.md, Begränsningar)", kw.name))
 }
 
 /// *INITIAL CONDITIONS, TYPE=FLUID PRESSURE: sparas och läses av `interactions/cavity.rs`.

@@ -1,6 +1,6 @@
 # RustyFEM-appen
 
-Grafiskt gränssnitt ovanpå motorn, enligt [PLAN.md](../PLAN.md) (faserna 1–4).
+Grafiskt gränssnitt ovanpå motorn.
 
 | Del | Var | Innehåll |
 |---|---|---|
@@ -11,7 +11,7 @@ Grafiskt gränssnitt ovanpå motorn, enligt [PLAN.md](../PLAN.md) (faserna 1–4
 Motorn rapporterar framsteg via `rustyfem::progress` (steg, inkrement,
 iterationer). Utan krok gör rapporterna ingenting, så resultaten ändras inte.
 
-Fas 0 (motorn förberedd för appen):
+Motorn är förberedd för appen:
 
 - Feature `cli` (kommandoradsprogrammet och underprocesser, `rustyfem check`) och `dynlib`
   (UMAT/UEL från delade bibliotek) är på som standard och av i appen.
@@ -110,7 +110,7 @@ Codex och andra klienter.
 
 ## Inte gjort än
 
-- Fas 5 (Tauri iOS-projektet, signering, TestFlight): kräver Mac och Xcode.
+- iOS-bygget (Tauri iOS-projektet, signering, TestFlight) kräver Mac och Xcode.
   Motorn och app-API:t typkontrolleras för iOS här och byggs för iOS i CI.
 - Export av redigerade `.inp`-modeller (`.inp` är import; projekt sparas som `.rustyproj`).
 - Markering av set i modellfönstret.
