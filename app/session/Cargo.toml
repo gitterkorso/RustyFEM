@@ -1,0 +1,10 @@
+[package]
+name = "rustyfem-session"
+version = "0.1.0"
+edition = "2021"
+description = "App-API för RustyFEM: session, ångra/gör om, körning med framsteg, visningsdata och projektfil"
+
+[dependencies]
+rustyfem = { path = "../..", default-features = false }
+serde = { version = "1", features = ["derive"] }
+specta = { version = "=2.0.0-rc.26", features = ["derive"] }

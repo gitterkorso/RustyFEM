@@ -1,0 +1,1 @@
+{"default":{"identifier":"default","description":"Huvudfönstret: kommandon mot motorn och fildialoger","local":true,"windows":["main"],"permissions":["core:default","dialog:default"]}}

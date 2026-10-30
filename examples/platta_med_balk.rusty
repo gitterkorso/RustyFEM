@@ -1,0 +1,8 @@
+# Platta förstyvad med en balk längs överkanten (CPS4 + B23 delar noder)
+# och en föreskriven förskjutning i stället för en kraft.
+material steel E=210e9 nu=0.3
+plate x=0..1.5 y=0..0.3 t=0.008 size=0.05
+beam (0,0.3) (1.5,0.3) section=rect(0.02,0.04) n=30
+fix x=0
+support x=1.5 y=0 uy=-0.002
+load at=(1.5,0.3) mz=150

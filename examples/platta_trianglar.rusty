@@ -1,0 +1,7 @@
+# Trianglar (CPS3) med egenvikt och sidolast.
+elements tri
+material aluminium
+plate x=0..1 y=0..0.5 t=0.005 size=0.04
+pin y=0
+gravity
+load y=0.5 fx=200

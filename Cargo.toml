@@ -1,0 +1,31 @@
+[package]
+name = "rustyfem"
+version = "0.1.0"
+edition = "2021"
+description = "RustyFEM – FEM-lösare i Rust"
+
+[features]
+# `cli`: kommandoradsprogrammet `rustyfem` (run, check, baseline, list).
+# `dynlib`: UMAT/UEL från delade bibliotek. Båda är av i appen (iOS tillåter
+# inte kod som laddas utanför appen).
+default = ["cli", "dynlib"]
+cli = []
+dynlib = []
+
+[[bin]]
+name = "rustyfem"
+path = "src/main.rs"
+required-features = ["cli"]
+
+[workspace]
+members = ["ffi", "app/session", "app/src-tauri"]
+
+[profile.release]
+opt-level = 3
+
+# Appen i debugläge (`tauri dev`): motorn optimeras ändå, annars blir lösningen långsam.
+[profile.dev.package.rustyfem]
+opt-level = 3
+
+[profile.dev.package.rustyfem-session]
+opt-level = 3

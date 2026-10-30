@@ -1,0 +1,12 @@
+[package]
+name = "rustyfem-ffi"
+version = "0.1.0"
+edition = "2021"
+description = "C-gränssnitt till RustyFEMs glesa LDLᵀ-lösare (för t.ex. Python via ctypes)"
+
+[lib]
+name = "rustyfem_ffi"
+crate-type = ["cdylib"]
+
+[dependencies]
+rustyfem = { path = ".." }

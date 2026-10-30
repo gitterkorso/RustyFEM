@@ -1,0 +1,4 @@
+/target/
+*.vtk
+node_modules/
+/web/dist/

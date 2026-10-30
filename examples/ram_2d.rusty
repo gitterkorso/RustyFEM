@@ -1,0 +1,6 @@
+# Portalram med I-profiler, ledade fotpunkter.
+material steel E=210e9 nu=0.3
+beam (0,0) (0,4) (6,4) (6,0) section=ibeam(0.3,0.15,0.0107,0.0071) n=8
+pin y=0
+load at=(0,4) fx=10e3
+load at=(3,4) fy=-50e3

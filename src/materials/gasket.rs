@@ -1,0 +1,220 @@
+//! Packningsbeteende (*GASKET BEHAVIOR) för packningselementen i
+//! `elements/gasket.rs`.
+//!
+//! Materialet används med packningens egen komponentordning (som i
+//! utdata för packningar): töjningen är
+//! [stängning, ε₂₂, ε₃₃, γ₁₂, γ₁₃, ε₂₃] och spänningen
+//! [tryck, S22, S33, S12, S13, S23]:
+//!
+//! - Tjockleksled (*GASKET THICKNESS BEHAVIOR): tryck mot stängning ur
+//!   belastningskurvan (styckvis linjär, sista lutningen förlängs).
+//!   TYPE=ELASTIC-PLASTIC: elastiskt med den första lutningen k₀ upp till
+//!   flytgränsen (första punkten där lutningen sjunker mer än YIELD ONSET,
+//!   standard 10 %, under k₀), därefter belastningskurvan; avlastning och
+//!   återbelastning med k₀ från den plastiska stängningen; efter kurvans sista
+//!   punkt fortsätter den med k₀ (DAMAGE: sista lutningen). TYPE=DAMAGE utan
+//!   avlastningskurvor: avlastning längs belastningskurvan (så görs när
+//!   ingen avlastningskurva anges). Drag: TENSILE STIFFNESS FACTOR (standard
+//!   10⁻³) gånger k₀.
+//! - Membran (*GASKET ELASTICITY, COMPONENT=MEMBRANE): plan spänning med E, ν.
+//! - Tvärskjuvning (*GASKET ELASTICITY, COMPONENT=TRANSVERSE SHEAR):
+//!   S12 = G·γ₁₂ med γ som relativ förskjutning.
+
+use super::api::{MatInput, MatOutput, MaterialFactory, MaterialModel};
+use crate::fem::model::{MaterialDef, RawKeyword};
+use crate::model::{fail, Result};
+use std::sync::Arc;
+
+pub const THICKNESS: &str = "GASKET THICKNESS BEHAVIOR";
+pub const THICKNESS_UNLOADING: &str = "GASKET THICKNESS BEHAVIOR UNLOADING";
+pub const MEMBRANE: &str = "GASKET ELASTICITY MEMBRANE";
+pub const SHEAR: &str = "GASKET ELASTICITY TRANSVERSE SHEAR";
+/// Markör som *GASKET BEHAVIOR lägger i materialet.
+pub const MARKER: &str = "GASKET BEHAVIOR";
+
+pub static FACTORIES: &[MaterialFactory] = &[MaterialFactory {
+    name: "packning",
+    consumes: &[MARKER, THICKNESS, THICKNESS_UNLOADING, MEMBRANE, SHEAR],
+    priority: 50,
+    build: Some(build),
+}];
+
+/// Modellens namn (elementen kontrollerar att materialet är en packning).
+pub const NAME: &str = "GASKET";
+
+#[derive(Debug, Clone)]
+pub struct Gasket {
+    /// Belastningskurvan (stängning, tryck), stigande stängning, börjar i (0, 0).
+    curve: Vec<(f64, f64)>,
+    plastic: bool,
+    k0: f64,
+    /// Stängningen där flytning börjar (ELASTIC-PLASTIC).
+    c_yield: f64,
+    tension: f64,
+    membrane: Option<(f64, f64)>,
+    shear: Option<f64>,
+}
+
+fn floats(kw: &RawKeyword) -> Result<Vec<Vec<f64>>> {
+    kw.records().iter().map(|d| kw.floats(d)).collect()
+}
+
+fn build(def: &MaterialDef) -> Result<Option<Arc<dyn MaterialModel>>> {
+    if def.behavior(MARKER).is_none() {
+        return Ok(None);
+    }
+    let Some(tb) = def.behavior(THICKNESS) else {
+        return fail(format!("packningsbeteendet {} saknar *GASKET THICKNESS BEHAVIOR", def.name));
+    };
+    if def.behavior(THICKNESS_UNLOADING).is_some() {
+        return tb.err("avlastningskurvor (DIRECTION=UNLOADING) stöds inte ännu");
+    }
+    for p in ["DEPENDENCIES", "TEMPERATURE"] {
+        if tb.has(p) {
+            return tb.err(format!("{p}= stöds inte ännu för packningar"));
+        }
+    }
+    let plastic = match tb.param_upper("TYPE").as_deref() {
+        None | Some("DAMAGE") => false,
+        Some("ELASTIC-PLASTIC") => true,
+        Some(t) => return tb.err(format!("TYPE={t} stöds inte (DAMAGE, ELASTIC-PLASTIC)")),
+    };
+    if let Some(m) = tb.param_upper("YIELD ONSET METHOD") {
+        if m != "RELATIVE SLOPE DROP" {
+            return tb.err(format!("YIELD ONSET METHOD={m} stöds inte ännu"));
+        }
+    }
+    let onset = tb.param("YIELD ONSET").and_then(crate::fem::model::parse_f64).unwrap_or(0.1);
+    let factor = tb.param("TENSILE STIFFNESS FACTOR").and_then(crate::fem::model::parse_f64).unwrap_or(1e-3);
+    let mut curve: Vec<(f64, f64)> = Vec::new();
+    for v in floats(tb)? {
+        if v.len() < 2 {
+            return tb.err("varje datarad ska ha tryck och stängning");
+        }
+        curve.push((v[1], v[0]));
+    }
+    if curve.first().is_none_or(|p| p.0 != 0.0 || p.1 != 0.0) {
+        curve.insert(0, (0.0, 0.0));
+    }
+    for w in curve.windows(2) {
+        if w[1].0 <= w[0].0 {
+            return tb.err("stängningen ska öka i belastningskurvan");
+        }
+    }
+    if curve.len() < 2 {
+        return tb.err("belastningskurvan behöver minst en punkt utöver (0, 0)");
+    }
+    let k0 = curve[1].1 / curve[1].0;
+    if k0 <= 0.0 {
+        return tb.err("belastningskurvans första lutning måste vara positiv");
+    }
+    let mut c_yield = f64::INFINITY;
+    for i in 1..curve.len() - 1 {
+        let s = (curve[i + 1].1 - curve[i].1) / (curve[i + 1].0 - curve[i].0);
+        if s < (1.0 - onset) * k0 {
+            c_yield = curve[i].0;
+            break;
+        }
+    }
+    let membrane = match def.behavior(MEMBRANE) {
+        Some(kw) => {
+            let v = kw.first_floats()?;
+            Some((v.first().copied().unwrap_or(0.0), v.get(1).copied().unwrap_or(0.0)))
+        }
+        None => None,
+    };
+    let shear = match def.behavior(SHEAR) {
+        Some(kw) => Some(kw.first_floats()?.first().copied().unwrap_or(0.0)),
+        None => None,
+    };
+    Ok(Some(Arc::new(Gasket { curve, plastic, k0, c_yield, tension: factor * k0, membrane, shear })))
+}
+
+impl Gasket {
+    /// Belastningskurvan och dess lutning i stängningen c ≥ 0.
+    fn loading(&self, c: f64) -> (f64, f64) {
+        let n = self.curve.len();
+        // ELASTIC-PLASTIC: efter kurvans sista punkt fortsätter den med k₀
+        // DAMAGE: med sista lutningen
+        let last = self.curve[n - 1];
+        if self.plastic && c > last.0 {
+            return (last.1 + self.k0 * (c - last.0), self.k0);
+        }
+        let mut i = 0;
+        while i + 2 < n && c > self.curve[i + 1].0 {
+            i += 1;
+        }
+        let (a, b) = (self.curve[i], self.curve[i + 1]);
+        let s = (b.1 - a.1) / (b.0 - a.0);
+        (a.1 + s * (c - a.0), s)
+    }
+
+    /// Tryck, tangent och ny plastisk stängning.
+    pub fn thickness(&self, c: f64, cp_old: f64) -> (f64, f64, f64) {
+        if !self.plastic {
+            if c < 0.0 {
+                return (self.tension * c, self.tension, 0.0);
+            }
+            let (p, s) = self.loading(c);
+            return (p, s, 0.0);
+        }
+        if c < cp_old {
+            return (self.tension * (c - cp_old), self.tension, cp_old);
+        }
+        let p = self.k0 * (c - cp_old);
+        if c > self.c_yield {
+            let (f, s) = self.loading(c);
+            if p > f {
+                return (f, s, c - f / self.k0);
+            }
+        }
+        (p, self.k0, cp_old)
+    }
+}
+
+impl MaterialModel for Gasket {
+    fn name(&self) -> &str {
+        NAME
+    }
+
+    fn is_linear(&self) -> bool {
+        false
+    }
+
+    fn n_state(&self) -> usize {
+        1
+    }
+
+    fn update(&self, input: &MatInput, state_old: &[f64], state_new: &mut [f64]) -> Result<MatOutput> {
+        let e = input.strain;
+        if e.len() != 6 {
+            return fail("packningsbeteendet kan bara användas av packningselement (GK*)");
+        }
+        let (p, kc, cp) = self.thickness(e[0], state_old.first().copied().unwrap_or(0.0));
+        if let Some(s) = state_new.first_mut() {
+            *s = cp;
+        }
+        let mut stress = vec![0.0; 6];
+        let mut d = vec![0.0; 36];
+        stress[0] = p;
+        d[0] = kc;
+        if let Some((em, nu)) = self.membrane {
+            let c = em / (1.0 - nu * nu);
+            stress[1] = c * (e[1] + nu * e[2]);
+            stress[2] = c * (e[2] + nu * e[1]);
+            stress[5] = em / (2.0 * (1.0 + nu)) * e[5];
+            d[7] = c;
+            d[8] = c * nu;
+            d[13] = c * nu;
+            d[14] = c;
+            d[35] = em / (2.0 * (1.0 + nu));
+        }
+        if let Some(g) = self.shear {
+            stress[3] = g * e[3];
+            stress[4] = g * e[4];
+            d[21] = g;
+            d[28] = g;
+        }
+        Ok(MatOutput { stress, tangent: d })
+    }
+}

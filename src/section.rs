@@ -1,0 +1,64 @@
+//! Tvärsnitt för balkar. Egenskaperna exporteras oförändrade till .inp
+//! (*BEAM GENERAL SECTION), så den exporterade modellen får exakt samma tal.
+
+/// Balktvärsnitt. `i11` är tröghetsmomentet för böjning i "höjdled"
+/// (lokal 2-axel, uppåt), `i22` för böjning i sidled, `j` vridstyvhet.
+#[derive(Debug, Clone, PartialEq)]
+pub struct BeamSection {
+    pub a: f64,
+    pub i11: f64,
+    pub i22: f64,
+    pub j: f64,
+}
+
+impl BeamSection {
+    /// Rektangel med bredd `b` och höjd `h`.
+    pub fn rect(b: f64, h: f64) -> Self {
+        BeamSection { a: b * h, i11: b * h.powi(3) / 12.0, i22: h * b.powi(3) / 12.0, j: rect_torsion(b, h) }
+    }
+
+    /// Massiv cirkel med radie `r`.
+    pub fn circle(r: f64) -> Self {
+        let i = std::f64::consts::PI * r.powi(4) / 4.0;
+        BeamSection { a: std::f64::consts::PI * r * r, i11: i, i22: i, j: 2.0 * i }
+    }
+
+    /// Rör med ytterradie `r` och godstjocklek `t`.
+    pub fn pipe(r: f64, t: f64) -> Self {
+        let ri = r - t;
+        let pi = std::f64::consts::PI;
+        let i = pi * (r.powi(4) - ri.powi(4)) / 4.0;
+        BeamSection { a: pi * (r * r - ri * ri), i11: i, i22: i, j: 2.0 * i }
+    }
+
+    /// Tunnväggigt rör med ytterradie `r` och godstjocklek `t` (som
+    /// *BEAM SECTION, SECTION=PIPE): I = π r_m³ t och J = 2I med medelradien r_m.
+    pub fn pipe_thin(r: f64, t: f64) -> Self {
+        let rm = r - t / 2.0;
+        let pi = std::f64::consts::PI;
+        let i = pi * rm.powi(3) * t;
+        BeamSection { a: 2.0 * pi * rm * t, i11: i, i22: i, j: 2.0 * i }
+    }
+
+    /// I-profil: höjd `h`, flänsbredd `b`, flänstjocklek `tf`, livtjocklek `tw`.
+    pub fn ibeam(h: f64, b: f64, tf: f64, tw: f64) -> Self {
+        let hw = h - 2.0 * tf;
+        BeamSection {
+            a: 2.0 * b * tf + hw * tw,
+            i11: (b * h.powi(3) - (b - tw) * hw.powi(3)) / 12.0,
+            i22: 2.0 * tf * b.powi(3) / 12.0 + hw * tw.powi(3) / 12.0,
+            j: (2.0 * b * tf.powi(3) + hw * tw.powi(3)) / 3.0,
+        }
+    }
+
+    /// Godtyckligt tvärsnitt från tabellvärden.
+    pub fn general(a: f64, i11: f64, i22: f64, j: f64) -> Self {
+        BeamSection { a, i11, i22, j }
+    }
+}
+
+/// Vridstyvhet för rektangel (Roark, approximativ).
+fn rect_torsion(b: f64, h: f64) -> f64 {
+    let (a, c) = if b >= h { (b, h) } else { (h, b) };
+    a * c.powi(3) * (1.0 / 3.0 - 0.21 * (c / a) * (1.0 - c.powi(4) / (12.0 * a.powi(4))))
+}

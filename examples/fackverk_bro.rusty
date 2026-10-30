@@ -1,0 +1,16 @@
+# Fackverksbro (Pratt), 2D-stänger.
+material steel E=210e9 nu=0.3
+truss (0,0) (2,0) (4,0) (6,0) (8,0) area=2e-3
+truss (2,2) (4,2) (6,2) area=2e-3
+truss (0,0) (2,2) area=2e-3
+truss (8,0) (6,2) area=2e-3
+truss (2,0) (2,2) area=1e-3
+truss (4,0) (4,2) area=1e-3
+truss (6,0) (6,2) area=1e-3
+truss (2,2) (4,0) area=1e-3
+truss (6,2) (4,0) area=1e-3
+pin at=(0,0)
+support at=(8,0) uy
+load at=(2,0) fy=-40e3
+load at=(4,0) fy=-60e3
+load at=(6,0) fy=-40e3

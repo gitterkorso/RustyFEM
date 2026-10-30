@@ -1,0 +1,13 @@
+# Pyramidformat 3D-fackverk.
+material steel E=210e9 nu=0.3
+truss (0,0,0) (1,1,2) area=5e-4
+truss (2,0,0) (1,1,2) area=5e-4
+truss (2,2,0) (1,1,2) area=5e-4
+truss (0,2,0) (1,1,2) area=5e-4
+truss (0,0,0) (2,0,0) (2,2,0) (0,2,0) (0,0,0) area=5e-4
+truss (0,0,0) (2,2,0) area=3e-4
+pin at=(0,0,0)
+support at=(2,0,0) uy uz
+support at=(2,2,0) uz
+support at=(0,2,0) uz
+load at=(1,1,2) fx=3e3 fy=1e3 fz=-10e3

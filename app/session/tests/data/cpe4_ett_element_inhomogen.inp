@@ -1,0 +1,32 @@
+*HEADING
+CPE4, ett element, inhomogen föreskriven deformation (B-bar och F-bar vid NLGEOM)
+*NODE
+1, 0, 0
+2, 1, 0
+3, 1, 1
+4, 0, 1
+*ELEMENT, TYPE=CPE4, ELSET=E
+1, 1,2,3,4
+*SOLID SECTION, ELSET=E, MATERIAL=M
+1.
+*MATERIAL, NAME=M
+*ELASTIC
+1000., 0.3
+*STEP, NLGEOM=YES
+*STATIC
+1., 1.
+*BOUNDARY
+1, 1, 1, 0.0
+1, 2, 2, 0.0
+2, 1, 1, 0.1
+2, 2, 2, -0.1
+3, 1, 1, 0.35
+3, 2, 2, -0.2
+4, 1, 1, 0.05
+4, 2, 2, 0.05
+*OUTPUT, FIELD
+*NODE OUTPUT
+U, RF
+*ELEMENT OUTPUT
+S, LE
+*END STEP

@@ -1,0 +1,10 @@
+# Bordsliknande 3D-ram: fyra pelare och ett balklag, inspänt i golvet.
+material steel E=210e9 nu=0.3
+beam (0,0,0) (0,0,3) section=pipe(0.06,0.005) n=6
+beam (4,0,0) (4,0,3) section=pipe(0.06,0.005) n=6
+beam (4,2,0) (4,2,3) section=pipe(0.06,0.005) n=6
+beam (0,2,0) (0,2,3) section=pipe(0.06,0.005) n=6
+beam (0,0,3) (4,0,3) (4,2,3) (0,2,3) (0,0,3) section=rect(0.08,0.16) n=8
+fix z=0
+load at=(2,0,3) fz=-20e3
+load at=(4,1,3) fy=5e3 mz=2e3
