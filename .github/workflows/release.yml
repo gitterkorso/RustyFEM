@@ -22,19 +22,21 @@ permissions:
 env:
   TAG: ${{ github.event.inputs.tag || github.ref_name }}
   NOTES: |
-    RustyFEM for Windows (64- and 32-bit) and Linux (x86_64).
+    RustyFEM for Windows, macOS and Linux. Pick the file for your computer:
 
-    **Windows**
-    - **RustyFEM_*_x64-setup.exe** – installer (recommended).
-    - **RustyFEM_*_x64_*.msi** – MSI package for installation with company deployment tools.
-    - **RustyFEM_*_x86-setup.exe** / **RustyFEM_*_x86_*.msi** – the same for 32-bit Windows.
+    | Your computer | Download | Notes |
+    | --- | --- | --- |
+    | **Windows, 64-bit** (almost all PCs) | `RustyFEM_*_x64-setup.exe` | Installer – start here if unsure. |
+    | Windows, 64-bit, managed by IT | `RustyFEM_*_x64_en-US.msi` | MSI package for company deployment tools. |
+    | **Windows, 32-bit** (older PCs) | `RustyFEM_*_x86-setup.exe` | Installer. |
+    | Windows, 32-bit, managed by IT | `RustyFEM_*_x86_en-US.msi` | MSI package. |
+    | **macOS** (Apple silicon and Intel) | `RustyFEM_*_universal.dmg` | Open it and drag RustyFEM to Applications. |
+    | **Linux**, any distribution | `RustyFEM_*_amd64.AppImage` | `chmod +x` the file, then run it. |
+    | Linux, Debian / Ubuntu | `RustyFEM_*_amd64.deb` | `sudo apt install ./RustyFEM_*_amd64.deb` |
 
-    The installers are not code-signed yet, so Windows SmartScreen may
-    warn the first time: choose *More info → Run anyway*.
+    **Not sure whether your Windows is 64- or 32-bit?** Open *Settings → System → About* and look at *System type*.
 
-    **Linux**
-    - **RustyFEM_*_amd64.AppImage** – runs on most distributions: `chmod +x` it and start it.
-    - **RustyFEM_*_amd64.deb** – package for Debian and Ubuntu: `sudo apt install ./RustyFEM_*_amd64.deb`.
+    The Windows installers are not code-signed yet, so SmartScreen may warn the first time: choose *More info → Run anyway*.
 
 jobs:
   windows:
