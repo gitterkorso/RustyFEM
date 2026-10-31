@@ -1,6 +1,6 @@
 name: release
 
-# Builds installers for Windows and publishes them as a release
+# Builds installers for Windows and Linux and publishes them as a release
 # when a tag vX.Y.Z is pushed.
 on:
   push:
@@ -10,17 +10,39 @@ on:
       tag:
         description: "Tag to release (e.g. v0.1.0)"
         required: true
+      platforms:
+        description: "Which installers to build"
+        type: choice
+        options: [all, windows, linux]
+        default: all
 
 permissions:
   contents: write
 
+env:
+  TAG: ${{ github.event.inputs.tag || github.ref_name }}
+  NOTES: |
+    RustyFEM for Windows (64-bit) and Linux (x86_64).
+
+    **Windows**
+    - **RustyFEM_*_x64-setup.exe** – installer (recommended).
+    - **RustyFEM_*_x64_*.msi** – MSI package for installation with company deployment tools.
+
+    The installers are not code-signed yet, so Windows SmartScreen may
+    warn the first time: choose *More info → Run anyway*.
+
+    **Linux**
+    - **RustyFEM_*_amd64.AppImage** – runs on most distributions: `chmod +x` it and start it.
+    - **RustyFEM_*_amd64.deb** – package for Debian and Ubuntu: `sudo apt install ./RustyFEM_*_amd64.deb`.
+
 jobs:
   windows:
+    if: github.event.inputs.platforms != 'linux'
     runs-on: windows-latest
-    env:
-      TAG: ${{ github.event.inputs.tag || github.ref_name }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TAG }}
       - uses: dtolnay/rust-toolchain@stable
       - uses: actions/setup-node@v4
         with:
@@ -36,15 +58,33 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           files=$(ls target/release/bundle/msi/*.msi target/release/bundle/nsis/*-setup.exe)
-          notes="RustyFEM ${TAG} for Windows (64-bit).
+          gh release create "$TAG" $files --title "RustyFEM ${TAG}" --notes "$NOTES" \
+            || gh release upload "$TAG" $files --clobber
 
-          - **RustyFEM_*_x64-setup.exe** – installer (recommended).
-          - **RustyFEM_*_x64_*.msi** – MSI package for installation with company deployment tools.
-
-          The installers are not code-signed yet, so Windows SmartScreen may
-          warn the first time: choose *More info → Run anyway*."
-          if gh release view "$TAG" >/dev/null 2>&1; then
-            gh release upload "$TAG" $files --clobber
-          else
-            gh release create "$TAG" $files --title "RustyFEM ${TAG}" --notes "$notes"
-          fi
+  linux:
+    if: github.event.inputs.platforms != 'windows'
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TAG }}
+      - name: Install system libraries
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Build installers (AppImage and deb)
+        working-directory: web
+        run: |
+          npm ci
+          npm run tauri build -- --bundles appimage,deb
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          files=$(ls target/release/bundle/appimage/*.AppImage target/release/bundle/deb/*.deb)
+          gh release create "$TAG" $files --title "RustyFEM ${TAG}" --notes "$NOTES" \
+            || gh release upload "$TAG" $files --clobber
