@@ -1,0 +1,21 @@
+name: Feature request
+description: Suggest a new element, material, analysis type or app feature
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What do you want to do?
+      description: Describe the problem or the analysis you are trying to run.
+    validations:
+      required: true
+  - type: textarea
+    id: solution
+    attributes:
+      label: Suggested solution
+      description: How it could work, including example input syntax if relevant.
+  - type: textarea
+    id: references
+    attributes:
+      label: References
+      description: Papers, books or benchmarks that define the expected behaviour.

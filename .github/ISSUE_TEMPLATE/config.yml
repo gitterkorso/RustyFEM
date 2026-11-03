@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Technical reference
+    url: https://github.com/gitterkorso/RustyFEM/blob/main/docs/REFERENCE.md
+    about: The scripting language, elements, materials, solvers and known limitations.

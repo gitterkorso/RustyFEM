@@ -1,0 +1,53 @@
+name: Bug report
+description: A crash, wrong result or something that does not work
+labels: [bug]
+body:
+  - type: input
+    id: version
+    attributes:
+      label: RustyFEM version
+      placeholder: "0.1.1"
+    validations:
+      required: true
+  - type: dropdown
+    id: part
+    attributes:
+      label: Where does it happen?
+      options:
+        - Desktop app
+        - Command-line program
+        - Rust library or C interface
+        - .inp import
+    validations:
+      required: true
+  - type: dropdown
+    id: platform
+    attributes:
+      label: Platform
+      options:
+        - Windows
+        - macOS
+        - Linux
+        - iOS
+    validations:
+      required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: What happened?
+      description: Include the full error message if there is one.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What did you expect?
+      description: For wrong results, give the expected values and where they come from, such as an analytical solution.
+    validations:
+      required: true
+  - type: textarea
+    id: model
+    attributes:
+      label: Smallest model that shows the problem
+      description: Paste the `.rusty` or `.inp` file, or attach it.
+      render: text

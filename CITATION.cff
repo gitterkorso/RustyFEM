@@ -1,0 +1,19 @@
+cff-version: 1.2.0
+message: "If you use RustyFEM in your work, please cite it as below."
+type: software
+title: RustyFEM
+abstract: A finite element solver and desktop app written in Rust.
+authors:
+  - family-names: Westin
+    given-names: Nick
+version: 0.1.1
+date-released: 2026-10-30
+license:
+  - MIT
+  - Apache-2.0
+repository-code: https://github.com/gitterkorso/RustyFEM
+keywords:
+  - finite element analysis
+  - structural analysis
+  - solver
+  - rust

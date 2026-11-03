@@ -134,7 +134,7 @@ of real structures – see [DISCLAIMER.md](DISCLAIMER.md).
 
 ### Contribution
 
-Contributions are welcome. Unless you explicitly state otherwise, any
-contribution intentionally submitted for inclusion in the work by you, as
-defined in the Apache-2.0 license, shall be dual licensed as above, without
-any additional terms or conditions.
+Contributions are welcome, see [CONTRIBUTING.md](CONTRIBUTING.md). Unless you
+explicitly state otherwise, any contribution intentionally submitted for
+inclusion in the work by you, as defined in the Apache-2.0 license, shall be
+dual licensed as above, without any additional terms or conditions.
