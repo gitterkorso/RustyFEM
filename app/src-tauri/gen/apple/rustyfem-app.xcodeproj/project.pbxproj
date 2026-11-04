@@ -202,7 +202,6 @@
 				LastUpgradeCheck = 1430;
 				TargetAttributes = {
 					4C15FE797D8BEFE98AB84B63 = {
-						DevelopmentTeam = MQTBFQ9Q83;
 					};
 				};
 			};
@@ -341,7 +340,6 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = "rustyfem-app_iOS/rustyfem-app_iOS.entitlements";
 				CODE_SIGN_IDENTITY = "iPhone Developer";
-				DEVELOPMENT_TEAM = MQTBFQ9Q83;
 				ENABLE_BITCODE = NO;
 				"EXCLUDED_ARCHS[sdk=iphoneos*]" = x86_64;
 				FRAMEWORK_SEARCH_PATHS = (
@@ -373,7 +371,6 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = "rustyfem-app_iOS/rustyfem-app_iOS.entitlements";
 				CODE_SIGN_IDENTITY = "iPhone Developer";
-				DEVELOPMENT_TEAM = MQTBFQ9Q83;
 				ENABLE_BITCODE = NO;
 				"EXCLUDED_ARCHS[sdk=iphoneos*]" = x86_64;
 				FRAMEWORK_SEARCH_PATHS = (

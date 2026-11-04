@@ -4,19 +4,20 @@
 # Push the tag first so the release exists (the Windows job creates it).
 # Run from the repository root: sh scripts/release-macos.sh
 #
-# The App Store Connect API key stays outside the repository:
-#   ~/.appstoreconnect/rustyfem.env   APPLE_API_ISSUER=... and APPLE_API_KEY=...
+# The App Store Connect API key and the signing identity stay outside the repository:
+#   ~/.appstoreconnect/rustyfem.env   APPLE_API_ISSUER=..., APPLE_API_KEY=...
+#                                     and APPLE_SIGNING_IDENTITY="Developer ID Application: ..."
 #   ~/.appstoreconnect/private_keys/AuthKey_<APPLE_API_KEY>.p8
 set -e
 
 env="$HOME/.appstoreconnect/rustyfem.env"
-[ -f "$env" ] || { echo "Missing $env (APPLE_API_ISSUER and APPLE_API_KEY)."; exit 1; }
+[ -f "$env" ] || { echo "Missing $env (APPLE_API_ISSUER, APPLE_API_KEY and APPLE_SIGNING_IDENTITY)."; exit 1; }
 set -a
 . "$env"
 set +a
 
 export PATH="$HOME/.cargo/bin:$PATH"
-export APPLE_SIGNING_IDENTITY="Developer ID Application: Westin Digital AB (MQTBFQ9Q83)"
+[ -n "$APPLE_SIGNING_IDENTITY" ] || { echo "APPLE_SIGNING_IDENTITY is missing from $env."; exit 1; }
 export APPLE_API_KEY_PATH="$HOME/.appstoreconnect/private_keys/AuthKey_$APPLE_API_KEY.p8"
 
 version=$(sed -n 's/^  "version": "\(.*\)",$/\1/p' app/src-tauri/tauri.conf.json)

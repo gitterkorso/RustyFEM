@@ -12,7 +12,6 @@ settingGroups:
     base:
       PRODUCT_NAME: RustyFEM
       PRODUCT_BUNDLE_IDENTIFIER: se.rustyfem.app
-      DEVELOPMENT_TEAM: MQTBFQ9Q83
 targetTemplates:
   app:
     type: application
