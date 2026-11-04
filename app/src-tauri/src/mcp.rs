@@ -45,7 +45,8 @@ pub fn config_dir() -> PathBuf {
     let home = |v: &str| std::env::var_os(v).map(PathBuf::from);
     let base = if cfg!(windows) {
         home("APPDATA").unwrap_or_else(std::env::temp_dir)
-    } else if cfg!(target_os = "macos") {
+    } else if cfg!(any(target_os = "macos", target_os = "ios")) {
+        // on iOS, HOME is the app container, where `.config` is not writable
         home("HOME").map(|h| h.join("Library/Application Support")).unwrap_or_else(std::env::temp_dir)
     } else {
         home("XDG_CONFIG_HOME").or_else(|| home("HOME").map(|h| h.join(".config"))).unwrap_or_else(std::env::temp_dir)

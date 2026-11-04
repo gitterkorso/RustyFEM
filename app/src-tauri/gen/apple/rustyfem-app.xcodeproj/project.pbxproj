@@ -19,6 +19,7 @@
 		E46CF366E37D1813F1599BAE /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 8FB2D84D4997BC5AB1A8D276 /* LaunchScreen.storyboard */; };
 		ED64DDF66CEDD5105A02B9EC /* UIKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 41BC1B663227297ED4204FDC /* UIKit.framework */; };
 		FB6FF4A48D95B0943F266969 /* main.mm in Sources */ = {isa = PBXBuildFile; fileRef = 9609EA67773112C96ECA8E95 /* main.mm */; };
+		FF8511859055777CAF07E17F /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = A3336C665EC3F1D08F4A779B /* PrivacyInfo.xcprivacy */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -37,6 +38,7 @@
 		9609EA67773112C96ECA8E95 /* main.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = main.mm; sourceTree = "<group>"; };
 		9DCABB88FEAA29BCD3CC8D5F /* Security.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Security.framework; path = System/Library/Frameworks/Security.framework; sourceTree = SDKROOT; };
 		9F647B2967CF899CDEA2891B /* lib.rs */ = {isa = PBXFileReference; path = lib.rs; sourceTree = "<group>"; };
+		A3336C665EC3F1D08F4A779B /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
 		AE09312446EE3820B37C448A /* assets */ = {isa = PBXFileReference; lastKnownFileType = folder; path = assets; sourceTree = SOURCE_ROOT; };
 		B57C2E3294FA2090F8EC03E6 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		CC92103AA3870D7E40FF2847 /* main.rs */ = {isa = PBXFileReference; path = main.rs; sourceTree = "<group>"; };
@@ -89,6 +91,7 @@
 			isa = PBXGroup;
 			children = (
 				B57C2E3294FA2090F8EC03E6 /* Info.plist */,
+				A3336C665EC3F1D08F4A779B /* PrivacyInfo.xcprivacy */,
 				75504CA0B1634311A34AB0AD /* rustyfem-app_iOS.entitlements */,
 			);
 			path = "rustyfem-app_iOS";
@@ -152,14 +155,14 @@
 			path = bindings;
 			sourceTree = "<group>";
 		};
-		"TEMP_6DA6CA67-4FB1-4FD6-8F63-39232BE84832" /* x86_64 */ = {
+		"TEMP_A493CA71-9F4F-49C5-A198-DC4F5FF14A92" /* x86_64 */ = {
 			isa = PBXGroup;
 			children = (
 			);
 			path = x86_64;
 			sourceTree = "<group>";
 		};
-		"TEMP_EE535CA6-29E2-4C24-8D11-471A3646C300" /* arm64 */ = {
+		"TEMP_B3529749-439E-4416-A351-D3D5417D00E5" /* arm64 */ = {
 			isa = PBXGroup;
 			children = (
 			);
@@ -229,6 +232,7 @@
 			files = (
 				7386323641311677C6C26DE2 /* Assets.xcassets in Resources */,
 				E46CF366E37D1813F1599BAE /* LaunchScreen.storyboard in Resources */,
+				FF8511859055777CAF07E17F /* PrivacyInfo.xcprivacy in Resources */,
 				DE6973439049A32E6C9E0C99 /* assets in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
