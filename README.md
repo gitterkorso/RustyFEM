@@ -2,6 +2,10 @@
 
 ![RustyFEM](web/public/brand/rustyfem-logo.png)
 
+[![Build](https://github.com/gitterkorso/RustyFEM/actions/workflows/app.yml/badge.svg)](https://github.com/gitterkorso/RustyFEM/actions/workflows/app.yml)
+[![Latest release](https://img.shields.io/github/v/release/gitterkorso/RustyFEM)](https://github.com/gitterkorso/RustyFEM/releases/latest)
+[![License: MIT OR Apache-2.0](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue)](#license)
+
 **RustyFEM is a finite element analysis (FEM) program written in Rust.** It
 computes how structures and components deform, which stresses develop and
 how they vibrate, heat up or fail – from a simple cantilever beam to
@@ -15,6 +19,9 @@ The project consists of two parts:
 - **The desktop app** – a graphical interface for building the model, solving
   it and inspecting the results in 3D. The app runs on Windows, macOS and
   Linux; iPad and iPhone are prepared.
+
+**[Download the latest version](https://github.com/gitterkorso/RustyFEM/releases/latest)**
+for Windows, macOS or Linux. The release page explains which file to pick.
 
 > [!WARNING]
 > **Not for real-world design.** RustyFEM is a tool for education, research
@@ -63,7 +70,10 @@ displacement, the highest von Mises stress, the sum of the reaction forces and
 an equilibrium check, and the full field is saved for visualization. More
 examples are in [`examples/`](examples).
 
-## Getting started
+## Building from source
+
+Most users can [download an installer](https://github.com/gitterkorso/RustyFEM/releases/latest)
+instead. To build it yourself:
 
 **Requirements:** [Rust](https://www.rust-lang.org/tools/install) (stable)
 and, for the app, [Node.js](https://nodejs.org/) 20 or later.
@@ -104,8 +114,8 @@ npm run tauri build                # installer for the current platform
 | [`examples/`](examples) | Example models in `.rusty` and examples of the Rust API |
 | [`docs/`](docs) | Technical reference |
 
-The tests and the more than 1,500 regression cases live in a separate test
-project.
+The engine tests and the more than 1,500 regression cases live in a separate
+test project that is not part of this repository.
 
 ## Documentation
 
@@ -124,7 +134,7 @@ RustyFEM is open source and licensed under either of
 - Apache License, Version 2.0 ([LICENSE-APACHE](LICENSE-APACHE)), or
 - MIT license ([LICENSE-MIT](LICENSE-MIT))
 
-at your option.
+at your option. GitHub's sidebar may show only one of them, but both apply.
 
 Copyright © 2026 Nick Westin. Third-party software is covered by its own
 licenses, see [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md).
