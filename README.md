@@ -23,6 +23,8 @@ The project consists of two parts:
 **[Download the latest version](https://github.com/gitterkorso/RustyFEM/releases/latest)**
 for Windows, macOS or Linux. The release page explains which file to pick.
 
+![Von Mises stresses in a model of solids and beams in the RustyFEM app](docs/images/app-results.png)
+
 > [!WARNING]
 > **Not for real-world design.** RustyFEM is a tool for education, research
 > and development. The results may contain errors and are provided without
