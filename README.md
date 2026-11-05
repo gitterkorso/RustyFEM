@@ -128,6 +128,7 @@ test project that is not part of this repository.
   elements, materials and steps are added.
 - [The app](app/README.md) – the parts of the interface and how the app is
   built.
+- [Privacy policy](PRIVACY.md) – RustyFEM collects no personal data.
 
 ## License
 
