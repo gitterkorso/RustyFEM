@@ -68,6 +68,7 @@ element_modules! {
     soils,
     thermal_electric,
     thermal_electric_structural,
+    traction,
     truss,
     user_element,
     xfem,

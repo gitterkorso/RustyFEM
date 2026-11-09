@@ -44,6 +44,10 @@ fn elem_load(p: &Prepared, l: &DistLoad, u: &[NodeVec], time: f64) -> Result<Vec
     if let Some(fe) = crate::user::loads::dload(p, l, time).map_err(|err| FemError(format!("{}: {err}", m.elem_name(e))))? {
         return Ok(fe);
     }
+    // surface traction TRVECn/TRSHRn: dead load in the reference configuration
+    if let Some(fe) = crate::elements::traction::element_load(&p.ctx(e, true, time, 0.0), m.elements[e].etype, l).map_err(|err| FemError(format!("{}: {err}", m.elem_name(e))))? {
+        return Ok(fe);
+    }
     let r = if follows(p, l) {
         let ctx = deformed_ctx(p, e, u, time);
         m.elements[e].etype.distributed_load(&ctx, l, &ue)

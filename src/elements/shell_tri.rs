@@ -259,6 +259,7 @@ impl ElementType for ShellTri {
                 for d in 3..dmax {
                     m[(i * ND + d) * n + j * ND + d] += f * mr;
                 }
+                super::offset_mass(&mut m, n, i, j, f * mt, sec.zoff, kind == MassKind::Lumped);
             }
         }
         Ok(to_global(&m, &loc.r, 3))

@@ -137,14 +137,36 @@ pub fn composite_plies(sec: &crate::fem::model::SectionDef) -> Result<Vec<(f64, 
     Ok(plies)
 }
 
-/// The section is integrated through the thickness (nonlinear material, orientation
-/// or layered section). Otherwise the homogeneous elastic formulation is used.
+/// Elements that support *SHELL SECTION, OFFSET=.
+pub const OFFSET_TYPES: &[&str] = &["S4", "S4R", "S3", "S3R"];
+
+/// *SHELL SECTION, OFFSET= as a fraction of the thickness: the distance from the
+/// midsurface to the reference surface (the nodes) along the positive normal.
+/// SPOS = 0.5 (the nodes on the top face), SNEG = −0.5, a number, or 0 without OFFSET.
+pub fn offset(sec: &crate::fem::model::SectionDef) -> Result<f64> {
+    if sec.raw.name != "SHELL SECTION" {
+        return Ok(0.0);
+    }
+    let Some(v) = sec.raw.param("OFFSET") else { return Ok(0.0) };
+    match v.trim().to_uppercase().as_str() {
+        "SPOS" => Ok(0.5),
+        "SNEG" => Ok(-0.5),
+        "" => sec.raw.err("OFFSET= needs a value (SPOS, SNEG or a fraction of the thickness)"),
+        o => match parse_f64(o) {
+            Some(x) => Ok(x),
+            None => sec.raw.err(format!("OFFSET={o} is not supported (give SPOS, SNEG or a fraction of the thickness)")),
+        },
+    }
+}
+
+/// The section is integrated through the thickness (nonlinear material, orientation,
+/// layered section or offset). Otherwise the homogeneous elastic formulation is used.
 pub fn is_general(ctx: &ElemCtx) -> bool {
     let Some(sec) = ctx.section else { return false };
     if sec.raw.name != "SHELL SECTION" {
         return false;
     }
-    if sec.raw.has("COMPOSITE") || ctx.orientation.is_some() {
+    if sec.raw.has("COMPOSITE") || ctx.orientation.is_some() || offset(sec).map_or(true, |o| o != 0.0) {
         return true;
     }
     match ctx.material {
@@ -157,10 +179,8 @@ impl<'a> Layup<'a> {
     pub fn new(ctx: &ElemCtx<'a>, name: &str, loc: &Local) -> Result<Layup<'a>> {
         let sec = ctx.section(name)?;
         let mat = ctx.material(name)?;
-        for p in ["OFFSET", "TEMPERATURE"] {
-            if sec.raw.has(p) {
-                return sec.raw.err(format!("{p}= on *SHELL SECTION is not supported yet"));
-            }
+        if sec.raw.has("TEMPERATURE") {
+            return sec.raw.err("TEMPERATURE= on *SHELL SECTION is not supported yet");
         }
         let out = orientation_angle(ctx, loc)?;
         let mut pts = Vec::new();
@@ -187,6 +207,18 @@ impl<'a> Layup<'a> {
             t = thickness;
             for (z, w) in simpson(-0.5 * t, t, n_int.max(1))? {
                 pts.push(SecPoint { z, w, c: out.0, s: out.1 });
+            }
+        }
+        // OFFSET=: the nodes lie on the reference surface at OFFSET·t from the midsurface,
+        // so the section points (z from the reference surface) move by −OFFSET·t
+        let dz = -offset(sec)? * t;
+        if dz != 0.0 {
+            for p in pts.iter_mut() {
+                p.z += dz;
+            }
+            for l in layers.iter_mut() {
+                l.0 += dz;
+                l.1 += dz;
             }
         }
         Ok(Layup { t, pts, plies: layers, mat, nst: mat.n_state(), out })

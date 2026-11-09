@@ -179,6 +179,9 @@ pub struct ShellSec {
     pub n_int: usize,
     /// Transverse shear stiffness (K11, K22, K12) from *TRANSVERSE SHEAR STIFFNESS.
     pub tss: Option<[f64; 3]>,
+    /// Position of the midsurface relative to the nodes (reference surface) along the
+    /// normal, = −OFFSET·t (*SHELL SECTION, OFFSET=; 0 without offset).
+    pub zoff: f64,
 }
 
 impl ShellSec {
@@ -224,7 +227,11 @@ impl ShellSec {
         // *SHELL GENERAL SECTION: stresses are reported at section points 1 and 3 (bottom and top)
         let n_int = if sec.raw.name == "SHELL GENERAL SECTION" { 3 } else { n_int };
         let g = if mat.elastic_moduli().is_some() { e / (2.0 * (1.0 + nu)) } else { d[8] };
-        Ok(ShellSec { t, e, nu, g, d, rho: ctx.density, n_int, tss })
+        let off = if shell_section { section::offset(sec)? } else { 0.0 };
+        if off != 0.0 && !section::OFFSET_TYPES.contains(&name) {
+            return fail(format!("element {} ({name}): *SHELL SECTION, OFFSET= is only supported for {}", ctx.label, section::OFFSET_TYPES.join(", ")));
+        }
+        Ok(ShellSec { t, e, nu, g, d, rho: ctx.density, n_int, tss, zoff: -off * t })
     }
 
     /// Scaled transverse shear stiffness (isotropic part) for an element with the area `a`.
@@ -730,6 +737,7 @@ fn quad_mass(x: &[[f64; 2]], sec: &ShellSec, lumped: bool) -> Vec<f64> {
                 for d in 3..5 {
                     m[(ri * ND + d) * n + cj * ND + d] += f * mr;
                 }
+                offset_mass(&mut m, n, ri, cj, f * mt, sec.zoff, lumped);
                 if lumped {
                     // area struct_nonlin: diagonal mass (*DYNAMIC) has the same
                     // rotary inertia about the normal as about the in-plane axes
@@ -739,6 +747,25 @@ fn quad_mass(x: &[[f64; 2]], sec: &ShellSec, lumped: bool) -> Vec<f64> {
         }
     }
     m
+}
+
+/// Mass terms from the shell offset (local dofs, f = the translational mass for the
+/// node pair): the midsurface moves u + zₘθy, v − zₘθx, which couples translation and
+/// rotation and adds mt·zₘ² to the rotary inertia (parallel axis). Diagonal mass:
+/// only the rotary inertia.
+pub fn offset_mass(m: &mut [f64], n: usize, i: usize, j: usize, f: f64, zm: f64, lumped: bool) {
+    if zm == 0.0 {
+        return;
+    }
+    let at = |a: usize, b: usize| (i * ND + a) * n + j * ND + b;
+    m[at(3, 3)] += f * zm * zm;
+    m[at(4, 4)] += f * zm * zm;
+    if !lumped {
+        m[at(0, 4)] += f * zm;
+        m[at(4, 0)] += f * zm;
+        m[at(1, 3)] -= f * zm;
+        m[at(3, 1)] -= f * zm;
+    }
 }
 
 /// Equivalent nodal forces (local, 3 per node) for a load per area `q` (local direction).

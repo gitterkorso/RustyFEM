@@ -62,6 +62,9 @@ pub fn relax(mode: Hourglass, c: f64, q: f64, q0: f64, qv0: f64) -> (f64, f64) {
 pub fn s4r_force(ctx: &ElemCtx, k_std: &[f64], u: &[f64], old: &[f64], mode: Hourglass) -> Result<(Vec<f64>, Vec<f64>, f64)> {
     let loc = local_frame(&ctx.x, ctx.label, "S4R")?;
     let sec = ShellSec::get(ctx, "S4R")?;
+    if sec.zoff != 0.0 {
+        return crate::model::fail(format!("element {} (S4R): *SHELL SECTION, OFFSET= is not supported in explicit dynamics", ctx.label));
+    }
     let n = 24;
     // local displacements
     let mut ul = vec![0.0; n];
@@ -161,6 +164,9 @@ pub fn drill_work(ctx: &ElemCtx, old: &[f64], new: &[f64], du: &[f64]) -> Result
 pub fn s3r_force(ctx: &ElemCtx, k_std: &[f64], u: &[f64]) -> Result<(Vec<f64>, Vec<f64>)> {
     let loc = local_frame(&ctx.x, ctx.label, "S3R")?;
     let sec = ShellSec::get(ctx, "S3R")?;
+    if sec.zoff != 0.0 {
+        return crate::model::fail(format!("element {} (S3R): *SHELL SECTION, OFFSET= is not supported in explicit dynamics", ctx.label));
+    }
     let n = 18;
     let mut ul = vec![0.0; n];
     for b in 0..6 {

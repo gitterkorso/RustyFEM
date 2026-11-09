@@ -447,7 +447,13 @@ pub fn external(p: &Prepared, cloads: &[(usize, usize, f64)], dloads: &[DistLoad
         }
         let ctx = p.ctx(e, nlgeom, time, 0.0);
         let ue = p.gather(e, u);
-        let fe = m.elements[e].etype.distributed_load(&ctx, l, &ue).map_err(|err| FemError(format!("{}: {err}", m.elem_name(e))))?;
+        // surface traction TRVECn/TRSHRn (*DSLOAD, elements/traction.rs)
+        let fe = match crate::elements::traction::element_load(&ctx, m.elements[e].etype, l) {
+            Ok(Some(fe)) => Ok(fe),
+            Ok(None) => m.elements[e].etype.distributed_load(&ctx, l, &ue),
+            Err(err) => Err(err),
+        }
+        .map_err(|err| FemError(format!("{}: {err}", m.elem_name(e))))?;
         for (a, &(n, s)) in p.edofs[e].iter().enumerate() {
             f[n][s] += fe[a];
         }

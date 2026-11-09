@@ -303,7 +303,12 @@ pub fn begin_step(p: &Prepared, step: &StepDef, state: &mut SolutionState) -> Re
                         // disappear with it (nodes that only belong to removed elements then get
                         // no force)
                         for l in state.dloads.values().filter(|l| l.elem == e) {
-                            let fe = el.etype.distributed_load(&ctx, l, &ue).map_err(|err| FemError(format!("{}: {err}", m.elem_name(e))))?;
+                            let fe = match crate::elements::traction::element_load(&ctx, el.etype, l) {
+                                Ok(Some(fe)) => Ok(fe),
+                                Ok(None) => el.etype.distributed_load(&ctx, l, &ue),
+                                Err(err) => Err(err),
+                            }
+                            .map_err(|err| FemError(format!("{}: {err}", m.elem_name(e))))?;
                             for (a, v) in fr.iter_mut().zip(fe) {
                                 *a -= v;
                             }

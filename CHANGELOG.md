@@ -10,6 +10,8 @@ Notable changes to RustyFEM. The format is based on
 
 - MCP server: option to allow connections from the local network.
 - iOS project and safe-area layout (not released yet).
+- `*SHELL SECTION, OFFSET=` for S4, S4R, S3 and S3R.
+- `*DSLOAD` surface traction TRVEC and TRSHR.
 
 ## [0.1.1] - 2026-10-30
 

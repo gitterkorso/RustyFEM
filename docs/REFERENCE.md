@@ -111,7 +111,7 @@ step types, materials and solvers).
 | Parts | `*PART`, `*ASSEMBLY`, `*INSTANCE` with translation and rotation, references `Instance.node` and `Instance.set`; `*RIGID BODY`, analytical surfaces and `*NORMAL` also inside a `*PART` |
 | Cross-sections | `*SOLID SECTION` (including ORIENTATION=, REF NODE= for CPEG and infinite acoustic elements), `*SHELL SECTION` (including ORIENTATION= and COMPOSITE with the same material in all layers), `*SHELL GENERAL SECTION`, `*MEMBRANE SECTION`, `*BEAM SECTION` (RECT, CIRC, PIPE, THICK PIPE, BOX, I, L, HEX, TRAPEZOID, ARBITRARY), `*BEAM GENERAL SECTION` (GENERAL, RECT, CHANNEL, HAT, NONLINEAR GENERAL with `*AXIAL`/`*M1`/`*M2`/`*TORQUE` etc., DENSITY=), `*TRANSVERSE SHEAR STIFFNESS`, `*COHESIVE SECTION`, `*GASKET SECTION` |
 | Boundary conditions | `*BOUNDARY` in model data and steps, all type names (ENCASTRE, PINNED, XSYMM, ...), prescribed values, OP=NEW/MOD, degree of freedom 8 (pore pressure, acoustic pressure), 9 (electric potential) and 11 (temperature, concentration); USER (DISP) and SUBMODEL |
-| Loads | `*CLOAD`; `*DLOAD` P/P1–P6, BX/BY/BZ/BR, GRAV, CENTRIF, PX/PY/PZ/P1/P2 on beams, PI/PE on pipes, PnNU (DLOAD); `*DSLOAD`; follower pressure with NLGEOM; `*AMPLITUDE` (TABULAR, EQUALLY SPACED, PERIODIC, SMOOTH STEP, DECAY, USER) |
+| Loads | `*CLOAD`; `*DLOAD` P/P1–P6, BX/BY/BZ/BR, GRAV, CENTRIF, PX/PY/PZ/P1/P2 on beams, PI/PE on pipes, PnNU (DLOAD); `*DSLOAD` P, TRVEC and TRSHR (traction as a dead load on 3D faces and shells); follower pressure with NLGEOM; `*AMPLITUDE` (TABULAR, EQUALLY SPACED, PERIODIC, SMOOTH STEP, DECAY, USER) |
 | Initial conditions | `*INITIAL CONDITIONS` TYPE=TEMPERATURE, VELOCITY, STRESS (including GEOSTATIC and USER), RATIO, PORE PRESSURE, FIELD, CONCENTRATION, SPECIFIC ENERGY, ENRICHMENT, ACOUSTIC STATIC PRESSURE; field variables with `*FIELD` (including USER) |
 | Parameters | `*PARAMETER` with Python expressions (arithmetic, `math` functions) and `<name>` in keyword lines and data lines |
 | Steps | Several `*STEP`s in sequence with rules for inherited loads and boundary conditions, PERTURBATION, `*CONTROLS` (PARAMETERS=FIELD, TIME INCREMENTATION), `SOLVER=`/`UNSYMM=` |
@@ -504,8 +504,11 @@ complete but covers what is closest to the existing features.
   no `OFFSET=`, no layered sections, `POISSON=` only 0.5 for SC8R/SC6R.
 - Layered shells (`*SHELL SECTION, COMPOSITE`): all layers must have the same
   material; layer orientation only as an angle. For LAMINA,
-  G13 = G23 = G12 is assumed in transverse shear. OFFSET= and TEMPERATURE= on
-  *SHELL SECTION are not supported; *BUCKLE with through-thickness integration is missing.
+  G13 = G23 = G12 is assumed in transverse shear. TEMPERATURE= on
+  *SHELL SECTION is not supported; *BUCKLE with through-thickness integration is missing.
+- `*SHELL SECTION, OFFSET=` (SPOS, SNEG or a fraction of the thickness) for S4, S4R,
+  S3 and S3R: the section is integrated through the thickness about the reference
+  surface, and the mass includes the offset. Not with *BUCKLE or explicit dynamics.
 - Timoshenko beams with nonlinear material: torsion and transverse shear are
   elastic; *BEAM GENERAL SECTION (except NONLINEAR GENERAL) is not supported;
   temperature gradients in beams are not supported. NONLINEAR GENERAL only
