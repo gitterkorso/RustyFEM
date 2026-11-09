@@ -369,6 +369,11 @@ fn mesh(st: State<'_, AppState>, id: u32) -> Res<Response> {
 }
 
 #[tauri::command]
+fn profiles(st: State<'_, AppState>, id: u32) -> Res<Response> {
+    with(&st, id, |s| Ok(Response::new(rustyfem_session::profiles::pack(s.model(), s.mesh()))))
+}
+
+#[tauri::command]
 fn symbols(st: State<'_, AppState>, id: u32, step: Option<u32>) -> Res<Response> {
     with(&st, id, |s| Ok(Response::new(rustyfem_session::info::symbols(s.model(), step.map(|x| x as usize)))))
 }
@@ -383,7 +388,7 @@ fn displacement(st: State<'_, AppState>, id: u32, step: u32, frame: u32) -> Res<
     with(&st, id, |s| Ok(Response::new(s.displacement(step as usize, frame as usize)?)))
 }
 
-const BINARY: [&str; 4] = ["mesh", "symbols", "field", "displacement"];
+const BINARY: [&str; 5] = ["mesh", "profiles", "symbols", "field", "displacement"];
 
 fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
     tauri_specta::Builder::<tauri::Wry>::new().commands(tauri_specta::collect_commands![
@@ -447,7 +452,7 @@ pub fn run_app() {
         eprintln!("could not write bindings.ts: {e}");
     }
     let typed = builder.invoke_handler();
-    let binary: Box<dyn Fn(tauri::ipc::Invoke<tauri::Wry>) -> bool + Send + Sync> = Box::new(tauri::generate_handler![mesh, symbols, field, displacement]);
+    let binary: Box<dyn Fn(tauri::ipc::Invoke<tauri::Wry>) -> bool + Send + Sync> = Box::new(tauri::generate_handler![mesh, profiles, symbols, field, displacement]);
     let state: AppState = Arc::new(Mutex::new(Sessions::default()));
     let server = mcp::Mcp::new(state.clone());
     tauri::Builder::default()

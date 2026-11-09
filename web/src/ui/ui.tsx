@@ -14,6 +14,7 @@ const paths: Record<string, string> = {
   cube: "M12 2l9 5v10l-9 5-9-5V7zM12 12l9-5M12 12v10M12 12L3 7",
   square: "M4 4h16v16H4z",
   edges: "M4 4h16v16H4zM4 12h16M12 4v16",
+  profile: "M5 4h14v3h-5.5v10H19v3H5v-3h5.5V7H5z",
   surface: "M4 18l8-14 8 14z",
   ghost: "M4 4h16v16H4z",
   anchor: "M12 3v12M6 21l6-6 6 6M4 21h16",

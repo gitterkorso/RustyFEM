@@ -5,7 +5,7 @@ import { Channel, invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { open, save } from "@tauri-apps/plugin-dialog";
 import { commands } from "./bindings";
-import type { Engine, EngineEvents, FieldData, McpStatus, MeshData, Opened, RunEvent, Symbols, UnitSystem } from "./Engine";
+import type { Engine, EngineEvents, FieldData, McpStatus, MeshData, Opened, ProfileData, RunEvent, Symbols, UnitSystem } from "./Engine";
 
 type Result<T> = { status: "ok"; data: T } | { status: "error"; error: string };
 
@@ -91,7 +91,48 @@ export class TauriEngine implements Engine {
       lineElem: take(nline),
       points: take(npoint),
       pointElem: take(npoint),
+      profiles: await this.profiles(id).catch(() => null),
     };
+  }
+
+  private async profiles(id: number): Promise<ProfileData> {
+    const b = await bytes("profiles", { id });
+    const dv = new DataView(b);
+    let o = 0;
+    const u32 = () => {
+      const v = dv.getUint32(o, true);
+      o += 4;
+      return v;
+    };
+    const f32 = () => {
+      const v = dv.getFloat32(o, true);
+      o += 4;
+      return v;
+    };
+    const nseg = u32();
+    const segProfile = new Int32Array(nseg);
+    const segN1 = new Float32Array(nseg * 3);
+    for (let s = 0; s < nseg; s++) {
+      segProfile[s] = dv.getInt32(o, true);
+      o += 4;
+      for (let c = 0; c < 3; c++) segN1[s * 3 + c] = f32();
+    }
+    const profiles: Float32Array[][] = [];
+    for (let p = u32(); p > 0; p--) {
+      const polys: Float32Array[] = [];
+      for (let q = u32(); q > 0; q--) {
+        const n = u32();
+        const pts = new Float32Array(n * 2);
+        for (let i = 0; i < n * 2; i++) pts[i] = f32();
+        polys.push(pts);
+      }
+      profiles.push(polys);
+    }
+    const nel = u32();
+    const shell = new Float32Array(nel * 5);
+    for (let i = 0; i < nel * 5; i++) shell[i] = f32();
+    const threeD = o + 4 <= b.byteLength && u32() === 1;
+    return { segProfile, segN1, profiles, shell, threeD };
   }
 
   async symbols(id: number, step: number | null): Promise<Symbols> {

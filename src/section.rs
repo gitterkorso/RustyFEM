@@ -9,18 +9,21 @@ pub struct BeamSection {
     pub i11: f64,
     pub i22: f64,
     pub j: f64,
+    /// The shape for display: Abaqus section name and dimensions (e.g. ("RECT", [b, h])).
+    /// Only used to draw the profile; the properties above are what the analysis uses.
+    pub outline: Option<(String, Vec<f64>)>,
 }
 
 impl BeamSection {
     /// Rectangle with width `b` and height `h`.
     pub fn rect(b: f64, h: f64) -> Self {
-        BeamSection { a: b * h, i11: b * h.powi(3) / 12.0, i22: h * b.powi(3) / 12.0, j: rect_torsion(b, h) }
+        BeamSection { a: b * h, i11: b * h.powi(3) / 12.0, i22: h * b.powi(3) / 12.0, j: rect_torsion(b, h), outline: None }
     }
 
     /// Solid circle with radius `r`.
     pub fn circle(r: f64) -> Self {
         let i = std::f64::consts::PI * r.powi(4) / 4.0;
-        BeamSection { a: std::f64::consts::PI * r * r, i11: i, i22: i, j: 2.0 * i }
+        BeamSection { a: std::f64::consts::PI * r * r, i11: i, i22: i, j: 2.0 * i, outline: None }
     }
 
     /// Pipe with outer radius `r` and wall thickness `t`.
@@ -28,7 +31,7 @@ impl BeamSection {
         let ri = r - t;
         let pi = std::f64::consts::PI;
         let i = pi * (r.powi(4) - ri.powi(4)) / 4.0;
-        BeamSection { a: pi * (r * r - ri * ri), i11: i, i22: i, j: 2.0 * i }
+        BeamSection { a: pi * (r * r - ri * ri), i11: i, i22: i, j: 2.0 * i, outline: None }
     }
 
     /// Thin-walled pipe with outer radius `r` and wall thickness `t` (like
@@ -37,7 +40,7 @@ impl BeamSection {
         let rm = r - t / 2.0;
         let pi = std::f64::consts::PI;
         let i = pi * rm.powi(3) * t;
-        BeamSection { a: 2.0 * pi * rm * t, i11: i, i22: i, j: 2.0 * i }
+        BeamSection { a: 2.0 * pi * rm * t, i11: i, i22: i, j: 2.0 * i, outline: None }
     }
 
     /// I-profile: height `h`, flange width `b`, flange thickness `tf`, web thickness `tw`.
@@ -48,12 +51,18 @@ impl BeamSection {
             i11: (b * h.powi(3) - (b - tw) * hw.powi(3)) / 12.0,
             i22: 2.0 * tf * b.powi(3) / 12.0 + hw * tw.powi(3) / 12.0,
             j: (2.0 * b * tf.powi(3) + hw * tw.powi(3)) / 3.0,
+            outline: None,
         }
+    }
+
+    /// The same section with a display shape (see `outline`).
+    pub fn with_outline(self, shape: &str, dims: &[f64]) -> Self {
+        BeamSection { outline: Some((shape.to_string(), dims.to_vec())), ..self }
     }
 
     /// Arbitrary cross-section from tabulated values.
     pub fn general(a: f64, i11: f64, i22: f64, j: f64) -> Self {
-        BeamSection { a, i11, i22, j }
+        BeamSection { a, i11, i22, j, outline: None }
     }
 }
 

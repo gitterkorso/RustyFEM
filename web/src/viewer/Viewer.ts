@@ -20,6 +20,8 @@ export interface Hit {
 export interface ViewOptions {
   surfaces: boolean;
   edges: boolean;
+  /** Beams with their cross-section and shells with their thickness, in 3D. */
+  profiles: boolean;
   undeformed: boolean;
   symbols: boolean;
   levels: number;
@@ -253,6 +255,9 @@ export class Viewer {
   private disp: THREE.BufferAttribute | null = null;
   private val: THREE.BufferAttribute | null = null;
   private fat: THREE.Mesh | null = null;
+  /** Extruded profiles and thick shells: one vertex per corner, with the node it follows. */
+  private solid: { mesh: THREE.Mesh; pick: THREE.Mesh; node: Uint32Array } | null = null;
+  private solidMat: THREE.ShaderMaterial;
   private symbolGroup = new THREE.Group();
   private highlight = new THREE.Group();
   /** Nodes hit by a selection in the tool panel (preview). */
@@ -308,6 +313,15 @@ export class Viewer {
       polygonOffset: true,
       polygonOffsetFactor: 1,
       polygonOffsetUnits: 1,
+    });
+    // the same uniforms as the surfaces, but without the polygon offset, so that a shell face
+    // on the nodes (OFFSET=SPOS/SNEG) is drawn in front of the plain surface
+    this.solidMat = new THREE.ShaderMaterial({
+      glslVersion: THREE.GLSL3,
+      vertexShader: surfaceVert,
+      fragmentShader: surfaceFrag,
+      uniforms: this.surfMat.uniforms,
+      side: THREE.DoubleSide,
     });
     this.edgeMat = new THREE.ShaderMaterial({
       glslVersion: THREE.GLSL3,
@@ -431,9 +445,11 @@ export class Viewer {
     for (const c of this.root.children) {
       if (c.name === "surface") c.visible = this.opts.surfaces;
       if (c.name === "edges") c.visible = this.opts.edges;
+      if (c.name === "profiles") c.visible = this.opts.profiles;
       if (c.name === "ghost") c.visible = this.opts.undeformed && this.scale !== 0;
     }
     this.symbolGroup.visible = this.opts.symbols;
+    if (this.solid) this.solid.pick.visible = this.opts.profiles;
   }
 
   private clear() {
@@ -447,6 +463,7 @@ export class Viewer {
       }
     }
     this.fat = null;
+    this.solid = null;
   }
 
   /** New geometry. `keepView` keeps the camera (after an edit). */
@@ -492,6 +509,8 @@ export class Viewer {
       this.fat.name = "lines";
       this.root.add(this.fat);
     }
+    this.solid = this.buildSolid(m);
+    if (this.solid) this.root.add(this.solid.mesh);
     if (m.points.length) {
       const g = shared();
       g.setIndex(new THREE.BufferAttribute(m.points, 1));
@@ -518,7 +537,8 @@ export class Viewer {
     this.box.copy(box);
     box.getCenter(this.center);
     this.radius = Math.max(box.getSize(v).length() / 2, 1e-9);
-    this.is2d = z === 0 && box.max.z === box.min.z;
+    // a planar model with 3D elements (a frame or a plate in a plane) is still shown in 3D
+    this.is2d = z === 0 && box.max.z === box.min.z && !m.profiles?.threeD;
     this.updateVisibility();
     if (!keepView) {
       this.set2D(this.is2d);
@@ -575,6 +595,137 @@ export class Viewer {
     return mesh;
   }
 
+  /**
+   * Beams extruded with their profile along each line segment (the section's
+   * n1/n2 axes in the undeformed position) and shells as slabs with their thickness
+   * (sides on the free edges). Each vertex follows the displacement and value of its node.
+   */
+  private buildSolid(m: MeshData): { mesh: THREE.Mesh; pick: THREE.Mesh; node: Uint32Array } | null {
+    const pd = m.profiles;
+    if (!pd) return null;
+    const P = m.positions;
+    const pos: number[] = [];
+    const node: number[] = [];
+    const ids: number[] = [];
+    const idx: number[] = [];
+    const LIMIT = 3_000_000;
+    const vert = (x: number, y: number, z: number, n: number, e: number) => {
+      pos.push(x, y, z);
+      node.push(n);
+      ids.push(e + 1);
+      return node.length - 1;
+    };
+    const nseg = Math.min(pd.segProfile.length, m.lineElem.length);
+    for (let s = 0; s < nseg && node.length < LIMIT; s++) {
+      const p = pd.segProfile[s];
+      if (p < 0 || !pd.profiles[p]) continue;
+      const a = m.lines[2 * s],
+        b = m.lines[2 * s + 1],
+        e = m.lineElem[s];
+      const A = new THREE.Vector3().fromArray(P, a * 3);
+      const B = new THREE.Vector3().fromArray(P, b * 3);
+      const t = B.clone().sub(A);
+      if (t.lengthSq() === 0) continue;
+      t.normalize();
+      const n1 = new THREE.Vector3().fromArray(pd.segN1, s * 3);
+      const n2 = new THREE.Vector3().crossVectors(t, n1);
+      for (const poly of pd.profiles[p]) {
+        const k = poly.length / 2;
+        const ia: number[] = [];
+        const ib: number[] = [];
+        for (let i = 0; i < k; i++) {
+          const ox = n1.x * poly[2 * i] + n2.x * poly[2 * i + 1];
+          const oy = n1.y * poly[2 * i] + n2.y * poly[2 * i + 1];
+          const oz = n1.z * poly[2 * i] + n2.z * poly[2 * i + 1];
+          ia.push(vert(A.x + ox, A.y + oy, A.z + oz, a, e));
+          ib.push(vert(B.x + ox, B.y + oy, B.z + oz, b, e));
+        }
+        for (let i = 1; i < k - 1; i++) idx.push(ia[0], ia[i], ia[i + 1], ib[0], ib[i + 1], ib[i]);
+        for (let i = 0; i < k; i++) {
+          const j = (i + 1) % k;
+          idx.push(ia[i], ia[j], ib[j], ia[i], ib[j], ib[i]);
+        }
+      }
+    }
+    // shells: count the edges of the shell triangles; an edge used once is free
+    const sh = pd.shell;
+    const thick = (e: number) => (e * 5 < sh.length ? sh[e * 5] : 0);
+    const key = (x: number, y: number) => (x < y ? `${x},${y}` : `${y},${x}`);
+    const count = new Map<string, number>();
+    const nt = m.triElem.length;
+    for (let t = 0; t < nt; t++) {
+      if (!(thick(m.triElem[t]) > 0)) continue;
+      for (let k = 0; k < 3; k++) {
+        const kk = key(m.tris[t * 3 + k], m.tris[t * 3 + ((k + 1) % 3)]);
+        count.set(kk, (count.get(kk) ?? 0) + 1);
+      }
+    }
+    for (let t = 0; t < nt && node.length < LIMIT; t++) {
+      const e = m.triElem[t];
+      const th = thick(e);
+      if (!(th > 0)) continue;
+      const z = sh[e * 5 + 1];
+      const nx = sh[e * 5 + 2],
+        ny = sh[e * 5 + 3],
+        nz = sh[e * 5 + 4];
+      const top: number[] = [];
+      const bot: number[] = [];
+      for (let k = 0; k < 3; k++) {
+        const n = m.tris[t * 3 + k];
+        const [x, y, w] = [P[n * 3], P[n * 3 + 1], P[n * 3 + 2]];
+        const zt = z + th / 2,
+          zb = z - th / 2;
+        top.push(vert(x + nx * zt, y + ny * zt, w + nz * zt, n, e));
+        bot.push(vert(x + nx * zb, y + ny * zb, w + nz * zb, n, e));
+      }
+      idx.push(top[0], top[1], top[2], bot[0], bot[2], bot[1]);
+      for (let k = 0; k < 3; k++) {
+        const j = (k + 1) % 3;
+        if (count.get(key(m.tris[t * 3 + k], m.tris[t * 3 + j])) === 1) idx.push(top[k], top[j], bot[j], top[k], bot[j], bot[k]);
+      }
+    }
+    if (!idx.length) return null;
+    const nv = node.length;
+    const g = new THREE.BufferGeometry();
+    g.setAttribute("position", new THREE.BufferAttribute(new Float32Array(pos), 3));
+    const disp = new THREE.BufferAttribute(new Float32Array(nv * 3), 3);
+    const val = new THREE.BufferAttribute(new Float32Array(nv).fill(NONE), 1);
+    disp.setUsage(THREE.DynamicDrawUsage);
+    val.setUsage(THREE.DynamicDrawUsage);
+    g.setAttribute("disp", disp);
+    g.setAttribute("val", val);
+    g.setAttribute("pid", new THREE.BufferAttribute(new Float32Array(ids), 1));
+    g.setIndex(nv > 65535 ? new THREE.BufferAttribute(new Uint32Array(idx), 1) : new THREE.BufferAttribute(new Uint16Array(idx), 1));
+    const mesh = new THREE.Mesh(g, this.solidMat);
+    mesh.name = "profiles";
+    mesh.frustumCulled = false;
+    const pick = new THREE.Mesh(g, this.pickMat);
+    pick.frustumCulled = false;
+    return { mesh, pick, node: new Uint32Array(node) };
+  }
+
+  /** Copies nodal displacements and values to the profile vertices. */
+  private syncSolid() {
+    const sd = this.solid;
+    if (!sd || !this.disp || !this.val) return;
+    const g = sd.mesh.geometry;
+    const da = g.getAttribute("disp") as THREE.BufferAttribute;
+    const va = g.getAttribute("val") as THREE.BufferAttribute;
+    const d = this.disp.array as Float32Array;
+    const v = this.val.array as Float32Array;
+    const od = da.array as Float32Array;
+    const ov = va.array as Float32Array;
+    const nd = sd.node;
+    for (let i = 0; i < nd.length; i++) {
+      const n = nd[i];
+      od[i * 3] = d[n * 3];
+      od[i * 3 + 1] = d[n * 3 + 1];
+      od[i * 3 + 2] = d[n * 3 + 2];
+      ov[i] = v[n];
+    }
+    da.needsUpdate = va.needsUpdate = true;
+  }
+
   private buildPick() {
     const m = this.mesh!;
     if (m.tris.length) {
@@ -603,6 +754,7 @@ export class Viewer {
       pf.frustumCulled = false;
       this.pickScene.add(pf);
     }
+    if (this.solid) this.pickScene.add(this.solid.pick);
   }
 
   private syncPickDisp() {
@@ -644,6 +796,7 @@ export class Viewer {
       da.needsUpdate = db.needsUpdate = true;
     }
     this.syncPickDisp();
+    this.syncSolid();
     this.requestRender();
   }
 
@@ -677,6 +830,7 @@ export class Viewer {
       }
       va.needsUpdate = vb.needsUpdate = true;
     }
+    this.syncSolid();
     this.requestRender();
   }
 

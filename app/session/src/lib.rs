@@ -11,6 +11,7 @@ pub mod info;
 pub mod memory;
 pub mod mesh;
 pub mod platform;
+pub mod profiles;
 pub mod project;
 pub mod units;
 

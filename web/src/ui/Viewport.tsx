@@ -56,7 +56,7 @@ export function Viewport() {
   const deformFactor = useStore((s) => s.deformFactor);
   const animate = useStore((s) => s.animate);
   const pickInfo = useStore((s) => s.pick);
-  const opts = useShallow((s) => ({ surfaces: s.surfaces, edges: s.edges, undeformed: s.undeformed, symbols: s.symbols, levels: s.levels, colormap: s.colormap, pickMode: s.pickMode, dark: s.dark }));
+  const opts = useShallow((s) => ({ surfaces: s.surfaces, edges: s.edges, profiles: s.profiles, undeformed: s.undeformed, symbols: s.symbols, levels: s.levels, colormap: s.colormap, pickMode: s.pickMode, dark: s.dark }));
   const field = useStore(currentField);
   const busy = useStore((s) => s.busy);
 
@@ -84,7 +84,7 @@ export function Viewport() {
   useEffect(() => {
     viewerRef.current?.setOptions(opts);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [opts.surfaces, opts.edges, opts.undeformed, opts.symbols, opts.levels, opts.colormap, opts.pickMode, opts.dark]);
+  }, [opts.surfaces, opts.edges, opts.profiles, opts.undeformed, opts.symbols, opts.levels, opts.colormap, opts.pickMode, opts.dark]);
 
   useEffect(() => {
     const v = viewerRef.current;
@@ -299,6 +299,7 @@ export function Viewport() {
         <div className="tool-group">
           <IconButton icon="surface" title="Surfaces" active={opts.surfaces} onClick={() => set((s) => ({ surfaces: !s.surfaces }))} />
           <IconButton icon="edges" title="Element edges" active={opts.edges} onClick={() => set((s) => ({ edges: !s.edges }))} />
+          <IconButton icon="profile" title="Profiles and shell thickness in 3D" active={opts.profiles} onClick={() => set((s) => ({ profiles: !s.profiles }))} />
           <IconButton icon="ghost" title="Undeformed shape" active={opts.undeformed} onClick={() => set((s) => ({ undeformed: !s.undeformed }))} />
           <IconButton icon="anchor" title="Boundary conditions and loads" active={opts.symbols} onClick={() => set((s) => ({ symbols: !s.symbols }))} />
           <div className="menu-wrap">

@@ -77,6 +77,7 @@ export interface State {
   dark: boolean;
   surfaces: boolean;
   edges: boolean;
+  profiles: boolean;
   undeformed: boolean;
   symbols: boolean;
   levels: number;
@@ -140,6 +141,7 @@ let state: State = {
   dark: load("dark", window.matchMedia?.("(prefers-color-scheme: dark)").matches ?? true),
   surfaces: true,
   edges: true,
+  profiles: true,
   undeformed: false,
   symbols: true,
   levels: load("levels", 12),

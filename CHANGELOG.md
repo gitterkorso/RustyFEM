@@ -12,6 +12,7 @@ Notable changes to RustyFEM. The format is based on
 - iOS project and safe-area layout (not released yet).
 - `*SHELL SECTION, OFFSET=` for S4, S4R, S3 and S3R.
 - `*DSLOAD` surface traction TRVEC and TRSHR.
+- App: beams drawn in 3D with their real cross-section and shells with their thickness and offset (toolbar toggle).
 
 ## [0.1.1] - 2026-10-30
 

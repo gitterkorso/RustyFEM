@@ -209,10 +209,10 @@ fn parse_section(line: usize, s: &str) -> Result<BeamSection> {
     let v = parse_list(line, &format!("({rest}"))?;
     let need = |n: usize| if v.len() == n { Ok(()) } else { err(line, format!("{name}(...) must have {n} values")) };
     match name {
-        "rect" => need(2).map(|_| BeamSection::rect(v[0], v[1])),
-        "circle" => need(1).map(|_| BeamSection::circle(v[0])),
-        "pipe" => need(2).map(|_| BeamSection::pipe(v[0], v[1])),
-        "ibeam" => need(4).map(|_| BeamSection::ibeam(v[0], v[1], v[2], v[3])),
+        "rect" => need(2).map(|_| BeamSection::rect(v[0], v[1]).with_outline("RECT", &v)),
+        "circle" => need(1).map(|_| BeamSection::circle(v[0]).with_outline("CIRC", &v)),
+        "pipe" => need(2).map(|_| BeamSection::pipe(v[0], v[1]).with_outline("THICK PIPE", &v)),
+        "ibeam" => need(4).map(|_| BeamSection::ibeam(v[0], v[1], v[2], v[3]).with_outline("I", &[v[0] / 2.0, v[0], v[1], v[1], v[2], v[2], v[3]])),
         "general" => need(4).map(|_| BeamSection::general(v[0], v[1], v[2], v[3])),
         _ => err(line, format!("unknown cross-section '{name}' (rect, circle, pipe, ibeam, general)")),
     }

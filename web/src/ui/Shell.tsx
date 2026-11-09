@@ -122,6 +122,7 @@ function commands(): Cmd[] {
     { label: "Show/hide run panel", run: () => set((s) => ({ dock: !s.dock })) },
     { label: "Surfaces on/off", run: () => set((s) => ({ surfaces: !s.surfaces })) },
     { label: "Element edges on/off", run: () => set((s) => ({ edges: !s.edges })) },
+    { label: "Profiles and shell thickness in 3D on/off", run: () => set((s) => ({ profiles: !s.profiles })) },
     { label: "Boundary conditions and loads on/off", run: () => set((s) => ({ symbols: !s.symbols })) },
     { label: "Pick elements", run: () => set({ pickMode: "element" }) },
     { label: "Pick nodes", run: () => set({ pickMode: "node" }) },

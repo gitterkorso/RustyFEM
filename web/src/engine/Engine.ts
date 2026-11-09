@@ -52,6 +52,22 @@ export interface MeshData {
   lineElem: Uint32Array;
   points: Uint32Array;
   pointElem: Uint32Array;
+  /** Cross-sections and shell thicknesses for drawing in 3D (null if not available). */
+  profiles: ProfileData | null;
+}
+
+/** Beam profiles and shell thicknesses (see `app/session/src/profiles.rs`). */
+export interface ProfileData {
+  /** Profile per line segment (−1 = none). */
+  segProfile: Int32Array;
+  /** The section's 1-axis per line segment (×3). */
+  segN1: Float32Array;
+  /** Per profile: convex polygons in the section plane (x1, x2 pairs). */
+  profiles: Float32Array[][];
+  /** Per element: thickness, midsurface position relative to the nodes, normal (×5). Thickness 0 = not a shell. */
+  shell: Float32Array;
+  /** The model has 3D elements: show it in 3D even if it lies in a plane. */
+  threeD: boolean;
 }
 
 /** Boundary conditions (node, slot mask) and loads (node, F1–F3, M1–M3) in a step. */

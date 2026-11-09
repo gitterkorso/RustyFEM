@@ -131,7 +131,7 @@ fn closed_shear_centre(walls: &[Wall]) -> (f64, f64) {
 /// `inp::keywords::section` for shapes that the core does not know.
 pub fn shape_profile(shape: &str, v: &[f64]) -> Option<BeamSection> {
     let p = shape_props(shape, v).ok()?;
-    Some(BeamSection { a: p.a, i11: p.i11c, i22: p.i22c, j: p.j })
+    Some(BeamSection { a: p.a, i11: p.i11c, i22: p.i22c, j: p.j, outline: None })
 }
 
 fn need(shape: &str, v: &[f64], n: usize) -> Result<()> {

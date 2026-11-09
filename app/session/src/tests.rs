@@ -151,3 +151,20 @@ fn incomplete_script_is_built_step_by_step() {
     s.undo().unwrap();
     assert_eq!(s.problem(), None);
 }
+
+#[test]
+fn profiles_for_beams_and_shells() {
+    // .rusty I-beam: the outline gives three rectangles (flanges and web)
+    let s = Session::new_fem("model 3d\nmaterial steel\nbeam (0,0,0) (2,0,0) section=ibeam(0.2,0.1,0.01,0.006) n=4\nfix x=0\n").unwrap();
+    let b = crate::profiles::pack(s.model(), s.mesh());
+    let u = |o: usize| u32::from_le_bytes(b[o..o + 4].try_into().unwrap());
+    let nseg = u(0) as usize;
+    assert_eq!(nseg, 4);
+    let o = 4 + nseg * 16;
+    assert_eq!(u(o), 1, "one profile");
+    assert_eq!(u(o + 4), 3, "I profile = 3 rectangles");
+    // shapes from *BEAM SECTION
+    for (shape, dims, n) in [("BOX", vec![0.1, 0.2, 0.01, 0.01, 0.01, 0.01], 4), ("L", vec![0.1, 0.1, 0.01, 0.01], 2), ("PIPE", vec![0.1, 0.01], 32), ("CIRC", vec![0.1], 1)] {
+        assert_eq!(crate::profiles::shape_polys(shape, &dims).map(|p| p.len()), Some(n), "{shape}");
+    }
+}
