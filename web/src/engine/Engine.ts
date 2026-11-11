@@ -85,7 +85,108 @@ export interface FieldData {
   max: number;
 }
 
+// ---- Visualization tab (see `app/session/src/visual.rs`) ----
+
+export type Vec3 = [number, number, number];
+
+export interface VisPart {
+  name: string;
+  kind: "beam" | "truss" | "shell" | "membrane" | "solid" | "plane" | "axisymmetric" | "other";
+  shape: string | null;
+  dims: number[];
+  area: number | null;
+  thickness: number | null;
+  material: string;
+  mass: number;
+  elements: number;
+  profile: number;
+}
+export interface VisProfile {
+  outer: [number, number][];
+  hole: [number, number][] | null;
+  pieces: [number, number][][];
+  smooth: boolean;
+}
+export interface VisMember {
+  part: number;
+  nodes: number[];
+  s: number[];
+  n1: Vec3[];
+  n2: Vec3[];
+  elements: number[];
+  dirs: number[];
+  length: number;
+}
+export interface VisBody {
+  dim: number;
+  elements: number;
+  center: Vec3;
+  axis: Vec3;
+  s0: number;
+  s1: number;
+  lo: Vec3;
+  hi: Vec3;
+}
+export interface VisModel {
+  parts: VisPart[];
+  profiles: VisProfile[];
+  members: VisMember[];
+  bodies: VisBody[];
+  elemPart: number[];
+  elemMember: number[];
+  elemBody: number[];
+}
+export interface VisMemberForces {
+  s: number[];
+  /** Global F (3) and M (3) on the positive section. */
+  f: number[][];
+  derivedShear: boolean;
+}
+export interface VisSupport {
+  nodes: number[];
+  mask: number;
+  center: Vec3;
+  f: Vec3;
+  m: Vec3;
+}
+export interface VisFrame {
+  members: VisMemberForces[];
+  supports: VisSupport[];
+  rot: number[];
+}
+export interface VisShell {
+  sf: number[] | null;
+  sm: number[] | null;
+  dir1: Vec3;
+  dir2: Vec3;
+}
+export interface VisCut {
+  s: number;
+  area: number;
+  centroid: Vec3;
+  f: Vec3;
+  m: Vec3;
+  tris: number[];
+  segs: number[];
+  method: string;
+}
+export interface VisDiagram {
+  axis: Vec3;
+  s0: number;
+  s1: number;
+  s: number[];
+  f: number[][];
+  area: number[];
+}
+
 export interface Engine {
+  visualModel(id: number): Promise<VisModel>;
+  visualFrame(id: number, step: number, frame: number): Promise<VisFrame>;
+  visualShell(id: number, step: number, frame: number, element: number): Promise<VisShell>;
+  visualCut(id: number, step: number, frame: number, body: number, axis: Vec3, s: number): Promise<VisCut>;
+  visualDiagram(id: number, step: number, frame: number, body: number, axis: Vec3, n: number): Promise<VisDiagram>;
+  /** Asks for a file name and writes a PNG (data URL); false if the user cancelled. */
+  savePng(defaultName: string, dataUrl: string): Promise<boolean>;
   newModel(script?: string): Promise<Opened>;
   open(path: string): Promise<Opened>;
   close(id: number): Promise<void>;

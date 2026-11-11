@@ -5,7 +5,7 @@ import { Channel, invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { open, save } from "@tauri-apps/plugin-dialog";
 import { commands } from "./bindings";
-import type { Engine, EngineEvents, FieldData, McpStatus, MeshData, Opened, ProfileData, RunEvent, Symbols, UnitSystem } from "./Engine";
+import type { Engine, EngineEvents, FieldData, McpStatus, MeshData, Opened, ProfileData, RunEvent, Symbols, UnitSystem, Vec3, VisCut, VisDiagram, VisFrame, VisModel, VisShell } from "./Engine";
 
 type Result<T> = { status: "ok"; data: T } | { status: "error"; error: string };
 
@@ -49,6 +49,20 @@ export class TauriEngine implements Engine {
   mcpStart = (port: number | null, network: boolean | null) => ok(commands.mcpStart(port, network));
   mcpStop = () => commands.mcpStop();
   mcpInstallClaudeDesktop = () => ok(commands.mcpInstallClaudeDesktop());
+
+  visualModel = (id: number) => invoke<VisModel>("visual_model", { id });
+  visualFrame = (id: number, step: number, frame: number) => invoke<VisFrame>("visual_frame", { id, step, frame });
+  visualShell = (id: number, step: number, frame: number, element: number) => invoke<VisShell>("visual_shell", { id, step, frame, element });
+  visualCut = (id: number, step: number, frame: number, body: number, axis: Vec3, s: number) => invoke<VisCut>("visual_cut", { id, step, frame, body, axis, s });
+  visualDiagram = (id: number, step: number, frame: number, body: number, axis: Vec3, n: number) =>
+    invoke<VisDiagram>("visual_diagram", { id, step, frame, body, axis, n });
+
+  async savePng(defaultName: string, dataUrl: string) {
+    const path = await save({ defaultPath: defaultName, filters: [{ name: "PNG image", extensions: ["png"] }] });
+    if (!path) return false;
+    await invoke("save_png", { path, png: dataUrl });
+    return true;
+  }
 
   async listen(h: EngineEvents) {
     const offs = await Promise.all([

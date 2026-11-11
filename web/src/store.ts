@@ -5,7 +5,7 @@ import { useRef, useSyncExternalStore } from "react";
 import type { FieldInfo, McpStatus, MemoryEstimate, MeshData, ModelInfo, PickInfo, SessionInfo, StepResultInfo, UnitSystem } from "./engine/Engine";
 import { colormapNames, type ColormapName } from "./viewer/colormaps";
 
-export type Mode = "model" | "results";
+export type Mode = "model" | "results" | "visual";
 
 /** Selected object in the model tree. */
 export type TreeSel =

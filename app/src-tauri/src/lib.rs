@@ -388,7 +388,44 @@ fn displacement(st: State<'_, AppState>, id: u32, step: u32, frame: u32) -> Res<
     with(&st, id, |s| Ok(Response::new(s.displacement(step as usize, frame as usize)?)))
 }
 
-const BINARY: [&str; 5] = ["mesh", "profiles", "symbols", "field", "displacement"];
+// --- Visualization tab (JSON, outside specta; declared by hand in `TauriEngine`) ---
+
+#[tauri::command]
+fn visual_model(st: State<'_, AppState>, id: u32) -> Res<Arc<rustyfem_session::visual::VisualModel>> {
+    with(&st, id, |s| Ok(s.visual_model()))
+}
+
+#[tauri::command]
+fn visual_frame(st: State<'_, AppState>, id: u32, step: u32, frame: u32) -> Res<rustyfem_session::visual::VisualFrame> {
+    with(&st, id, |s| s.visual_frame(step as usize, frame as usize))
+}
+
+#[tauri::command]
+fn visual_shell(st: State<'_, AppState>, id: u32, step: u32, frame: u32, element: u32) -> Res<rustyfem_session::visual::ShellForces> {
+    with(&st, id, |s| s.visual_shell(step as usize, frame as usize, element as usize))
+}
+
+#[tauri::command]
+fn visual_cut(st: State<'_, AppState>, id: u32, step: u32, frame: u32, body: u32, axis: [f64; 3], s: f64) -> Res<rustyfem_session::visual::CutResult> {
+    with(&st, id, |x| x.visual_cut(step as usize, frame as usize, body as usize, axis, s))
+}
+
+#[tauri::command]
+async fn visual_diagram(st: State<'_, AppState>, id: u32, step: u32, frame: u32, body: u32, axis: [f64; 3], n: u32) -> Res<rustyfem_session::visual::BodyDiagram> {
+    let st = st.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || with(&st, id, |x| x.visual_diagram(step as usize, frame as usize, body as usize, axis, n as usize)))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+/// Writes a PNG given as a data URL (the Visualization tab's image export).
+#[tauri::command]
+fn save_png(path: String, png: String) -> Res<()> {
+    let b64 = png.split_once(',').map(|x| x.1).unwrap_or(&png);
+    std::fs::write(&path, base64_decode(b64)?).map_err(|e| format!("could not write {path}: {e}"))
+}
+
+const BINARY: [&str; 11] = ["save_png", "mesh", "profiles", "symbols", "field", "displacement", "visual_model", "visual_frame", "visual_shell", "visual_cut", "visual_diagram"];
 
 fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
     tauri_specta::Builder::<tauri::Wry>::new().commands(tauri_specta::collect_commands![
@@ -452,7 +489,7 @@ pub fn run_app() {
         eprintln!("could not write bindings.ts: {e}");
     }
     let typed = builder.invoke_handler();
-    let binary: Box<dyn Fn(tauri::ipc::Invoke<tauri::Wry>) -> bool + Send + Sync> = Box::new(tauri::generate_handler![mesh, profiles, symbols, field, displacement]);
+    let binary: Box<dyn Fn(tauri::ipc::Invoke<tauri::Wry>) -> bool + Send + Sync> = Box::new(tauri::generate_handler![mesh, profiles, symbols, field, displacement, visual_model, visual_frame, visual_shell, visual_cut, visual_diagram, save_png]);
     let state: AppState = Arc::new(Mutex::new(Sessions::default()));
     let server = mcp::Mcp::new(state.clone());
     tauri::Builder::default()

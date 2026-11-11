@@ -45,6 +45,7 @@ export function TopBar() {
               options={[
                 { value: "model", label: "Model", icon: "layers" },
                 { value: "results", label: "Results", icon: "chart" },
+                { value: "visual", label: "Visualization", icon: "cube" },
               ]}
             />
           </>
@@ -112,6 +113,7 @@ function commands(): Cmd[] {
     { label: "Redo", kbd: "Ctrl+Y", run: redo, when: () => !!get().session?.redo },
     { label: "Show model", run: () => set({ mode: "model" }), when: has },
     { label: "Show results", run: () => set({ mode: "results" }), when: () => get().results.length > 0 },
+    { label: "Show visualization (3D structure, section forces)", run: () => set({ mode: "visual" }), when: has },
     { label: "Build model (script and tools)", run: () => set({ sel: { type: "script" }, right: true }), when: () => get().session?.kind === "rusty" },
     { label: "Model overview", run: () => set({ sel: { type: "model" }, right: true }), when: has },
     { label: "Connect an AI assistant (MCP) …", run: () => set({ mcpPanel: true }) },

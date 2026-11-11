@@ -170,8 +170,20 @@ fn equivalent_rect(a: f64, i11: f64, i22: f64) -> Option<Vec<Poly>> {
     Some(vec![rect(-b / 2.0, b / 2.0, -h / 2.0, h / 2.0)])
 }
 
+/// The section's shape and dimensions (*BEAM SECTION order), if it has one.
+pub(crate) fn section_shape(sec: &SectionDef) -> Option<(String, Vec<f64>)> {
+    let b = sec.beam()?;
+    if let Some((shape, dims)) = &b.profile.outline {
+        if shape_polys(shape, dims).is_some() {
+            return Some((shape.clone(), dims.clone()));
+        }
+    }
+    let dims = rustyfem::elements::beams2::sections::data_values(&sec.raw, &b.shape).ok()?;
+    shape_polys(&b.shape, &dims).map(|_| (b.shape.clone(), dims))
+}
+
 /// Profile polygons for a section used by line elements.
-fn section_polys(sec: &SectionDef, family: Family) -> Option<Vec<Poly>> {
+pub(crate) fn section_polys(sec: &SectionDef, family: Family) -> Option<Vec<Poly>> {
     match &sec.kind {
         SectionKind::Beam(b) => {
             if let Some((shape, dims)) = &b.profile.outline {
@@ -204,14 +216,14 @@ fn unit(a: [f64; 3]) -> Option<[f64; 3]> {
 
 /// n1 for a segment with the direction t: the section's n1 (default (0, 0, −1);
 /// planar beams always (0, 0, −1)) made perpendicular to t, like `beam_axes`.
-fn segment_n1(t: [f64; 3], n1a: [f64; 3]) -> [f64; 3] {
+pub(crate) fn segment_n1(t: [f64; 3], n1a: [f64; 3]) -> [f64; 3] {
     let n2 = cross(t, n1a);
     let n2 = unit(n2).or_else(|| unit(cross(t, [1.0, 0.0, 0.0]))).or_else(|| unit(cross(t, [0.0, 1.0, 0.0]))).unwrap_or([0.0, 1.0, 0.0]);
     cross(n2, t)
 }
 
 /// Shell thickness and the midsurface position relative to the nodes (−OFFSET·t).
-fn shell_thickness(sec: &SectionDef) -> Option<(f64, f64)> {
+pub(crate) fn shell_thickness(sec: &SectionDef) -> Option<(f64, f64)> {
     let t = match &sec.kind {
         SectionKind::Shell { thickness, .. } => *thickness,
         SectionKind::Other if sec.raw.name == "SHELL SECTION" && sec.raw.has("COMPOSITE") => {

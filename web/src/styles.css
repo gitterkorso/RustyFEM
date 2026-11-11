@@ -1911,3 +1911,11 @@ input[type="range"] {
   cursor: pointer;
   text-decoration: underline;
 }
+
+/* Visualization tab */
+.visual-view {
+  position: absolute;
+  inset: 0;
+  background: var(--bg);
+  z-index: 2;
+}

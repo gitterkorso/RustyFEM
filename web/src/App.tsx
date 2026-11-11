@@ -11,6 +11,7 @@ import { ResultsPanel } from "./ui/ResultsPanel";
 import { Palette, TopBar, Welcome } from "./ui/Shell";
 import { Icon } from "./ui/ui";
 import { Viewport } from "./ui/Viewport";
+import { VisualView } from "./ui/VisualView";
 
 function useShortcuts() {
   useEffect(() => {
@@ -52,8 +53,9 @@ function useShortcuts() {
 export function App() {
   const hasModel = useStore((s) => s.session !== null);
   const mode = useStore((s) => s.mode);
-  const left = useStore((s) => s.left);
-  const right = useStore((s) => s.right);
+  const visual = useStore((s) => s.mode === "visual");
+  const left = useStore((s) => s.left && s.mode !== "visual");
+  const right = useStore((s) => s.right && s.mode !== "visual");
   const dock = useStore((s) => s.dock);
   const dark = useStore((s) => s.dark);
   const toast = useStore((s) => s.toast);
@@ -76,6 +78,7 @@ export function App() {
         )}
         <div className="center">
           <Viewport />
+          {hasModel && visual && <VisualView />}
           {!hasModel && <Welcome />}
         </div>
         {hasModel && right && (
@@ -94,7 +97,7 @@ export function App() {
             <div className="side-scroll">{mode === "model" ? <Inspector /> : <ResultsPanel />}</div>
           </aside>
         )}
-        {hasModel && dock && <Dock />}
+        {hasModel && dock && !visual && <Dock />}
       </main>
       <Palette />
       <McpPanel />

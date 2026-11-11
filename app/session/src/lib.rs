@@ -14,6 +14,7 @@ pub mod platform;
 pub mod profiles;
 pub mod project;
 pub mod units;
+pub mod visual;
 
 use edit::Edit;
 use fields::{FieldInfo, Position, StepResultInfo};
@@ -74,6 +75,10 @@ pub struct Session {
     pub results_stale: bool,
     pub units: UnitSystem,
     pub dirty: bool,
+    /// Visualization data: the model split into parts/members/bodies (per model),
+    /// and recovered nodal stresses (per results, step and frame).
+    visual: Option<(usize, Arc<visual::VisualModel>)>,
+    recovered: Option<((usize, usize, usize, usize), Arc<visual::Recovered>)>,
 }
 
 /// Template for a new model.
@@ -141,6 +146,8 @@ impl Session {
             results_stale: false,
             units,
             dirty: false,
+            visual: None,
+            recovered: None,
         }
     }
 
@@ -372,6 +379,71 @@ impl Session {
         b.extend((lo as f32).to_le_bytes());
         b.extend((hi as f32).to_le_bytes());
         Ok(b)
+    }
+
+    /// The model for the Visualization tab (cached per model).
+    pub fn visual_model(&mut self) -> Arc<visual::VisualModel> {
+        let key = Arc::as_ptr(&self.model) as usize;
+        if let Some((k, v)) = &self.visual {
+            if *k == key {
+                return v.clone();
+            }
+        }
+        let v = Arc::new(visual::model(&self.model));
+        self.visual = Some((key, v.clone()));
+        v
+    }
+
+    /// Member section forces, supports with reactions and rotations in a frame.
+    pub fn visual_frame(&mut self, step: usize, frame: usize) -> Res<visual::VisualFrame> {
+        let vm = self.visual_model();
+        let fr = self.frame(step, frame)?;
+        Ok(visual::frame(&self.model, &vm, fr))
+    }
+
+    /// Shell section forces (element means) and the local directions.
+    pub fn visual_shell(&self, step: usize, frame: usize, element: usize) -> Res<visual::ShellForces> {
+        if element >= self.model.elements.len() {
+            return Err("the element does not exist".into());
+        }
+        Ok(visual::shell(&self.model, self.frame(step, frame)?, element))
+    }
+
+    fn recovered(&mut self, step: usize, frame: usize) -> Res<(Arc<visual::VisualModel>, Arc<visual::Recovered>)> {
+        let vm = self.visual_model();
+        let r = self.results.as_ref().ok_or("no results – solve the model first")?;
+        let key = (Arc::as_ptr(r) as usize, Arc::as_ptr(&self.model) as usize, step, frame);
+        if let Some((k, v)) = &self.recovered {
+            if *k == key {
+                return Ok((vm, v.clone()));
+            }
+        }
+        // NLGEOM is inherited from the previous steps
+        let nlgeom = self.model.steps.iter().take(step + 1).filter_map(|s| s.nlgeom).last().unwrap_or(false);
+        let rec = Arc::new(visual::recover(&self.model, &vm, self.frame(step, frame)?, nlgeom));
+        self.recovered = Some((key, rec.clone()));
+        Ok((vm, rec))
+    }
+
+    /// Section cut of a solid or planar body at `s` along `axis` (from the body's centre).
+    pub fn visual_cut(&mut self, step: usize, frame: usize, body: usize, axis: [f64; 3], s: f64) -> Res<visual::CutResult> {
+        let (vm, rec) = self.recovered(step, frame)?;
+        let b = vm.bodies.get(body).ok_or("the body does not exist")?;
+        let l = (axis[0] * axis[0] + axis[1] * axis[1] + axis[2] * axis[2]).sqrt();
+        let a = if l > 0.0 { [axis[0] / l, axis[1] / l, axis[2] / l] } else { b.axis };
+        let p = [b.center[0] + s * a[0], b.center[1] + s * a[1], b.center[2] + s * a[2]];
+        let mut r = visual::cut(&self.model, &vm, &rec, body, p, a, true);
+        r.s = s;
+        Ok(r)
+    }
+
+    /// Section force diagrams of a solid or planar body along `axis`.
+    pub fn visual_diagram(&mut self, step: usize, frame: usize, body: usize, axis: [f64; 3], n: usize) -> Res<visual::BodyDiagram> {
+        let (vm, rec) = self.recovered(step, frame)?;
+        if body >= vm.bodies.len() {
+            return Err("the body does not exist".into());
+        }
+        Ok(visual::diagram(&self.model, &vm, &rec, body, axis, n))
     }
 
     /// Displacements (f32 ×3 per node).
