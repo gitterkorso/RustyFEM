@@ -30,6 +30,9 @@ pub struct Settings {
     pub hybrid_hourglass: Option<bool>,
     /// Keep work directories for regression cases (`RUSTYFEM_KEEP`).
     pub keep_work_dirs: bool,
+    /// Store the elements' internal nodal forces in the frames (`FrameData::nforc`,
+    /// `RUSTYFEM_NFORC`); the app uses them for section cuts.
+    pub nodal_forces: bool,
 }
 
 impl Settings {
@@ -49,6 +52,7 @@ impl Settings {
             hybrid_nbar: var("RUSTYFEM_HYB_NBAR").and_then(|s| s.parse().ok()),
             hybrid_hourglass: var("RUSTYFEM_HYB_HG").map(|s| s == "1"),
             keep_work_dirs: on("RUSTYFEM_KEEP"),
+            nodal_forces: on("RUSTYFEM_NFORC"),
         }
     }
 }

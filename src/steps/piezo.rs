@@ -98,6 +98,7 @@ fn make_frame(p: &Prepared, dm: &DofMap, pz: &PzModel, u: &[NodeVec], rf: &[Node
     let epot: Vec<Vec<f64>> = u.iter().map(|v| vec![v[PS]]).collect();
     let rchg: Vec<Vec<f64>> = rf.iter().map(|v| vec![v[PS]]).collect();
     Ok(FrameData {
+        nforc: Vec::new(),
         value,
         mode,
         description,

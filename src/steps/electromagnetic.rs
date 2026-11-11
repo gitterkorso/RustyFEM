@@ -278,6 +278,7 @@ impl StepType for Electromagnetic {
             }
             let nn = model.nodes.len();
             frames.push(FrameData {
+                nforc: Vec::new(),
                 value: freq,
                 mode: -1,
                 description: format!("Increment {}: Frequency = {freq}", frames.len() + 1),

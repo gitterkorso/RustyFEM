@@ -1657,7 +1657,7 @@ export class VisualScene {
       const body = this.inp.vm.bodies[sel.index];
       const parts = [...new Set(sel.recs.map((r) => this.inp.vm.parts[r.group.part].name))].join(", ");
       head = `<b>${parts}</b> <span class="vis-pr">${body.dim === 3 ? "solid" : "planar"} body · ${body.elements} elements · ${st?.name ?? ""} · cut at ${coord.name} = ${this.fmt(coord.v, 3)}${lu ? " " + lu : ""}${sel.cut ? ` · area ${this.fmt(sel.cut.area, 4)}` : ""}</span>`;
-      const method = sel.cut?.method === "stresses" ? "the stresses integrated over the cut (nonlinear model: approximate, recovered from the element means)" : "the element nodal forces of a free-body cut (exact for the FE solution)";
+      const method = sel.cut?.method === "stresses" ? "the stresses integrated over the cut (approximate: these results have no stored nodal forces, e.g. an older project file — solve again for exact values)" : "the element nodal forces of a free-body cut (exact for the FE solution)";
       note = `Section forces from ${method}, about the centroid of the cut. Drag the cut or a diagram to move it. <i>x</i> along the axis, <i>y</i> to the left, <i>z</i> downwards.`;
       const ax = sel.axisMode ?? "auto";
       this.ui.axisRow.innerHTML = `Axis ${(["auto", "x", "y", "z"] as const).map((k) => `<button type="button" class="${k === ax ? "on" : ""}" data-axis="${k}">${k === "auto" ? "main" : k}</button>`).join("")}${sel.diag ? "" : ' <span class="vis-pr">integrating …</span>'}`;

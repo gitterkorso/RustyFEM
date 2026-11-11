@@ -603,6 +603,7 @@ impl<'p, 'm> SoilSystem<'p, 'm> {
         let rvf: Vec<Vec<f64>> = (0..nn).map(|n| if has_p[n] { vec![rf[n][PS]] } else { Vec::new() }).collect();
         let rv: Vec<Vec<f64>> = (0..nn).map(|n| if has_p[n] { vec![rvt[n]] } else { Vec::new() }).collect();
         Ok(FrameData {
+            nforc: Vec::new(),
             value,
             mode: -1,
             description,

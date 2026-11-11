@@ -41,6 +41,10 @@ pub struct FrameData {
     pub elem: Vec<Vec<IpField>>,
     /// Additional nodal fields (e.g. "V", "A"): (field name, component names, values per node).
     pub node_extra: Vec<(String, Vec<String>, Vec<Vec<f64>>)>,
+    /// Internal nodal forces per element (the force from the nodes on the element, in the
+    /// order of `Prepared::edofs`), only with `Settings::nodal_forces`; empty otherwise.
+    /// Used for free-body cuts (section forces through solids).
+    pub nforc: Vec<Vec<f64>>,
 }
 
 #[derive(Debug, Clone, Default)]

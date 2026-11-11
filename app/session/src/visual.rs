@@ -922,17 +922,49 @@ pub fn shell(model: &FeModel, fr: &FrameData, e: usize) -> ShellForces {
 // ---------------------------------------------------------------- solid and planar bodies: stress integration
 
 /// Recovered nodal stresses (S11, S22, S33, S12, S13, S23) of all continuum corner nodes,
-/// and (for linear models) the elements' internal nodal forces.
+/// and the elements' internal nodal forces when they are known.
 pub struct Recovered {
     pub nodal: Vec<Option<[f64; 6]>>,
-    /// Per element: (node, force on the element from the node, translations).
-    pub fint: Option<Vec<Vec<(u32, V3)>>>,
+    /// Per element: (node, force on the element from the node, translations); `None` for an
+    /// element whose nodal forces are not known.
+    pub fint: Option<Vec<Option<Vec<(u32, V3)>>>>,
 }
 
-/// Internal nodal forces of the body elements (K u for a linear model). `None` when the
-/// model is nonlinear (material, NLGEOM, interactions) or has a temperature field: then
-/// the nodal forces do not follow from the displacements alone.
-fn internal_forces(model: &FeModel, vm: &VisualModel, fr: &FrameData, nlgeom: bool) -> Option<Vec<Vec<(u32, V3)>>> {
+/// Sums an element's internal force vector (in the order of its DOFs) to translational forces per node.
+fn per_node(model: &FeModel, e: usize, fint: &[f64]) -> Option<Vec<(u32, V3)>> {
+    let el = &model.elements[e];
+    let mut acc: Vec<(u32, V3)> = Vec::new();
+    let mut k = 0usize;
+    for (a, &n) in el.nodes.iter().enumerate() {
+        for &d in el.etype.node_dofs(a) {
+            let slot = rustyfem::fem::dof::slot(d)?;
+            let v = *fint.get(k)?;
+            k += 1;
+            if slot < 3 {
+                match acc.iter_mut().find(|x| x.0 == n as u32) {
+                    Some(x) => x.1[slot] += v,
+                    None => {
+                        let mut f = [0.0; 3];
+                        f[slot] = v;
+                        acc.push((n as u32, f));
+                    }
+                }
+            }
+        }
+    }
+    (k == fint.len()).then_some(acc)
+}
+
+/// Internal nodal forces of the body elements. The solver stores them with the results
+/// (`FrameData::nforc`, evaluated with the converged material state, so they are right for
+/// plasticity, NLGEOM and temperature loads too). For results without them (older project
+/// files) they are recomputed as K u, which is only valid for a linear model without a
+/// temperature field; otherwise `None` (the stresses are integrated instead).
+fn internal_forces(model: &FeModel, vm: &VisualModel, fr: &FrameData, nlgeom: bool) -> Option<Vec<Option<Vec<(u32, V3)>>>> {
+    let ne = model.elements.len();
+    if fr.nforc.len() == ne {
+        return Some((0..ne).map(|e| if vm.elem_body[e] < 0 || fr.nforc[e].is_empty() { None } else { per_node(model, e, &fr.nforc[e]) }).collect());
+    }
     if nlgeom {
         return None;
     }
@@ -940,8 +972,8 @@ fn internal_forces(model: &FeModel, vm: &VisualModel, fr: &FrameData, nlgeom: bo
     if !p.is_linear() || p.temperature.is_some() || fr.u.len() < model.nodes.len() {
         return None;
     }
-    let mut out = vec![Vec::new(); model.elements.len()];
-    for e in 0..model.elements.len() {
+    let mut out = vec![None; ne];
+    for e in 0..ne {
         if vm.elem_body[e] < 0 {
             continue;
         }
@@ -951,20 +983,7 @@ fn internal_forces(model: &FeModel, vm: &VisualModel, fr: &FrameData, nlgeom: bo
         let old = et.init_state(&ctx).ok()?;
         let mut new = old.clone();
         let r = et.internal_force(&ctx, &u, &vec![0.0; u.len()], &old, &mut new, false).ok()?;
-        let mut acc: Vec<(u32, V3)> = Vec::new();
-        for (k, &(n, slot)) in p.edofs[e].iter().enumerate() {
-            if slot < 3 {
-                match acc.iter_mut().find(|x| x.0 == n as u32) {
-                    Some(x) => x.1[slot] += r.fint[k],
-                    None => {
-                        let mut v = [0.0; 3];
-                        v[slot] = r.fint[k];
-                        acc.push((n as u32, v));
-                    }
-                }
-            }
-        }
-        out[e] = acc;
+        out[e] = per_node(model, e, &r.fint);
     }
     Some(out)
 }
@@ -1112,6 +1131,7 @@ pub fn cut(model: &FeModel, vm: &VisualModel, rec: &Recovered, body: usize, p: V
     let pl_v = cross(n, pl_u);
     // free-body cut: the force on the −n part from the elements that cross the plane
     let (mut fn_, mut mn) = ([0.0; 3], [0.0; 3]);
+    let mut nodal_ok = rec.fint.is_some();
     for e in 0..model.elements.len() {
         if vm.elem_body[e] != body as i32 {
             continue;
@@ -1124,12 +1144,17 @@ pub fn cut(model: &FeModel, vm: &VisualModel, rec: &Recovered, body: usize, p: V
             continue;
         }
         if let Some(fint) = &rec.fint {
-            for &(k, f) in &fint[e] {
-                let x = model.nodes[k as usize];
-                if dot(sub(x, p), n) < 0.0 {
-                    fn_ = sub(fn_, f);
-                    mn = sub(mn, cross(x, f));
+            match &fint[e] {
+                Some(fe) => {
+                    for &(k, f) in fe {
+                        let x = model.nodes[k as usize];
+                        if dot(sub(x, p), n) < 0.0 {
+                            fn_ = sub(fn_, f);
+                            mn = sub(mn, cross(x, f));
+                        }
+                    }
                 }
+                None => nodal_ok = false,
             }
         }
         let svals: Vec<[f64; 6]> = c.iter().map(|&k| rec.nodal[k].unwrap_or([0.0; 6])).collect();
@@ -1215,7 +1240,7 @@ pub fn cut(model: &FeModel, vm: &VisualModel, rec: &Recovered, body: usize, p: V
         let c = scale(ri, 1.0 / a_sum);
         out.area = a_sum;
         out.centroid = c;
-        if rec.fint.is_some() {
+        if nodal_ok {
             out.f = fn_;
             out.m = sub(mn, cross(c, fn_));
             out.method = "nodal forces".into();
@@ -1373,5 +1398,86 @@ mod tests {
             assert!(close(v[1], p[1], 1e-6), "s={x}: {v:?}");
             assert!(close(v[5], (2.0 - x) * p[1], 1e-6), "s={x}: {v:?}");
         }
+    }
+}
+
+#[cfg(test)]
+mod nonlinear_tests {
+    use crate::{run_analysis, Session};
+    use std::sync::atomic::AtomicBool;
+    use std::sync::Arc;
+
+    /// C3D8 cantilever 1 × 0.2 × 0.2 (nx × 4 × 4 elements), fixed at x = 0, total load `p`
+    /// in −y spread over the nodes of the end face. `extra` goes into the material.
+    fn cantilever(nx: usize, p: f64, material: &str, step: &str) -> String {
+        let (ny, nz) = (4, 4);
+        let id = |i: usize, j: usize, k: usize| 1 + i + (nx + 1) * (j + (ny + 1) * k);
+        let mut s = String::from("*HEADING\ncantilever\n*NODE\n");
+        for k in 0..=nz {
+            for j in 0..=ny {
+                for i in 0..=nx {
+                    s += &format!("{}, {}, {}, {}\n", id(i, j, k), i as f64 / nx as f64, 0.2 * j as f64 / ny as f64, 0.2 * k as f64 / nz as f64);
+                }
+            }
+        }
+        s += "*ELEMENT, TYPE=C3D8, ELSET=BEAM\n";
+        let mut e = 1;
+        for k in 0..nz {
+            for j in 0..ny {
+                for i in 0..nx {
+                    s += &format!("{e}, {}, {}, {}, {}, {}, {}, {}, {}\n", id(i, j, k), id(i + 1, j, k), id(i + 1, j + 1, k), id(i, j + 1, k), id(i, j, k + 1), id(i + 1, j, k + 1), id(i + 1, j + 1, k + 1), id(i, j + 1, k + 1));
+                    e += 1;
+                }
+            }
+        }
+        let face = |i: usize| (0..=nz).flat_map(move |k| (0..=ny).map(move |j| id(i, j, k))).map(|n| n.to_string()).collect::<Vec<_>>().join(", ");
+        let nn = (ny + 1) * (nz + 1);
+        s += &format!("*NSET, NSET=ROOT\n{}\n*NSET, NSET=TIP\n{}\n", face(0), face(nx));
+        s += &format!("*MATERIAL, NAME=STEEL\n*ELASTIC\n210e9, 0.3\n{material}*SOLID SECTION, ELSET=BEAM, MATERIAL=STEEL\n*BOUNDARY\nROOT, 1, 3\n");
+        s += &format!("{step}\n*CLOAD\nTIP, 2, {}\n*END STEP\n", -p / nn as f64);
+        s
+    }
+
+    fn solve(inp: &str) -> Session {
+        let mut s = Session::from_inp_text(inp, std::path::Path::new(".")).unwrap();
+        let out = run_analysis(s.model(), None, false, Arc::new(AtomicBool::new(false)), |_| {}).unwrap();
+        s.set_results(out);
+        s
+    }
+
+    fn check(s: &mut Session, p: f64, tol: f64) {
+        let f = s.results.as_ref().unwrap().steps[0].frames.len() - 1;
+        let fr = &s.results.as_ref().unwrap().steps[0].frames[f];
+        assert_eq!(fr.nforc.len(), s.model().elements.len(), "the solver stored the nodal forces");
+        let c = s.visual_model().bodies[0].center;
+        for x in [0.15, 0.5, 0.85] {
+            let r = s.visual_cut(0, f, 0, [1.0, 0.0, 0.0], x - c[0]).unwrap();
+            assert_eq!(r.method, "nodal forces");
+            assert!((r.f[1] + p).abs() <= tol * p, "x={x}: {:?}", r.f);
+            assert!(r.f[0].abs() <= tol * p, "x={x}: {:?}", r.f);
+            let m = -(1.0 - x) * p;
+            assert!((r.m[2] - m).abs() <= tol * m.abs(), "x={x}: {:?} vs {m}", r.m);
+        }
+    }
+
+    #[test]
+    fn plastic_cantilever_cut_matches_statics() {
+        // the root fibres yield (elastic limit about 267 kN), plastic collapse at 400 kN
+        let p = 370e3;
+        let mut s = solve(&cantilever(10, p, "*PLASTIC\n200e6, 0\n", "*STEP\n*STATIC\n0.1, 1.0, 1e-5, 0.1"));
+        let f = s.results.as_ref().unwrap().steps[0].frames.len() - 1;
+        // the root has yielded
+        let fr = &s.results.as_ref().unwrap().steps[0].frames[f];
+        let peeq = fr.elem.iter().filter_map(|fs| fs.iter().find(|x| x.name == "PEEQ")).flat_map(|x| x.points.iter().map(|q| q.2[0])).fold(0.0, f64::max);
+        assert!(peeq > 1e-5, "no plastic strain: {peeq}");
+        check(&mut s, p, 1e-6);
+    }
+
+    #[test]
+    fn nlgeom_cantilever_nodal_forces_are_stored() {
+        let p = 50e3;
+        let mut s = solve(&cantilever(10, p, "", "*STEP, NLGEOM=YES\n*STATIC\n0.25, 1.0"));
+        // small deflection: the statics of the undeformed beam hold within a few per mille
+        check(&mut s, p, 5e-3);
     }
 }

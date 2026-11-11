@@ -477,6 +477,28 @@ pub fn element_output(p: &Prepared, u: &[NodeVec], state: &[Vec<f64>], nlgeom: b
     res.into_iter().collect()
 }
 
+/// Internal nodal forces per element for the displacement `u` and the converged state
+/// `state` (no increment: the material is evaluated at the state it was left in, as for
+/// the element output). An element that cannot give them gets an empty vector.
+pub fn nodal_forces(p: &Prepared, u: &[NodeVec], state: &[Vec<f64>], nlgeom: bool, time: f64) -> Vec<Vec<f64>> {
+    let m = p.model;
+    par::map(m.elements.len(), par::threads(), |e| {
+        let ctx = p.ctx(e, nlgeom, time, 0.0);
+        let ue = p.gather(e, u);
+        let due = vec![0.0; ue.len()];
+        let old = state.get(e).cloned().unwrap_or_default();
+        let mut sn = Vec::new();
+        let r = match crate::steps::model_change::internal_force(p, e, &ctx, &ue, &due, &old, &mut sn, false) {
+            Some(r) => r,
+            None => m.elements[e].etype.internal_force(&ctx, &ue, &due, &old, &mut sn, false),
+        };
+        match r {
+            Ok(r) if r.fint.len() == p.edofs[e].len() && r.fint.iter().all(|x| x.is_finite()) => r.fint,
+            _ => Vec::new(),
+        }
+    })
+}
+
 /// Builds a frame: U, RF (= Fint − Fext at constrained DOFs) and element output.
 #[allow(clippy::too_many_arguments)]
 pub fn frame(
@@ -509,6 +531,7 @@ pub fn frame(
             }
         }
     }
+    let nforc = if crate::settings::with(|s| s.nodal_forces) { nodal_forces(p, u, state, nlgeom, time) } else { Vec::new() };
     Ok(FrameData {
         value,
         mode: -1,
@@ -519,6 +542,7 @@ pub fn frame(
         constrained: dm.constrained.clone(),
         elem,
         node_extra: interaction_output(p),
+        nforc,
     })
 }
 

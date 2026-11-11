@@ -161,6 +161,7 @@ impl<'p, 'm> ThermoSystem<'p, 'm> {
 
     pub(crate) fn frame(&self, value: f64, description: String) -> Result<FrameData> {
         Ok(FrameData {
+            nforc: Vec::new(),
             value,
             mode: -1,
             description,

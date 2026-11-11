@@ -17,7 +17,8 @@ use rustyfem::fem::dof::SLOTS;
 use rustyfem::fem::output::{AnalysisOutput, FrameData, StepOutput};
 
 const MAGIC: &[u8; 8] = b"RUSTYPRJ";
-pub const VERSION: u32 = 1;
+/// 2: frames store the elements' internal nodal forces (`FrameData::nforc`).
+pub const VERSION: u32 = 2;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SourceKind {
@@ -287,9 +288,16 @@ fn write_frame(w: &mut W, f: &FrameData) {
             }
         }
     }
+    w.u64(f.nforc.len() as u64);
+    for v in &f.nforc {
+        w.u32(v.len() as u32);
+        for &x in v {
+            w.f64(x);
+        }
+    }
 }
 
-fn read_frame(r: &mut R) -> Res<FrameData> {
+fn read_frame(r: &mut R, version: u32) -> Res<FrameData> {
     let value = r.f64()?;
     let mode = r.i64()?;
     let description = r.str()?;
@@ -340,7 +348,16 @@ fn read_frame(r: &mut R) -> Res<FrameData> {
         }
         node_extra.push((name, comps, vals));
     }
-    Ok(FrameData { value, mode, description, u, rf, active, constrained, elem, node_extra })
+    let mut nforc = Vec::new();
+    if version >= 2 {
+        let n = r.u64()? as usize;
+        nforc.reserve(n.min(1 << 24));
+        for _ in 0..n {
+            let k = r.u32()?;
+            nforc.push((0..k).map(|_| r.f64()).collect::<Res<Vec<f64>>>()?);
+        }
+    }
+    Ok(FrameData { value, mode, description, u, rf, active, constrained, elem, node_extra, nforc })
 }
 
 fn write_results(w: &mut W, o: &AnalysisOutput) {
@@ -368,7 +385,7 @@ fn write_results(w: &mut W, o: &AnalysisOutput) {
     }
 }
 
-fn read_results(r: &mut R) -> Res<AnalysisOutput> {
+fn read_results(r: &mut R, version: u32) -> Res<AnalysisOutput> {
     let n_eq = r.u64()? as usize;
     let ns = r.u32()?;
     let mut steps = Vec::new();
@@ -378,7 +395,7 @@ fn read_results(r: &mut R) -> Res<AnalysisOutput> {
         let increments = r.u64()? as usize;
         let iterations = r.u64()? as usize;
         let nf = r.u32()?;
-        let frames = (0..nf).map(|_| read_frame(r)).collect::<Res<Vec<_>>>()?;
+        let frames = (0..nf).map(|_| read_frame(r, version)).collect::<Res<Vec<_>>>()?;
         let nh = r.u32()?;
         let mut history = Vec::new();
         for _ in 0..nh {
@@ -448,7 +465,7 @@ impl Project {
         let ne = r.u32()?;
         let edits = (0..ne).map(|_| read_edit(&mut r)).collect::<Res<Vec<_>>>()?;
         let units = r.str()?;
-        let results = if r.u8()? == 1 { Some(read_results(&mut r)?) } else { None };
+        let results = if r.u8()? == 1 { Some(read_results(&mut r, version)?) } else { None };
         let _reserved = r.opt_f64()?;
         Ok(Project { kind, path, text, included, edits, units, results })
     }

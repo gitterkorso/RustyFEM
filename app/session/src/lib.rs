@@ -585,7 +585,9 @@ pub enum RunEvent {
 /// (iterations at most about 20 per second); `cancel` aborts between
 /// iterations.
 pub fn run_analysis(model: &FeModel, solver: Option<String>, all_frames: bool, cancel: Arc<AtomicBool>, mut on: impl FnMut(RunEvent) + 'static) -> Res<AnalysisOutput> {
-    let opts = RunOptions { all_frames, verbose: false, solver, settings: None };
+    // the elements' internal nodal forces are kept for the section cuts of the Visualization tab
+    let settings = rustyfem::settings::with(|s| rustyfem::settings::Settings { nodal_forces: true, ..s.clone() });
+    let opts = RunOptions { all_frames, verbose: false, solver, settings: Some(settings) };
     let mut last = Instant::now();
     let hook = move |e: &Event| {
         match *e {
