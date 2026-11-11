@@ -6,6 +6,8 @@ Notable changes to RustyFEM. The format is based on
 
 ## [Unreleased]
 
+## [0.1.2] - 2026-11-11
+
 ### Added
 
 - MCP server: option to allow connections from the local network.
@@ -33,6 +35,7 @@ Notable changes to RustyFEM. The format is based on
 - First release: the FEM engine, the command-line program and the desktop app,
   with installers for 64-bit Windows.
 
-[Unreleased]: https://github.com/gitterkorso/RustyFEM/compare/v0.1.1...HEAD
+[Unreleased]: https://github.com/gitterkorso/RustyFEM/compare/v0.1.2...HEAD
+[0.1.2]: https://github.com/gitterkorso/RustyFEM/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/gitterkorso/RustyFEM/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/gitterkorso/RustyFEM/releases/tag/v0.1.0

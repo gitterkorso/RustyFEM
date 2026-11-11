@@ -1,6 +1,6 @@
 [package]
 name = "rustyfem-ffi"
-version = "0.1.1"
+version = "0.1.2"
 edition = "2021"
 license = "MIT OR Apache-2.0"
 description = "C interface to the RustyFEM sparse LDLᵀ solver (e.g. for Python via ctypes)"
