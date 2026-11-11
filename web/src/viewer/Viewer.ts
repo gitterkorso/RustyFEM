@@ -266,6 +266,7 @@ export class Viewer {
   private center = new THREE.Vector3();
   private box = new THREE.Box3();
   private radius = 1;
+  private used = new Uint8Array(0);
   private autoFit = true;
   private is2d = false;
   private frameReq = 0;
@@ -535,6 +536,7 @@ export class Viewer {
     }
     if (!any) box.set(new THREE.Vector3(-1, -1, -1), new THREE.Vector3(1, 1, 1));
     this.box.copy(box);
+    this.used = used;
     box.getCenter(this.center);
     this.radius = Math.max(box.getSize(v).length() / 2, 1e-9);
     // a planar model with 3D elements (a frame or a plate in a plane) is still shown in 3D
@@ -1128,20 +1130,57 @@ export class Viewer {
     this.autoFit = true;
     this.camera.zoom = 1;
     this.resize();
+    // keep the viewing direction: an earlier fit may have moved the camera and target sideways
+    this.camera.position.sub(this.controls.target).add(this.center);
     this.controls.target.copy(this.center);
     this.camera.lookAt(this.center);
     this.camera.updateMatrixWorld();
-    // zoom so that the model's box (seen from the camera) fills the window
+    // zoom so that what is drawn (seen from the camera) fills the window: the nodes and the
+    // profile/thickness solids, in the deformed shape and, where shown, the undeformed one
     const inv = this.camera.matrixWorldInverse;
     const c = new THREE.Vector3().copy(this.center).applyMatrix4(inv);
-    let ex = 0;
-    let ey = 0;
-    const b = this.box;
-    for (let i = 0; i < 8; i++) {
-      const p = new THREE.Vector3(i & 1 ? b.max.x : b.min.x, i & 2 ? b.max.y : b.min.y, i & 4 ? b.max.z : b.min.z).applyMatrix4(inv);
-      ex = Math.max(ex, Math.abs(p.x - c.x));
-      ey = Math.max(ey, Math.abs(p.y - c.y));
+    let x0 = Infinity;
+    let x1 = -Infinity;
+    let y0 = Infinity;
+    let y1 = -Infinity;
+    const e = inv.elements;
+    const scales = this.animating ? [this.animating.base, -this.animating.base] : [this.scale];
+    if (!scales.includes(0) && this.opts.undeformed) scales.push(0);
+    const span = (P: ArrayLike<number>, D: ArrayLike<number> | null, n: number, used: Uint8Array | null) => {
+      for (const s of D ? scales : [0]) {
+        for (let i = 0; i < n; i++) {
+          if (used && !used[i]) continue;
+          const x = P[i * 3] + (D ? s * D[i * 3] : 0);
+          const y = P[i * 3 + 1] + (D ? s * D[i * 3 + 1] : 0);
+          const z = P[i * 3 + 2] + (D ? s * D[i * 3 + 2] : 0);
+          const px = e[0] * x + e[4] * y + e[8] * z + e[12];
+          const py = e[1] * x + e[5] * y + e[9] * z + e[13];
+          if (px < x0) x0 = px;
+          if (px > x1) x1 = px;
+          if (py < y0) y0 = py;
+          if (py > y1) y1 = py;
+        }
+      }
+    };
+    if (this.mesh) span(this.mesh.positions, this.disp ? (this.disp.array as Float32Array) : null, this.used.length, this.used);
+    if (this.solid && this.opts.profiles) {
+      const g = this.solid.mesh.geometry;
+      span(g.getAttribute("position").array, g.getAttribute("disp").array, this.solid.node.length, null);
     }
+    if (!(x1 >= x0)) {
+      const b = this.box;
+      span([b.min.x, b.min.y, b.min.z, b.max.x, b.min.y, b.min.z, b.min.x, b.max.y, b.min.z, b.max.x, b.max.y, b.min.z, b.min.x, b.min.y, b.max.z, b.max.x, b.min.y, b.max.z, b.min.x, b.max.y, b.max.z, b.max.x, b.max.y, b.max.z], null, 8, null);
+    }
+    const ex = (x1 - x0) / 2;
+    const ey = (y1 - y0) / 2;
+    // centre the view on that rectangle
+    const mw = this.camera.matrixWorld;
+    const off = new THREE.Vector3()
+      .setFromMatrixColumn(mw, 0)
+      .multiplyScalar((x0 + x1) / 2 - c.x)
+      .addScaledVector(new THREE.Vector3().setFromMatrixColumn(mw, 1), (y0 + y1) / 2 - c.y);
+    this.camera.position.add(off);
+    this.controls.target.add(off);
     // the view tools float over the right edge: fit the model into the area left of them
     const w = Math.max(this.canvas.clientWidth, 1);
     const tools = this.canvas.parentElement?.querySelector<HTMLElement>(".vp-tools");

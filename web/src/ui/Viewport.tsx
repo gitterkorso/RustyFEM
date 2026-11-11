@@ -7,7 +7,7 @@ import { colormapCss } from "../viewer/colormaps";
 import { Viewer, type ViewDir } from "../viewer/Viewer";
 import { currentField, get, persist, set, useShallow, useStore } from "../store";
 import { fmt, Icon, IconButton } from "./ui";
-import { convertValue, loadUnits, modelUnit } from "./units";
+import { convertValue, loadUnits, modelUnit, resultUnit, unitOptions } from "./units";
 
 /** Most recently fetched results (key → data), for fast switching and animation. */
 const cache = new Map<string, Promise<{ disp: Float32Array; values: Float32Array | null; min: number; max: number; maxU: number }>>();
@@ -40,6 +40,7 @@ export function Viewport() {
   const [viewMenu, setViewMenu] = useState(false);
   const [unitMenu, setUnitMenu] = useState(false);
   const loadUnit = useStore((s) => s.loadUnit);
+  const resultUnits = useStore((s) => s.resultUnits);
   const [is2d, setIs2d] = useState(false);
   const [range, setRange] = useState<{ min: number; max: number } | null>(null);
 
@@ -219,7 +220,18 @@ export function Viewport() {
   // at most 13 labels; with many bands every second/third band boundary is shown
   const nb = levels || 8;
   const every = Math.ceil(nb / 12);
-  const ticks = showLegend ? Array.from({ length: Math.floor(nb / every) + 1 }, (_, i) => range!.max - ((range!.max - range!.min) * i * every) / nb) : [];
+  // the field's values in the unit chosen in the legend
+  const ru = resultUnit(field?.unit, resultUnits);
+  const conv = (x: number, from = field?.unit, r = ru) => (r.q && from ? convertValue(x, r.q, from, r.to) : x);
+  const setResultUnit = (q: string, u: string) => {
+    const next = { ...get().resultUnits, [q]: u };
+    set({ resultUnits: next });
+    persist("resultUnits", next);
+  };
+  const span = showLegend ? Math.abs(range!.max - range!.min) : 0;
+  // rounding noise around zero (e.g. -1.7e-18) is shown as 0
+  const tick = (x: number) => conv(Math.abs(x) < span * 1e-9 ? 0 : x);
+  const ticks = showLegend ? Array.from({ length: Math.floor(nb / every) + 1 }, (_, i) => tick(range!.max - ((range!.max - range!.min) * i * every) / nb)) : [];
 
   const shot = () => {
     if (!v) return;
@@ -352,7 +364,17 @@ export function Viewport() {
           <div className="legend-title">
             <strong>{field!.name}</strong>
             {rsel!.component !== field!.name && <span>{rsel!.component}</span>}
-            {field!.unit && <span>[{field!.unit}]</span>}
+            {ru.q ? (
+              <select className="legend-unit" title="Unit" value={ru.to} onChange={(e) => setResultUnit(ru.q!, e.target.value)}>
+                {unitOptions(ru.q).map((u) => (
+                  <option key={u} value={u}>
+                    {u}
+                  </option>
+                ))}
+              </select>
+            ) : (
+              field!.unit && <span>[{field!.unit}]</span>
+            )}
           </div>
           <div className="legend-body">
             <div className="legend-bar" style={{ background: colormapCss(opts.colormap, levels) }} />
@@ -388,15 +410,18 @@ export function Viewport() {
                 <dd>{val}</dd>
               </div>
             ))}
-            {pickInfo.values.map(([k, val, unit]) => (
-              <div key={k} className="num">
-                <dt>{k}</dt>
-                <dd>
-                  {fmt(val ?? NaN, 5)}
-                  {unit && <span className="unit"> {unit}</span>}
-                </dd>
-              </div>
-            ))}
+            {pickInfo.values.map(([k, val, unit]) => {
+              const r = resultUnit(unit, resultUnits);
+              return (
+                <div key={k} className="num">
+                  <dt>{k}</dt>
+                  <dd>
+                    {fmt(val == null ? NaN : conv(val, unit, r), 5)}
+                    {r.to && <span className="unit"> {r.to}</span>}
+                  </dd>
+                </div>
+              );
+            })}
           </dl>
         </div>
       )}

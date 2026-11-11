@@ -63,6 +63,8 @@ export interface State {
   pickMode: "element" | "node";
   /** Force unit for load values in the viewport (null = show no values). */
   loadUnit: string | null;
+  /** Units to show results in, per quantity (default mm, MPa, kN, kN·m; missing = the model's unit). */
+  resultUnits: Record<string, string>;
   /** Nodes hit by the selection in the tool panel (shown in the viewport). */
   marked: number[] | null;
   /** Waiting for the user to pick a node in the viewport (e.g. for at=). */
@@ -130,6 +132,7 @@ let state: State = {
   pick: null,
   pickMode: "element",
   loadUnit: load<string | null>("loadUnit", "kN"),
+  resultUnits: { length: "mm", stress: "MPa", force: "kN", moment: "kN·m", ...load<Record<string, string>>("resultUnits", {}) },
   marked: null,
   onNodePick: null,
   scriptEdit: null,

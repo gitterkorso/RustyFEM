@@ -1021,6 +1021,21 @@ input[type="range"] {
 .legend-title span {
   color: var(--muted);
 }
+.legend-unit {
+  font: inherit;
+  color: var(--muted);
+  background: transparent;
+  border: 1px solid var(--line2);
+  border-radius: 4px;
+  padding: 0 2px;
+  cursor: pointer;
+  /* the legend lets clicks through to the model, but not here */
+  pointer-events: auto;
+}
+.legend-unit option {
+  color: var(--text);
+  background: var(--panel);
+}
 .legend-body {
   display: flex;
   gap: 8px;

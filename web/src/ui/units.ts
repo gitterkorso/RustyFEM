@@ -50,7 +50,7 @@ export function dloadUnit(kind: string, u: UnitSymbols | undefined): string {
 // Conversion on input: the tools let the user type in any unit
 // and write the number in the model's unit system in the script.
 
-export type ConvQ = "length" | "area" | "length4" | "force" | "moment" | "stress" | "density" | "acceleration";
+export type ConvQ = "length" | "area" | "length4" | "force" | "moment" | "stress" | "density" | "acceleration" | "angle";
 
 /** Units per quantity with factor to SI. */
 const convUnits: Record<ConvQ, [string, number][]> = {
@@ -62,6 +62,7 @@ const convUnits: Record<ConvQ, [string, number][]> = {
   stress: [["Pa", 1], ["kPa", 1e3], ["MPa", 1e6], ["GPa", 1e9], ["psi", 6894.757293168], ["ksi", 6894757.293168]],
   density: [["kg/m³", 1], ["g/cm³", 1e3], ["t/mm³", 1e12], ["lb/in³", 0.45359237 / 0.0254 ** 3], ["lbf·s²/in⁴", 4.4482216152605 / 0.0254 ** 4]],
   acceleration: [["m/s²", 1], ["mm/s²", 1e-3], ["in/s²", 0.0254], ["ft/s²", 0.3048]],
+  angle: [["rad", 1], ["mrad", 1e-3], ["°", Math.PI / 180]],
 };
 
 /** The number `v` in the unit `from` expressed in `to` (unchanged if either is missing). */
@@ -82,10 +83,24 @@ export const loadUnits: [force: string, moment: string][] = [
 
 /** The model's unit per quantity (corresponds to the symbols in `units.rs`). */
 const systemUnits: Record<string, Record<ConvQ, string>> = {
-  si: { length: "m", area: "m²", length4: "m⁴", force: "N", moment: "N·m", stress: "Pa", density: "kg/m³", acceleration: "m/s²" },
-  si_mm: { length: "mm", area: "mm²", length4: "mm⁴", force: "N", moment: "N·mm", stress: "MPa", density: "t/mm³", acceleration: "mm/s²" },
-  us: { length: "in", area: "in²", length4: "in⁴", force: "lbf", moment: "lbf·in", stress: "psi", density: "lbf·s²/in⁴", acceleration: "in/s²" },
+  si: { length: "m", area: "m²", length4: "m⁴", force: "N", moment: "N·m", stress: "Pa", density: "kg/m³", acceleration: "m/s²", angle: "rad" },
+  si_mm: { length: "mm", area: "mm²", length4: "mm⁴", force: "N", moment: "N·mm", stress: "MPa", density: "t/mm³", acceleration: "mm/s²", angle: "rad" },
+  us: { length: "in", area: "in²", length4: "in⁴", force: "lbf", moment: "lbf·in", stress: "psi", density: "lbf·s²/in⁴", acceleration: "in/s²", angle: "rad" },
 };
+
+/** The quantity a unit symbol belongs to (null = not convertible, e.g. "" or a composite unit). */
+export function quantityOf(unit: string | undefined): ConvQ | null {
+  if (!unit) return null;
+  for (const q of Object.keys(convUnits) as ConvQ[]) if (convUnits[q].some(([u]) => u === unit)) return q;
+  return null;
+}
+
+/** Display unit for a result value in the model's unit `from`, per the chosen result units. */
+export function resultUnit(from: string | undefined, chosen: Record<string, string>): { q: ConvQ | null; to: string } {
+  const q = quantityOf(from);
+  const c = q ? chosen[q] : undefined;
+  return { q, to: q && c && convUnits[q].some(([u]) => u === c) ? c : (from ?? "") };
+}
 
 export function unitOptions(q: ConvQ): string[] {
   return convUnits[q].map(([u]) => u);
