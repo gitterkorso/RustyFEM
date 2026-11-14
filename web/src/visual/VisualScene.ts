@@ -163,6 +163,42 @@ function hermite(xi: number) {
 
 const CSS_ID = "vis-style";
 
+// The sky of the rendering mode: cloud cover, how grey the sky is, how dark the clouds are, how much the sun is dimmed.
+const CLOUDS = [
+  { name: "Clear sky", cover: 0, grey: 0, dark: 0, dim: 0 },
+  { name: "Light clouds", cover: 0.35, grey: 0, dark: 0, dim: 0.1 },
+  { name: "Partly cloudy", cover: 0.55, grey: 0.15, dark: 0.1, dim: 0.3 },
+  { name: "Mostly cloudy", cover: 0.75, grey: 0.5, dark: 0.3, dim: 0.55 },
+  { name: "Overcast", cover: 1, grey: 0.9, dark: 0.45, dim: 0.8 },
+  { name: "Storm clouds", cover: 1, grey: 1, dark: 0.9, dim: 0.92 },
+];
+
+const SKY_VERT = `varying vec3 vDir; void main() { vDir = position; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`;
+const SKY_FRAG = `
+varying vec3 vDir;
+uniform vec3 uTop, uHor, uGr, uLit, uShade;
+uniform float uCover, uT;
+float h2(vec2 p) { p = fract(p * vec2(123.34, 456.21)); p += dot(p, p + 45.32); return fract(p.x * p.y); }
+float vn(vec2 p) {
+  vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);
+  return mix(mix(h2(i), h2(i + vec2(1, 0)), f.x), mix(h2(i + vec2(0, 1)), h2(i + vec2(1, 1)), f.x), f.y);
+}
+float fbm(vec2 p) { float a = 0.5, s = 0.0; for (int i = 0; i < 5; i++) { s += a * vn(p); p = p * 2.03 + 17.1; a *= 0.5; } return s; }
+void main() {
+  vec3 d = normalize(vDir);
+  float h = d.y;
+  vec3 c = h >= 0.0 ? mix(uHor, uTop, pow(h, 0.55)) : mix(uHor, uGr, min(1.0, -h * 6.0));
+  if (h > 0.0 && uCover > 0.0) {
+    vec2 uv = d.xz / (h + 0.12) * 1.3 + vec2(0.012, 0.005) * uT;
+    float n = fbm(uv), thr = mix(0.75, 0.22, uCover);
+    float a = smoothstep(thr, thr + 0.25, n) * smoothstep(0.0, 0.1, h);
+    c = mix(c, mix(uLit, uShade, smoothstep(0.0, 0.45, n - thr)), a);
+  }
+  gl_FragColor = vec4(c, 1.0);
+  #include <tonemapping_fragment>
+  #include <colorspace_fragment>
+}`;
+
 export class VisualScene {
   private root: HTMLDivElement;
   private renderer: THREE.WebGLRenderer;
@@ -182,7 +218,22 @@ export class VisualScene {
   private yGround = 0;
   private sky: THREE.Mesh;
   private ground: THREE.Mesh;
-  private envTex: THREE.Texture;
+  private pmrem: THREE.PMREMGenerator;
+  private envRT: THREE.WebGLRenderTarget | null = null;
+  private envScene = new THREE.Scene();
+  private envSun = new THREE.MeshBasicMaterial({ color: 0xffffff });
+  private skyMat = new THREE.ShaderMaterial({
+    vertexShader: SKY_VERT,
+    fragmentShader: SKY_FRAG,
+    side: THREE.BackSide,
+    depthWrite: false,
+    fog: false,
+    uniforms: {
+      uTop: { value: new THREE.Color() }, uHor: { value: new THREE.Color() }, uGr: { value: new THREE.Color(0x7f8a6e) },
+      uLit: { value: new THREE.Color() }, uShade: { value: new THREE.Color() }, uCover: { value: 0 }, uT: { value: 0 },
+    },
+  });
+  private weatherKey = "";
   private raf = 0;
   private ro: ResizeObserver;
   private lastK: number | null = null;
@@ -203,7 +254,7 @@ export class VisualScene {
   private reactGroup = new THREE.Group();
   private cutGroup = new THREE.Group();
   private ui: Record<string, HTMLElement> = {};
-  private opt = { def: true, anim: true, scale: 25, transp: false, edges: true, render: false, scheme: "parts", sun: 55 };
+  private opt = { def: true, anim: true, scale: 25, transp: false, edges: true, render: false, scheme: "parts", sun: 55, clouds: 0 };
   private disposed = false;
   private hasResults: boolean;
   private is2d: boolean;
@@ -253,12 +304,11 @@ export class VisualScene {
     this.ground.receiveShadow = true;
     this.ground.visible = false;
     this.scene.add(this.ground);
-    const envScene = new THREE.Scene();
-    envScene.add(this.skyDome(50));
-    const s = new THREE.Mesh(new THREE.SphereGeometry(6, 16, 8), new THREE.MeshBasicMaterial({ color: 0xffffff }));
+    this.envScene.add(this.skyDome(50));
+    const s = new THREE.Mesh(new THREE.SphereGeometry(6, 16, 8), this.envSun);
     s.position.set(20, 30, 20);
-    envScene.add(s);
-    this.envTex = new THREE.PMREMGenerator(this.renderer).fromScene(envScene, 0.03).texture;
+    this.envScene.add(s);
+    this.pmrem = new THREE.PMREMGenerator(this.renderer);
     this.sun.shadow.mapSize.set(4096, 4096);
     Object.assign(this.sun.shadow.camera, { left: -1.4 * R, right: 1.4 * R, top: 1.4 * R, bottom: -1.4 * R, near: 0.05 * R, far: 8 * R });
     this.sun.shadow.bias = -0.0004;
@@ -299,6 +349,8 @@ export class VisualScene {
       const m = o as THREE.Mesh;
       m.geometry?.dispose?.();
     });
+    this.envRT?.dispose();
+    this.pmrem.dispose();
     this.renderer.dispose();
     this.root.remove();
   }
@@ -412,6 +464,7 @@ export class VisualScene {
         <option value="red">Red</option><option value="corten">Weathering steel</option>
       </select></label>
       <label>Sun <input type="range" class="vis-sun" min="0" max="360" value="55"></label>
+      <label>Clouds <select class="vis-clouds">${CLOUDS.map((c, i) => `<option value="${i}">${c.name}</option>`).join("")}</select></label>
       <div class="vis-views"><button type="button" class="vis-png">Save image (4K PNG)</button></div>
       <div class="vis-views">
         <button type="button" data-view="iso">Iso</button><button type="button" data-view="side">Side</button>
@@ -433,7 +486,7 @@ export class VisualScene {
       panel, rows, sub: q("vis-sub"), info, dock, hint, tips,
       none: q("vis-none"), res: q("vis-res"), step: q("vis-step"), frame: q("vis-frame"), frameRow: q("vis-frame-row"),
       def: q("vis-def"), anim: q("vis-anim"), scale: q("vis-scale"), scaleTxt: q("vis-scaletxt"), max: q("vis-max"),
-      transp: q("vis-transp"), edges: q("vis-edges"), render: q("vis-render"), scheme: q("vis-scheme"), sun: q("vis-sun"), png: q("vis-png"),
+      transp: q("vis-transp"), edges: q("vis-edges"), render: q("vis-render"), scheme: q("vis-scheme"), sun: q("vis-sun"), clouds: q("vis-clouds"), png: q("vis-png"),
       dockHead: q("vis-dockhead"), dockVals: q("vis-dockvals"), plots: q("vis-plots"), dockClose: q("vis-dockclose"), axisRow: q("vis-axisrow"), dockNote: q("vis-docknote"),
     };
     const u = this.ui;
@@ -467,6 +520,19 @@ export class VisualScene {
     u.sun.oninput = () => {
       this.opt.sun = +(u.sun as HTMLInputElement).value;
       this.applyRender();
+    };
+    // the clouds belong to the rendering mode, so choosing them turns that on
+    const weather = () => {
+      if (!this.opt.render) {
+        (u.render as HTMLInputElement).checked = this.opt.render = true;
+        (u.edges as HTMLInputElement).checked = this.opt.edges = false;
+        this.applyOpts();
+      }
+      this.applyRender();
+    };
+    u.clouds.onchange = () => {
+      this.opt.clouds = +(u.clouds as HTMLSelectElement).value;
+      weather();
     };
     u.png.onclick = () => this.savePng();
     r.querySelectorAll<HTMLButtonElement>("[data-view]").forEach((b) => (b.onclick = () => this.setView(b.dataset.view!)));
@@ -1020,30 +1086,47 @@ export class VisualScene {
   }
 
   private skyDome(radius: number) {
-    const top = new THREE.Color(0x2f6fbd), hor = new THREE.Color(0xc9dcee), gr = new THREE.Color(0x7f8a6e);
-    const g = new THREE.SphereGeometry(radius, 48, 24), col: number[] = [], pos = g.attributes.position;
-    for (let i = 0; i < pos.count; i++) {
-      const h = pos.getY(i) / radius;
-      const c = h >= 0 ? hor.clone().lerp(top, Math.pow(h, 0.55)) : hor.clone().lerp(gr, Math.min(1, -h * 6));
-      col.push(c.r, c.g, c.b);
+    return new THREE.Mesh(new THREE.SphereGeometry(radius, 48, 24), this.skyMat);
+  }
+
+  /** Sky, fog, light and reflections for the chosen clouds. */
+  private applyWeather() {
+    const on = this.opt.render, w = CLOUDS[this.opt.clouds];
+    const mix = (a: number, b: number, t: number) => new THREE.Color(a).lerp(new THREE.Color(b), t);
+    const u = this.skyMat.uniforms;
+    u.uTop.value.set(0x2f6fbd).lerp(mix(0x8f99a3, 0x3b4047, w.dark), w.grey);
+    u.uHor.value.set(0xc9dcee).lerp(mix(0xc3c9cf, 0x6a7078, w.dark), w.grey);
+    u.uLit.value.copy(mix(0xffffff, 0x80878f, w.dark));
+    u.uShade.value.copy(mix(0xb4bfcc, 0x24272c, w.dark));
+    u.uCover.value = w.cover;
+    const R = this.R;
+    this.scene.fog = on ? new THREE.Fog(u.uHor.value.getHex(), 7 * R, 16 * R) : null;
+    this.renderer.toneMappingExposure = 0.85 * (1 - 0.25 * w.dark);
+    this.sun.intensity = on ? 5.2 * (1 - 0.9 * w.dim) : 2.3;
+    this.hemi.intensity = on ? 0.6 + 2 * w.dim : 2.9;
+    this.sun.color.copy(on ? mix(0xfff1dc, 0xdfe6ee, w.dim) : new THREE.Color(0xffffff));
+    // the reflections follow the sky; rebuilt only when the clouds change
+    const key = on ? String(this.opt.clouds) : "";
+    if (key !== this.weatherKey) {
+      this.weatherKey = key;
+      this.envRT?.dispose();
+      this.envRT = null;
+      if (on) {
+        this.envSun.color.setScalar(1 - w.dim);
+        this.envRT = this.pmrem.fromScene(this.envScene, 0.03);
+      }
     }
-    g.setAttribute("color", new THREE.Float32BufferAttribute(col, 3));
-    return new THREE.Mesh(g, new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.BackSide, fog: false, depthWrite: false }));
+    this.scene.environment = this.envRT ? this.envRT.texture : null;
   }
 
   private applyRender() {
     const on = this.opt.render, a = (this.opt.sun * Math.PI) / 180, R = this.R, C = this.center;
     this.sky.visible = this.ground.visible = on;
     if (this.supGroup) this.supGroup.g.visible = !on && this.supGroup.visible;
-    this.scene.fog = on ? new THREE.Fog(0xc9dcee, 7 * R, 16 * R) : null;
-    this.scene.environment = on ? this.envTex : null;
     this.renderer.toneMapping = on ? THREE.ACESFilmicToneMapping : THREE.NoToneMapping;
-    this.renderer.toneMappingExposure = 0.85;
     this.sun.castShadow = on;
-    this.sun.intensity = on ? 5.2 : 2.3;
-    this.hemi.intensity = on ? 0.6 : 2.9;
     this.fill.intensity = on ? 0 : 0.9;
-    this.sun.color.set(on ? 0xfff1dc : 0xffffff);
+    this.applyWeather();
     if (on) this.sun.position.set(C.x + 2.2 * R * Math.cos(a), C.y + 2 * R, C.z + 2.2 * R * Math.sin(a));
     else this.sun.position.set(C.x + 1.3 * R, C.y + 2 * R, C.z + 1.6 * R);
     this.fill.position.set(C.x - R, C.y - 0.7 * R, C.z - 1.3 * R);
@@ -1140,6 +1223,7 @@ export class VisualScene {
       const sc = this.factor();
       this.applyDeform(!this.opt.def ? 0 : this.opt.anim ? sc * (0.5 - 0.5 * Math.cos((2 * Math.PI * (now || 0)) / 3000)) : sc);
     }
+    this.skyMat.uniforms.uT.value = ((now || 0) / 1000) % 3600;
     this.updateCut();
     this.updateReactions();
     this.controls.update();
